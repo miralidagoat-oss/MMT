@@ -5,8 +5,134 @@ limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
 fixed risk:reward target, then **grades its own historical signals** and shows
 the results in an on-chart dashboard.
 
-- **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
+- **Tradeable strategy:** `indicators/mmt_session_sweep_strategy.pine` —
+  Pine v6 `strategy()` port of the validated MNQ/NQ 1H configuration, with
+  TradingView-native backtesting, commission/slippage modeling, a breakeven
+  manager, risk guard, and alerts. **Start here if you trade MNQ.**
+- **Research indicator:** `indicators/alpha_predictive_limit_matrix.pine` —
+  the self-auditing indicator (grades every signal in parallel)
 - **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
+
+## v4 — the intraday hunt (Aug 2026): three strategy families tested, none beat the 1H engine
+
+The goal was an edge for the sub-hourly timeframes (1m–30m) where the sweep
+engine had shown none. Three families were built and tested on fresh data
+(MNQ + NQ + ES; 60 days of 1m–30m, 2 years of 1h; the house pessimistic fill
+model **plus round-trip costs** — commission + 2 ticks slippage, charged in
+points per trade: MNQ 1.5 pt, NQ 0.75 pt, ES 0.6 pt):
+
+1. **NY-open Opening Range Breakout** (`backtest/orb_study.py`) — 720-config
+   grid (OR 5/15/30m × stops × targets × breakeven × direction filters ×
+   entry cutoffs), walk-forward split, plus a 2-year first-hour-breakout
+   proxy on hourly data. **Dead.** The best in-sample config (PF 1.40)
+   collapsed out-of-sample (PF 0.40), and the 2-year proxy loses on all
+   three symbols in *both* years (MNQ PF 0.53, NQ 0.52, ES 0.59; −212R on
+   MNQ over 590 trades). Post-2023 index futures punish naive open momentum.
+2. **Failed-breakout fade of the opening range** (same script,
+   `fade-structural` mode) — since breakouts lose, fade the failed ones:
+   poke beyond the OR extreme, close back inside, revert. **No edge:** best
+   2-year config PF 1.05 ≈ zero after costs; nothing passes a
+   both-years-positive + cross-symbol screen.
+3. **Level-anchored sweep engine** (`backtest/level_study.py`) — a single
+   pre-registered test, zero tuning: the exact v3.2 signal gates with the
+   rolling 12-bar extremes replaced by the day's real liquidity levels
+   (prior-day H/L, overnight H/L, 30-min opening range). **Not better.**
+   With an end-of-day flat the RR-4 economics die (targets need multi-day
+   room); without it, 2-year hourly PF is 1.03 vs the rolling engine's
+   1.35–1.64. Sub-hourly samples were tiny (n≤13 per TF) and mixed-sign.
+
+Reproduce (fetches ~60d intraday + 2y hourly from Yahoo):
+
+```
+python3 backtest/fetch_yahoo.py backtest/data_mnq MNQ=F
+python3 backtest/fetch_yahoo.py backtest/data_nq  NQ=F
+python3 backtest/fetch_yahoo.py backtest/data_es  ES=F
+python3 backtest/orb_study.py sweep backtest/data_mnq
+python3 backtest/orb_study.py fade-structural backtest/data_mnq backtest/data_nq
+python3 backtest/level_study.py backtest/data_mnq backtest/data_nq backtest/data_es
+python3 backtest/study_mnq.py backtest/data_mnq backtest/data_nq   # re-validation
+```
+
+**Conclusion: on current MNQ there is no validated sub-hourly entry edge in
+any of these families. The one edge that keeps re-validating is the 1H
+sweep-rejection engine.** The v3.2 MNQ preset was re-confirmed on data
+through Aug 2026 — same numbers as the original study:
+
+| panel | trades | WR (decisive) | PF | net R |
+|---|---|---|---|---|
+| MNQ 1h in-sample (first 60%) | 51 | 29.0% | **1.64** | +14R |
+| MNQ 1h out-of-sample (last 40%) | 29 | 26.3% | **1.43** | +6R |
+| NQ 1h full (cross-val) | 81 | 23.9% | **1.26** | +9R |
+
+### The strategy script
+
+`indicators/mmt_session_sweep_strategy.pine` packages that configuration as
+a real `strategy()`: open it in the Pine editor, add it to an **MNQ 1H**
+chart, and TradingView's Strategy Tester will show the win rate, profit
+factor and equity curve on your own data feed — verify it yourself, don't
+trust this README. Defaults: 1 contract, $0.80/side commission, 1 tick
+slippage, RTH signal gate (09:30–16:00 ET), breakeven at +1R, 1:4 target,
+24-bar limit expiry.
+
+Honest differences from the study: the script trades **one position at a
+time** (the study graded overlapping signals independently), and
+TradingView's broker emulator resolves same-bar stop/target ambiguity with
+its own OHLC-path heuristic where the study always books the stop — so the
+tester will run slightly *more optimistic* than the study tables. The
+study's numbers are the conservative reference. Parity that is enforced:
+the target order is withheld on the fill bar, the breakeven stop arms only
+after the exit checks and takes effect the next bar, and signals are
+confirmed-bar only (no repaint).
+
+By default the script **disables signals on unvalidated timeframes** (its
+guard accepts 45m–2h). That is a feature, not a limitation — see the table:
+
+### Which timeframe should you trade? (MNQ, evidence through Aug 2026)
+
+| chart | verdict | evidence |
+|---|---|---|
+| 1m | ❌ no edge found | sweep engine PF 0.89 (7d); every ORB/fade family negative |
+| 5m | ❌ no edge found | sweep engine PF 1.00 pre-cost (60d); ORB dead; level engine n=9 noise |
+| 15m | ❌ no edge found | sweep engine PF 0.80; level engine PF 0.65–0.69 (60d) |
+| 30m | ❌ no edge found | sign flips between configs — noise |
+| **1H** | ✅ **trade this** | walk-forward + cross-val + re-validation: OOS PF 1.43 |
+| 4H | ❌ negative | PF 0.33 (2y); worst tested; matches crypto 6h finding |
+
+If you take one thing from this repo: **the market you are trading pays
+patience at 1H and punishes activity below it.** More screens ≠ more edge.
+Roughly 2–3 signals fire per week, almost all between 09:30 and 16:00 ET.
+
+### Money, risk, and the honest math (read this)
+
+The validated config's stop distances are volatility-scaled. Measured over
+the 2-year sample: **median risk ≈ $221 per MNQ contract per trade** (mean
+$252, p90 $382, max ~$1,040). Expectancy out-of-sample is ≈ +0.2R per trade
+≈ **$45/contract/trade**, at ~30 trades/year ≈ **$1,300–1,600/year per
+contract**, with historical drawdowns of 5–8R (≈ $1,100–1,800).
+
+What that means by account size, risking one contract per signal:
+
+| account | risk/trade (median) | verdict |
+|---|---|---|
+| $500 | 44% of the account | **do not trade — one loss ≈ half the account; ruin is near-certain** |
+| $2,000 | 11% | still ruin-grade risk; a normal 5-loss streak ≈ −55% |
+| $4,500 | ~5% | aggressive; survivable only with perfect discipline |
+| $11,000+ | ~2% | the standard professional risk budget |
+
+There is no setting in this or any script that changes that arithmetic —
+MNQ is $2/point and the volatility is what it is. A "higher win rate"
+does not fix it either: the engine's decisive win rate is ~26% *by
+design* (63% of entries scratch at breakeven; the 1:4 winners pay for
+everything). Chasing high-WR configurations was tested — every one of them
+had PF < 1. **The profit factor pays, not the win rate.**
+
+If your account is small: run the strategy on paper (TradingView paper
+trading) until you have ≥3 months of live-signal evidence that your fills
+match the tester, and treat funded-trader evaluations as what they are — a
+fee-based business with its own failure odds, not free capital. No
+indicator, this one included, can promise profit. This repo's value is that
+it tells you the truth about where the edge is and — just as important —
+where it is not.
 
 ## Audit findings (why v1's "backtest" was fiction)
 
