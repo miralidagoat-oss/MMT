@@ -1,5 +1,27 @@
 # MMT v4 Trading Indicator — Backtest Results
 
+> ## ⚠️ RETRACTED — DO NOT TRADE ON THESE NUMBERS
+>
+> **The figures in this document are wrong.** They were produced by a study
+> that hard-coded Eastern Time as a fixed `UTC-4` offset, so the RTH session
+> filter was shifted by an hour for roughly five months of every year.
+>
+> Correcting the timezone removes **33 of the 80 trades** and **72% of the
+> reported profit**:
+>
+> | | Below | Corrected |
+> |---|---|---|
+> | Trades | 80 | **47** |
+> | Profit factor | 1.51 (IS 1.64 / OOS 1.43) | **1.24** |
+> | Net R | +18.8R | **+5.3R** |
+>
+> A full adversarial audit found the corrected edge is **not statistically
+> distinguishable from zero** (32.5% probability the true edge is negative;
+> p = 0.287 against random entry; 75% of all profit from a single trade).
+>
+> **See [`AUDIT.md`](AUDIT.md) for the complete analysis.** The content below
+> is retained only as a record of what was originally claimed.
+
 ## Summary
 
 The **mmt_session_sweep_strategy.pine** script is based on the highest-performing configuration found across 2 years of MNQ/NQ/ES testing. Only the **1-hour timeframe** carries statistical edge; all shorter timeframes (1m, 5m, 15m, 30m) and longer timeframes (4H, daily) fail to recover trading costs out-of-sample.

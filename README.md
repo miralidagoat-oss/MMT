@@ -1,5 +1,23 @@
 # MMT — Quant Engine: Alpha Predictive Limit Matrix
 
+> ## ⚠️ READ [`AUDIT.md`](AUDIT.md) BEFORE RISKING ANY MONEY
+>
+> An adversarial audit (Aug 2026) found a **timezone bug that invalidated the
+> headline results**. The prior studies hard-coded ET as fixed `UTC-4`, so the
+> RTH filter was shifted an hour for ~5 months a year. Correcting it removes
+> 33 of 80 trades and 72% of the profit: **PF 1.51 → 1.24, +18.8R → +5.3R.**
+>
+> Further testing found the corrected edge is **not statistically
+> distinguishable from zero**:
+> - 32.5% probability the true edge is flat or negative
+> - p = 0.287 against random entries — the signal does not beat a dartboard
+> - 75% of all profit comes from one trade; negative without one quarter
+> - The shipped parameters score at the **median of random configurations**
+> - The "NQ cross-validation" used the same index — it was never independent
+>
+> The Pine code is sound (no repaint, no lookahead). The *edge* is unproven.
+> **This strategy is not suitable for trading real money.**
+
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
 fixed risk:reward target, then **grades its own historical signals** and shows
