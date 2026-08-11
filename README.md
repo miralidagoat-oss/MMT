@@ -163,6 +163,35 @@ are short (7–60 days) — treat those verdicts as "no evidence of an edge",
 not proof of the opposite; the 4H verdict matches the crypto 6h finding and
 is more trustworthy.
 
+### v3.2 — session gating + breakeven management (MNQ study)
+
+A deeper study on MNQ/NQ 1h (`backtest/study_mnq.py`) tested the three levers
+that could improve the raw PF-1.35 edge:
+
+- **Direction:** longs PF 1.30 / shorts PF 1.44 on MNQ — both positive on
+  both contracts, so both sides stay on.
+- **Session:** signals essentially only fire 06:00–16:00 ET (volume gate
+  kills Globex); the 09–12 ET open block carries most of the edge (PF 1.37)
+  and the few evening signals lose. RTH-only (09:30–16:00 ET) improved OOS
+  and cross-val at negligible trade cost.
+- **Breakeven stop:** moving the stop to entry once the trade reaches +1R
+  was the single biggest improvement — ~40% of former losses become 0R
+  scratches. (BE at +1R beat +1.5R and +2R across the grid.)
+
+Final MNQ configuration (RTH + BE@1R), all panels positive:
+
+| panel | trades | W/L/BE | WR (dec.) | PF | net R |
+|---|---|---|---|---|---|
+| MNQ 1h in-sample (first 60%) | 51 | 9/22/20 | 29.0% | **1.64** | +14R |
+| MNQ 1h out-of-sample (last 40%) | 29 | 5/14/10 | 26.3% | **1.43** | +6R |
+| NQ 1h full (cross-val) | 81 | 11/35/35 | 23.9% | **1.26** | +9R |
+
+Both rules ship in the MNQ preset (session 09:30–16:00 America/New_York,
+BE trigger 1.0R) and are configurable in Custom mode. The crypto preset
+keeps sessions off (24/7 market) and BE off (untested there). Scratches are
+tracked separately on the dashboard and excluded from the win rate but
+included in expectancy.
+
 ### Statistical honesty
 
 - 74 pooled closed trades is a modest sample; the OOS PF of 3.20 comes from
