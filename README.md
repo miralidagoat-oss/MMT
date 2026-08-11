@@ -49,6 +49,34 @@ Structural issues fixed alongside:
 - Symbols without volume data (many FX/index feeds) produced `na` signals;
   v2 falls back to a structural wick-dominance check.
 
+## v2.1 hardening (flaws found re-auditing v2)
+
+- **Order-flow confirmation read the wrong wick.** v2 confirmed signals with
+  the *dominant* wick (`max(topWick, botWick)`), so a bullish low-sweep could
+  be "confirmed" by a large upper wick — evidence against the setup. v2.1
+  confirms with the rejection-side wick only (lower for longs, upper for
+  shorts).
+- **Degenerate zero-risk setups.** A signal bar opening exactly on its low
+  put the long entry (wick midpoint) at the low itself, collapsing risk to ~0
+  and stop/TP onto the entry. A minimum rejection-wick fraction
+  (`minWickFrac`, default 25% of range) removes the case and raises signal
+  quality.
+- **Signals before the vol engine was seeded.** The first `seedLen` bars had
+  `na` variance, giving stops with zero volatility buffer. Signals now wait
+  for `engineReady`.
+- **Correlated signal spam.** Choppy sweeps could fire near-identical setups
+  on consecutive bars, padding the stats with pseudo-replicated trades. A
+  per-direction cooldown (`cooldownBars`, default 5) suppresses re-fires.
+- **Open trades could linger forever / vanish from accounting.** An optional
+  time stop (`maxHoldBars`, default off) books open trades at market in
+  fractional R; filled trades evicted by the tracking cap are booked the same
+  way instead of silently disappearing.
+- **Optional EMA regime filter** (`useTrendFilter`, default off): longs only
+  above the EMA, shorts only below, for testing trend alignment.
+- Dashboard now shows live pending/open counts and time-exit totals; a signal
+  alert with full entry/stop/target levels fires alongside the static
+  alertconditions.
+
 ## How v2 grades trades (fill model)
 
 The accounting is deliberately **pessimistic** — OHLC bars don't reveal the
@@ -59,6 +87,8 @@ intrabar path, so every ambiguity is resolved against the strategy:
 - TP is never credited on the fill bar.
 - If stop and TP both print inside one bar, the stop wins.
 - Wins book `+RR` R, losses `-1` R, at the posted levels (no slippage/fees).
+- Time-stop and eviction exits book at the bar's close in fractional R; they
+  count toward expectancy but not toward the TP-vs-stop win rate.
 
 The dashboard shows signals, fill rate, wins/losses, expired setups, win rate
 against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
@@ -69,6 +99,8 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
 - This is an indicator-side simulation, not a `strategy()` backtest: no
   commission, slippage, or position sizing. Treat the expectancy line as an
   upper-bound sanity check, not a P&L forecast.
-- Setups older than `maxTracked` stop being managed; on very signal-dense
-  charts raise the cap or tighten the filters.
-- A filled trade has no time stop — it runs until TP or stop is touched.
+- Setups beyond `maxTracked` are evicted oldest-first (pending ones count as
+  expired, filled ones book at market); on very signal-dense charts raise the
+  cap or tighten the filters.
+- With the time stop off (default), a filled trade runs until TP or stop is
+  touched.
