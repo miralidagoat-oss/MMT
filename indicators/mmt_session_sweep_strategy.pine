@@ -1,6 +1,6 @@
 //@version=6
 strategy("MMT Session Sweep Strategy [MNQ/NQ 1H]", "MMT Sweep 1H",
-     overlay = true, pyramiding = 0, initial_capital = 5000,
+     overlay = true, pyramiding = 0, initial_capital = 25000,
      default_qty_type = strategy.fixed, default_qty_value = 1,
      commission_type = strategy.commission.cash_per_contract,
      commission_value = 0.80, slippage = 1, max_labels_count = 500)
@@ -62,9 +62,9 @@ useSession   = input.bool(true,  "Restrict Signals to Session",              gro
 sessionStr   = input.session("0930-1600", "Signal Session",                  group = G_SESS)
 sessionTz    = input.string("America/New_York", "Session Timezone",          group = G_SESS)
 
-acctSize     = input.float(5000, "Account Size ($)",            minval = 1,  group = G_RISK)
-maxRiskPct   = input.float(5.0,  "Max Risk per Trade (%)",      minval = 0.1, maxval = 100, step = 0.5, group = G_RISK,
-     tooltip = "The validated config risks a MEDIAN of ~$221/contract on MNQ (p90 ≈ $382). The dashboard turns red when a setup exceeds this budget; enable the hard block below to skip those signals entirely.")
+acctSize     = input.float(25000, "Account Size ($)",           minval = 1,  group = G_RISK)
+maxRiskPct   = input.float(2.0,  "Max Risk per Trade (%)",      minval = 0.1, maxval = 100, step = 0.5, group = G_RISK,
+     tooltip = "The validated config risks a MEDIAN of ~$221/contract on MNQ (mean ≈ $252, p90 ≈ $382, worst observed ≈ $1,040). On a $25,000 account at 1 contract that median is ~0.9% and the 2% budget below ($500) sits above p90 — so the guard only fires on the extreme tail, which is exactly what it is for. The dashboard turns red when a setup exceeds this budget; enable the hard block to skip those signals entirely.")
 blockBigRisk = input.bool(false, "Hard-Block Oversized Signals", group = G_RISK)
 enforceTf    = input.bool(true,  "Disable Signals on Unvalidated Timeframes", group = G_RISK,
      tooltip = "The edge was validated on 1H only (45m–2h accepted). 1m, 5m, 15m, 30m and 4H all tested flat-to-negative across four strategy families. Untick only if you know exactly what you are doing.")

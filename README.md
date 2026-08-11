@@ -110,14 +110,30 @@ $252, p90 $382, max ~$1,040). Expectancy out-of-sample is ≈ +0.2R per trade
 ≈ **$45/contract/trade**, at ~30 trades/year ≈ **$1,300–1,600/year per
 contract**, with historical drawdowns of 5–8R (≈ $1,100–1,800).
 
+**This repo is configured for a $25,000 account trading 1 contract.** The
+script ships with `initial_capital = 25000`, Account Size = 25000 and a 2%
+per-trade risk guard.
+
 What that means by account size, risking one contract per signal:
 
 | account | risk/trade (median) | verdict |
 |---|---|---|
-| $500 | 44% of the account | **do not trade — one loss ≈ half the account; ruin is near-certain** |
-| $2,000 | 11% | still ruin-grade risk; a normal 5-loss streak ≈ −55% |
+| $2,000 | 11% | ruin-grade risk; a normal 5-loss streak ≈ −55% |
 | $4,500 | ~5% | aggressive; survivable only with perfect discipline |
-| $11,000+ | ~2% | the standard professional risk budget |
+| $11,000 | ~2% | the minimum standard professional risk budget |
+| **$25,000** | **~0.9%** | **the configured base — median loss <1%, worst observed risk 4.2%, a 6-loss streak ≈ −6%** |
+
+At $25,000 the arithmetic finally works in your favour: the 2% guard ($500)
+sits *above* the p90 trade risk ($382), so it never blocks a normal setup and
+only catches the extreme volatility tail. Expect **~$1,200–1,500/year net
+(5–6%)** at 1 contract, with a 5–8% peak-to-trough drawdown along the way.
+
+Do **not** jump to 2 contracts yet. At 2 lots the worst-case trade risks
+$2,080 — 8.3% of the account on a single signal. Scale at ~$45,000–50,000
+equity, where 2 contracts reproduces the risk profile you have today.
+
+The extra capital above the risk requirement buys drawdown tolerance, not
+yield: returns scale with contract count, not with idle equity.
 
 There is no setting in this or any script that changes that arithmetic —
 MNQ is $2/point and the volatility is what it is. A "higher win rate"
@@ -126,11 +142,11 @@ design* (63% of entries scratch at breakeven; the 1:4 winners pay for
 everything). Chasing high-WR configurations was tested — every one of them
 had PF < 1. **The profit factor pays, not the win rate.**
 
-If your account is small: run the strategy on paper (TradingView paper
-trading) until you have ≥3 months of live-signal evidence that your fills
-match the tester, and treat funded-trader evaluations as what they are — a
-fee-based business with its own failure odds, not free capital. No
-indicator, this one included, can promise profit. This repo's value is that
+Even at $25,000, run the strategy on paper (TradingView paper trading) until
+you have ≥3 months of live-signal evidence that your fills match the tester.
+The sizing is survivable; that is not the same as the edge being guaranteed —
+80 walk-forward trades is real evidence, not certainty. No indicator, this one
+included, can promise profit. This repo's value is that
 it tells you the truth about where the edge is and — just as important —
 where it is not.
 

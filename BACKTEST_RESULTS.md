@@ -117,25 +117,59 @@ Risk varies per bar because stops are computed dynamically using the EWMA volati
 
 ---
 
-## Account Size Requirements
+## Account Sizing — $25,000 Base
 
-To sustain the strategy without ruin, risk **per trade should not exceed 2–3% of account equity**. The median trade risk is ~$221 per contract; mean is ~$252.
+The script ships configured for a **$25,000 account** (`initial_capital = 25000`,
+Account Size input = 25000, Max Risk per Trade = 2%).
 
-### Survivability by Account Size
+### Where $25,000 Puts You
 
-| Account | Risk/Trade | Outcome |
-|---------|-----------|---------|
-| **$500** | 44–50% | ❌ **DO NOT TRADE** — ruin-grade risk |
-| **$2,000** | 11–12% | ❌ Unsurvivable — 5-loss streak = -55% to -60% |
-| **$4,500** | 5–6% | ⚠️ Aggressive but borderline survivable with discipline |
-| **$11,000+** | 2–2.5% | ✅ **Professional standard** — sustainable long-term |
+Median trade risk is ~$221 per MNQ contract; mean ~$252. Against $25,000 at
+**1 contract**:
 
-### Breakeven Calculation for $11,000 Account
+| Trade risk | $ per contract | % of $25,000 |
+|-----------|----------------|--------------|
+| Median | $221 | **0.88%** |
+| Mean | $252 | **1.01%** |
+| p90 | $382 | **1.53%** |
+| Worst observed | ~$1,040 | **4.16%** |
 
-- **2% risk = $220 per trade**
-- **Median realized risk ≈ $221 per trade**
-- **Annual expectancy:** ~30 signals/year × $45/trade ≈ **$1,300–1,600 gross annual return**
-- **After slippage/commissions:** $800–1,000/year net
+This is a comfortable, professional-grade risk budget. The typical loss costs
+under 1% of equity, and even the single worst risk envelope in two years of
+data stays inside a survivable 4%. The 2% guard ($500) sits above p90, so it
+never blocks a normal setup — it only catches the extreme volatility tail.
+
+### Drawdown in Dollars
+
+Historical maximum drawdown was 5–8R. At 1 contract and mean R ≈ $252:
+
+- **5R ≈ $1,260 → 5.0% of the account**
+- **8R ≈ $2,016 → 8.1% of the account**
+
+A six-trade losing streak (the worst in the sample) is roughly a 6% dip. That
+is a drawdown you can sit through without changing behaviour, which is the
+entire point of sizing at this level.
+
+### Expected Return at $25,000
+
+- **~30 signals/year × +0.21R OOS expectancy × ~$252 mean R ≈ $1,590/year gross**
+- **After commissions and slippage: ~$1,200–1,500/year net**
+- **≈ 5–6% annual return on the $25,000**
+
+That is the honest number for **1 contract**. The strategy's return scales with
+contract count, not with idle equity — the extra capital above the risk
+requirement buys drawdown tolerance, not yield.
+
+### When to Add a Second Contract
+
+At 2 contracts the median trade risks $442 (1.8% of $25k) — still fine — but
+p90 becomes $764 (3.1%) and the tail hits $2,080 (**8.3% on a single trade**).
+That tail is too hot for $25,000.
+
+**Recommendation: stay at 1 contract until equity reaches ~$45,000–50,000**,
+where 2 contracts reproduces today's risk profile. If you want to run 2
+contracts sooner, enable **Hard-Block Oversized Signals** with the 2% budget —
+it will skip roughly half the signals, which is the correct trade-off.
 
 ---
 
@@ -178,7 +212,7 @@ Over 100 trades at scale:
 
 ### Return Profile
 - **Profitable years:** 2/2 (2023–2024 both positive)
-- **Max consecutive losers:** 6 trades (survived comfortably in $11k+ account)
+- **Max consecutive losers:** 6 trades (≈ 6% of a $25,000 account at 1 contract)
 - **Typical win streak:** 2–3 consecutive winners, then 3–4 losers (no momentum edge)
 
 ---
@@ -196,9 +230,11 @@ Over 100 trades at scale:
 ## Conclusion
 
 **mmt_session_sweep_strategy.pine** should be traded **exclusively on the 1-hour MNQ timeframe** with:
-- **Minimum account:** $11,000 (to maintain 2% risk per trade)
-- **Expected annual return:** $800–1,600 gross (10–15% on $11k equity)
+- **Account:** $25,000, **1 contract** (median risk 0.88%, worst-case tail 4.2%)
+- **Expected annual return:** ~$1,200–1,500 net (**5–6% on $25,000**)
+- **Expected max drawdown:** 5–8R ≈ **$1,260–2,016 (5–8% of equity)**
 - **Historical win rate:** 26–29%
 - **Profit Factor:** 1.43 out-of-sample
+- **Scale to 2 contracts at ~$45,000–50,000 equity**, not before
 
 All other timeframes tested showed **negative expectancy after costs** and should not be traded.
