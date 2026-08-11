@@ -77,6 +77,70 @@ Structural issues fixed alongside:
   alert with full entry/stop/target levels fires alongside the static
   alertconditions.
 
+## v3 — selectivity release, with a real out-of-sample backtest
+
+v3 adds three confluence gates on top of v2.1 — **all** must pass, so only
+clean, textbook rejections signal:
+
+- **Close-position gate** (`minClosePos`, 0.7): the signal bar must close in
+  the top 30% of its range for longs (bottom 30% for shorts). A sweep that
+  closes mid-bar is indecision, not rejection.
+- **Sweep-depth gate** (`sweepSigmaIn`, 0.5σ): the raid must run at least
+  half an EWMA sigma beyond the prior extreme. One-tick pokes are noise, not
+  liquidity grabs.
+- **Range-expansion gate** (`rangeExpMult`, 0.8×): the signal bar's range
+  must be at least 0.8× its 20-bar average. Micro bars are not visible
+  rejections.
+
+Cooldown default rises to 10 bars. The EMA regime filter stays available but
+**off** — backtesting showed it hurts everywhere, which makes sense: these
+are mean-reversion signals, and demanding trend alignment deletes the good
+counter-trend fills.
+
+### Backtest methodology
+
+The exact fill model (same pessimistic rules as below) was ported to Python
+(`backtest/backtest.py`) and run on Coinbase spot data: BTC-USD, ETH-USD,
+SOL-USD at 1h (4,200 bars ≈ 6 months each) and 6h (2,000 bars ≈ 16 months
+each). Parameters were **walk-forward validated** (`backtest/walkforward.py`):
+tuned on the first 60% of each 1h series, then evaluated untouched on the
+last 40%.
+
+- In-sample (tuning): PF 1.54, 27.8% WR at 1:4, +0.39R/trade
+- **Out-of-sample (untouched last 40%): PF 3.20, 44.4% WR at 1:4,
+  +1.22R/trade, 36 closed trades**
+
+### Full-sample results, v3 defaults (RR 4, breakeven WR 20%)
+
+| dataset | signals | fills | W | L | WR% | PF | net R | exp R | maxDD |
+|---|---|---|---|---|---|---|---|---|---|
+| BTC-USD 1h | 30 | 26 | 11 | 15 | 42.3 | 2.93 | +29R | +1.12 | 7R |
+| ETH-USD 1h | 29 | 24 | 9 | 15 | 37.5 | 2.40 | +21R | +0.88 | 7R |
+| SOL-USD 1h | 33 | 24 | 6 | 18 | 25.0 | 1.33 | +6R | +0.25 | 6R |
+| **1h pooled** | **92** | **74** | **26** | **48** | **35.1** | **2.17** | **+56R** | **+0.76** | — |
+| BTC-USD 6h | 15 | 14 | 1 | 13 | 7.1 | 0.31 | −9R | −0.64 | 13R |
+| ETH-USD 6h | 16 | 12 | 2 | 9 | 18.2 | 0.89 | −1R | −0.09 | 5R |
+| SOL-USD 6h | 13 | 11 | 1 | 10 | 9.1 | 0.40 | −6R | −0.55 | 8R |
+
+**The edge is strictly intraday.** On 6h the same logic loses on all three
+symbols — swept levels on higher timeframes tend to keep going rather than
+mean-revert. The dashboard shows a warning on charts above 2h. Selectivity
+is the point: ~1 signal per 130 hourly bars per symbol, ~80% fill rate.
+
+Reproduce: `python3 backtest/fetch_data.py data && python3 backtest/backtest.py data report '{}'`
+
+### Statistical honesty
+
+- 74 pooled closed trades is a modest sample; the OOS PF of 3.20 comes from
+  36 trades. The direction of the evidence is good; the point estimates are
+  not gospel.
+- No fees/slippage. Limit entries earn maker rebates on most venues, so the
+  cost drag in R terms is small but not zero — roughly `fee% × (entry/risk)`
+  per side.
+- Crypto-only validation. Test on your market before trusting it there.
+- All three 1h symbols were profitable, but SOL was materially weaker —
+  expect dispersion across symbols.
+
 ## How v2 grades trades (fill model)
 
 The accounting is deliberately **pessimistic** — OHLC bars don't reveal the

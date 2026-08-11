@@ -1,17 +1,21 @@
 //@version=6
-indicator("Quant Engine: Alpha Predictive Limit Matrix v2", overlay = true,
+indicator("Quant Engine: Alpha Predictive Limit Matrix v3", overlay = true,
      max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // ============================================================================
-// v2.1 — hardened rebuild (see README.md for the full audit trail)
-//   - order-flow confirmation now reads the rejection-side wick only
-//   - minimum rejection-wick fraction kills degenerate zero-risk setups
-//   - signals wait for the EWMA engine to be seeded
-//   - per-direction signal cooldown suppresses correlated re-fires
-//   - optional time stop books open trades at market in fractional R;
-//     trades evicted by the tracking cap are booked the same way
-//   - optional EMA regime filter (off by default)
-//   - dashboard shows live pending/open counts
+// v3 — selectivity release (see README.md for the audit trail and the full
+// out-of-sample backtest behind these defaults)
+//   Confluence gates added on top of v2.1 — ALL must pass, so only clean,
+//   textbook rejections signal:
+//   - close-position gate: the bar must CLOSE in the top/bottom 30% of its
+//     range (a sweep that closes mid-bar is indecision, not rejection)
+//   - sweep-depth gate: the raid must run >= 0.5 EWMA sigma beyond the prior
+//     extreme (one-tick pokes are noise, not liquidity grabs)
+//   - range-expansion gate: signal bar range >= 0.8x its 20-bar average
+//     (micro bars are not visible rejections)
+//   Defaults are walk-forward validated on BTC/ETH/SOL 1h (tuned on the
+//   first 60%, verified on the untouched last 40%). The edge exists on
+//   intraday charts and inverts on 6h+ — the dashboard warns on high TFs.
 // Accounting is deliberately pessimistic: stop beats TP inside one bar,
 // no TP credit on the fill bar, wins/losses booked at posted levels.
 // ============================================================================
@@ -26,8 +30,11 @@ var string G_UI     = "Display"
 
 rbLookback   = input.int(12,     "Sweep Lookback Window",             minval = 2,                                group = G_STRUCT)
 rbBodyThresh = input.float(0.33, "Max Body-to-Range Ratio",           minval = 0.05, maxval = 0.95, step = 0.01, group = G_STRUCT)
-minWickFrac  = input.float(0.25, "Min Rejection Wick (fraction of range)", minval = 0.05, maxval = 0.9, step = 0.05, group = G_STRUCT)
-cooldownBars = input.int(5,      "Signal Cooldown (bars, per direction)", minval = 0,                            group = G_STRUCT)
+minWickFrac  = input.float(0.35, "Min Rejection Wick (fraction of range)", minval = 0.05, maxval = 0.9, step = 0.05, group = G_STRUCT)
+minClosePos  = input.float(0.7,  "Min Close Position (fraction of range)", minval = 0.5, maxval = 0.95, step = 0.05, group = G_STRUCT)
+sweepSigmaIn = input.float(0.5,  "Min Sweep Depth (σ beyond prior extreme)", minval = 0.0, maxval = 2.0, step = 0.25, group = G_STRUCT)
+rangeExpMult = input.float(0.8,  "Min Range Expansion (× 20-bar avg range)", minval = 0.0, maxval = 3.0, step = 0.1, group = G_STRUCT)
+cooldownBars = input.int(10,     "Signal Cooldown (bars, per direction)", minval = 0,                            group = G_STRUCT)
 useVolFilter = input.bool(true,  "Require Order-Flow Confirmation",                                              group = G_STRUCT)
 volLen       = input.int(20,     "Volume Baseline Length",            minval = 1,                                group = G_STRUCT)
 volMult      = input.float(1.2,  "Volume Imbalance Multiplier",       minval = 0.1,  step = 0.1,                 group = G_STRUCT)
@@ -110,6 +117,11 @@ float safeRange   = math.max(candleRange, syminfo.mintick)
 float bullWickDom = botWick / safeRange
 float bearWickDom = topWick / safeRange
 float volSMA      = ta.sma(nz(volume), volLen)
+float rangeSMA    = ta.sma(candleRange, 20)
+
+// close-position: where the bar closed within its own range
+float bullClosePos = (close - low) / safeRange
+float bearClosePos = (high - close) / safeRange
 
 bool bullFlowOk = not useVolFilter or (na(volume) ? bullWickDom >= 0.5 : volSMA > 0 and nz(volume) * bullWickDom >= volSMA * volMult)
 bool bearFlowOk = not useVolFilter or (na(volume) ? bearWickDom >= 0.5 : volSMA > 0 and nz(volume) * bearWickDom >= volSMA * volMult)
@@ -124,11 +136,21 @@ bool bearCooldownOk = cooldownBars == 0 or na(lastBearSignalBar) or bar_index - 
 float prevHH = ta.highest(high, rbLookback)[1]
 float prevLL = ta.lowest(low, rbLookback)[1]
 
-bool smallBody   = candleBody <= candleRange * rbBodyThresh
+bool smallBody = candleBody <= candleRange * rbBodyThresh
+bool rangeOk   = candleRange >= rangeSMA * rangeExpMult
+
 bool isBullishRB = barstate.isconfirmed and engineReady and low < prevLL and close > prevLL and
-     smallBody and bullWickDom >= minWickFrac and bullFlowOk and bullRegimeOk and bullCooldownOk
+     smallBody and rangeOk and
+     bullWickDom >= minWickFrac and
+     bullClosePos >= minClosePos and
+     prevLL - low >= sweepSigmaIn * ewmaVolPrice and
+     bullFlowOk and bullRegimeOk and bullCooldownOk
 bool isBearishRB = barstate.isconfirmed and engineReady and high > prevHH and close < prevHH and
-     smallBody and bearWickDom >= minWickFrac and bearFlowOk and bearRegimeOk and bearCooldownOk
+     smallBody and rangeOk and
+     bearWickDom >= minWickFrac and
+     bearClosePos >= minClosePos and
+     high - prevHH >= sweepSigmaIn * ewmaVolPrice and
+     bearFlowOk and bearRegimeOk and bearCooldownOk
 
 plot(useTrendFilter ? regimeEMA : na, "Regime EMA", color = color.new(color.orange, 40))
 
@@ -271,7 +293,7 @@ f_pct(float x) =>
     na(x) ? "—" : str.tostring(x, "#.#") + "%"
 
 if showStats and barstate.islast
-    var table dash = table.new(position.top_right, 2, 12,
+    var table dash = table.new(position.top_right, 2, 13,
          bgcolor = color.new(#101418, 15), border_width = 1,
          border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 55))
 
@@ -307,6 +329,10 @@ if showStats and barstate.islast
     f_row(dash, 10, "Expectancy / Trade", na(expectancy) ? "—" : str.tostring(expectancy, "#.##") + "R",
          na(expectancy) ? color.white : expectancy >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
     f_row(dash, 11, "EWMA σ / bar",       str.tostring(math.sqrt(math.max(nz(ewmaVariance), 0.0)) * 100, "#.###") + "%", color.aqua)
+    // validated on intraday data; the edge inverted on 6h+ in backtests
+    bool tfWarn = timeframe.in_seconds() > 7200
+    f_row(dash, 12, "Chart TF", tfWarn ? "⚠ tuned for ≤2h charts" : "✓ intraday (validated)",
+         tfWarn ? color.new(color.orange, 0) : color.new(color.teal, 0))
 
 // ─────────────────────────────────────────────────────────────
 // ALERTS
