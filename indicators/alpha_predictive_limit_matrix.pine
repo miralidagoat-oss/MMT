@@ -1,0 +1,251 @@
+//@version=6
+indicator("Quant Engine: Alpha Predictive Limit Matrix v2", overlay = true,
+     max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+// ============================================================================
+// v2 rebuild. Changes vs v1 (see README.md for the full audit):
+//   - EWMA engine actually computes log returns (v1 fed it log(close/close)=0,
+//     so volatility was permanently zero and every stop sat on the exact low)
+//   - setups can no longer fill on their own signal bar
+//   - full outcome accounting: fill -> TP / stop / expiry, with a live
+//     self-audit dashboard (win rate vs breakeven, net R, expectancy)
+//   - conservative intrabar rules: stop has priority when stop+TP print in
+//     one bar; no TP credit on the fill bar
+//   - closed/expired setups are pruned from the tracking array
+//   - signals gate on barstate.isconfirmed (no realtime flicker/repaint)
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_STRUCT = "Structure Detection"
+var string G_VOL    = "Volatility Engine (EWMA)"
+var string G_TRADE  = "Trade Construction"
+var string G_UI     = "Display"
+
+rbLookback   = input.int(12,     "Sweep Lookback Window",           minval = 2,                                group = G_STRUCT)
+rbBodyThresh = input.float(0.33, "Max Body-to-Range Ratio",         minval = 0.05, maxval = 0.95, step = 0.01, group = G_STRUCT)
+useVolFilter = input.bool(true,  "Require Order-Flow Confirmation",                                            group = G_STRUCT)
+volLen       = input.int(20,     "Volume Baseline Length",          minval = 1,                                group = G_STRUCT)
+volMult      = input.float(1.2,  "Volume Imbalance Multiplier",     minval = 0.1,  step = 0.1,                 group = G_STRUCT)
+
+lambda       = input.float(0.94, "EWMA Decay Factor (RiskMetrics λ)", minval = 0.85, maxval = 0.99, step = 0.01, group = G_VOL)
+seedLen      = input.int(20,     "Variance Seed Length",            minval = 5,                                group = G_VOL)
+stopSigma    = input.float(0.5,  "Stop Distance (σ multiple past the wick)", minval = 0.0, step = 0.1,         group = G_VOL)
+
+rrTarget     = input.float(4.0,  "Risk : Reward Target",            minval = 0.5,  step = 0.5,                 group = G_TRADE)
+validityBars = input.int(24,     "Unfilled Setup Expiry (bars)",    minval = 1,                                group = G_TRADE)
+maxTracked   = input.int(40,     "Max Concurrently Tracked Setups", minval = 1,    maxval = 100,               group = G_TRADE)
+
+showLabels   = input.bool(true,  "Show Entry Labels",               group = G_UI)
+showOutcomes = input.bool(true,  "Show Outcome Markers",            group = G_UI)
+showStats    = input.bool(true,  "Show Self-Audit Dashboard",       group = G_UI)
+bullBase     = input.color(#00E676, "Bull Color",                   group = G_UI)
+bearBase     = input.color(#FF5252, "Bear Color",                   group = G_UI)
+
+// ─────────────────────────────────────────────────────────────
+// TYPES & STATE
+// ─────────────────────────────────────────────────────────────
+enum SetupState
+    pending
+    filled
+
+type PredictiveBlock
+    box        zoneBox
+    line       limitEntryVector
+    line       stopLossVector
+    line       takeProfitVector
+    float      entryLevel
+    float      stopLevel
+    float      tpLevel
+    bool       isBullish
+    int        createdBar
+    SetupState state
+
+var array<PredictiveBlock> predictionMatrix = array.new<PredictiveBlock>()
+
+var int   cntSignals = 0
+var int   cntFilled  = 0
+var int   cntWins    = 0
+var int   cntLosses  = 0
+var int   cntExpired = 0
+var float netR       = 0.0
+
+// ─────────────────────────────────────────────────────────────
+// EWMA VOLATILITY ENGINE (RiskMetrics)
+// ─────────────────────────────────────────────────────────────
+float logReturn    = na(close[1]) ? 0.0 : math.log(close / close[1])
+float seedVariance = ta.variance(logReturn, seedLen)
+
+var float ewmaVariance = na
+ewmaVariance := na(ewmaVariance) ? seedVariance : lambda * ewmaVariance + (1.0 - lambda) * logReturn * logReturn
+
+// per-bar return σ converted to price units
+float ewmaVolPrice = math.sqrt(math.max(nz(ewmaVariance), 0.0)) * close
+
+// ─────────────────────────────────────────────────────────────
+// ORDER-FLOW PROXY & STRUCTURE DETECTION
+// ─────────────────────────────────────────────────────────────
+float candleRange   = high - low
+float candleBody    = math.abs(close - open)
+float topWick       = high - math.max(close, open)
+float botWick       = math.min(close, open) - low
+float candleMaxBody = math.max(open, close)
+float candleMinBody = math.min(open, close)
+
+// dominant-wick share of the bar's range; volume-weighted where volume exists
+float wickDominance = math.max(topWick, botWick) / math.max(candleRange, syminfo.mintick)
+float volSMA        = ta.sma(nz(volume), volLen)
+bool  volPass       = volSMA > 0 and nz(volume) * wickDominance >= volSMA * volMult
+bool  orderflowConfirmed = not useVolFilter or (na(volume) ? wickDominance >= 0.5 : volPass)
+
+float prevHH = ta.highest(high, rbLookback)[1]
+float prevLL = ta.lowest(low, rbLookback)[1]
+
+bool smallBody   = candleBody <= candleRange * rbBodyThresh
+bool isBearishRB = barstate.isconfirmed and high > prevHH and close < prevHH and smallBody and orderflowConfirmed
+bool isBullishRB = barstate.isconfirmed and low < prevLL and close > prevLL and smallBody and orderflowConfirmed
+
+// ─────────────────────────────────────────────────────────────
+// SETUP CONSTRUCTION
+// ─────────────────────────────────────────────────────────────
+f_spawn(bool isBull) =>
+    // entry at the midpoint of the rejection wick (consequent encroachment)
+    float entryLevel = isBull ? low + (candleMinBody - low) / 2.0 : high - (high - candleMaxBody) / 2.0
+    float stopLevel  = isBull ? low - ewmaVolPrice * stopSigma : high + ewmaVolPrice * stopSigma
+    float risk       = math.abs(entryLevel - stopLevel)
+    float tpLevel    = isBull ? entryLevel + risk * rrTarget : entryLevel - risk * rrTarget
+
+    color baseCol = isBull ? bullBase : bearBase
+    float zoneTop = isBull ? candleMinBody : high
+    float zoneBot = isBull ? low : candleMaxBody
+
+    box  zb = box.new(bar_index, zoneTop, bar_index + 1, zoneBot, bgcolor = color.new(baseCol, 85), border_color = baseCol)
+    line el = line.new(bar_index, entryLevel, bar_index + 1, entryLevel, color = baseCol, width = 2)
+    line sl = line.new(bar_index, stopLevel,  bar_index + 1, stopLevel,  color = color.red,  width = 1, style = line.style_dotted)
+    line tl = line.new(bar_index, tpLevel,    bar_index + 1, tpLevel,    color = color.blue, width = 2)
+
+    array.push(predictionMatrix, PredictiveBlock.new(zb, el, sl, tl, entryLevel, stopLevel, tpLevel, isBull, bar_index, SetupState.pending))
+
+    if showLabels
+        label.new(bar_index, isBull ? low : high,
+             text = (isBull ? "🎯 LONG LIMIT" : "🛑 SHORT LIMIT") +
+                  "\nE " + str.tostring(entryLevel, format.mintick) +
+                  "\nS " + str.tostring(stopLevel, format.mintick) +
+                  "\nT " + str.tostring(tpLevel, format.mintick),
+             style = isBull ? label.style_label_up : label.style_label_down,
+             color = color.new(baseCol, 20), textcolor = color.white, size = size.small)
+
+if isBullishRB
+    f_spawn(true)
+    cntSignals += 1
+if isBearishRB
+    f_spawn(false)
+    cntSignals += 1
+
+// cap the managed set so the per-bar scan stays O(maxTracked)
+while array.size(predictionMatrix) > maxTracked
+    PredictiveBlock old = array.shift(predictionMatrix)
+    if old.state == SetupState.pending
+        cntExpired += 1
+
+// ─────────────────────────────────────────────────────────────
+// EXECUTION STATE ENGINE (fill / stop / target / expiry)
+// ─────────────────────────────────────────────────────────────
+if barstate.isconfirmed and array.size(predictionMatrix) > 0
+    for i = array.size(predictionMatrix) - 1 to 0 by 1
+        PredictiveBlock rb = array.get(predictionMatrix, i)
+        if bar_index <= rb.createdBar
+            continue
+
+        // live setups track the current bar so the drawing shows true lifespan
+        box.set_right(rb.zoneBox, bar_index)
+        line.set_x2(rb.limitEntryVector, bar_index)
+        line.set_x2(rb.stopLossVector, bar_index)
+        line.set_x2(rb.takeProfitVector, bar_index)
+
+        int outcome = 0 // 1 win, -1 loss, 2 expired
+
+        if rb.state == SetupState.pending
+            if rb.isBullish ? low <= rb.entryLevel : high >= rb.entryLevel
+                rb.state := SetupState.filled
+                cntFilled += 1
+                line.set_color(rb.limitEntryVector, color.yellow)
+                line.set_width(rb.limitEntryVector, 3)
+                alert("Alpha Matrix: " + (rb.isBullish ? "long" : "short") + " limit filled @ " + str.tostring(rb.entryLevel, format.mintick), alert.freq_once_per_bar_close)
+                // conservative: a fill bar that also trades through the stop books the loss now;
+                // TP is never credited on the fill bar (intrabar path is unknowable from OHLC)
+                if rb.isBullish ? low <= rb.stopLevel : high >= rb.stopLevel
+                    outcome := -1
+            else if bar_index - rb.createdBar >= validityBars
+                outcome := 2
+        else
+            bool stopHit = rb.isBullish ? low <= rb.stopLevel : high >= rb.stopLevel
+            bool tpHit   = rb.isBullish ? high >= rb.tpLevel  : low <= rb.tpLevel
+            // stop has priority when both print in one bar — pessimistic by design
+            outcome := stopHit ? -1 : tpHit ? 1 : 0
+
+        if outcome != 0
+            if outcome == 2
+                cntExpired += 1
+            else
+                bool win = outcome == 1
+                netR      += win ? rrTarget : -1.0
+                cntWins   += win ? 1 : 0
+                cntLosses += win ? 0 : 1
+                if showOutcomes
+                    label.new(bar_index, win ? rb.tpLevel : rb.stopLevel,
+                         text = win ? "✔ +" + str.tostring(rrTarget, "#.#") + "R" : "✘ -1R",
+                         style = label.style_label_left,
+                         color = color.new(win ? color.teal : color.maroon, 30),
+                         textcolor = color.white, size = size.small)
+                alert("Alpha Matrix: " + (rb.isBullish ? "long" : "short") + (win ? " target hit" : " stopped out"), alert.freq_once_per_bar_close)
+            if outcome != 1
+                box.set_bgcolor(rb.zoneBox, color.new(color.gray, 92))
+                box.set_border_color(rb.zoneBox, color.new(color.gray, 60))
+                line.set_style(rb.limitEntryVector, line.style_dotted)
+                line.set_style(rb.stopLossVector, line.style_dotted)
+                line.set_style(rb.takeProfitVector, line.style_dotted)
+            array.remove(predictionMatrix, i)
+
+// ─────────────────────────────────────────────────────────────
+// SELF-AUDIT DASHBOARD
+// ─────────────────────────────────────────────────────────────
+f_row(table t, int r, string k, string v, color vc) =>
+    table.cell(t, 0, r, k, text_color = color.new(color.silver, 0), text_halign = text.align_left,  text_size = size.small)
+    table.cell(t, 1, r, v, text_color = vc,                         text_halign = text.align_right, text_size = size.small)
+
+f_pct(float x) =>
+    na(x) ? "—" : str.tostring(x, "#.#") + "%"
+
+if showStats and barstate.islast
+    var table dash = table.new(position.top_right, 2, 10,
+         bgcolor = color.new(#101418, 15), border_width = 1,
+         border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 55))
+
+    int   closedTrades = cntWins + cntLosses
+    float winRate      = closedTrades > 0 ? 100.0 * cntWins / closedTrades : na
+    float fillRate     = cntSignals > 0 ? 100.0 * cntFilled / cntSignals : na
+    float expectancy   = closedTrades > 0 ? netR / closedTrades : na
+    float breakEvenWR  = 100.0 / (1.0 + rrTarget)
+
+    table.cell(dash, 0, 0, "ALPHA MATRIX — SELF-AUDIT", text_color = color.white, text_size = size.small)
+    table.merge_cells(dash, 0, 0, 1, 0)
+    f_row(dash, 1, "Signals",            str.tostring(cntSignals),  color.white)
+    f_row(dash, 2, "Filled",             str.tostring(cntFilled) + "  (" + f_pct(fillRate) + ")", color.white)
+    f_row(dash, 3, "Wins",               str.tostring(cntWins),     color.new(color.teal, 0))
+    f_row(dash, 4, "Losses",             str.tostring(cntLosses),   color.new(color.red, 0))
+    f_row(dash, 5, "Expired Unfilled",   str.tostring(cntExpired),  color.gray)
+    f_row(dash, 6, "Win Rate (BE " + str.tostring(breakEvenWR, "#.#") + "%)", f_pct(winRate),
+         na(winRate) ? color.white : winRate > breakEvenWR ? color.new(color.teal, 0) : color.new(color.red, 0))
+    f_row(dash, 7, "Net R",              (netR >= 0 ? "+" : "") + str.tostring(netR, "#.##") + "R",
+         netR >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+    f_row(dash, 8, "Expectancy / Trade", na(expectancy) ? "—" : str.tostring(expectancy, "#.##") + "R",
+         na(expectancy) ? color.white : expectancy >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+    f_row(dash, 9, "EWMA σ / bar",       str.tostring(math.sqrt(math.max(nz(ewmaVariance), 0.0)) * 100, "#.###") + "%", color.aqua)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(isBullishRB, "Bullish Rejection Block", "Alpha Matrix: bullish rejection block — long limit posted")
+alertcondition(isBearishRB, "Bearish Rejection Block", "Alpha Matrix: bearish rejection block — short limit posted")

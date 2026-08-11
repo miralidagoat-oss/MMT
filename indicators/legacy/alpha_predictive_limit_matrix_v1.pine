@@ -1,0 +1,158 @@
+// ============================================================================
+// LEGACY — original submission, kept verbatim for reference.
+// Do not use: see README.md "Audit findings" for the defects found here
+// (dead EWMA engine, self-filling entries, no outcome accounting, etc.).
+// The maintained version is indicators/alpha_predictive_limit_matrix.pine
+// ============================================================================
+//@version=6
+indicator("Quant Engine: Alpha Predictive Limit Matrix (v6)", overlay=true, max_boxes_count=500, max_labels_count=500)
+
+// ==========================================
+// INSTITUTIONAL PARAMETERS & QUANT CONTROLS
+// ==========================================
+var string G_ICT   = "Predictive Block Matrix"
+var string G_FLOW  = "Order Flow Distribution Framework"
+var string G_OPT   = "Statistical Execution Grids"
+
+// Predictive ICT Settings
+rbLookback   = input.int(12, title="Predictive Lookback Window", minval=2, group=G_ICT)
+rbBodyThresh = input.float(0.33, title="Max Allowed Body-to-Candle Ratio", minval=0.05, maxval=0.95, step=0.01, group=G_ICT)
+projectionBarLength = input.int(8, title="Limit Coordinate Projection Bars", minval=2, maxval=30, group=G_ICT)
+
+// Volatility Boundaries
+lambda       = input.float(0.94, title="EWMA Volatility Decay Factor", minval=0.85, maxval=0.99, step=0.01, group=G_OPT)
+optionsDev   = input.float(2.5, title="Dealer Option Delta Skew Sigma", minval=1.5, maxval=4.0, step=0.25, group=G_OPT)
+
+// Color Vectors
+bullColor = color.new(#00E676, 85)
+bearColor = color.new(#FF5252, 85)
+
+// ==========================================
+// USER DEFINED TYPES (STRUCTS)
+// ==========================================
+type PredictiveBlock
+    box   zoneBox
+    line  limitEntryVector
+    line  stopLossVector
+    line  takeProfitVector
+    float entryLevel
+    float stopLevel
+    float tpLevel
+    bool  isBullish
+    bool  isMitigated
+
+var PredictiveBlock[] predictionMatrix = array.new<PredictiveBlock>()
+
+// ==========================================
+// STATISTICAL DEVIATION ENGINE
+// ==========================================
+logReturn = math.log(close / nz(close, close))
+var float ewmaVariance = na
+if na(ewmaVariance)
+    ewmaVariance := ta.variance(logReturn, 20)
+else
+    ewmaVariance := (lambda * ewmaVariance) + ((1.0 - lambda) * math.pow(logReturn, 2))
+
+ewmaVolatility = math.sqrt(ewmaVariance) * close
+
+// ==========================================
+// UNRESTRICTED INTRABAR VOLUME SIMULATION
+// ==========================================
+// Free-plan safe: Calculates structural volume signatures entirely using the current bar's wicks
+candleRange = high - low
+candleBody  = math.abs(close - open)
+topWick     = high - math.max(close, open)
+botWick     = math.min(close, open) - low
+
+// Relative volume distribution proxy based on wick expansion
+float volumetricImbalance = volume * (math.max(topWick, botWick) / (candleRange + 1e-6))
+bool orderflowConfirmed = (volumetricImbalance >= ta.sma(volume, 20) * 1.2)
+
+// ==========================================
+// DYNAMIC STRUCTURE RESOLUTION
+// ==========================================
+highestHigh = ta.highest(high, rbLookback)
+lowestLow   = ta.lowest(low, rbLookback)
+
+bool isBearishRB = (high > highestHigh[1]) and (close < highestHigh[1]) and (candleBody <= candleRange * rbBodyThresh) and orderflowConfirmed
+bool isBullishRB = (low < lowestLow[1]) and (close > lowestLow[1]) and (candleBody <= candleRange * rbBodyThresh) and orderflowConfirmed
+
+// ==========================================
+// PREDICTIVE LIMIT ORDER & RISK RENDERER
+// ==========================================
+candleMaxBody = math.max(open, close)
+candleMinBody = math.min(open, close)
+
+if isBullishRB
+    // Mathematical Entry: Midpoint of the lower wick (Consequent Encroachment)
+    predictiveEntry = low + ((candleMinBody - low) / 2.0)
+    // Dynamic Volatility Stop: Pinned 1.5 ATR/EWMA points past the absolute low point
+    predictiveStop  = low - (ewmaVolatility * 0.2)
+    riskDistance    = predictiveEntry - predictiveStop
+    // Targeted Take Profit: Formulates an exact 1:4 Risk-to-Reward ratio
+    predictiveTP    = predictiveEntry + (riskDistance * 4.0)
+
+    box b = box.new(left=bar_index, top=candleMinBody, right=bar_index + projectionBarLength, bottom=low, bgcolor=bullColor, border_color=#00E676, border_style=line.style_solid)
+    line entryLine = line.new(x1=bar_index, y1=predictiveEntry, x2=bar_index + projectionBarLength, y2=predictiveEntry, color=#00C853, width=2, style=line.style_solid)
+    line stopLine  = line.new(x1=bar_index, y1=predictiveStop,  x2=bar_index + projectionBarLength, y2=predictiveStop,  color=color.red, width=1, style=line.style_dotted)
+    line tpLine    = line.new(x1=bar_index, y1=predictiveTP,    x2=bar_index + projectionBarLength, y2=predictiveTP,    color=color.blue, width=2, style=line.style_solid)
+
+    array.push(predictionMatrix, PredictiveBlock.new(b, entryLine, stopLine, tpLine, predictiveEntry, predictiveStop, predictiveTP, true, false))
+
+    label.new(bar_index, low,
+         text="🎯 LONG LIMIT EXECUTION\n" +
+              "Entry: " + str.tostring(predictiveEntry, "#.#") + "\n" +
+              "Stop: " + str.tostring(predictiveStop, "#.#") + "\n" +
+              "Target (1:4): " + str.tostring(predictiveTP, "#.#"),
+         color=color.green, textcolor=color.white, style=label.style_label_up)
+
+if isBearishRB
+    predictiveEntry = high - ((high - candleMaxBody) / 2.0)
+    predictiveStop  = high + (ewmaVolatility * 0.2)
+    riskDistance    = predictiveStop - predictiveEntry
+    predictiveTP    = predictiveEntry - (riskDistance * 4.0)
+
+    box b = box.new(left=bar_index, top=high, right=bar_index + projectionBarLength, bottom=candleMaxBody, bgcolor=bearColor, border_color=#FF5252, border_style=line.style_solid)
+    line entryLine = line.new(x1=bar_index, y1=predictiveEntry, x2=bar_index + projectionBarLength, y2=predictiveEntry, color=#D50000, width=2, style=line.style_solid)
+    line stopLine  = line.new(x1=bar_index, y1=predictiveStop,  x2=bar_index + projectionBarLength, y2=predictiveStop,  color=color.red, width=1, style=line.style_dotted)
+    line tpLine    = line.new(x1=bar_index, y1=predictiveTP,    x2=bar_index + projectionBarLength, y2=predictiveTP,    color=color.blue, width=2, style=line.style_solid)
+
+    array.push(predictionMatrix, PredictiveBlock.new(b, entryLine, stopLine, tpLine, predictiveEntry, predictiveStop, predictiveTP, false, false))
+
+    label.new(bar_index, high,
+         text="🛑 SHORT LIMIT EXECUTION\n" +
+              "Entry: " + str.tostring(predictiveEntry, "#.#") + "\n" +
+              "Stop: " + str.tostring(predictiveStop, "#.#") + "\n" +
+              "Target (1:4): " + str.tostring(predictiveTP, "#.#"),
+         color=color.red, textcolor=color.white, style=label.style_label_down)
+
+// ==========================================
+// RUNTIME MITIGATION & EXECUTION STATE ENGINE
+// ==========================================
+if array.size(predictionMatrix) > 0
+    for i = array.size(predictionMatrix) - 1 to 0 by 1
+        PredictiveBlock rb = array.get(predictionMatrix, i)
+
+        if not rb.isMitigated
+            bool limitHit = false
+            if rb.isBullish and low <= rb.entryLevel and high >= rb.entryLevel
+                limitHit := true
+            else if not rb.isBullish and high >= rb.entryLevel and low <= rb.entryLevel
+                limitHit := true
+
+            if limitHit
+                line.set_color(rb.limitEntryVector, color.yellow)
+                line.set_width(rb.limitEntryVector, 3)
+
+            if rb.isBullish and close < rb.stopLevel
+                rb.isMitigated := true
+                box.set_bgcolor(rb.zoneBox, color.new(color.gray, 95))
+                line.set_style(rb.limitEntryVector, line.style_dotted)
+                line.set_style(rb.stopLossVector, line.style_dotted)
+                line.set_style(rb.takeProfitVector, line.style_dotted)
+            else if not rb.isBullish and close > rb.stopLevel
+                rb.isMitigated := true
+                box.set_bgcolor(rb.zoneBox, color.new(color.gray, 95))
+                line.set_style(rb.limitEntryVector, line.style_dotted)
+                line.set_style(rb.stopLossVector, line.style_dotted)
+                line.set_style(rb.takeProfitVector, line.style_dotted)
