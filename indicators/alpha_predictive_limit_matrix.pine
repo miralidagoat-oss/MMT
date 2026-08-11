@@ -23,10 +23,16 @@ indicator("Quant Engine: Alpha Predictive Limit Matrix v3", overlay = true,
 // ─────────────────────────────────────────────────────────────
 // INPUTS
 // ─────────────────────────────────────────────────────────────
+var string G_PRESET = "Market Preset"
 var string G_STRUCT = "Structure Detection"
 var string G_VOL    = "Volatility Engine (EWMA)"
 var string G_TRADE  = "Trade Construction"
 var string G_UI     = "Display"
+
+// Presets carry the walk-forward-validated settings for each market; pick
+// "Custom" to use the manual inputs below instead.
+preset = input.string("Index Futures (MNQ/NQ) — 1H", "Tuned Preset",
+     options = ["Index Futures (MNQ/NQ) — 1H", "Crypto Intraday — ≤2H", "Custom"], group = G_PRESET)
 
 rbLookback   = input.int(12,     "Sweep Lookback Window",             minval = 2,                                group = G_STRUCT)
 rbBodyThresh = input.float(0.33, "Max Body-to-Range Ratio",           minval = 0.05, maxval = 0.95, step = 0.01, group = G_STRUCT)
@@ -55,6 +61,15 @@ showOutcomes = input.bool(true,  "Show Outcome Markers",              group = G_
 showStats    = input.bool(true,  "Show Self-Audit Dashboard",         group = G_UI)
 bullBase     = input.color(#00E676, "Bull Color",                     group = G_UI)
 bearBase     = input.color(#FF5252, "Bear Color",                     group = G_UI)
+
+// resolve preset → effective parameters (backtested per market; README has
+// the full numbers). MNQ needs deeper sweeps, wider stops, less volume gate.
+bool presetMNQ    = preset == "Index Futures (MNQ/NQ) — 1H"
+bool presetCrypto = preset == "Crypto Intraday — ≤2H"
+float effSweepSigma = presetMNQ ? 0.75 : presetCrypto ? 0.5 : sweepSigmaIn
+float effStopSigma  = presetMNQ ? 1.5  : presetCrypto ? 0.5 : stopSigma
+float effVolMult    = presetMNQ ? 0.8  : presetCrypto ? 1.2 : volMult
+float effRangeExp   = presetMNQ ? 1.0  : presetCrypto ? 0.8 : rangeExpMult
 
 // ─────────────────────────────────────────────────────────────
 // TYPES & STATE
@@ -123,8 +138,8 @@ float rangeSMA    = ta.sma(candleRange, 20)
 float bullClosePos = (close - low) / safeRange
 float bearClosePos = (high - close) / safeRange
 
-bool bullFlowOk = not useVolFilter or (na(volume) ? bullWickDom >= 0.5 : volSMA > 0 and nz(volume) * bullWickDom >= volSMA * volMult)
-bool bearFlowOk = not useVolFilter or (na(volume) ? bearWickDom >= 0.5 : volSMA > 0 and nz(volume) * bearWickDom >= volSMA * volMult)
+bool bullFlowOk = not useVolFilter or (na(volume) ? bullWickDom >= 0.5 : volSMA > 0 and nz(volume) * bullWickDom >= volSMA * effVolMult)
+bool bearFlowOk = not useVolFilter or (na(volume) ? bearWickDom >= 0.5 : volSMA > 0 and nz(volume) * bearWickDom >= volSMA * effVolMult)
 
 float regimeEMA    = ta.ema(close, trendLen)
 bool  bullRegimeOk = not useTrendFilter or close > regimeEMA
@@ -137,19 +152,19 @@ float prevHH = ta.highest(high, rbLookback)[1]
 float prevLL = ta.lowest(low, rbLookback)[1]
 
 bool smallBody = candleBody <= candleRange * rbBodyThresh
-bool rangeOk   = candleRange >= rangeSMA * rangeExpMult
+bool rangeOk   = candleRange >= rangeSMA * effRangeExp
 
 bool isBullishRB = barstate.isconfirmed and engineReady and low < prevLL and close > prevLL and
      smallBody and rangeOk and
      bullWickDom >= minWickFrac and
      bullClosePos >= minClosePos and
-     prevLL - low >= sweepSigmaIn * ewmaVolPrice and
+     prevLL - low >= effSweepSigma * ewmaVolPrice and
      bullFlowOk and bullRegimeOk and bullCooldownOk
 bool isBearishRB = barstate.isconfirmed and engineReady and high > prevHH and close < prevHH and
      smallBody and rangeOk and
      bearWickDom >= minWickFrac and
      bearClosePos >= minClosePos and
-     high - prevHH >= sweepSigmaIn * ewmaVolPrice and
+     high - prevHH >= effSweepSigma * ewmaVolPrice and
      bearFlowOk and bearRegimeOk and bearCooldownOk
 
 plot(useTrendFilter ? regimeEMA : na, "Regime EMA", color = color.new(color.orange, 40))
@@ -160,7 +175,7 @@ plot(useTrendFilter ? regimeEMA : na, "Regime EMA", color = color.new(color.oran
 f_spawn(bool isBull) =>
     // entry at the midpoint of the rejection wick (consequent encroachment)
     float entryLevel = isBull ? low + (candleMinBody - low) / 2.0 : high - (high - candleMaxBody) / 2.0
-    float stopLevel  = isBull ? low - ewmaVolPrice * stopSigma : high + ewmaVolPrice * stopSigma
+    float stopLevel  = isBull ? low - ewmaVolPrice * effStopSigma : high + ewmaVolPrice * effStopSigma
     float risk       = math.abs(entryLevel - stopLevel)
     float tpLevel    = isBull ? entryLevel + risk * rrTarget : entryLevel - risk * rrTarget
 
@@ -329,9 +344,12 @@ if showStats and barstate.islast
     f_row(dash, 10, "Expectancy / Trade", na(expectancy) ? "—" : str.tostring(expectancy, "#.##") + "R",
          na(expectancy) ? color.white : expectancy >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
     f_row(dash, 11, "EWMA σ / bar",       str.tostring(math.sqrt(math.max(nz(ewmaVariance), 0.0)) * 100, "#.###") + "%", color.aqua)
-    // validated on intraday data; the edge inverted on 6h+ in backtests
-    bool tfWarn = timeframe.in_seconds() > 7200
-    f_row(dash, 12, "Chart TF", tfWarn ? "⚠ tuned for ≤2h charts" : "✓ intraday (validated)",
+    // TF advisory per preset: MNQ tested positive on 1H ONLY (1m–30m and 4H
+    // all tested flat-to-negative); crypto tested positive on ≤2h charts
+    int  tfSec  = timeframe.in_seconds()
+    bool tfWarn = presetMNQ ? tfSec < 2700 or tfSec > 7200 : tfSec > 7200
+    f_row(dash, 12, "Chart TF",
+         tfWarn ? (presetMNQ ? "⚠ MNQ edge is 1H only" : "⚠ tuned for ≤2h charts") : "✓ validated TF",
          tfWarn ? color.new(color.orange, 0) : color.new(color.teal, 0))
 
 // ─────────────────────────────────────────────────────────────

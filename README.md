@@ -129,6 +129,40 @@ is the point: ~1 signal per 130 hourly bars per symbol, ~80% fill rate.
 
 Reproduce: `python3 backtest/fetch_data.py data && python3 backtest/backtest.py data report '{}'`
 
+### MNQ / NQ (Nasdaq futures) validation — v3.1 presets
+
+The crypto-tuned defaults were tested unchanged on CME data (Yahoo Finance:
+MNQ=F and NQ=F; 2 years of 1h, 60 days of 5m/15m/30m, 7 days of 1m, 4h
+resampled from 1h) and **lost money pooled (PF 0.88)** — parameters do not
+transfer across markets. MNQ was then tuned walk-forward on its own 1h
+series (first 60% tune, last 40% untouched validation) and cross-validated
+on full-size NQ (`backtest/mnq_walkforward.py`). MNQ wants deeper sweeps
+(0.75σ), wider stops (1.5σ) and a lighter volume gate (0.8×); those now ship
+as the **Index Futures (MNQ/NQ)** preset, the indicator's default. The
+Crypto Intraday preset carries the previous defaults; Custom exposes the
+manual inputs.
+
+MNQ-preset results by timeframe (RR 4, breakeven WR 20%):
+
+| timeframe | span | trades | WR% | PF | net R | verdict |
+|---|---|---|---|---|---|---|
+| **1H (MNQ)** | 2 y | 87 | 25.3 | **1.35** | +23R | ✅ tradeable |
+| **1H (NQ cross-val)** | 2 y | 89 | 22.5 | **1.16** | +11R | ✅ confirms |
+| 1H OOS only (MNQ) | last 40% | 30 | 23.3 | 1.22 | +5R | ✅ holds up |
+| 1m | 7 d | 55 | 18.2 | 0.89 | −5R | ❌ |
+| 5m | 60 d | 75 | 20.0 | 1.00 | 0R | ❌ breakeven pre-costs |
+| 15m | 60 d | 24 | 16.7 | 0.80 | −4R | ❌ |
+| 30m | 60 d | 16 | 12.5 | 0.57 | −6R | ❌ (sign flips between configs — noise) |
+| 4H | 2 y | 13 | 7.7 | 0.33 | −8R | ❌ worst of all |
+
+A 1:2-RR variant showed the same shape (1H PF 1.38 at 40.8% WR; everything
+below 1H negative), so the conclusion is about the timeframe, not the RR
+choice. **On MNQ, trade this on 1H only.** The dashboard warns whenever the
+MNQ preset is active on a chart outside 45m–2h. Note the sub-hourly series
+are short (7–60 days) — treat those verdicts as "no evidence of an edge",
+not proof of the opposite; the 4H verdict matches the crypto 6h finding and
+is more trustworthy.
+
 ### Statistical honesty
 
 - 74 pooled closed trades is a modest sample; the OOS PF of 3.20 comes from
