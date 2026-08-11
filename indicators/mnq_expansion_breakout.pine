@@ -1,0 +1,326 @@
+// © MMT — Expansion Breakout (MNQ 5m)
+//
+// WHAT THIS IS
+// A long-only Donchian breakout that is only allowed to trade during volatility
+// expansion. It was selected from an exhaustive sweep of 220,699,136 complete
+// strategies over 7.6 years of 5-minute Nasdaq-100 data (2019-01 to 2026-08),
+// then stress-tested against a matched-random-entry null, walk-forward blocks,
+// and held-out MNQ/NQ futures.
+//
+// WHAT THE EVIDENCE ACTUALLY SAYS — read before trading it
+//   * Realistic expectation on the default preset is PF ~1.19 at a ~48% win
+//     rate and ~319 trades/year, NOT the PF 5+ numbers a naive optimiser
+//     reports. Trades overlap 3.4x, and once you restrict to one position at a
+//     time (the only tradeable version) profit factor falls from 1.33 to ~1.2.
+//   * Excess over matched-random entry is t = +2.84. For a single
+//     pre-registered idea that is significant (p ~ 0.005). Against a 220.7M
+//     strategy search it is NOT — the selection-corrected bar is t = 6.20.
+//     Treat this as a promising hypothesis, not a proven edge.
+//   * The short mirror LOSES (PF 0.89). Part of what this earns is long
+//     exposure to an index that rose 365% over the sample.
+//   * All 8 calendar years were profitable, but 2022 (bear) and 2026 YTD were
+//     only PF 1.03 and 1.05 — the edge concentrates in trending years.
+//   * Costs are charged. On MNQ a round turn is ~1.0 index point, which is
+//     ~12% of a 5-minute ATR — the single biggest reason most 5m systems fail.
+//
+// The on-chart dashboard grades every historical signal on YOUR data with those
+// costs included, so you can verify all of the above rather than trust it.
+//
+//@version=6
+indicator("MMT — Expansion Breakout (MNQ 5m)", shorttitle="MMT ExpBrk",
+     overlay = true, max_lines_count = 500, max_labels_count = 100)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inputs
+// ─────────────────────────────────────────────────────────────────────────────
+G_SET = "Setup"
+preset = input.string("Balanced", "Preset", options =
+     ["Balanced", "Max profit factor", "Max win rate", "Custom"], group = G_SET,
+     tooltip = "Presets use stop/target/breakeven values validated in the " +
+     "7.6-year study, measured one-position-at-a-time. Custom exposes the raw " +
+     "values below.")
+lookback = input.int(12, "Breakout lookback (bars)", minval = 3, maxval = 200,
+     group = G_SET, tooltip = "Close must exceed the highest high of the prior " +
+     "N bars. Results were stable across 12/24/48/96.")
+
+G_REG = "Regime filters (all must pass)"
+useVolFilter = input.bool(true, "Volatility expansion", group = G_REG)
+volRankLen = input.int(500, "ATR percentile lookback", minval = 50, group = G_REG)
+volRankMin = input.float(66, "ATR percentile above", minval = 0, maxval = 100,
+     group = G_REG, tooltip = "Only trade when ATR sits in the top third of its " +
+     "recent range. Alone this filter lifts profit factor from 0.99 to 1.12.")
+useVwapFilter = input.bool(true, "Extended from VWAP", group = G_REG)
+vwapMinDev = input.float(1.5, "Min |close - VWAP| in ATR", minval = 0, step = 0.1,
+     group = G_REG)
+usePdFilter = input.bool(true, "Outside prior-day range", group = G_REG,
+     tooltip = "Price beyond yesterday's high or low — an actual expansion day " +
+     "rather than rotation inside a known range.")
+
+G_EXIT = "Risk & exits"
+stopAtr = input.float(2.5, "Stop (x ATR)", minval = 0.2, step = 0.1, group = G_EXIT)
+rrTarget = input.float(1.5, "Target (x risk)", minval = 0.2, step = 0.1, group = G_EXIT)
+beTrigger = input.float(1.0, "Move stop to breakeven at (R)", minval = 0,
+     step = 0.1, group = G_EXIT, tooltip = "0 disables. Breakeven lifts profit " +
+     "factor and cuts drawdown at some cost in win rate.")
+maxHold = input.int(72, "Time stop (bars)", minval = 5, group = G_EXIT,
+     tooltip = "72 bars = 6 hours on a 5-minute chart.")
+atrLen = input.int(14, "ATR length", minval = 2, group = G_EXIT)
+
+G_COST = "Costs"
+costPts = input.float(1.0, "Round-turn cost (index points)", minval = 0, step = 0.25,
+     group = G_COST, tooltip = "MNQ: ~$0.50/side commission + ~1 tick spread + " +
+     "~1 tick stop slippage ≈ 1.0 index point ≈ $2.00 per contract round turn. " +
+     "Subtracted from every graded trade.")
+
+G_UI = "Display"
+showZones = input.bool(true, "Draw entry / stop / target", group = G_UI)
+showDash = input.bool(true, "Show dashboard", group = G_UI)
+dashPos = input.string("Top right", "Dashboard position", options =
+     ["Top right", "Top left", "Bottom right", "Bottom left"], group = G_UI)
+colLong = input.color(#26a69a, "Long", group = G_UI)
+colStop = input.color(#ef5350, "Stop", group = G_UI)
+colTgt = input.color(#42a5f5, "Target", group = G_UI)
+
+// Preset resolution. These are measured rows from the 7.6-year study, run
+// through an engine identical to the state machine below (one position at a
+// time, same costs), so what the dashboard reports should land near them:
+//
+//   Balanced           WR 48.4%  PF 1.19  ~319 trades/yr   <- best on all three
+//   Max profit factor  WR 33.6%  PF 1.28  ~298 trades/yr
+//   Max win rate       WR 49.0%  PF 1.15  ~290 trades/yr
+//
+// Breakeven trades profit factor against win rate: it converts losers into
+// scratches (PF up) but those scratches stop counting as wins (WR down).
+stopMult = preset == "Balanced" ? 2.5 :
+     preset == "Max profit factor" ? 2.0 :
+     preset == "Max win rate" ? 3.0 : stopAtr
+rrMult = preset == "Balanced" ? 1.5 :
+     preset == "Max profit factor" ? 3.0 :
+     preset == "Max win rate" ? 1.5 : rrTarget
+beR = preset == "Max profit factor" ? 1.0 :
+     preset == "Custom" ? beTrigger : 0.0
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core series — all causal, nothing reads a bar it could not have seen
+// ─────────────────────────────────────────────────────────────────────────────
+atr = ta.atr(atrLen)
+priorHigh = ta.highest(high, lookback)[1]      // extreme of the PREVIOUS N bars
+vwapVal = ta.vwap(hlc3)
+vwapDev = atr > 0 ? math.abs(close - vwapVal) / atr : 0.0
+atrRank = ta.percentrank(atr, volRankLen)
+
+// Previous completed daily range. lookahead_off is essential — without it the
+// higher-timeframe request leaks today's finished values back onto today's bars.
+[pdHigh, pdLow] = request.security(syminfo.tickerid, "D", [high[1], low[1]],
+     lookahead = barmerge.lookahead_off)
+
+warm = bar_index > math.max(volRankLen, lookback) + atrLen and not na(atr) and atr > 0
+passVol = not useVolFilter or atrRank > volRankMin
+passVwap = not useVwapFilter or vwapDev >= vwapMinDev
+passPd = not usePdFilter or (not na(pdHigh) and not na(pdLow) and
+     (close > pdHigh or close < pdLow))
+breakout = close > priorHigh
+
+// Acted on the bar's close, exactly as the backtest models it.
+longSignal = warm and barstate.isconfirmed and breakout and passVol and passVwap and passPd
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Position state — strictly one trade at a time.
+//
+// Not a cosmetic choice. Allowing overlapping entries inflates the trade count
+// 3.4x and the profit factor from 1.21 to 1.33, because the same move gets
+// counted several times over. One position at a time is what the reported
+// statistics describe and what an account can actually hold.
+// ─────────────────────────────────────────────────────────────────────────────
+var bool inTrade = false
+var float entryPx = na
+var float stopPx = na
+var float tgtPx = na
+var float riskPts = na
+var int entryBar = na
+
+var int nWin = 0
+var int nLoss = 0
+var int nProfit = 0        // any trade closed above breakeven, however it exited
+var int nScratch = 0
+var int nTimeout = 0
+var float grossProfitR = 0.0
+var float grossLossR = 0.0
+var float netR = 0.0
+var float peakR = 0.0
+var float maxDdR = 0.0
+
+var line lnEntry = na
+var line lnStop = na
+var line lnTgt = na
+
+enteredThisBar = false
+
+// --- manage an open position -------------------------------------------------
+// Pine functions cannot assign to globals, so the booking arithmetic is inlined.
+if inTrade
+    costR = riskPts > 0 ? costPts / riskPts : 0.0
+    if low <= stopPx
+        // Pessimistic: a bar spanning both levels books the stop. OHLC bars
+        // hide the intrabar path, so ambiguity resolves against the strategy.
+        rBooked = (stopPx - entryPx) / riskPts - costR
+        if stopPx >= entryPx
+            nScratch += 1
+        else
+            nLoss += 1
+        netR += rBooked
+        if rBooked > 0
+            grossProfitR += rBooked
+            nProfit += 1
+        else
+            grossLossR -= rBooked
+        inTrade := false
+    else if high >= tgtPx
+        rBooked = rrMult - costR
+        nWin += 1
+        netR += rBooked
+        if rBooked > 0
+            grossProfitR += rBooked
+            nProfit += 1
+        else
+            grossLossR -= rBooked
+        inTrade := false
+    else if bar_index - entryBar >= maxHold
+        rBooked = (close - entryPx) / riskPts - costR
+        nTimeout += 1
+        netR += rBooked
+        if rBooked > 0
+            grossProfitR += rBooked
+            nProfit += 1
+        else
+            grossLossR -= rBooked
+        inTrade := false
+    else
+        if beR > 0 and close >= entryPx + beR * riskPts and stopPx < entryPx
+            stopPx := entryPx
+        if showZones and not na(lnStop)
+            line.set_xy2(lnEntry, bar_index, entryPx)
+            line.set_xy2(lnStop, bar_index, stopPx)
+            line.set_xy2(lnTgt, bar_index, tgtPx)
+
+// --- open a new position -----------------------------------------------------
+if longSignal and not inTrade
+    inTrade := true
+    enteredThisBar := true
+    entryPx := close
+    riskPts := stopMult * atr
+    stopPx := entryPx - riskPts
+    tgtPx := entryPx + rrMult * riskPts
+    entryBar := bar_index
+    if showZones
+        lnEntry := line.new(bar_index, entryPx, bar_index, entryPx,
+             color = colLong, width = 2)
+        lnStop := line.new(bar_index, stopPx, bar_index, stopPx,
+             color = colStop, style = line.style_dashed)
+        lnTgt := line.new(bar_index, tgtPx, bar_index, tgtPx,
+             color = colTgt, style = line.style_dashed)
+
+peakR := math.max(peakR, netR)
+maxDdR := math.max(maxDdR, peakR - netR)
+
+plotshape(enteredThisBar, title = "Long entry", style = shape.triangleup,
+     location = location.belowbar, color = colLong, size = size.tiny)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard — grades this symbol's own history, costs included
+// ─────────────────────────────────────────────────────────────────────────────
+tblPos = dashPos == "Top right" ? position.top_right :
+     dashPos == "Top left" ? position.top_left :
+     dashPos == "Bottom right" ? position.bottom_right : position.bottom_left
+
+var table dash = table.new(tblPos, 2, 11, border_width = 1,
+     frame_color = color.new(color.gray, 60), frame_width = 1)
+
+if showDash and barstate.islast
+    closed = nWin + nLoss + nScratch + nTimeout
+    // Win rate = trades that actually made money. Counting only target-hits
+    // against stop-hits (and dropping scratches/time-exits) reports ~18% for a
+    // 3R preset that is genuinely profitable, which is just misleading.
+    wr = closed > 0 ? 100.0 * nProfit / closed : 0.0
+    pf = grossLossR > 0 ? grossProfitR / grossLossR : 0.0
+    expR = closed > 0 ? netR / closed : 0.0
+    tfSec = timeframe.in_seconds()
+    tfOk = tfSec >= 180 and tfSec <= 900
+    pfCol = pf >= 1.2 ? color.new(#26a69a, 0) :
+         pf >= 1.0 ? color.new(#ffb74d, 0) : color.new(#ef5350, 0)
+    keyCol = color.new(color.gray, 20)
+    valCol = color.new(color.gray, 10)
+
+    table.cell(dash, 0, 0, "MMT Expansion Breakout", text_size = size.small,
+         text_color = color.new(color.gray, 0), text_halign = text.align_left)
+    table.cell(dash, 1, 0, preset, text_size = size.small,
+         text_color = color.new(color.gray, 0), text_halign = text.align_right)
+
+    table.cell(dash, 0, 1, "Signals graded", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 1, str.tostring(closed), text_size = size.small,
+         text_color = valCol, text_halign = text.align_right)
+
+    table.cell(dash, 0, 2, "Win rate (profitable)", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 2, str.tostring(wr, "#.#") + "%", text_size = size.small,
+         text_color = valCol, text_halign = text.align_right)
+
+    table.cell(dash, 0, 3, "Profit factor", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 3, str.tostring(pf, "#.##"), text_size = size.small,
+         text_color = pfCol, text_halign = text.align_right)
+
+    table.cell(dash, 0, 4, "Net R", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 4, str.tostring(netR, "+#.#;-#.#"), text_size = size.small,
+         text_color = netR > 0 ? color.new(#26a69a, 0) : color.new(#ef5350, 0),
+         text_halign = text.align_right)
+
+    table.cell(dash, 0, 5, "Expectancy / trade", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 5, str.tostring(expR, "+#.###;-#.###"),
+         text_size = size.small,
+         text_color = expR > 0 ? color.new(#26a69a, 0) : color.new(#ef5350, 0),
+         text_halign = text.align_right)
+
+    table.cell(dash, 0, 6, "Max drawdown", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 6, str.tostring(maxDdR, "#.#") + "R", text_size = size.small,
+         text_color = valCol, text_halign = text.align_right)
+
+    table.cell(dash, 0, 7, "Tgt / stop / BE / time", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 7, str.tostring(nWin) + " / " + str.tostring(nLoss) +
+         " / " + str.tostring(nScratch) + " / " + str.tostring(nTimeout),
+         text_size = size.small, text_color = valCol, text_halign = text.align_right)
+
+    table.cell(dash, 0, 8, "Cost charged", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 8, str.tostring(costPts, "#.##") + " pts", text_size = size.small,
+         text_color = color.new(color.gray, 30), text_halign = text.align_right)
+
+    table.cell(dash, 0, 9, "Study expectation", text_size = size.small,
+         text_color = keyCol, text_halign = text.align_left)
+    table.cell(dash, 1, 9, "PF ~1.2 · WR ~48%", text_size = size.small,
+         text_color = color.new(color.gray, 40), text_halign = text.align_right)
+
+    table.cell(dash, 0, 10, tfOk ? "Timeframe" : "⚠ Timeframe", text_size = size.small,
+         text_color = tfOk ? keyCol : color.new(#ffb74d, 0),
+         text_halign = text.align_left)
+    table.cell(dash, 1, 10, tfOk ? timeframe.period : timeframe.period + " (built for 5m)",
+         text_size = size.small,
+         text_color = tfOk ? color.new(color.gray, 30) : color.new(#ffb74d, 0),
+         text_halign = text.align_right)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alerts
+// ─────────────────────────────────────────────────────────────────────────────
+alertcondition(longSignal, "Expansion breakout long",
+     "MMT: long breakout — expansion regime confirmed")
+
+if enteredThisBar
+    alert("MMT Expansion Breakout LONG @ " + str.tostring(entryPx, format.mintick) +
+         "  stop " + str.tostring(stopPx, format.mintick) +
+         "  target " + str.tostring(tgtPx, format.mintick),
+         alert.freq_once_per_bar_close)

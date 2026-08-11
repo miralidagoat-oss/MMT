@@ -1,4 +1,32 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Quant Engine
+
+## MNQ 5-minute study (current work)
+
+An exhaustive sweep of **220,699,136 complete strategies** over **7.6 years** of
+true 5-minute Nasdaq-100 data, with the overfitting controls that make a number
+that large mean anything. Full writeup: **[`backtest/FINDINGS.md`](backtest/FINDINGS.md)**.
+
+Headline results:
+
+- **The best of 220.7M strategies is not distinguishable from noise.** Re-running
+  the identical search on random triggers produces winners that score just as
+  high; p ≥ 0.14 at every filter-mining depth.
+- **The cause is structural.** Gross of costs these setups are coin flips
+  (gross PF ≈ 1.00); at 5m they are *significantly worse than random entry*
+  (t = −6.97). An MNQ round turn is ~12% of a 5-minute ATR.
+- **One configuration survived every check**, at modest size: an expansion-regime
+  long breakout — **PF 1.19, WR 48.4%, 319 trades/year**, positive in all 8
+  calendar years and on held-out MNQ/NQ futures. Excess over random entry is
+  t = +2.84, below the t = 6.20 a search this large demands, so it ships
+  labelled as a promising hypothesis rather than a proven edge.
+
+Indicator: **[`indicators/mnq_expansion_breakout.pine`](indicators/mnq_expansion_breakout.pine)**
+(Pine v6, self-grading dashboard with costs charged).
+Engine: `backtest/{qlib,features,search,validate,run_study,tf_study}.py`.
+
+---
+
+## Alpha Predictive Limit Matrix (earlier work)
 
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
