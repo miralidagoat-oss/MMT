@@ -1,0 +1,495 @@
+// © MMT — Expansion Breakout v2 (MNQ 5m)
+//
+// WHAT THIS IS
+// A long-only Donchian breakout allowed to trade only during volatility
+// expansion, with a managed stop. The entry was selected from an exhaustive
+// sweep of 220,699,136 complete strategies over 7.6 years of 5-minute
+// Nasdaq-100 data; the management and session rules come from a second,
+// deliberately small study of pre-registered hypotheses (backtest/improve.py),
+// because the big sweep never searched either.
+//
+// WHAT CHANGED FROM v1 — three of these were bugs, not preferences
+//   1. VWAP is now anchored to the ET CALENDAR DAY, computed here rather than
+//      taken from ta.vwap(). Pine's built-in anchors to the exchange session,
+//      which for CME index futures opens at 18:00 ET the previous day. Measured
+//      against the research convention the two disagree by a MEDIAN of 1.34 ATR,
+//      and on 85% of bars by more than 0.25 ATR. The entry gate is
+//      |close - VWAP| >= 1.5 ATR, so v1 on a live chart was firing a materially
+//      different signal set than the one that was validated.
+//   2. Prior-day high/low is likewise accumulated on ET calendar days instead of
+//      request.security(..., "D", ...), whose daily bar also runs 18:00-17:00 ET.
+//      The "outside prior-day range" gate disagreed on 22.3% of bars.
+//   3. Costs are charged by SESSION — 1.00 index point round turn in RTH, 1.75
+//      overnight, matching the research. v1 charged the RTH number around the
+//      clock, which quietly flattered every overnight trade.
+//   4. Added: session gating, breakeven stop, ATR trailing stop, optional
+//      flat-by-the-close, and a drawing lifecycle that does not leak line
+//      objects.
+//
+// HOW TO READ THE DASHBOARD
+// It grades every historical signal on YOUR data with costs charged and only
+// one position held at a time, so you can verify the claims rather than trust
+// them. Numbers are R-multiples: 1R is the initial stop distance.
+//
+// HONEST EXPECTATIONS — read before trading it
+//   * See the dashboard's "Study expectation" row. Anything far above it on
+//     your chart is a smaller sample, not a better strategy.
+//   * Trades overlap ~3.4x if you let them. Every number here is measured one
+//     position at a time, which is the only version an account can hold and is
+//     roughly a third of the trade count a naive backtest reports.
+//   * The short mirror of this setup LOSES. Part of what the long side earns is
+//     exposure to an index that rose 365% across the sample.
+//   * The edge concentrates in trending years. Flat and bear years are close to
+//     breakeven.
+//
+//@version=6
+indicator("MMT — Expansion Breakout v2 (MNQ 5m)", shorttitle="MMT ExpBrk2",
+     overlay = true, max_lines_count = 500, max_labels_count = 500,
+     max_boxes_count = 500)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inputs
+// ─────────────────────────────────────────────────────────────────────────────
+G_SET = "Setup"
+preset = input.string("Balanced", "Preset", options =
+     ["Balanced", "Max profit factor", "Max win rate", "Max trades", "Custom"],
+     group = G_SET,
+     tooltip = "Presets are measured rows from the study, all one-position-at-" +
+     "a-time with costs charged. Custom exposes every value below.")
+
+G_ENT = "Entry gates"
+lookbackIn = input.int(12, "Breakout lookback (bars)", minval = 3, maxval = 200,
+     group = G_ENT, tooltip = "Close must exceed the highest high of the prior " +
+     "N bars. Results were stable across 12/24/48/96.")
+volRankLen = input.int(500, "ATR percentile lookback", minval = 50, maxval = 2000,
+     group = G_ENT)
+volRankMinIn = input.float(66, "ATR percentile above", minval = 0, maxval = 100,
+     group = G_ENT, tooltip = "Trade only when ATR sits in the top third of its " +
+     "recent range. Alone this lifts profit factor from 0.99 to 1.12.")
+vwapMinIn = input.float(1.5, "Min |close - VWAP| in ATR", minval = 0, step = 0.1,
+     group = G_ENT)
+usePdIn = input.bool(true, "Require outside prior-day range", group = G_ENT,
+     tooltip = "Price beyond yesterday's high or low — an actual expansion day " +
+     "rather than rotation inside a known range.")
+closePosMinIn = input.float(0.0, "Min close position in bar range", minval = 0,
+     maxval = 1, step = 0.05, group = G_ENT,
+     tooltip = "0 disables. 0.7 means the breakout bar must close in the top " +
+     "30% of its own range.")
+relVolMinIn = input.float(0.0, "Min relative volume", minval = 0, step = 0.1,
+     group = G_ENT, tooltip = "0 disables. Volume vs its own 20-bar average.")
+marginAtrIn = input.float(0.0, "Clear the level by (x ATR)", minval = 0, step = 0.05,
+     group = G_ENT, tooltip = "0 means a one-tick break counts.")
+regimeIn = input.string("None", "Higher-horizon trend filter", options =
+     ["None", "Above prior-day close", "Above EMA200", "Above EMA780",
+      "Above EMA1560", "Above EMA3900"], group = G_ENT,
+     tooltip = "On a 5-minute chart 780/1560/3900 bars are roughly 10, 20 and " +
+     "50 trading days.")
+
+G_SESS = "Session"
+sessIn = input.string("All hours", "Trading window", options =
+     ["All hours", "RTH 09:30-16:00", "RTH minus last 30m", "RTH morning",
+      "07:00-16:00", "03:00-16:00"], group = G_SESS,
+     tooltip = "An MNQ round turn costs ~1.00 index point in RTH and ~1.75 " +
+     "overnight against a median 5m ATR near 11 points, so the session a trade " +
+     "is taken in is a first-order effect, not a detail.")
+useFlatIn = input.bool(false, "Force flat before the close", group = G_SESS)
+flatByIn = input.int(960, "Flat by (ET minutes past midnight)", minval = 1,
+     maxval = 1439, group = G_SESS, tooltip = "960 = 16:00 ET. A position is " +
+     "closed on the bar that ENDS at this time, and no new position is opened " +
+     "on that bar.")
+
+G_EXIT = "Risk & exits"
+stopAtrIn = input.float(2.5, "Stop (x ATR)", minval = 0.2, step = 0.1, group = G_EXIT)
+rrIn = input.float(1.5, "Target (x risk)", minval = 0.2, step = 0.05, group = G_EXIT)
+beIn = input.float(0.0, "Move stop to breakeven at (R)", minval = 0, step = 0.05,
+     group = G_EXIT, tooltip = "0 disables. Converts losers into scratches: " +
+     "profit factor up, win rate down.")
+trailIn = input.float(0.0, "ATR trailing stop (x ATR at entry)", minval = 0,
+     step = 0.1, group = G_EXIT, tooltip = "0 disables. Trails from the bar " +
+     "CLOSE using the ATR measured at entry, so the distance never changes " +
+     "mid-trade.")
+maxHoldIn = input.int(72, "Time stop (bars)", minval = 5, group = G_EXIT,
+     tooltip = "72 bars = 6 hours on a 5-minute chart.")
+atrLen = input.int(14, "ATR length", minval = 2, group = G_EXIT)
+
+G_COST = "Costs"
+costRth = input.float(1.00, "Round-turn cost, RTH (index points)", minval = 0,
+     step = 0.25, group = G_COST, tooltip = "MNQ: ~$0.50/side commission + ~1 " +
+     "tick spread + ~1 tick stop slippage ≈ 1.00 index point ≈ $2.00 per " +
+     "contract round turn.")
+costOvn = input.float(1.75, "Round-turn cost, overnight (index points)",
+     minval = 0, step = 0.25, group = G_COST, tooltip = "Wider spread and a " +
+     "thinner book outside 09:30-16:00 ET. Charging the RTH number around the " +
+     "clock is the quiet way to invent an edge.")
+
+G_UI = "Display"
+showZones = input.bool(true, "Draw entry / stop / target", group = G_UI)
+maxDraw = input.int(40, "Max trades drawn", minval = 1, maxval = 160, group = G_UI,
+     tooltip = "Older drawings are deleted rather than left to be evicted.")
+showDash = input.bool(true, "Show dashboard", group = G_UI)
+dashPos = input.string("Top right", "Dashboard position", options =
+     ["Top right", "Top left", "Bottom right", "Bottom left"], group = G_UI)
+colLong = input.color(#26a69a, "Win / long", group = G_UI)
+colStop = input.color(#ef5350, "Loss / stop", group = G_UI)
+colTgt = input.color(#42a5f5, "Target", group = G_UI)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preset resolution — measured rows from backtest/improve.py, one position at a
+// time, costs charged. PRESET_TABLE
+// ─────────────────────────────────────────────────────────────────────────────
+isCustom = preset == "Custom"
+lookback     = isCustom ? lookbackIn     : 12
+volRankMin   = isCustom ? volRankMinIn   : 66.0
+vwapMin      = isCustom ? vwapMinIn      : 1.5
+usePd        = isCustom ? usePdIn        : true
+closePosMin  = isCustom ? closePosMinIn  : 0.0
+relVolMin    = isCustom ? relVolMinIn    : 0.0
+marginAtr    = isCustom ? marginAtrIn    : 0.0
+regimeSel    = isCustom ? regimeIn       : "None"
+sessSel      = isCustom ? sessIn         : "All hours"
+useFlat      = isCustom ? useFlatIn      : false
+flatBy       = isCustom ? flatByIn       : 960
+stopMult     = isCustom ? stopAtrIn      : 2.5
+rrMult       = isCustom ? rrIn           : 1.5
+beR          = isCustom ? beIn           : 0.0
+trailAtr     = isCustom ? trailIn        : 0.0
+maxHold      = isCustom ? maxHoldIn      : 72
+expectTxt    = "PF ~1.2 · WR ~48%"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ET clock. Every session and anchor decision below uses New York wall time, to
+// match the research set exactly.
+// ─────────────────────────────────────────────────────────────────────────────
+etHour = hour(time, "America/New_York")
+etMinute = minute(time, "America/New_York")
+etMin = etHour * 60 + etMinute
+etDay = dayofmonth(time, "America/New_York")
+newEtDay = ta.change(etDay) != 0
+tfMin = math.max(math.round(timeframe.in_seconds() / 60.0), 1)
+
+RTH_OPEN = 570      // 09:30 ET
+RTH_CLOSE = 960     // 16:00 ET
+inRth = etMin >= RTH_OPEN and etMin < RTH_CLOSE
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ET-calendar-day VWAP. NOT ta.vwap() — see the header. Volume of zero (some
+// index feeds) falls back to 1 per bar, which is what the research does, making
+// this a plain typical-price average on those symbols rather than NaN.
+// ─────────────────────────────────────────────────────────────────────────────
+var float cumPV = 0.0
+var float cumVol = 0.0
+barVol = nz(volume, 0.0) <= 0.0 ? 1.0 : volume
+if newEtDay
+    cumPV := 0.0
+    cumVol := 0.0
+cumPV := cumPV + hlc3 * barVol
+cumVol := cumVol + barVol
+vwapVal = cumVol > 0.0 ? cumPV / cumVol : hlc3
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prior ET-calendar-day high/low, accumulated from chart bars. NOT
+// request.security(..., "D", ...) — see the header.
+// ─────────────────────────────────────────────────────────────────────────────
+var float dayHi = na
+var float dayLo = na
+var float pdHigh = na
+var float pdLow = na
+if newEtDay
+    pdHigh := dayHi
+    pdLow := dayLo
+    dayHi := high
+    dayLo := low
+else
+    dayHi := na(dayHi) ? high : math.max(dayHi, high)
+    dayLo := na(dayLo) ? low : math.min(dayLo, low)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Indicators — all causal, all computed unconditionally so the series stay
+// consistent (a ta.* call inside a branch is a classic Pine trap).
+// ─────────────────────────────────────────────────────────────────────────────
+atrVal = ta.atr(atrLen)
+priorHigh = ta.highest(high, lookback)[1]     // extreme of the PREVIOUS N bars
+atrRank = ta.percentrank(atrVal, volRankLen)  // 0.08% gate disagreement vs research
+vwapDev = atrVal > 0 ? math.abs(close - vwapVal) / atrVal : 0.0
+relVol = ta.sma(volume, 20) > 0 ? volume / ta.sma(volume, 20) : 1.0
+barRange = math.max(high - low, syminfo.mintick)
+closePos = (close - low) / barRange
+ema200 = ta.ema(close, 200)
+ema780 = ta.ema(close, 780)
+ema1560 = ta.ema(close, 1560)
+ema3900 = ta.ema(close, 3900)
+var float pdClose = na
+var float dayClose = na
+if newEtDay
+    pdClose := dayClose
+dayClose := close
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Entry gates
+// ─────────────────────────────────────────────────────────────────────────────
+passSess = sessSel == "All hours" ? true :
+     sessSel == "RTH 09:30-16:00" ? inRth :
+     sessSel == "RTH minus last 30m" ? (etMin >= RTH_OPEN and etMin < RTH_CLOSE - 30) :
+     sessSel == "RTH morning" ? (etMin >= RTH_OPEN and etMin < 780) :
+     sessSel == "07:00-16:00" ? (etMin >= 420 and etMin < RTH_CLOSE) :
+     (etMin >= 180 and etMin < RTH_CLOSE)
+
+passRegime = regimeSel == "None" ? true :
+     regimeSel == "Above prior-day close" ? (not na(pdClose) and close > pdClose) :
+     regimeSel == "Above EMA200" ? close > ema200 :
+     regimeSel == "Above EMA780" ? close > ema780 :
+     regimeSel == "Above EMA1560" ? close > ema1560 :
+     close > ema3900
+
+warm = bar_index > math.max(volRankLen, lookback) + atrLen and not na(atrVal) and
+     atrVal > 0 and not na(priorHigh)
+passVol = volRankMin <= 0 or atrRank > volRankMin
+passVwap = vwapMin <= 0 or vwapDev >= vwapMin
+passPd = not usePd or (not na(pdHigh) and not na(pdLow) and
+     (close > pdHigh or close < pdLow))
+passClosePos = closePosMin <= 0 or closePos >= closePosMin
+passRelVol = relVolMin <= 0 or relVol >= relVolMin
+breakout = close > priorHigh + marginAtr * atrVal
+// Never open a position on the bar the flat-by rule would immediately close:
+// that trade lasts zero bars and books nothing but the round turn.
+flatBarNow = useFlat and ((etMin < flatBy and etMin + tfMin >= flatBy) or
+     etMin + tfMin >= 1440)
+passFlatEntry = not useFlat or etMin + tfMin < flatBy
+
+longSignal = warm and barstate.isconfirmed and breakout and passVol and
+     passVwap and passPd and passClosePos and passRelVol and passSess and
+     passRegime and passFlatEntry
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Position state — strictly one trade at a time.
+//
+// Not cosmetic. Allowing overlapping entries inflates the trade count ~3.4x and
+// profit factor from 1.19 to 1.33, because the same move gets counted several
+// times over. One position at a time is what the reported statistics describe
+// and what an account can actually hold.
+//
+// Evaluation order mirrors the research kernel exactly: manage the open
+// position first (stop before target, so a bar spanning both books the stop),
+// then consider a new entry. backtest/pine_parity.py asserts this file and the
+// research engine produce identical trade lists.
+// ─────────────────────────────────────────────────────────────────────────────
+var bool inTrade = false
+var float entryPx = na
+var float stopPx = na
+var float tgtPx = na
+var float riskPts = na
+var float atrAtEntry = na
+var float costR = 0.0
+var int entryBar = na
+
+var int nWin = 0
+var int nLoss = 0
+var int nProfit = 0        // any trade closed above breakeven, however it exited
+var int nScratch = 0
+var int nTimeout = 0
+var int nFlat = 0
+var float grossProfitR = 0.0
+var float grossLossR = 0.0
+var float netR = 0.0
+var float peakR = 0.0
+var float maxDdR = 0.0
+var int nRth = 0
+var float costPaidR = 0.0
+
+var line lnEntry = na
+var line lnStop = na
+var line lnTgt = na
+var array<line> drawn = array.new<line>()
+
+enteredThisBar = false
+closedThisBar = false
+lastR = 0.0
+
+// --- manage an open position -------------------------------------------------
+// Pine functions cannot assign to globals, so the booking arithmetic is inlined.
+if inTrade
+    rBooked = 0.0
+    didClose = false
+    if low <= stopPx
+        // Pessimistic: a bar spanning both levels books the stop. OHLC bars
+        // hide the intrabar path, so ambiguity resolves against the strategy.
+        rBooked := (stopPx - entryPx) / riskPts - costR
+        if stopPx >= entryPx
+            nScratch := nScratch + 1
+        else
+            nLoss := nLoss + 1
+        didClose := true
+    else if high >= tgtPx
+        rBooked := rrMult - costR
+        nWin := nWin + 1
+        didClose := true
+    else if bar_index - entryBar >= maxHold
+        rBooked := (close - entryPx) / riskPts - costR
+        nTimeout := nTimeout + 1
+        didClose := true
+    else if flatBarNow
+        rBooked := (close - entryPx) / riskPts - costR
+        nFlat := nFlat + 1
+        didClose := true
+
+    if didClose
+        netR := netR + rBooked
+        costPaidR := costPaidR + costR
+        if rBooked > 0
+            grossProfitR := grossProfitR + rBooked
+            nProfit := nProfit + 1
+        else
+            grossLossR := grossLossR - rBooked
+        inTrade := false
+        closedThisBar := true
+        lastR := rBooked
+        if showZones and not na(lnEntry)
+            line.set_xy2(lnEntry, bar_index, entryPx)
+            line.set_xy2(lnStop, bar_index, stopPx)
+            line.set_xy2(lnTgt, bar_index, tgtPx)
+            col = rBooked > 0 ? colLong : colStop
+            line.set_color(lnEntry, col)
+    else
+        // Stop moves are decided on the bar CLOSE — a stop cannot be moved on
+        // information from inside a bar that has not printed yet — while stop
+        // and target HITS are evaluated on the bar's high/low.
+        if beR > 0 and close >= entryPx + beR * riskPts and stopPx < entryPx
+            stopPx := entryPx
+        if trailAtr > 0
+            cand = close - trailAtr * atrAtEntry
+            if cand > stopPx
+                stopPx := cand
+        if showZones and not na(lnEntry)
+            line.set_xy2(lnEntry, bar_index, entryPx)
+            line.set_xy2(lnStop, bar_index, stopPx)
+            line.set_xy2(lnTgt, bar_index, tgtPx)
+
+// --- open a new position -----------------------------------------------------
+if longSignal and not inTrade
+    riskCand = stopMult * atrVal
+    if riskCand > 0
+        inTrade := true
+        enteredThisBar := true
+        entryPx := close
+        riskPts := riskCand
+        atrAtEntry := atrVal
+        stopPx := entryPx - riskPts
+        tgtPx := entryPx + rrMult * riskPts
+        entryBar := bar_index
+        costR := (inRth ? costRth : costOvn) / riskPts
+        nRth := nRth + (inRth ? 1 : 0)
+        if showZones
+            lnEntry := line.new(bar_index, entryPx, bar_index, entryPx,
+                 color = colLong, width = 2)
+            lnStop := line.new(bar_index, stopPx, bar_index, stopPx,
+                 color = colStop, style = line.style_dashed)
+            lnTgt := line.new(bar_index, tgtPx, bar_index, tgtPx,
+                 color = colTgt, style = line.style_dashed)
+            array.push(drawn, lnEntry)
+            array.push(drawn, lnStop)
+            array.push(drawn, lnTgt)
+            // Delete our own oldest drawings instead of letting TradingView
+            // evict them: eviction leaves the var references pointing at dead
+            // ids, which is how v1 ended up silently dropping zones.
+            while array.size(drawn) > maxDraw * 3
+                line.delete(array.shift(drawn))
+
+peakR := math.max(peakR, netR)
+maxDdR := math.max(maxDdR, peakR - netR)
+
+plotshape(enteredThisBar, title = "Long entry", style = shape.triangleup,
+     location = location.belowbar, color = colLong, size = size.tiny)
+plotshape(closedThisBar and lastR > 0, title = "Exit +", style = shape.xcross,
+     location = location.abovebar, color = colLong, size = size.tiny)
+plotshape(closedThisBar and lastR <= 0, title = "Exit -", style = shape.xcross,
+     location = location.abovebar, color = colStop, size = size.tiny)
+
+plot(showZones and inTrade ? stopPx : na, "Active stop", color = colStop,
+     style = plot.style_linebr, linewidth = 1)
+plot(showZones and inTrade ? tgtPx : na, "Active target", color = colTgt,
+     style = plot.style_linebr, linewidth = 1)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard — grades this symbol's own history, costs charged, one at a time
+// ─────────────────────────────────────────────────────────────────────────────
+tblPos = dashPos == "Top right" ? position.top_right :
+     dashPos == "Top left" ? position.top_left :
+     dashPos == "Bottom right" ? position.bottom_right : position.bottom_left
+
+var table dash = table.new(tblPos, 2, 14, border_width = 1,
+     frame_color = color.new(color.gray, 60), frame_width = 1)
+
+put(r, k, v, kc, vc) =>
+    table.cell(dash, 0, r, k, text_size = size.small, text_color = kc,
+         text_halign = text.align_left)
+    table.cell(dash, 1, r, v, text_size = size.small, text_color = vc,
+         text_halign = text.align_right)
+
+if showDash and barstate.islast
+    closed = nWin + nLoss + nScratch + nTimeout + nFlat
+    // Win rate = trades that actually made money. Counting only target hits
+    // against stop hits (and dropping scratches and time exits) reports ~18%
+    // for a genuinely profitable configuration, which is just misleading.
+    wr = closed > 0 ? 100.0 * nProfit / closed : 0.0
+    pf = grossLossR > 0 ? grossProfitR / grossLossR : 0.0
+    expR = closed > 0 ? netR / closed : 0.0
+    avgCost = closed > 0 ? costPaidR / closed : 0.0
+    tfSec = timeframe.in_seconds()
+    tfOk = tfSec >= 180 and tfSec <= 900
+    // The ET-day anchors need overnight bars to be correct. An RTH-only chart
+    // silently redefines "prior-day range" and VWAP.
+    hasOvernight = nRth < closed
+    pfCol = pf >= 1.2 ? color.new(#26a69a, 0) :
+         pf >= 1.0 ? color.new(#ffb74d, 0) : color.new(#ef5350, 0)
+    kc = color.new(color.gray, 20)
+    vc = color.new(color.gray, 10)
+    good = color.new(#26a69a, 0)
+    bad = color.new(#ef5350, 0)
+    warn = color.new(#ffb74d, 0)
+
+    table.cell(dash, 0, 0, "MMT Expansion Breakout v2", text_size = size.small,
+         text_color = color.new(color.gray, 0), text_halign = text.align_left)
+    table.cell(dash, 1, 0, preset, text_size = size.small,
+         text_color = color.new(color.gray, 0), text_halign = text.align_right)
+
+    put(1, "Trades graded", str.tostring(closed), kc, vc)
+    put(2, "Win rate (profitable)", str.tostring(wr, "#.#") + "%", kc, vc)
+    put(3, "Profit factor", str.tostring(pf, "#.##"), kc, pfCol)
+    put(4, "Net R", str.tostring(netR, "+#.#;-#.#"), kc, netR > 0 ? good : bad)
+    put(5, "Expectancy / trade", str.tostring(expR, "+#.###;-#.###"), kc,
+         expR > 0 ? good : bad)
+    put(6, "Max drawdown", str.tostring(maxDdR, "#.#") + "R", kc, vc)
+    put(7, "Tgt / stop / BE / time / flat",
+         str.tostring(nWin) + " / " + str.tostring(nLoss) + " / " +
+         str.tostring(nScratch) + " / " + str.tostring(nTimeout) + " / " +
+         str.tostring(nFlat), kc, vc)
+    put(8, "Avg cost charged", str.tostring(100 * avgCost, "#.#") + "% of R", kc,
+         color.new(color.gray, 30))
+    put(9, "Open / session", (inTrade ? "in trade" : "flat") + " · " + sessSel, kc,
+         color.new(color.gray, 30))
+    put(10, "Management", (beR > 0 ? "BE@" + str.tostring(beR, "#.##") + "R" : "no BE") +
+         " · " + (trailAtr > 0 ? "trail " + str.tostring(trailAtr, "#.#") + "atr" : "no trail"),
+         kc, color.new(color.gray, 30))
+    put(11, "Study expectation", expectTxt, kc, color.new(color.gray, 40))
+    put(12, tfOk ? "Timeframe" : "⚠ Timeframe",
+         tfOk ? timeframe.period : timeframe.period + " (built for 5m)", kc,
+         tfOk ? color.new(color.gray, 30) : warn)
+    put(13, hasOvernight ? "Chart session" : "⚠ Chart session",
+         hasOvernight ? "includes overnight" : "RTH only — use ETH",
+         kc, hasOvernight ? color.new(color.gray, 30) : warn)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alerts
+// ─────────────────────────────────────────────────────────────────────────────
+alertcondition(longSignal, "Expansion breakout long",
+     "MMT: long breakout — expansion regime confirmed")
+
+if enteredThisBar
+    alert("MMT ExpBrk2 LONG @ " + str.tostring(entryPx, format.mintick) +
+         "  stop " + str.tostring(stopPx, format.mintick) +
+         "  target " + str.tostring(tgtPx, format.mintick),
+         alert.freq_once_per_bar_close)
+if closedThisBar
+    alert("MMT ExpBrk2 EXIT @ " + str.tostring(close, format.mintick) +
+         "  booked " + str.tostring(lastR, "+#.##;-#.##") + "R",
+         alert.freq_once_per_bar_close)

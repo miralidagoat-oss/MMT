@@ -330,11 +330,16 @@ def exact_eval(f, triggers, filters, cand, exits=EXITS,
 
 def build_trades_managed(f, mask, direction, stop_mult, rr, max_hold,
                          be_trigger_r=0.0, trail_atr=0.0, cost=None,
-                         flat_by_min=None):
+                         flat_by_min=None, sess_override=None):
     """Stage-2 simulation with breakeven / trailing / forced session-flat.
 
     `flat_by_min` (ET minutes) forces an exit at the last bar before that time
     each day - the usual "no overnight risk" rule for an intraday system.
+
+    `sess_override` supplies the session-id array directly, so a caller can
+    define the flat boundary with a rule an indicator could actually place an
+    order from (a bar's own clock time plus the timeframe) rather than one that
+    needs to see the next bar. See `improve.flat_session_ids`.
     """
     idx = np.flatnonzero(mask)
     if len(idx) == 0:
@@ -349,7 +354,10 @@ def build_trades_managed(f, mask, direction, stop_mult, rr, max_hold,
     d = np.full(len(idx), direction, dtype=np.int64)
     sp = ep - d * risk
     tp = ep + d * risk * rr
-    if flat_by_min is None:
+    if sess_override is not None:
+        sess = sess_override
+        force = True
+    elif flat_by_min is None:
         sess = f["session"]
         force = False
     else:

@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# Research data artifacts — regenerate with fetch_dukascopy.py / fetch_yahoo.py
+backtest/duka_cache/
+backtest/data/
+backtest/out/
