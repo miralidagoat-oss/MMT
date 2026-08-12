@@ -14,15 +14,31 @@ Headline results:
 - **The cause is structural.** Gross of costs these setups are coin flips
   (gross PF ≈ 1.00); at 5m they are *significantly worse than random entry*
   (t = −6.97). An MNQ round turn is ~12% of a 5-minute ATR.
-- **One configuration survived every check**, at modest size: an expansion-regime
-  long breakout — **PF 1.19, WR 48.4%, 319 trades/year**, positive in all 8
-  calendar years and on held-out MNQ/NQ futures. Excess over random entry is
-  t = +2.84, below the t = 6.20 a search this large demands, so it ships
-  labelled as a promising hypothesis rather than a proven edge.
+- **The sweep never searched session or trade management**, and both matter more
+  than any filter it did search. A second, deliberately small study of
+  pre-registered hypotheses (~1,500 cells, corrected bar t = 3.82) produced the
+  first configuration in the project that **clears its own significance
+  threshold**: **PF 1.45, WR 43.8%, 129 trades/year, t = +4.63** against random
+  entries drawn from bars that already pass every gate but the breakout.
+- **The v1 indicator was not running the strategy that was validated.**
+  `ta.vwap()` anchors to the exchange session, not the ET calendar day the
+  research used — a median disagreement of **1.34 ATR** against a 1.5 ATR gate.
+  `pine_parity.py` now asserts the indicator and the research engine produce
+  identical trade lists, to 1e-13, across all nine shipped configurations.
 
-Indicator: **[`indicators/mnq_expansion_breakout.pine`](indicators/mnq_expansion_breakout.pine)**
-(Pine v6, self-grading dashboard with costs charged).
-Engine: `backtest/{qlib,features,search,validate,run_study,tf_study}.py`.
+| preset | trades/yr | WR | PF | net R | maxDD | alpha t |
+|---|---|---|---|---|---|---|
+| **Balanced** | 129 | 43.8% | **1.45** | +247.5 | 15.2R | **+4.63** |
+| Max profit factor | 134 | 28.5% | **1.64** | +292.1 | 15.3R | **+5.97** |
+| Max win rate | 170 | **58.0%** | 1.29 | +155.4 | 14.6R | +2.54 |
+| Max trades | **414** | 41.2% | 1.17 | +210.6 | 25.7R | +2.96 |
+| *v1, for scale* | 319 | 48.3% | 1.18 | +220.4 | 19.4R | +2.82 |
+
+Indicator: **[`indicators/mnq_expansion_breakout_v2.pine`](indicators/mnq_expansion_breakout_v2.pine)**
+(Pine v6, self-grading dashboard, costs charged by session, one position at a
+time). v1 is kept at `indicators/mnq_expansion_breakout.pine` for reference —
+see the anchoring bugs above before using it.
+Engine: `backtest/{qlib,features,search,validate,run_study,improve,pine_parity,tf_study}.py`.
 
 ---
 

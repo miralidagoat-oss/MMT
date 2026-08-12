@@ -410,16 +410,25 @@ def pick_presets(f, shape, train, hold):
         return max(ok, key=lambda ca: key(ca[1]))[0] if ok else None
 
     picks = {
-        # The all-round pick: expectancy weighted by evidence.
-        "Balanced": best(lambda a: a["exp"] * np.sqrt(a["n"])),
+        # Balanced has to mean balanced. Ranking on expectancy alone picks the
+        # widest target every time - high profit factor, ~30% win rate - which
+        # is a fine strategy but a duplicate of the next row and miserable to
+        # actually sit through. Requiring a coin-flip win rate makes this the
+        # pick for someone who wants the equity curve to be livable.
+        "Balanced": best(lambda a: a["exp"] * np.sqrt(a["n"]),
+                         lambda c, a: a["wr"] >= 45.0 and a["pf"] >= 1.20),
         # Highest profit factor that still trades often enough to be real.
         "Max profit factor": best(lambda a: a["pf"]),
         # Highest win rate, but only among configurations that actually make
         # money - a 90% win rate at PF 0.9 is a losing strategy with a nice hit
         # rate, and that is the trap this constraint exists to block.
         "Max win rate": best(lambda a: a["wr"], lambda c, a: a["pf"] >= 1.15),
-        # Most trades, subject to a profit factor worth taking them for.
-        "Max trades": best(lambda a: a["n"], lambda c, a: a["pf"] >= 1.20),
+        # Most trades, subject to a profit factor worth taking them for AND a
+        # drawdown a human would survive. Without the drawdown bound this row
+        # reliably selects a configuration that triples the trade count and the
+        # pain along with it.
+        "Max trades": best(lambda a: a["n"],
+                           lambda c, a: a["pf"] >= 1.20 and a["maxdd"] <= 30.0),
     }
     return {k: v for k, v in picks.items() if v is not None}, len(cells)
 

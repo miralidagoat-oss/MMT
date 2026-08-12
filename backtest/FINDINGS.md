@@ -179,13 +179,103 @@ if real slippage is double the modelled 1.0 point, expectancy roughly halves.
 The strategy is best read as *"buy confirmed expansion in an index that trends
 up"* — it monetises upside volatility expansion and treads water otherwise.
 
+---
+
+# Part II — what the sweep never searched
+
+The 220.7M search covered `trigger x filter x fixed bracket`. It never searched
+**session** or **trade management**, and both turned out to matter more than any
+filter it did search. `improve.py` tests a small number of pre-registered
+hypotheses instead of mining another haystack: each is selected on TRAIN (first
+60%) with an untouched HOLDOUT reported beside it, ~1,500 cells in total, for a
+selection-corrected bar of **t = 3.82** rather than 6.20.
+
+## 7. Two bugs that meant the indicator was not running the study
+
+Before any of that, `pine_parity.py` re-implements the indicator a second time —
+as a literal bar-by-bar loop mirroring Pine's evaluation order — and asserts it
+produces the identical trade list to the research engine. It found that v1 did
+not:
+
+| Pine built-in | anchors to | research anchors to | disagreement |
+|---|---|---|---|
+| `ta.vwap()` | exchange session (18:00 ET) | ET calendar day | **median 1.34 ATR**; >0.25 ATR on 85% of bars |
+| `request.security(.., "D", ..)` | exchange daily bar | ET calendar day | the gate flips on **22.3%** of bars |
+
+The entry gate is `|close − VWAP| >= 1.5 ATR`, so a median disagreement of 1.34
+ATR means **v1 on a live chart was firing a materially different signal set than
+the one that was validated.** v2 computes both series explicitly. (`ta.percentrank`
+vs pandas `rank(pct=True)` was also checked and is fine — 0.07% gate
+disagreement, so the built-in stays.)
+
+The parity harness also caught two ordering bugs of its own making: a
+flat-by-the-close rule defined so it needed to see the *next* bar (not something
+an indicator can trade), and degenerate zero-duration entries opened on the very
+bar that rule would close, which book nothing but the round turn.
+
+All nine shipped configurations now match trade-for-trade to 1e-13.
+
+## 8. The hypotheses that paid
+
+| hypothesis | result |
+|---|---|
+| **Session** | Overnight is the worst slice — PF 0.97 out-of-sample, at 75% higher cost. The 09:30–13:00 ET window is the best. |
+| **Trend regime** | Price above its ~50-day EMA (3,900 5m bars) lifts holdout PF 1.22 → 1.26 and **rescues 2022**: v1 scored PF 1.05 there, v2 scores 1.55. |
+| **Breakeven stop** | Real: TRAIN PF 1.34 → 1.56 at 0.5R. Trades win rate for profit factor. |
+| **ATR trailing stop** | No. Every trail multiplier scored at or below no-trail. |
+| **Volatility expansion** | **Now redundant.** Thresholds 0.00–0.66 all score PF 1.65–1.67; only 0.80 hurts. Once you gate by session and trend, the filter that named the indicator adds nothing. Left off, which keeps ~12% more trades. |
+| Close-strength, relative volume, breakout margin, flat-by-close | None improved on TRAIN. |
+
+The exit grid is a genuine plateau: **90 cells, 100% positive on TRAIN.**
+
+## 9. The frontier — no single setting wins on all three
+
+Profit factor, win rate and trade count pull against each other. Full sample,
+one position at a time, costs charged:
+
+| preset | trades | /yr | WR | PF | net R | maxDD | alpha t |
+|---|---|---|---|---|---|---|---|
+| **Balanced** | 980 | 129 | 43.8% | **1.45** | +247.5 | 15.2R | **+4.63** |
+| **Max profit factor** | 1,016 | 134 | 28.5% | **1.64** | +292.1 | 15.3R | **+5.97** |
+| **Max win rate** | 1,289 | 170 | **58.0%** | 1.29 | +155.4 | 14.6R | +2.54 |
+| **Max trades** | 3,148 | **414** | 41.2% | 1.17 | +210.6 | 25.7R | +2.96 |
+| *v1, for scale* | 2,423 | 319 | 48.3% | 1.18 | +220.4 | 19.4R | +2.82 |
+
+All four share one entry: 12-bar breakout, ≥1.5 ATR from ET-day VWAP, outside
+the prior ET day's range, above the ~50-day EMA. They differ only in session,
+stop, target, time stop and breakeven.
+
+**Balanced and Max profit factor clear the t = 3.82 bar. This is the first
+configuration in the project that clears its own significance threshold** — v1
+reached +2.84 against a bar of 6.20 and did not.
+
+Supporting checks on Balanced: bootstrap PF 95% CI **[1.27, 1.65]**;
+walk-forward with exits re-chosen inside every fold, pooled out-of-fold **PF
+1.33** across 890 trades; held-out MNQ and NQ futures both **PF 1.42** (21
+trades each — a sanity check, not proof).
+
+## 10. What still does not work
+
+* **The short mirror still loses.** Even with the trend filter inverted and the
+  session gate applied: PF 1.00 full-sample, t = +1.12 against matched
+  conditions. Part of the long side's return is exposure to an index that rose
+  365%.
+* **2025 was flat** — PF 1.00, −0.1R over 140 trades.
+* **Max win rate and Max trades do not clear the bar** (t = +2.54, +2.96). They
+  ship as preferences, labelled as such, not as proven edges.
+* Trades still overlap **3.2x** if you let them. Every number above is the
+  one-position-at-a-time version.
+
 ## Reproducing
 
 ```bash
 pip install numpy pandas numba scipy requests
 python3 fetch_dukascopy.py ./cache ./data/NDX_5m.csv 2019-01-01 2026-08-11
 python3 fetch_yahoo.py ./data MNQ=F && python3 fetch_yahoo.py ./data NQ=F
-python3 run_study.py data/NDX_5m.csv data/MNQ_5m.csv data/NQ_5m.csv out
+python3 run_study.py data/NDX_5m.csv data/MNQ_5m.csv data/NQ_5m.csv out   # Part I
+python3 improve.py  data/NDX_5m.csv data/MNQ_5m.csv data/NQ_5m.csv out   # Part II
+python3 pine_parity.py data/NDX_5m.csv          # indicator == engine
+python3 eval_config.py data/NDX_5m.csv data/MNQ_5m.csv data/NQ_5m.csv
 python3 tf_study.py data/NDX_5m.csv out/tf.json
 ```
 
@@ -196,5 +286,8 @@ python3 tf_study.py data/NDX_5m.csv out/tf.json
 | `features.py` | the 98 triggers and 75 filters |
 | `search.py` | the 220.7M-strategy sweep |
 | `validate.py` | permutation null, deflated Sharpe, walk-forward, bootstrap |
-| `run_study.py` | full pipeline |
+| `run_study.py` | Part I pipeline |
+| `improve.py` | Part II — session and management hypotheses, the frontier |
+| `pine_parity.py` | proves the indicator runs the strategy that was tested |
+| `eval_config.py` | evaluate one explicitly-specified configuration |
 | `tf_study.py` | cost-barrier study across timeframes |

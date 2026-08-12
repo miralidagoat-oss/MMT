@@ -1,12 +1,29 @@
 // © MMT — Expansion Breakout v2 (MNQ 5m)
 //
 // WHAT THIS IS
-// A long-only Donchian breakout allowed to trade only during volatility
-// expansion, with a managed stop. The entry was selected from an exhaustive
-// sweep of 220,699,136 complete strategies over 7.6 years of 5-minute
-// Nasdaq-100 data; the management and session rules come from a second,
+// A long-only Donchian breakout taken when price is extended from the day's
+// VWAP, outside yesterday's range, and above its ~50-day trend — during the
+// New York morning only. The entry family came from an exhaustive sweep of
+// 220,699,136 complete strategies over 7.6 years of 5-minute Nasdaq-100 data.
+// The session window, the trend filter and the exits come from a second,
 // deliberately small study of pre-registered hypotheses (backtest/improve.py),
-// because the big sweep never searched either.
+// because the big sweep searched neither session nor trade management.
+//
+// Headline, measured one position at a time with costs charged, on 519,046
+// bars from 2019-01-02 to 2026-08-10:
+//
+//     PF 1.45 at a 43.8% win rate, 129 trades/year, +247.5R, 15.2R drawdown
+//
+// against PF 1.18 / 48.3% / 319 per year for v1. Three other presets trade that
+// mix differently — see the table further down.
+//
+// THE NUMBER THAT MATTERS MOST
+// Excess over random entries drawn from bars that ALREADY pass every gate
+// except the breakout itself is t = +4.63, against a selection-corrected bar of
+// t = 3.82 for this study's ~1,500 tested cells. v1 scored t = +2.82 and did not
+// clear its bar. This is the first configuration in the project that does.
+// It is still one instrument, one regime-rich decade, and a 3.2x overlap
+// correction away from a promise.
 //
 // WHAT CHANGED FROM v1 — three of these were bugs, not preferences
 //   1. VWAP is now anchored to the ET CALENDAR DAY, computed here rather than
@@ -34,18 +51,28 @@
 // HONEST EXPECTATIONS — read before trading it
 //   * See the dashboard's "Study expectation" row. Anything far above it on
 //     your chart is a smaller sample, not a better strategy.
-//   * Trades overlap ~3.4x if you let them. Every number here is measured one
+//   * Trades overlap ~3.2x if you let them. Every number here is measured one
 //     position at a time, which is the only version an account can hold and is
-//     roughly a third of the trade count a naive backtest reports.
-//   * The short mirror of this setup LOSES. Part of what the long side earns is
-//     exposure to an index that rose 365% across the sample.
-//   * The edge concentrates in trending years. Flat and bear years are close to
-//     breakeven.
+//     under a third of the trade count a naive backtest reports.
+//   * The short mirror still LOSES (PF 1.00 over the full sample, t = +1.12
+//     against matched conditions) even with the trend filter inverted. Part of
+//     what the long side earns is exposure to an index that rose 365%.
+//   * 2025 was a flat year for it: PF 1.00, −0.1R across 140 trades. 2022, the
+//     bear year that nearly broke v1, came in at PF 1.55 — the 50-day trend
+//     filter is what bought that.
+//   * Every preset trades the New York morning except "Max trades". Overnight
+//     breakouts were the worst slice in the study (PF 0.97 out-of-sample) and
+//     cost 75% more to trade.
 //
 //@version=6
+// max_bars_back is set explicitly because ta.percentrank() reaches back as far
+// as the ATR-percentile lookback input allows (up to 2000 bars). Left to
+// auto-detection Pine sizes the buffer from the first bars it sees and then
+// throws "the requested historical offset is beyond the buffer" deep into the
+// history of a long chart.
 indicator("MMT — Expansion Breakout v2 (MNQ 5m)", shorttitle="MMT ExpBrk2",
      overlay = true, max_lines_count = 500, max_labels_count = 500,
-     max_boxes_count = 500)
+     max_boxes_count = 500, max_bars_back = 2500)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inputs
@@ -63,9 +90,11 @@ lookbackIn = input.int(12, "Breakout lookback (bars)", minval = 3, maxval = 200,
      "N bars. Results were stable across 12/24/48/96.")
 volRankLen = input.int(500, "ATR percentile lookback", minval = 50, maxval = 2000,
      group = G_ENT)
-volRankMinIn = input.float(66, "ATR percentile above", minval = 0, maxval = 100,
-     group = G_ENT, tooltip = "Trade only when ATR sits in the top third of its " +
-     "recent range. Alone this lifts profit factor from 0.99 to 1.12.")
+volRankMinIn = input.float(0, "ATR percentile above", minval = 0, maxval = 100,
+     group = G_ENT, tooltip = "0 disables, which is what every preset uses: " +
+     "once entries are confined to the morning and to bars above the 50-day " +
+     "trend, this gate stops adding anything (0.00 to 0.66 all score PF " +
+     "1.65-1.67). Above 0.80 it clearly hurts.")
 vwapMinIn = input.float(1.5, "Min |close - VWAP| in ATR", minval = 0, step = 0.1,
      group = G_ENT)
 usePdIn = input.bool(true, "Require outside prior-day range", group = G_ENT,
@@ -79,14 +108,14 @@ relVolMinIn = input.float(0.0, "Min relative volume", minval = 0, step = 0.1,
      group = G_ENT, tooltip = "0 disables. Volume vs its own 20-bar average.")
 marginAtrIn = input.float(0.0, "Clear the level by (x ATR)", minval = 0, step = 0.05,
      group = G_ENT, tooltip = "0 means a one-tick break counts.")
-regimeIn = input.string("None", "Higher-horizon trend filter", options =
+regimeIn = input.string("Above EMA3900", "Higher-horizon trend filter", options =
      ["None", "Above prior-day close", "Above EMA200", "Above EMA780",
       "Above EMA1560", "Above EMA3900"], group = G_ENT,
      tooltip = "On a 5-minute chart 780/1560/3900 bars are roughly 10, 20 and " +
      "50 trading days.")
 
 G_SESS = "Session"
-sessIn = input.string("All hours", "Trading window", options =
+sessIn = input.string("RTH morning", "Trading window", options =
      ["All hours", "RTH 09:30-16:00", "RTH minus last 30m", "RTH morning",
       "07:00-16:00", "03:00-16:00"], group = G_SESS,
      tooltip = "An MNQ round turn costs ~1.00 index point in RTH and ~1.75 " +
@@ -99,8 +128,8 @@ flatByIn = input.int(960, "Flat by (ET minutes past midnight)", minval = 1,
      "on that bar.")
 
 G_EXIT = "Risk & exits"
-stopAtrIn = input.float(2.5, "Stop (x ATR)", minval = 0.2, step = 0.1, group = G_EXIT)
-rrIn = input.float(1.5, "Target (x risk)", minval = 0.2, step = 0.05, group = G_EXIT)
+stopAtrIn = input.float(2.0, "Stop (x ATR)", minval = 0.2, step = 0.1, group = G_EXIT)
+rrIn = input.float(3.0, "Target (x risk)", minval = 0.2, step = 0.05, group = G_EXIT)
 beIn = input.float(0.0, "Move stop to breakeven at (R)", minval = 0, step = 0.05,
      group = G_EXIT, tooltip = "0 disables. Converts losers into scratches: " +
      "profit factor up, win rate down.")
@@ -108,8 +137,8 @@ trailIn = input.float(0.0, "ATR trailing stop (x ATR at entry)", minval = 0,
      step = 0.1, group = G_EXIT, tooltip = "0 disables. Trails from the bar " +
      "CLOSE using the ATR measured at entry, so the distance never changes " +
      "mid-trade.")
-maxHoldIn = input.int(72, "Time stop (bars)", minval = 5, group = G_EXIT,
-     tooltip = "72 bars = 6 hours on a 5-minute chart.")
+maxHoldIn = input.int(48, "Time stop (bars)", minval = 5, group = G_EXIT,
+     tooltip = "On a 5-minute chart 48 bars = 4 hours, 72 = 6h, 144 = 12h.")
 atrLen = input.int(14, "ATR length", minval = 2, group = G_EXIT)
 
 G_COST = "Costs"
@@ -137,24 +166,62 @@ colTgt = input.color(#42a5f5, "Target", group = G_UI)
 // Preset resolution — measured rows from backtest/improve.py, one position at a
 // time, costs charged. PRESET_TABLE
 // ─────────────────────────────────────────────────────────────────────────────
+// Measured on 519,046 5-minute bars, 2019-01-02 to 2026-08-10, one position at
+// a time, costs charged by session. Reproduce with backtest/improve.py.
+//
+//   preset             WR      PF    trades/yr   net R   maxDD   alpha t
+//   Balanced         43.8%   1.45      129      +247.5R   15.2R   +4.63
+//   Max profit factor 28.5%  1.64      134      +292.1R   15.3R   +5.97
+//   Max win rate     58.0%   1.29      170      +155.4R   14.6R   +2.54
+//   Max trades       41.2%   1.17      414      +210.6R   25.7R   +2.96
+//   (v1 for scale)   48.3%   1.18      319      +220.4R   19.4R   +2.82
+//
+// "alpha t" is the excess over random entries drawn from bars that already pass
+// every gate except the breakout itself. The selection-corrected bar for this
+// study's ~1,500 tested cells is t = 3.82. Balanced and Max profit factor clear
+// it; Max win rate and Max trades do not, and are offered as preferences rather
+// than as proven edges.
+//
+// All four share the same entry: 12-bar breakout, at least 1.5 ATR from the
+// ET-day VWAP, outside the prior ET day's range, above the ~50-day EMA. They
+// differ only in session, stop, target, time stop and breakeven.
 isCustom = preset == "Custom"
+isBal = preset == "Balanced"
+isPf = preset == "Max profit factor"
+isWr = preset == "Max win rate"
+isTr = preset == "Max trades"
+
+// Shared across every preset.
 lookback     = isCustom ? lookbackIn     : 12
-volRankMin   = isCustom ? volRankMinIn   : 66.0
+volRankMin   = isCustom ? volRankMinIn   : 0.0     // see note below
 vwapMin      = isCustom ? vwapMinIn      : 1.5
 usePd        = isCustom ? usePdIn        : true
 closePosMin  = isCustom ? closePosMinIn  : 0.0
 relVolMin    = isCustom ? relVolMinIn    : 0.0
 marginAtr    = isCustom ? marginAtrIn    : 0.0
-regimeSel    = isCustom ? regimeIn       : "None"
-sessSel      = isCustom ? sessIn         : "All hours"
+regimeSel    = isCustom ? regimeIn       : "Above EMA3900"
+trailAtr     = isCustom ? trailIn        : 0.0
 useFlat      = isCustom ? useFlatIn      : false
 flatBy       = isCustom ? flatByIn       : 960
-stopMult     = isCustom ? stopAtrIn      : 2.5
-rrMult       = isCustom ? rrIn           : 1.5
-beR          = isCustom ? beIn           : 0.0
-trailAtr     = isCustom ? trailIn        : 0.0
-maxHold      = isCustom ? maxHoldIn      : 72
-expectTxt    = "PF ~1.2 · WR ~48%"
+
+// The ATR-percentile gate that named this indicator is OFF in every preset, and
+// that is a result rather than an oversight. Once entries are confined to the
+// 09:30-13:00 window and to bars above the 50-day trend, the volatility filter
+// is redundant: thresholds of 0.00 / 0.33 / 0.50 / 0.66 all score PF 1.65-1.67
+// in-sample and 1.24-1.26 out-of-sample. Leaving it off keeps ~12% more trades
+// for no measurable loss. Only 0.80 clearly hurts (PF 1.38). It stays exposed
+// in Custom for anyone who wants it back.
+
+// Per preset.
+sessSel = isCustom ? sessIn : isTr ? "All hours" : "RTH morning"
+stopMult = isCustom ? stopAtrIn : isWr ? 2.5 : isTr ? 3.5 : 2.0
+rrMult = isCustom ? rrIn : isWr ? 1.0 : isTr ? 2.5 : 3.0
+maxHold = isCustom ? maxHoldIn : isPf ? 144 : isWr ? 72 : 48
+beR = isCustom ? beIn : (isPf or isTr) ? 0.75 : 0.0
+expectTxt = isBal ? "PF 1.45 · WR 44% · 129/yr" :
+     isPf ? "PF 1.64 · WR 29% · 134/yr" :
+     isWr ? "PF 1.29 · WR 58% · 170/yr" :
+     isTr ? "PF 1.17 · WR 41% · 414/yr" : "custom — no study row"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ET clock. Every session and anchor decision below uses New York wall time, to

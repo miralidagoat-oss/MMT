@@ -125,6 +125,26 @@ def compare(f, cfg, label=""):
     st_ref, tr_ref = run(f, cfg)
     pine = pine_state_machine(f, cfg)
 
+    # A trade still open when the data ends is not a closed trade. The bracket
+    # kernel marks it to market at the last bar and books it; an indicator keeps
+    # holding it, and the dashboard grades only closed trades. So drop from the
+    # reference any trade that exited ON the final bar without a rule firing -
+    # outcome 0 (neither stop nor target) and short of its own time stop, which
+    # leaves running out of data as the only thing that closed it.
+    #
+    # This is the one place the two implementations legitimately disagree, and
+    # it is worth one trade in ~2,000. Everything else must match exactly.
+    dropped = 0
+    n_bars = len(f["close"])
+    if tr_ref is not None:
+        ran_out = ((tr_ref["exit_bar"] == n_bars - 1)
+                   & (tr_ref["outcome"] == 0)
+                   & ((tr_ref["exit_bar"] - tr_ref["idx"]) < cfg.hold))
+        dropped = int(ran_out.sum())
+        keep = ~ran_out
+        tr_ref = {k: (v[keep] if isinstance(v, np.ndarray) and len(v) == len(keep)
+                      else v) for k, v in tr_ref.items()}
+
     ref_entries = list(tr_ref["idx"]) if tr_ref is not None else []
     ref_exits = list(tr_ref["exit_bar"]) if tr_ref is not None else []
     ref_r = np.asarray(tr_ref["r"]) if tr_ref is not None else np.array([])
@@ -138,8 +158,13 @@ def compare(f, cfg, label=""):
     max_dr = float(np.abs(ref_r - pin_r).max()) if ok_n and len(ref_r) else float("nan")
 
     print(f"\n--- parity: {label or 'config'} ---")
+    gp0 = ref_r[ref_r > 0].sum()
+    gl0 = -ref_r[ref_r < 0].sum()
     print(f"  research engine : {len(ref_entries):5d} trades  "
-          f"PF {st_ref['pf']:.4f}  WR {st_ref['wr']:.2f}%  net {st_ref['net']:+.3f}R")
+          f"PF {gp0 / gl0 if gl0 > 0 else float('inf'):.4f}  "
+          f"WR {100 * (ref_r > 0).mean() if len(ref_r) else 0:.2f}%  "
+          f"net {ref_r.sum():+.3f}R"
+          + (f"   [{dropped} un-closable last-bar trade dropped]" if dropped else ""))
     gp = pin_r[pin_r > 0].sum()
     gl = -pin_r[pin_r < 0].sum()
     print(f"  pine state mach.: {len(pin_entries):5d} trades  "
