@@ -1,0 +1,384 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// MNQ Flow Matrix — options-flow regime + order-flow execution
+//
+// WHAT THIS IS
+//   A decision-support tool that fuses the two data families that are actually
+//   reachable from inside TradingView for free:
+//     1. OPTIONS FLOW  — CBOE volatility complex (VIX / VIX9D / VIX3M / VVIX /
+//        SKEW) pulled with request.security(), plus a variance risk premium and
+//        a variance-ratio dealer-gamma proxy computed on the chart.
+//     2. ORDER FLOW    — true intrabar volume delta via request.security_lower_tf(),
+//        giving bar delta, session CVD, imbalance, absorption and relative volume.
+//
+// WHAT THE BACKTEST ACTUALLY FOUND  (15y of Nasdaq-100 1-minute data, 2005-2020)
+//   * Intraday drift on NDX is ZERO: +0.02 bp/day, t=0.01. There is no free
+//     directional premium to harvest between 09:30 and 16:00.
+//   * Overnight drift is real but modest: +3.79 bp/day, t=2.85 on 2005-2014.
+//   * VWAP-reversion, sweep-fades, delta-divergence and delta-confirmed momentum
+//     ALL scored below a random-signal baseline (PF ~1.05) once costs were
+//     applied. None of them beat a coin flip.
+//   * Conditioning those setups on the VIX regime looked good in-sample
+//     (t=1.98) and then failed out-of-sample (t=0.14).
+//
+//   So this script does NOT ship a hardcoded "high win rate" claim. It grades
+//   its own signals on whatever chart you load it on and shows you the result.
+//   Trust that panel, not a number in a description. See README for the full
+//   methodology, the negative results, and the limits of the free data.
+//
+//@version=6
+indicator("MNQ Flow Matrix", "FLOW", overlay = true,
+     max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ─────────────────────────────────────────────────────────── inputs
+var string G_OF   = "Options flow (CBOE)"
+var string G_FLOW = "Order flow"
+var string G_SIG  = "Signal engine"
+var string G_RISK = "Risk / grading"
+var string G_UI   = "Display"
+
+useOptions   = input.bool(true,  "Enable options-flow module",      group = G_OF)
+symVix       = input.symbol("CBOE:VIX",   "30d implied vol",        group = G_OF)
+symVix9D     = input.symbol("CBOE:VIX9D", "9d implied vol",         group = G_OF)
+symVix3M     = input.symbol("CBOE:VIX3M", "3m implied vol",         group = G_OF)
+symVvix      = input.symbol("CBOE:VVIX",  "Vol of vol",             group = G_OF)
+symSkew      = input.symbol("CBOE:SKEW",  "Tail-risk skew",         group = G_OF)
+lagVol       = input.bool(false, "Lag vol data one session (backtest parity)",
+     tooltip = "Off = use today's live VIX (legitimate, it is known now). " +
+               "On = use the prior session's close, matching how the offline " +
+               "backtest was run so on-chart grading is comparable.",
+     group = G_OF)
+rvLen        = input.int(20, "Realized-vol lookback (bars)", minval = 5, group = G_OF)
+contangoHi   = input.float(1.05, "Backwardation threshold (VIX/VIX3M)",
+     step = 0.01, group = G_OF)
+
+lowerTF      = input.timeframe("1", "Order-flow intrabar resolution", group = G_FLOW)
+cvdAnchor    = input.string("Session", "CVD anchor", options = ["Session", "Day", "Week"],
+     group = G_FLOW)
+absorbMult   = input.float(1.5, "Absorption: delta vs range multiple",
+     step = 0.1, group = G_FLOW)
+relVolLen    = input.int(60, "Relative-volume baseline (bars)", minval = 10, group = G_FLOW)
+
+// Default OFF on purpose. None of these three modes beat a random-signal
+// baseline on 15 years of Nasdaq-100 data. They are exposed for research, and
+// the grading panel will tell you the truth on your own chart and symbol.
+sigMode      = input.string("Off", "Mode",
+     options = ["Regime adaptive", "Mean reversion", "Momentum", "Off"], group = G_SIG)
+vwapZ        = input.float(2.0, "VWAP stretch trigger (sigma)", step = 0.1, group = G_SIG)
+needFlow     = input.bool(false, "Require order-flow confirmation",
+     tooltip = "Backtested as a NEGATIVE: on 15y of NDX this filter reduced " +
+               "edge at every threshold and horizon tested. Off by default.",
+     group = G_SIG)
+rthOnly      = input.bool(true,  "Signals during RTH only",        group = G_SIG)
+sessSpec     = input.session("0930-1600", "Session",               group = G_SIG)
+cooldownBars = input.int(6, "Cooldown between signals (bars)", minval = 0, group = G_SIG)
+
+stopAtr      = input.float(1.0, "Stop (ATR multiple)",  step = 0.1, minval = 0.1, group = G_RISK)
+targetAtr    = input.float(2.0, "Target (ATR multiple)", step = 0.1, minval = 0.1, group = G_RISK)
+maxHold      = input.int(24, "Time stop (bars)", minval = 1, group = G_RISK)
+costPoints   = input.float(0.75, "Round-trip cost (index points)",
+     step = 0.25, tooltip = "MNQ: ~1 tick spread + commission. Charged to every " +
+     "graded trade so the stats panel is not fiction.", group = G_RISK)
+
+var string G_ON = "Overnight drift (the one validated effect)"
+showOvernight = input.bool(true, "Mark the overnight window", group = G_ON)
+onEntry      = input.session("1555-1600", "Enter (RTH close)",  group = G_ON)
+onExit       = input.session("0930-0935", "Exit (RTH open)",    group = G_ON)
+
+showBands    = input.bool(true,  "VWAP sigma bands",  group = G_UI)
+showFlow     = input.bool(true,  "Delta histogram",   group = G_UI)
+showPanel    = input.bool(true,  "Dashboard",         group = G_UI)
+panelPos     = input.string("Top right", "Dashboard position",
+     options = ["Top right", "Top left", "Bottom right", "Bottom left"], group = G_UI)
+
+// ─────────────────────────────────────────────────── options-flow module
+f_vol(string sym) =>
+    src = lagVol ? close[1] : close
+    request.security(sym, "D", src, lookahead = barmerge.lookahead_off,
+         ignore_invalid_symbol = true)
+
+vix   = useOptions ? f_vol(symVix)   : na
+vix9d = useOptions ? f_vol(symVix9D) : na
+vix3m = useOptions ? f_vol(symVix3M) : na
+vvix  = useOptions ? f_vol(symVvix)  : na
+skew  = useOptions ? f_vol(symSkew)  : na
+
+// Realized vol on the chart, annualised, in vol points so it is directly
+// comparable with VIX. barsPerYear scales the chart timeframe to a year.
+barsPerYear = 252.0 * math.max(1.0, 390.0 / math.max(timeframe.in_seconds() / 60.0, 1.0))
+logRet      = math.log(close / nz(close[1], close))
+realizedVol = ta.stdev(logRet, rvLen) * math.sqrt(barsPerYear) * 100.0
+
+// Variance risk premium: implied minus realized. Structurally positive (the
+// backtest measured a +4.24 vol-point mean over 15 years, matching the
+// published variance-risk-premium literature). Compression toward or below
+// zero marks the regimes where vol sellers stop being paid.
+vrp = na(vix) ? na : vix - realizedVol
+
+// Term structure. VIX/VIX3M above ~1 is backwardation: front-end stress,
+// the classic short-gamma tell.
+termSlope = (na(vix) or na(vix3m) or vix3m == 0) ? na : vix / vix3m
+frontSlope = (na(vix9d) or na(vix) or vix == 0) ? na : vix9d / vix
+
+// Lo-MacKinlay variance ratio on the chart itself. This is the most direct
+// available read on the dealer-gamma regime without an options chain:
+//   VR < 1  price mean-reverts   (consistent with dealers long gamma)
+//   VR > 1  price trends         (consistent with dealers short gamma)
+int vrWin = int(math.max(rvLen * 5, 50))
+int k     = 6
+var1  = ta.variance(logRet, vrWin)
+vark  = ta.variance(math.log(close / nz(close[k], close)), vrWin)
+varRatio = (na(var1) or var1 <= 0) ? na : vark / (k * var1)
+
+isBackwardated = not na(termSlope) and termSlope >= contangoHi
+vrpCompressed  = not na(vrp) and vrp <= 0
+gammaShort     = isBackwardated or vrpCompressed or (not na(varRatio) and varRatio > 1.10)
+regimeCol = gammaShort ? color.new(color.orange, 0) : color.new(color.teal, 0)
+
+// ────────────────────────────────────────────────────── order-flow module
+// Signed volume per intrabar, summed to the chart bar. This is exactly the
+// classification the offline backtest used, so on-chart numbers and backtest
+// numbers mean the same thing.
+arrDelta = request.security_lower_tf(syminfo.tickerid, lowerTF,
+     volume * math.sign(close - open))
+arrVol   = request.security_lower_tf(syminfo.tickerid, lowerTF, volume)
+
+hasLtf   = array.size(arrDelta) > 0
+barDelta = hasLtf ? array.sum(arrDelta) : volume * math.sign(close - open)
+barVol   = hasLtf ? array.sum(arrVol)   : volume
+imbalance = barVol > 0 ? barDelta / barVol : 0.0
+
+newAnchor = switch cvdAnchor
+    "Session" => session.isfirstbar_regular
+    "Day"     => timeframe.change("D")
+    => timeframe.change("W")
+var float cvd = 0.0
+cvd := (newAnchor ? 0.0 : nz(cvd)) + nz(barDelta)
+
+barRange   = math.max(high - low, syminfo.mintick)
+avgRange   = ta.sma(barRange, relVolLen)
+avgVol     = ta.sma(barVol, relVolLen)
+relVol     = nz(avgVol) > 0 ? barVol / avgVol : na
+// Absorption: heavy signed flow that fails to move price is someone filling
+// size against the move.
+absorbing  = not na(avgRange) and math.abs(imbalance) > 0.3 and
+             barRange < avgRange / absorbMult and nz(relVol) > 1.2
+
+// ───────────────────────────────────────────────────────────── structure
+vwapVal = ta.vwap(hlc3)
+vwapDev = ta.stdev(close - vwapVal, int(math.max(rvLen, 20)))
+vwapZScore = (na(vwapDev) or vwapDev == 0) ? na : (close - vwapVal) / vwapDev
+
+atr = ta.atr(14)
+swingLen = 12
+priorHi = ta.highest(high, swingLen)[1]
+priorLo = ta.lowest(low, swingLen)[1]
+sweptHi = high > priorHi and close < priorHi
+sweptLo = low  < priorLo and close > priorLo
+
+inSession = not rthOnly or not na(time(timeframe.period, sessSpec))
+confirmed = barstate.isconfirmed
+ready     = not na(atr) and not na(vwapZScore) and bar_index > rvLen * 5
+
+// ────────────────────────────────────────────────────── signal generation
+stretchUp = not na(vwapZScore) and vwapZScore >  vwapZ
+stretchDn = not na(vwapZScore) and vwapZScore < -vwapZ
+flowOkS   = not needFlow or imbalance < 0
+flowOkL   = not needFlow or imbalance > 0
+
+longRaw  = false
+shortRaw = false
+if sigMode == "Mean reversion"
+    longRaw  := stretchDn and flowOkL
+    shortRaw := stretchUp and flowOkS
+else if sigMode == "Momentum"
+    longRaw  := stretchUp and imbalance > 0
+    shortRaw := stretchDn and imbalance < 0
+else if sigMode == "Regime adaptive"
+    // long gamma  -> fade the stretch ; short gamma -> go with it
+    longRaw  := gammaShort ? (stretchUp and imbalance > 0) : (stretchDn and flowOkL)
+    shortRaw := gammaShort ? (stretchDn and imbalance < 0) : (stretchUp and flowOkS)
+
+var int lastSigBar = -10000
+canFire  = bar_index - lastSigBar >= cooldownBars
+goLong   = longRaw  and inSession and confirmed and ready and canFire
+goShort  = shortRaw and inSession and confirmed and ready and canFire and not goLong
+if goLong or goShort
+    lastSigBar := bar_index
+
+// ───────────────────────────────────────────── self-grading backtest engine
+// Pessimistic on purpose: entry at the NEXT bar's open, stop wins any bar where
+// stop and target both print, costs charged on every trade.
+var int   openDir   = 0
+var float entryPx   = na
+var float stopPx    = na
+var float targetPx  = na
+var int   entryBar  = na
+var int   nWin      = 0
+var int   nLoss     = 0
+var int   nTime     = 0
+var float sumR      = 0.0
+var float grossWin  = 0.0
+var float grossLoss = 0.0
+var int   nSignals  = 0
+
+// Pine functions cannot assign to globals, so the accounting is inlined.
+float exitPx = na
+bool  doExit = false
+if openDir != 0
+    hitStop = openDir > 0 ? low <= stopPx : high >= stopPx
+    hitTgt  = openDir > 0 ? high >= targetPx : low <= targetPx
+    if hitStop                       // stop wins ties — pessimistic by design
+        exitPx := stopPx
+        doExit := true
+    else if hitTgt
+        exitPx := targetPx
+        doExit := true
+    else if bar_index - entryBar >= maxHold
+        exitPx := close
+        doExit := true
+        nTime  += 1
+
+if doExit
+    risk = math.abs(entryPx - stopPx)
+    if risk > 0
+        pts = (exitPx - entryPx) * openDir - costPoints
+        r   = pts / risk
+        sumR += r
+        if r > 0
+            nWin += 1
+            grossWin += r
+        else
+            nLoss += 1
+            grossLoss += -r
+    openDir := 0
+
+// pending signal from the previous bar fills at this bar's open
+var int pending = 0
+if pending != 0 and openDir == 0
+    openDir  := pending
+    entryPx  := open
+    risk     = stopAtr * nz(atr[1], atr)
+    stopPx   := pending > 0 ? open - risk : open + risk
+    targetPx := pending > 0 ? open + targetAtr * nz(atr[1], atr)
+                            : open - targetAtr * nz(atr[1], atr)
+    entryBar := bar_index
+pending := 0
+if (goLong or goShort) and openDir == 0
+    pending  := goLong ? 1 : -1
+    nSignals += 1
+
+nClosed = nWin + nLoss
+// float() cast is load-bearing: int/int is integer division in Pine and this
+// would otherwise report a 0% win rate on every chart.
+winRate = nClosed > 0 ? float(nWin) / float(nClosed) * 100.0 : na
+pf      = grossLoss > 0 ? grossWin / grossLoss : na
+expR    = nClosed > 0 ? sumR / nClosed : na
+beRate  = 100.0 / (1.0 + targetAtr / stopAtr)
+
+// ────────────────────────────────────────────────────────────── plotting
+plot(showBands ? vwapVal : na, "VWAP", color.new(color.blue, 0), 2)
+bandU = showBands and not na(vwapDev) ? vwapVal + vwapZ * vwapDev : na
+bandL = showBands and not na(vwapDev) ? vwapVal - vwapZ * vwapDev : na
+pu = plot(bandU, "VWAP +σ", color.new(color.blue, 70))
+pl = plot(bandL, "VWAP -σ", color.new(color.blue, 70))
+fill(pu, pl, color.new(color.blue, 94))
+
+plotshape(goLong,  "Long",  shape.triangleup,   location.belowbar,
+     color.new(color.teal, 0), size = size.small)
+plotshape(goShort, "Short", shape.triangledown, location.abovebar,
+     color.new(color.red, 0),  size = size.small)
+plotshape(absorbing and showFlow, "Absorption", shape.diamond, location.top,
+     color.new(color.yellow, 20), size = size.tiny)
+plotchar(sweptHi, "Sweep high", "▽", location.abovebar, color.new(color.orange, 30),
+     size = size.tiny)
+plotchar(sweptLo, "Sweep low",  "△", location.belowbar, color.new(color.orange, 30),
+     size = size.tiny)
+
+bgcolor(showFlow and gammaShort ? color.new(color.orange, 95) : na)
+
+// ─────────────────────────────────────────────────── overnight drift module
+// The only effect in this script that survived out-of-sample testing on 15
+// years of data -- and it survived weakly. Long the close, flat at the open.
+//   train 2005-2014 PF 1.05 (t=+0.85) | val 2015-2017 PF 1.13 (t=+1.05)
+//   TEST  2018-2020 PF 1.05 (t=+0.36)
+// Positive in all three splits, statistically strong in none of them. It is
+// marked here as context, not sold as a system.
+inOnEntry = showOvernight and not na(time(timeframe.period, onEntry))
+inOnExit  = showOvernight and not na(time(timeframe.period, onExit))
+plotshape(inOnEntry and not inOnEntry[1], "Overnight entry", shape.circle,
+     location.belowbar, color.new(color.green, 25), size = size.tiny)
+plotshape(inOnExit and not inOnExit[1], "Overnight exit", shape.xcross,
+     location.abovebar, color.new(color.gray, 25), size = size.tiny)
+
+// ──────────────────────────────────────────────────────────── dashboard
+f_pos() =>
+    switch panelPos
+        "Top left"     => position.top_left
+        "Bottom right" => position.bottom_right
+        "Bottom left"  => position.bottom_left
+        => position.top_right
+
+var table dash = table.new(f_pos(), 2, 18, border_width = 1,
+     frame_color = color.new(color.gray, 60), frame_width = 1)
+
+f_row(int r, string k, string v, color c) =>
+    table.cell(dash, 0, r, k, text_size = size.tiny, text_color = color.gray,
+         text_halign = text.align_left)
+    table.cell(dash, 1, r, v, text_size = size.tiny, text_color = c,
+         text_halign = text.align_right)
+
+f_num(float x, string fmt) => na(x) ? "n/a" : str.tostring(x, fmt)
+
+if showPanel and barstate.islast
+    table.cell(dash, 0, 0, "MNQ FLOW MATRIX", text_size = size.small,
+         text_color = color.white, text_halign = text.align_left)
+    table.cell(dash, 1, 0, timeframe.period, text_size = size.small,
+         text_color = color.gray, text_halign = text.align_right)
+
+    f_row(1, "REGIME", gammaShort ? "SHORT GAMMA" : "LONG GAMMA", regimeCol)
+    f_row(2, "  VIX", f_num(vix, "#.##"), color.silver)
+    f_row(3, "  realized vol", f_num(realizedVol, "#.##"), color.silver)
+    f_row(4, "  VRP (implied−real)", f_num(vrp, "#.##"),
+         na(vrp) ? color.gray : (vrp > 0 ? color.teal : color.red))
+    f_row(5, "  VIX/VIX3M", f_num(termSlope, "#.###"),
+         na(termSlope) ? color.gray : (isBackwardated ? color.red : color.teal))
+    f_row(6, "  VIX9D/VIX", f_num(frontSlope, "#.###"), color.silver)
+    f_row(7, "  variance ratio", f_num(varRatio, "#.###"),
+         na(varRatio) ? color.gray : (varRatio > 1.10 ? color.orange : color.teal))
+    f_row(8, "  VVIX / SKEW",
+         (na(vvix) ? "n/a" : str.tostring(vvix, "#")) + " / " +
+         (na(skew) ? "n/a" : str.tostring(skew, "#")), color.silver)
+
+    f_row(9,  "ORDER FLOW", hasLtf ? "intrabar " + lowerTF : "bar-direction fallback",
+         hasLtf ? color.teal : color.orange)
+    f_row(10, "  bar delta", str.tostring(barDelta, "#"),
+         barDelta > 0 ? color.teal : color.red)
+    f_row(11, "  imbalance", str.tostring(imbalance * 100, "#.#") + "%",
+         imbalance > 0 ? color.teal : color.red)
+    f_row(12, "  session CVD", str.tostring(cvd, "#"),
+         cvd > 0 ? color.teal : color.red)
+    f_row(13, "  rel volume", f_num(relVol, "#.##"), color.silver)
+    f_row(14, "  VWAP z", f_num(vwapZScore, "#.##"),
+         na(vwapZScore) ? color.gray :
+         (math.abs(vwapZScore) > vwapZ ? color.orange : color.silver))
+
+    f_row(15, "GRADED ON THIS CHART",
+         str.tostring(nSignals) + " sig / " + str.tostring(nClosed) + " closed",
+         color.white)
+    f_row(16, "  win rate vs breakeven",
+         f_num(winRate, "#.#") + "% vs " + str.tostring(beRate, "#.#") + "%",
+         na(winRate) ? color.gray : (winRate > beRate ? color.teal : color.red))
+    f_row(17, "  PF / exp R",
+         f_num(pf, "#.##") + " / " + f_num(expR, "#.###"),
+         na(pf) ? color.gray : (pf > 1 ? color.teal : color.red))
+
+// ───────────────────────────────────────────────────────────────── alerts
+alertcondition(goLong,  "Flow long",  "MNQ Flow Matrix: LONG")
+alertcondition(goShort, "Flow short", "MNQ Flow Matrix: SHORT")
+if goLong or goShort
+    alert((goLong ? "LONG " : "SHORT ") + syminfo.ticker +
+         " @ " + str.tostring(close, format.mintick) +
+         " | regime " + (gammaShort ? "short-gamma" : "long-gamma") +
+         " | VRP " + f_num(vrp, "#.#") +
+         " | imbalance " + str.tostring(imbalance * 100, "#") + "%",
+         alert.freq_once_per_bar_close)

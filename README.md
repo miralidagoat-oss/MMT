@@ -1,4 +1,17 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Quant Engine
+
+Two scripts live here:
+
+- **`indicators/mnq_flow_matrix.pine`** — options-flow + order-flow regime panel
+  for MNQ. Built from a 15-year study of Nasdaq-100 minute data; the study and
+  its (largely negative) results are in **[docs/FLOW_RESEARCH.md](docs/FLOW_RESEARCH.md)**.
+  Read that before trading any of it.
+- **`indicators/alpha_predictive_limit_matrix.pine`** — the earlier liquidity-sweep
+  script, documented below.
+
+---
+
+## Alpha Predictive Limit Matrix
 
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
