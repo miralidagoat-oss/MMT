@@ -329,6 +329,7 @@ and Pine cannot fetch one. Everything upstream of that paste is in `tools/`:
 ```bash
 python3 tools/gamma_key.py --max-dte 7        # build today's key, printing its working
 python3 tools/calibrate_reach.py              # refit + revalidate P(reached)
+python3 tools/calibrate_outcome.py           # measure the decay engine's null
 ```
 
 `gamma_key.py` pulls the listed chains, computes Black-Scholes gamma/vanna/charm per
@@ -369,6 +370,30 @@ unsigned, so "dealers are long calls, short puts" is an assumption about custome
 behaviour, not a measurement. The hedging identity forces *damped volatility* near a
 strike, which is not the same claim as a tradeable rejection.
 
+## The decay engine has a null to beat
+
+`tools/calibrate_outcome.py` runs the indicator's own scoring engine, unmodified,
+over levels placed where real levels sit — prior close ± k×ATR — but chosen with **no
+information in them**. That measures what an uninformative level scores, which is the
+only thing that makes a score mean anything. On 14,454 touches across ES and NQ at
+5m, 15m and 60m:
+
+| | |
+|---|---|
+| median score at an arbitrary level | **+0.21** |
+| p30 / p70 | **−0.78 / +1.16** |
+| break rate at an arbitrary level | **43–47%** |
+| median spread across all six instrument/timeframe cells | 0.196 |
+
+Two things follow. An arbitrary level does **not** score zero, so the "holding above
++0.5" threshold an earlier draft shipped was labelling roughly three in five
+*uninformative* levels as holding. And because the score is ATR-normalised and the
+null barely moves across timeframes, one pair of thresholds serves every chart.
+
+The indicator now labels a level "holding" above that null's p70 and "failing" below
+its p30 — so the word means "beats 70% of levels that know nothing" — computes it per
+test rather than off a running sum, and prints the break count against the 45% null.
+
 ## v5 audit — six of v4's own claims did not survive
 
 1. **The generator and the fit did not exist.** v4's header cited a 6,543-session
@@ -395,6 +420,18 @@ strike, which is not the same claim as a tradeable rejection.
    it "fired too often to be informative" — a bug report, not a setting. It read all
    five of the other book's levels in either direction. It now reads only the top
    grades and carries the *direction* of the reaction.
+
+7. **Two different definitions of a break.** The tally and the consumption term
+   called it a break when excursion *through* the level exceeded N half-widths; the
+   marker called it one when `thru > away`. A bar that spiked through and then
+   rejected hard could print a rejection triangle and be tallied as a break at once.
+   The engine records its outcome once now and everything reads it.
+8. **The session length is measured, not assumed.** The clock term defaulted to 390
+   minutes; on an extended-hours futures chart the session runs 1380, so it saturated
+   a fifth of the way in and greyed out every level by mid-morning.
+9. **The scoring zone is visible.** Touches, breaks and consumption were all measured
+   against price ± half-width while the chart drew a *line*, so a wick that visibly
+   missed could still be scored as a tag. Same band — it was simply never drawn.
 
 Also: a zone width that can no longer collapse to one tick during ATR warmup; zero
 or missing gamma reads "flat" instead of ACCELERATES; the NO KEY badge names the

@@ -137,6 +137,40 @@
 //     almost always. It now reads only the top grades and carries the DIRECTION of the
 //     reaction, so a star needs both books defended the same way, not merely both busy.
 //
+//  G. THE HOLD LABEL HAS A NULL TO BEAT NOW. "Holding above +0.5" was a number chosen
+//     by eye, and a score means nothing without knowing what an uninformative level
+//     scores. tools/calibrate_outcome.py runs THIS engine, unmodified, over levels
+//     placed where real levels sit but chosen with no information in them. On 14,454
+//     touches across ES and NQ at 5m, 15m and 60m:
+//
+//         median +0.21      p30 -0.78      p70 +1.16      breaks 43-47% of touches
+//
+//     So an arbitrary level does not score zero, and the old +0.5 was calling about
+//     three in five of them "holding". The thresholds are now that null's p70 and p30,
+//     which gives the label a definition: a level reads "holding" when its average test
+//     beats 70% of levels that know nothing. The label is also computed PER TEST rather
+//     than off the running sum, which had made every level look better the more often
+//     it was tested. The break count is printed against the 45% null beside it.
+//     The score is ATR-normalised and the null's median moved only 0.196 across all six
+//     instrument/timeframe cells, which is why one pair of thresholds serves any chart.
+//
+//  H. ONE DEFINITION OF A BREAK. The tally and the consumption term called it a break
+//     when the excursion through the level exceeded N half-widths; the MARKER called it
+//     one when thru exceeded away. Two different tests, so a bar that spiked through and
+//     then rejected hard could print a rejection triangle and be tallied as a break in
+//     the same breath. The engine now records its outcome once and everything reads it.
+//
+//  I. THE SESSION LENGTH IS MEASURED, NOT ASSUMED. The clock term needs to know how long
+//     a session is, and the default said 390 minutes. On an extended-hours futures chart
+//     the session runs 1380, so the clock saturated a fifth of the way in and greyed out
+//     every level by mid-morning with nothing on screen to explain it. It now counts the
+//     bars in the session that just ended.
+//
+//  J. THE SCORING ZONE IS VISIBLE. Touches, breaks and consumption were all measured
+//     against price ± half-width while the chart drew a LINE — so a wick that visibly
+//     missed could be scored as a tag, and there was no way to see why. The band is
+//     shaded now. It is the same band, it was simply never drawn.
+//
 //  Also in v5: a zone width that can no longer collapse to one tick during a chart's
 //  ATR warmup; zero or missing gamma reads "flat" instead of ACCELERATES; the NO KEY
 //  badge names the newest row it does have.
@@ -200,7 +234,7 @@
 //  warning, and a dynamic alert() carrying the level that was actually tagged.
 // ═════════════════════════════════════════════════════════════════════════════════════
 indicator("QT KEY — options reaction zones", "QT KEY", overlay = true,
-     max_lines_count = 500, max_labels_count = 500)
+     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 20)
 
 // ───────────────────────────────── inputs ─────────────────────────────────
 gK = "Daily key"
@@ -232,6 +266,7 @@ backBars  = input.int(55, "Line length (bars back, when not anchored)", minval =
 extendR   = input.int(30, "Extend right (bars)", minval = 0, group = gL)
 showSign  = input.bool(false, "Dash the ACCELERATES levels", group = gL, tooltip = "Off by default so the levels read as one set. On, a dashed line means negative dealer gamma — hedging runs WITH the move there instead of against it.")
 showWall  = input.bool(true, "Tag the call / put wall on the label", group = gL)
+showZone  = input.bool(true, "Shade the scoring zone", group = gL, tooltip = "The engine counts a touch when price enters price ± half-width, and until now it drew a LINE — so every touch count, every break and every consumption number was measured against a band you could not see, and a wick that visibly missed the line could still be scored as a tag. This shades the band that is actually being tested. Its width is whatever the Decay engine group is set to, frozen at the open.")
 fadeFar   = input.bool(true, "Fade levels far from price", group = gL)
 farATR    = input.float(3.0, "Far = more than N ATR away", minval = 0.5, step = 0.5, group = gL)
 plotCol   = input.color(#FF9800, "Level trace / price-scale colour", group = gL)
@@ -245,7 +280,8 @@ tolATR    = input.float(0.15, "Zone width (x ATR14 at the open)", minval = 0.02,
 evalBars  = input.int(5,  "Bars to score a touch over", minval = 2, maxval = 60, group = gD, tooltip = "The outcome window starts at the bar AFTER the touch. Scoring the touch bar itself reads the resolution off the bar that created the signal. Clamped to the cooldown below, so a re-touch can never wipe a window before it scores.")
 coolBars  = input.int(10, "Bars before the same level can re-touch", minval = 2, group = gD)
 deadD     = input.float(85.0, "Also grey out above D%", minval = 50, maxval = 100, group = gD)
-sesMins   = input.int(390, "Session length (minutes)", minval = 60, group = gD, tooltip = "Sets how fast the clock alone consumes a level. 390 is the RTH cash session; use 1380 to decay across the full futures session instead.")
+autoSes   = input.bool(true, "Measure the session length from the chart", group = gD, tooltip = "The clock term needs to know how long a session is. Assuming it is a footgun: the 390-minute default is the RTH cash session, so on an extended-hours futures chart — where the session is 1380 minutes — the clock term saturated about a fifth of the way through the day and every level read heavily consumed by mid-morning, with nothing on screen to explain why.\n\nOn, the script counts the bars in the session that just ended and uses that. It needs one complete session before it can, and falls back to the figure below until then.")
+sesMins   = input.int(390, "…or assume this many minutes", minval = 60, group = gD, tooltip = "Used until a full session has been observed, or whenever the measurement above is off. 390 is the RTH cash session; 1380 is the full futures session.")
 
 gW = "Decay weights — judgment, not fitted"
 wRej    = input.float(0.30, "Consumption per rejection", minval = 0.0, maxval = 5.0, step = 0.05, group = gW,
@@ -256,6 +292,11 @@ wClock  = input.float(0.55, "Consumption from the clock alone, over a full sessi
 wVol    = input.float(2.20, "Consumption from share of session volume", minval = 0.0, maxval = 10.0, step = 0.1, group = gW)
 brkX    = input.float(2.0, "A break is excursion > N × half-width", minval = 0.5, maxval = 10.0, step = 0.25, group = gW)
 evClamp = input.float(1.5, "Cap on evidence from one test (logit)", minval = 0.25, maxval = 5.0, step = 0.25, group = gW)
+holdThr = input.float(1.16, "“holding” above this, per test", minval = -3.0, maxval = 3.0, step = 0.01, group = gW,
+     tooltip = "THESE TWO ARE MEASURED, unlike the rest of this group. tools/calibrate_outcome.py runs this exact engine over levels placed where real levels sit — prior close ± k×ATR — but chosen with NO information in them, and reports what that null scores. On 14,454 touches across ES and NQ at 5m, 15m and 60m:\n\n    median  +0.21      p30  −0.78      p70  +1.16\n\nSo an uninformative level does NOT score zero, and the ±0.5 these defaults replaced was calling roughly three out of five arbitrary levels “holding”. The defaults here are that null's p70 and p30, which makes the label mean something specific: a level reads “holding” when its average test beats 70% of levels that know nothing.\n\nThe score is ATR-normalised and the median moved only 0.196 across all six instrument/timeframe cells, which is why one pair of thresholds serves every chart.")
+failThr = input.float(-0.78, "“failing” below this, per test", minval = -3.0, maxval = 3.0, step = 0.01, group = gW)
+brkBase = input.float(45.0, "Baseline break rate at an arbitrary level (%)", minval = 0.0, maxval = 100.0, step = 1.0, group = gW,
+     tooltip = "Also measured, same run: the engine's break test fires on 43-47% of touches at levels with nothing behind them. Shown next to a level's own break count so the count has something to be compared against.")
 hSeed   = input.float(0.25, "Hold-score seed per grade step (logit)", minval = 0.0, maxval = 1.0, step = 0.05, group = gW,
      tooltip = "0 means the grade contributes nothing and the test record speaks for itself. The default of 0.25 spans 62% down to 38% across the five grades — small enough that a single test dominates it.")
 
@@ -417,6 +458,7 @@ var array<int>   lvDue  = array.new<int>(5, -1)     // bar index the open touch 
 var array<int>   lvDir  = array.new<int>(5, 0)      // +1 approached as support, -1 resistance
 var array<float> lvAway = array.new<float>(5, 0.0)  // best excursion away from the level
 var array<float> lvThru = array.new<float>(5, 0.0)  // worst excursion through it
+var array<int>   lvOut  = array.new<int>(5, 0)      // scored outcome: +1 rejected, -1 broke, 0 pending
 
 var float kFlip  = na
 var float kNet   = na
@@ -433,6 +475,7 @@ var float  keyAge   = 0.0
 var float  halfW    = na
 var float sesVol = 0.0
 var int   sesBar = 0
+var int   sesBarsPrev = 0                           // bars in the session that just ended
 
 // other instrument: levels only, evaluated but never drawn
 var array<float> oxPx = array.new<float>(5, na)
@@ -497,6 +540,7 @@ if newSes or bar_index == 0
         array.set(lvDir, j, 0)
         array.set(lvAway, j, 0.0)
         array.set(lvThru, j, 0.0)
+        array.set(lvOut, j, 0)
         // seed the hold score from the GRADE, but only just: one test is worth up to
         // +/-evClamp and there are at most three of them, so a heavy prior would still
         // be the label on screen after the level had been comprehensively disproved.
@@ -510,6 +554,9 @@ if newSes or bar_index == 0
     kCW    := na
     kPW    := na
     sesVol := 0.0
+    // how long the session that just ended actually ran, for the clock term
+    if bar_index > sesBar
+        sesBarsPrev := bar_index - sesBar
     sesBar := bar_index
     if haveKey
         f = str.split(row, ",")
@@ -693,7 +740,12 @@ xLive = useX and (bar_index - xBar) <= xHold
 // which would make the markers and the alerts repaint. Two: Pine restores scalar
 // variables on every realtime tick but mutates array CONTENTS in place, so anything
 // accumulated into an array per-tick is added again on the next tick of the same bar.
-barsPerSes = math.max(1.0, sesMins / math.max(1.0, timeframe.in_seconds() / 60.0))
+// Measured beats assumed. sesMins is only a fallback for the first session on a
+// chart, because guessing wrong here is not a small error: assume 390 minutes on an
+// extended-hours chart whose session runs 1380 and the clock term saturates a fifth
+// of the way through the day, greying out every level by mid-morning.
+barsPerSesCfg = math.max(1.0, sesMins / math.max(1.0, timeframe.in_seconds() / 60.0))
+barsPerSes = autoSes and sesBarsPrev > 4 ? float(sesBarsPrev) : barsPerSesCfg
 minFrac = math.min(1.0, math.max(0.0, (bar_index - sesBar) / barsPerSes))
 
 bool   firstTouch = false      // a level tagged for the FIRST time on this bar
@@ -734,6 +786,7 @@ if barstate.isconfirmed
                 array.set(lvDir, j, dir)
                 array.set(lvAway, j, 0.0)
                 array.set(lvThru, j, 0.0)
+                array.set(lvOut, j, 0)
                 touchInfo := touchInfo + (str.length(touchInfo) > 0 ? " · " : "")
                      + f_stars(5 - j) + " " + str.tostring(p, format.mintick)
 
@@ -755,7 +808,11 @@ if barstate.isconfirmed
                 array.set(lvH, j, array.get(lvH, j) + math.max(-evClamp, math.min(evClamp, score)))
                 array.set(lvN, j, array.get(lvN, j) + 1)
                 array.set(lvSeen, j, true)
-                broke = t > halfW * brkX
+                // `and t > a` matters: without it a bar that spikes clean through the
+                // level AND rejects hard off it counts as a break while the marker,
+                // which compared away against thru, drew a rejection triangle. One
+                // definition now feeds the tally, the consumption and the triangle.
+                broke = t > halfW * brkX and t > a
                 if broke
                     array.set(lvBrk, j, array.get(lvBrk, j) + 1.0)
                 // CONSUMPTION DEPENDS ON THE OUTCOME, not on the fact of a touch.
@@ -769,6 +826,7 @@ if barstate.isconfirmed
                 // burying it in the source would not make it less of one), and the two
                 // numbers can no longer both saturate.
                 array.set(lvCons, j, array.get(lvCons, j) + (broke ? wBrk : wRej))
+                array.set(lvOut, j, broke ? -1 : 1)
                 array.set(lvDue, j, -1)
 
             array.set(lvIn, j, inZ)
@@ -791,9 +849,14 @@ f_Htxt(int j) =>
     string r = "untested"
     if n > 0
         brk = int(array.get(lvBrk, j))
-        ev  = array.get(lvH, j) - hSeed * ((5 - j) - 3)
-        lab = ev > 0.5 ? "holding" : ev < -0.5 ? "failing" : "mixed"
-        r := str.tostring(n - brk) + " held / " + str.tostring(brk) + " broke   (" + lab + ")"
+        // PER TEST, not the running sum: lvH accumulates one clamped score per test, so
+        // dividing by n is what makes it comparable to a threshold measured on single
+        // touches. Comparing the sum would have made every level look better the more
+        // often it was tested.
+        ev  = (array.get(lvH, j) - hSeed * ((5 - j) - 3)) / n
+        lab = ev >= holdThr ? "holding" : ev <= failThr ? "failing" : "mixed"
+        r := str.tostring(n - brk) + " held / " + str.tostring(brk) + " broke   ("
+             + lab + ", " + str.tostring(ev, "#.##") + " vs " + str.tostring(holdThr, "#.##") + ")"
     r
 
 // A level is CONSUMED once it has been tagged grayAfter times, or once decay alone has
@@ -834,12 +897,15 @@ f_overlap() =>
 // ───────────────────────────── drawing ─────────────────────────────
 // One fixed pool of objects, created once and mutated. Recreating them every bar is
 // the usual way these scripts hit the object cap mid-session and silently stop drawing.
+var array<box>   bxPool = array.new<box>()
 var array<line>  lnPool = array.new<line>()
 var array<label> lbPool = array.new<label>()
 var array<line>  auxLn  = array.new<line>()
 var array<label> auxLb  = array.new<label>()
 if bar_index == 0
     for j = 0 to 4
+        array.push(bxPool, box.new(bar_index, close, bar_index, close, border_width = 0,
+             bgcolor = color.new(color.gray, 100)))
         array.push(lnPool, line.new(bar_index, close, bar_index, close))
         array.push(lbPool, label.new(bar_index, close, "", style = label.style_none,
              textalign = text.align_left))
@@ -852,6 +918,7 @@ if barstate.islast
     for j = 0 to 4
         ln = array.get(lnPool, j)
         lb = array.get(lbPool, j)
+        bx = array.get(bxPool, j)
         p = f_lv(j)
         if na(p)
             line.set_xy1(ln, x1, na)
@@ -859,6 +926,8 @@ if barstate.islast
             label.set_xy(lb, x2, na)
             label.set_text(lb, "")
             label.set_tooltip(lb, "")
+            box.set_top(bx, na)
+            box.set_bottom(bx, na)
         else
             g = 5 - j                                  // grade: one of each, 5/5 .. 1/5
             spent = f_spent(j)
@@ -874,6 +943,14 @@ if barstate.islast
             far = fadeFar and not na(atr) and atr > 0 and math.abs(close - p) > farATR * atr
             tp = spent ? 72 : math.min(88, 20 + (5 - g) * 11 + (far ? 24 : 0))
             wshort = showWall ? f_wallShort(j) : ""
+            // the band the engine actually tests, drawn at last
+            if showZone and not na(halfW)
+                box.set_lefttop(bx, x1, p + halfW)
+                box.set_rightbottom(bx, x2, p - halfW)
+                box.set_bgcolor(bx, color.new(base, math.min(97, 88 + (far ? 5 : 0) + (spent ? 4 : 0))))
+            else
+                box.set_top(bx, na)
+                box.set_bottom(bx, na)
             line.set_xy1(ln, x1, p)
             line.set_xy2(ln, x2, p)
             line.set_color(ln, color.new(base, tp))
@@ -904,6 +981,10 @@ if barstate.islast
                  + "\nD " + str.tostring(f_D(j), "#") + "%    H " + hTxt
                  + "\ntouches " + str.tostring(array.get(lvTch, j), "#")
                  + "   breaks " + str.tostring(array.get(lvBrk, j), "#")
+                 + (array.get(lvN, j) > 0
+                      ? " of " + str.tostring(array.get(lvN, j)) + " scored   (an arbitrary level breaks ≈ "
+                           + str.tostring(brkBase, "#") + "% of the time)"
+                      : "")
                  + "\ngamma " + str.tostring(array.get(lvGx, j), "#.##") + " $bn / 1%  →  "
                  + (na(array.get(lvGx, j)) or array.get(lvGx, j) == 0.0
                       ? "flat — no net hedging lean"
@@ -1034,13 +1115,15 @@ if barstate.islast
          text_halign = text.align_left, bgcolor = color.new(color.black, 70), tooltip = tip)
 
 // ───────────────────────────── alerts and markers ─────────────────────────────
+// Reads the OUTCOME THE ENGINE RECORDED rather than re-deriving one. v5 re-derived
+// it as away > thru, which is a different test from the one that filled lvBrk, so a
+// touch could print a rejection triangle and be tallied as a break in the same breath.
 f_anyScored(bool wantReject) =>
     bool t = false
     for j = 0 to 4
-        scored = array.get(lvDue, j) == -1 and array.get(lvSeen, j)
-        if scored and array.get(lvLast, j) == bar_index - evalEff
-            good = array.get(lvAway, j) > array.get(lvThru, j)
-            t := t or (wantReject ? good : not good)
+        o = array.get(lvOut, j)
+        if o != 0 and array.get(lvLast, j) == bar_index - evalEff
+            t := t or (wantReject ? o > 0 : o < 0)
     t
 
 // A live, stateless read of "price is in a zone right now", for the one alert where
