@@ -968,7 +968,7 @@ if bar_index == 0
 if barstate.islast
     // Nothing may be drawn further back than the buffer declared above, whatever the
     // session length or the user's line-length setting. This floor is the guard.
-    // math.max(0, ...) matters: on a chart with fewer than 4500 bars this floor would
+    // math.max(0, ...) matters: on a chart with fewer than 1900 bars this floor would
     // otherwise be negative, and so would x1 whenever backBars reached past bar zero.
     xFloor = math.max(0, bar_index - 1900)
     x1 = math.max(xFloor, anchorSes ? math.max(sesBar, bar_index - 1500) : bar_index - backBars)
