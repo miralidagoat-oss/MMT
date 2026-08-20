@@ -227,7 +227,8 @@
 //     session cumulative delta that nothing ever read. The walls are now tagged on the
 //     levels that are them, the flip drives a regime line, cumulative delta is
 //     normalised into a session bias on the badge, and the rest is on the badge's
-//     tooltip. `max_boxes_count` is gone -- the script has never drawn a box.
+//     tooltip. (`max_boxes_count` was removed here as unused; v5 puts it back, because
+//     v5 draws the scoring zone as a box.)
 //
 //  Also: manual instrument override (substring matching would call ESS an ES chart),
 //  optional ATR-based zone width frozen at the open, distance fading, lines anchored
@@ -399,9 +400,10 @@ f_latestRow(string blob, string tag) =>
                         hit  := r
     hit
 
-// Oldest / newest date stamped for a tag. The OLDEST is what gates the fallback: it is
-// the first session the key claims to know anything about, and everything before it
-// must draw nothing rather than borrowing a row from the future.
+// Oldest / newest date stamped for a tag. The NEWEST is what gates the fallback — see
+// f_fallbackOK. v4 gated on the oldest and got it wrong in both directions; the
+// wantMax = false branch is kept because it costs one argument and the next thing to
+// need a coverage window will want it.
 f_edgeNum(string blob, string tag, bool wantMax) =>
     float best = na
     if str.length(blob) > 0 and str.length(tag) > 0
@@ -572,16 +574,13 @@ if newSes or bar_index == 0
             array.set(lvPx, j, f_num(f, 9  + j * 3))
             array.set(lvGx, j, f_num(f, 10 + j * 3))
             array.set(lvP,  j, f_num(f, 11 + j * 3))
-    // Zone width, frozen for the session. ATR mode reads the ATR standing at the open,
-    // which — like everything else in the key — is known before the session trades.
-    // ATR is na for the first 14 bars of a chart, and nz(atr) * tolATR collapses the
-    // zone to a single tick — a session whose touches can never register, on the only
-    // sessions where nothing on screen would explain why.
-    // atr[1], not atr. This block runs on every TICK of the session's opening bar, and
-    // ta.atr(14) moves while that bar is forming — so `atr` would have the zone width
-    // breathing for the length of one bar on exactly the bar that sets it, which is the
-    // drift the freeze exists to prevent. atr[1] is the value standing before the
-    // session traded, which is what the comment above has always claimed it was.
+    // Zone width, frozen for the session, off a value that exists BEFORE it trades.
+    // atr[1], not atr: this block runs on every tick of the opening bar and ta.atr(14)
+    // moves while that bar forms, so `atr` would have the width breathing for one bar
+    // on exactly the bar that sets it — the drift the freeze exists to prevent.
+    // The stepW fallback matters too: atr is na for a chart's first 14 bars, and
+    // nz(atr) * tolATR would collapse the zone to a single tick, giving a session whose
+    // touches can never register and nothing on screen to explain why.
     stepW = nz(kStep, 1.0) * tolMult * 0.5
     atrW  = nz(atr[1]) * tolATR * 0.5
     halfW := math.max(syminfo.mintick, tolMode == "ATR fraction" and atrW > 0 ? atrW : stepW)
@@ -1116,9 +1115,9 @@ if barstate.islast
          text_halign = text.align_left, bgcolor = color.new(color.black, 70), tooltip = tip)
 
 // ───────────────────────────── alerts and markers ─────────────────────────────
-// Reads the OUTCOME THE ENGINE RECORDED rather than re-deriving one. v5 re-derived
-// it as away > thru, which is a different test from the one that filled lvBrk, so a
-// touch could print a rejection triangle and be tallied as a break in the same breath.
+// Reads the OUTCOME THE ENGINE RECORDED rather than re-deriving one. An earlier draft
+// re-derived it as away > thru, which is a different test from the one that filled
+// lvBrk, so a touch could print a rejection triangle and be tallied as a break at once.
 f_anyScored(bool wantReject) =>
     bool t = false
     for j = 0 to 4
