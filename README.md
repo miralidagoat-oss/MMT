@@ -231,3 +231,83 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+---
+
+# QT KEY — options reaction zones (ES / NQ)
+
+`indicators/qt_key_reaction_zones.pine` — a second, unrelated indicator. It draws five
+graded dealer-gamma levels per session from a key pasted in as frozen text, and scores
+what price does at each one.
+
+TradingView has no options feed and Pine cannot fetch anything, so the levels are
+computed off-platform from the SPX and NDX option books and pasted in. The script's job
+is to place them correctly, decay them honestly, and say loudly when it cannot.
+
+## v4 audit (why v3 was drawing the wrong prices in the right shape)
+
+1. **The key is in cash index points; the chart is not.** The books are SPX and NDX, so
+   every key price is a cash price. ES and NQ trade at cash plus basis — roughly 30–35
+   points on ES and 150+ on NQ at 4% front rates with 60 days to expiry, against a
+   default zone half-width of **2.5 ES points**. v3 drew them untranslated: a 10–30
+   zone-width error, on every level, all session, that looked entirely plausible on the
+   chart. v4 measures the basis itself (futures minus cash, sampled only on bars where
+   the cash index is actually ticking, since an overnight cash print is a frozen 16:00
+   close), smooths it, and **freezes it at the session open** so a level cannot move
+   under a resting order. The badge always prints the offset in force.
+2. **`useLatest` painted all of history with today's key.** The "draw the newest row if
+   none matches" fallback fired on every session that missed — which is every session
+   older than the key. Months of history were drawn, touched, scored and marked against
+   levels that did not exist then, and the level traces that looked like a record of
+   past sessions were a record of nothing. The fallback now only reaches forward from
+   the key's own oldest row, which still covers the case it was written for (an RTH-only
+   chart whose last bar sits in the previous session, where the newest row is stamped
+   for a session the chart has not reached yet).
+3. **The markers repainted, under a header that said nothing did.** Outcomes were scored
+   at `bar_index == due` on a bar that was still forming, so a rejection triangle could
+   become a break triangle before that bar closed, and alerts could fire on a state that
+   then vanished. The engine now runs on confirmed bars only. That also removes a silent
+   corruption: Pine restores scalars on each realtime tick but mutates **array contents
+   in place**, so v3's per-tick volume accumulation added the bar's running volume once
+   per tick and inflated consumption without bound. Markers are drawn with
+   `offset = -evalEff` so the triangle sits on the bar that was touched rather than five
+   bars to the right of it. Intrabar tagging survives as its own named alert.
+4. **`coolBars < evalBars` silently destroyed scoring.** A re-touch overwrote the pending
+   window before it scored, and D/H just stopped moving with nothing on screen to say
+   so. The window is clamped to the cooldown and the badge reports the clamp.
+5. **H was mostly prior.** A 5/5 was seeded at logit 1.6 (83%) against at most ±1.5 of
+   evidence per test and at most three tests — a 5/5 that broke on its first test still
+   printed 52%. The seed is now `0.25 × (grade − 3)`, spanning 62% to 38%, and the
+   tooltip prints the sample count beside it. Untested levels still print "untested".
+6. **Volume at a level is pro-rated** by the fraction of the bar's range inside the zone.
+   A one-tick wick used to credit the level with the whole bar.
+7. **Key age is an alarm, not a date.** A six-day-old key was styled like a one-day-old
+   one; stale keys now read `STALE 6d` in red.
+8. **Nothing is computed and then ignored.** Net gamma, both walls, charm, vanna, the
+   break counter and a session cumulative delta were all computed and never displayed.
+   The walls are tagged on the levels that are them, the flip drives a regime line,
+   delta is normalised into a session bias, and the rest is on the badge tooltip.
+   `max_boxes_count` is gone — the script has never drawn a box.
+
+Also added: manual instrument override (substring matching calls `ESS` an ES chart),
+optional ATR-based zone width frozen at the open, distance fading, session-anchored
+lines, intraday-only and overlapping-zone warnings, and a dynamic `alert()` carrying the
+level actually tagged.
+
+## What is proven and what is not
+
+Unchanged from v3, and worth repeating: Black-Scholes gamma is closed form, and a desk
+long gamma that delta-hedges must buy dips and sell rallies. What is *not* established is
+**who** is long — open interest is unsigned, and "dealers are long calls, short puts" is
+an assumption every public gamma chart inherits without testing. The hedging identity
+forces damped volatility near a strike, which is not the same claim as a tradeable
+rejection. **No win rate is printed anywhere on the chart, because none has been
+measured.** These are reaction zones, not reversal zones.
+
+## Not in this repo
+
+The generator that produces the key is not here. The r=0.995 greeks check, the
+6,543-session probability calibration and the level-selection scoring all live
+off-platform, and none of them can be re-run from this repository the way
+`backtest/` lets you re-run the alpha-matrix numbers. Until it is committed, those
+claims are documentation, not evidence.
