@@ -96,6 +96,36 @@ def greeks(S, K, T, r, q, sig, is_call):
     return gamma, vanna, charm
 
 
+def complete_bars(bars, now_utc):
+    """Drop the final daily bar while it is still forming, and say which date anchors.
+
+    Yahoo publishes a daily bar for the CURRENT session the moment it opens, and its
+    "close" is the live price. Both inputs to the reach model -- the anchor and ATR14 --
+    are supposed to be values known BEFORE the session trades, so taking that bar
+    anchors tomorrow's key on today's tape. It shows up as an anchor identical to spot
+    and a level sitting on the current price with P(hit) 99.6%, which is not a level,
+    it is the price. Run after the close and nothing is dropped.
+
+    The cutoff is 21:00 UTC, which is the 16:00 ET cash close under standard time and
+    an hour past it under DST. Deliberately conservative: being one session early is a
+    key you can still read, while anchoring on a live price is a key that lies.
+    """
+    if not bars:
+        return bars, None, False
+    last = dt.datetime.utcfromtimestamp(bars[-1][0]).date()
+    if last == now_utc.date() and now_utc.hour < 21 and len(bars) > 1:
+        return bars[:-1], dt.datetime.utcfromtimestamp(bars[-2][0]).date(), True
+    return bars, last, False
+
+
+def session_after(d):
+    """The session a key anchored on `d` applies to: the next weekday."""
+    n = d + dt.timedelta(days=1)
+    while n.weekday() >= 5:
+        n += dt.timedelta(days=1)
+    return n.strftime("%Y%m%d")
+
+
 def wilder_atr(bars, n=14):
     if len(bars) <= n:
         return None
@@ -209,11 +239,17 @@ def find_flip(books, r, q, sign, lo, hi, steps=240):
 def build_row(tag, session, max_dte, r, sign, iv_floor, reach, verbose=True):
     cfg = INSTRUMENTS[tag]
     q = cfg["q"]
-    now = int(dt.datetime.now(dt.timezone.utc).timestamp())
+    now_utc = dt.datetime.now(dt.timezone.utc)
+    now = int(now_utc.timestamp())
 
     bars = yahoo.daily_bars(cfg["cash"], start="2023-01-01")
+    bars, anchor_date, dropped = complete_bars(bars, now_utc)
     atr = wilder_atr(bars)
     anchor = bars[-1][4]
+    # the key belongs to the session that FOLLOWS the close it is anchored on, so the
+    # stamp is derived from the data rather than from the wall clock
+    if session is None:
+        session = session_after(anchor_date)
 
     merged = {}          # strike IN THE FRAME OF THE FIRST BOOK -> dollar gamma
     books = []
@@ -288,23 +324,17 @@ def build_row(tag, session, max_dte, r, sign, iv_floor, reach, verbose=True):
     row = ",".join([tag, session] + f)
 
     if verbose:
-        print("    anchor %.2f  ATR14 %.2f  step %.2f  separation %.2f"
-              % (anchor, atr or 0.0, step, sep))
+        print("    anchor %.2f (%s close)%s  ATR14 %.2f  step %.2f  separation %.2f"
+              % (anchor, anchor_date,
+                 "  [today's unfinished bar dropped]" if dropped else "",
+                 atr or 0.0, step, sep))
+        print("    key stamped for session %s" % session)
         print("    flip %.2f   net %.3f $bn/1%%   CW %.2f   PW %.2f" % (flip, net, cw, pw))
         print("    %-4s %12s %12s %8s %8s" % ("rank", "price", "$bn/1%", "P(hit)", "score"))
         for i, c in enumerate(chosen):
             print("    %d/5  %12.2f %12.4f %7.1f%% %8.4f"
                   % (5 - i, c["px"], c["gex"], 100 * c["p"], c["score"]))
     return row
-
-
-def next_session(d=None):
-    """Key is generated after the close and stamped for the NEXT trading session."""
-    d = d or dt.date.today()
-    n = d + dt.timedelta(days=1)
-    while n.weekday() >= 5:
-        n += dt.timedelta(days=1)
-    return n.strftime("%Y%m%d")
 
 
 def main():
@@ -318,7 +348,8 @@ def main():
                     help="standard = dealers long calls / short puts (the usual, UNPROVEN, "
                          "convention). inverted flips it, so you can see what the "
                          "assumption is actually worth.")
-    ap.add_argument("--session", default=None, help="yyyymmdd stamp (default: next weekday)")
+    ap.add_argument("--session", default=None,
+                    help="yyyymmdd stamp (default: derived from the anchor close)")
     ap.add_argument("--params", default=None, help="reach params json from calibrate_reach.py")
     ap.add_argument("--out", default=None, help="write the key string here")
     ap.add_argument("--append", action="store_true", help="append to --out instead of replacing")
@@ -333,15 +364,14 @@ def main():
         print("reach params loaded from %s" % a.params)
 
     sign = 1.0 if a.dealer_sign == "standard" else -1.0
-    session = a.session or next_session()
-    print("session stamp %s   max-dte %.0f   dealer-sign %s"
-          % (session, a.max_dte, a.dealer_sign))
+    print("max-dte %.0f   dealer-sign %s   session stamp %s"
+          % (a.max_dte, a.dealer_sign, a.session or "derived from the anchor close"))
 
     rows = []
     for tag in ("ES", "NQ"):
         print("\n[%s]" % tag)
         try:
-            rows.append(build_row(tag, session, a.max_dte, a.rate, sign, a.iv_floor, reach[tag]))
+            rows.append(build_row(tag, a.session, a.max_dte, a.rate, sign, a.iv_floor, reach[tag]))
         except Exception as e:                          # noqa: BLE001
             print("    FAILED: %s" % e, file=sys.stderr)
 
