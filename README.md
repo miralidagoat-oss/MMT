@@ -311,3 +311,101 @@ The generator that produces the key is not here. The r=0.995 greeks check, the
 off-platform, and none of them can be re-run from this repository the way
 `backtest/` lets you re-run the alpha-matrix numbers. Until it is committed, those
 claims are documentation, not evidence.
+
+---
+
+# QT KEY — options reaction zones (`indicators/qt_key_reaction_zones.pine`)
+
+Five graded options-gamma reaction levels for ES and NQ, chosen by a scoring model
+rather than by hand, drawn on an intraday futures chart in the chart's own price
+frame. One script runs both instruments; it reads the ticker and selects its own
+rows out of the pasted key.
+
+## Reproducing the numbers
+
+The indicator consumes a pasted key string, because TradingView has no options feed
+and Pine cannot fetch one. Everything upstream of that paste is in `tools/`:
+
+```bash
+python3 tools/gamma_key.py --max-dte 7        # build today's key, printing its working
+python3 tools/calibrate_reach.py              # refit + revalidate P(reached)
+```
+
+`gamma_key.py` pulls the listed chains, computes Black-Scholes gamma/vanna/charm per
+contract, signs them by the dealer-positioning convention, sums per strike, locates
+the gamma flip by re-pricing the whole book across a spot grid, scores every strike
+and prints the top five with the working shown. `--dealer-sign inverted` flips the
+one assumption the whole construct rests on, so you can see what it is worth.
+
+Both keys merge an index book with its tracking ETF (`^SPX`+`SPY`, `^NDX`+`QQQ`).
+That is partly a data fix — measured 2026-08-20, open interest inside 7 days was
+4,044,633 contracts on SPY against 12,991 on `^SPX` — and partly correct: the
+near-tenor hedging inventory really does sit in the ETF and SPX books.
+
+## What is measured, and what it measures
+
+`calibrate_reach.py` fits P(price reaches a level today) on 5,016 sessions
+(2000-2019) and validates on 1,663 holdout sessions (2020-2026) it never saw. The
+label is exact — a level `u` ATRs above the prior close is reached iff the session
+high clears it — so daily O/H/L answers it with no path model and no estimation
+error in the label. Both inputs (prior close, ATR14 through the prior session) are
+known before the open, so nothing leaks.
+
+| | ES | NQ |
+|---|---|---|
+| holdout MAE, 0.1–3.0 ATR grid | 1.68 pp | 1.59 pp |
+| holdout MAE, levels ≥ 0.4 ATR out | 1.44 pp | 1.30 pp |
+| worst point (0.1 ATR from prior close) | +8.1 / +12.2 pp | +9.3 / +12.1 pp |
+
+The fit is over-confident within a tenth of an ATR of the prior close. Levels rarely
+sit there and the tooltip prints the probability, but it is a real weak spot and it
+is not hidden.
+
+**Not measured:** whether a level *rejects* once reached. There is no labelled data
+for it in this repo, so the gamma-share factor is an unweighted raw proxy, no
+exponent trades the two factors off, and **no win rate is printed anywhere on the
+chart.** Also unproven, and inherited by every public gamma chart: open interest is
+unsigned, so "dealers are long calls, short puts" is an assumption about customer
+behaviour, not a measurement. The hedging identity forces *damped volatility* near a
+strike, which is not the same claim as a tradeable rejection.
+
+## v5 audit — six of v4's own claims did not survive
+
+1. **The generator and the fit did not exist.** v4's header cited a 6,543-session
+   model, r=0.995 against an exchange greeks feed, and a CLV proxy good to r=0.73 —
+   none runnable. Two are now in `tools/`; the two that could not be reproduced were
+   deleted rather than restated. Refitting moved the honest holdout error from a
+   claimed 0.6 pp to 1.4–1.7 pp and exposed the 0.1-ATR weak spot above.
+2. **The fallback window was wrong in both directions.** Gated on the key's *oldest*
+   row, it let a month-old key paint a month of history with one session's levels
+   (the bug v4's changelog claims to have fixed, alive in the other direction) while
+   *blocking* the only case it was written for — a single-row key stamped for
+   tomorrow has `oldest == newest == tomorrow`, so today failed `sesNum >= oldest`.
+   Now a bounded window either side of the *newest* row.
+3. **H stopped pretending to be a percentage.** At most three tests per session,
+   reset daily; no weighting turns a logistic on n≤3 into a percentage. It prints the
+   record — "2 held / 1 broke (holding)" — with the grade seed subtracted back out.
+4. **The decay weights are inputs now.** v4 refused to weight the two selection
+   factors on the grounds that it would be tuning by taste, then hard-coded seven
+   unfitted constants in the decay engine. They are exposed under a heading saying so.
+5. **Two things labelled "frozen at the open" were not.** Zone width and basis both
+   latched values still absorbing the opening bar's ticks, settling over the first
+   bar instead of before it. Now `atr[1]` and a previous-bar-committed estimate.
+6. **Cross-asset confirmation means something.** v4 shipped it disabled and admitted
+   it "fired too often to be informative" — a bug report, not a setting. It read all
+   five of the other book's levels in either direction. It now reads only the top
+   grades and carries the *direction* of the reaction.
+
+Also: a zone width that can no longer collapse to one tick during ATR warmup; zero
+or missing gamma reads "flat" instead of ACCELERATES; the NO KEY badge names the
+newest row it does have.
+
+## The key is in cash index points; the chart is not
+
+The books are SPX and NDX, so every price in the key is a **cash index price**. ES
+and NQ trade at cash plus basis — tens of points on ES, over a hundred on NQ — which
+against a default zone half-width of a few points is a ten-to-thirty zone-width
+error that looks entirely plausible on the chart. The script measures the basis
+itself: futures minus cash, sampled only on bars where the cash index is actually
+ticking, smoothed, and frozen at the session open. The badge always prints the
+offset in force and says so when it could not measure one.
