@@ -172,6 +172,30 @@
 //     missed could be scored as a tag, and there was no way to see why. The band is
 //     shaded now. It is the same band, it was simply never drawn.
 //
+//  ─── v5.1, from a live MNQ report
+//  K. THE SCRIPT DIED ON LONG SESSIONS. No max_bars_back was declared, so Pine inferred
+//     one (547 bars on the reported chart) — but `anchorSes` anchors every level line to
+//     the SESSION OPEN, and a drawing X is a bar index. An extended-hours futures
+//     session is 1380 minutes, which is 1380 bars on a 1m chart and 690 on a 2m, so as
+//     soon as a session outgrew the inferred buffer the script threw
+//         "the requested historical offset (548) is beyond the historicals buffer limit (547)"
+//     and stopped. An error, not a clipped line, and steadily more likely the lower the
+//     timeframe — on precisely the charts this indicator exists to be used on. The
+//     buffer is declared now and every drawing coordinate is clamped inside it.
+//
+//  L. THE CASH REFERENCE READ AS THE SUBJECT. The reporter saw "SP:SPX" and
+//     "NASDAQ:NDX" in the settings, concluded the indicator was analysing the indices
+//     rather than the futures they trade, and changed them to futures symbols. That is
+//     a reasonable reading of what those fields looked like, and it silently breaks
+//     everything: futures-minus-"cash" collapses to ~0, so the levels stay in the cash
+//     frame and sit ~150 NQ points from where they belong, on a chart that still looks
+//     entirely plausible. Nothing said a word. Now the fields are named "cash INDEX
+//     (not a future)", the badge names the CHART being analysed next to the instrument
+//     tag, it says "levels shifted +148.20 onto this chart" rather than "basis vs NDX",
+//     and if the reference ever tracks the chart to within 0.05% — which a real index
+//     never does, NQ runs about 0.5% over NDX — it says so in red and names the symbol
+//     to put back. MNQ, MES, NQ and ES all work with nothing changed.
+//
 //  Also in v5: a zone width that can no longer collapse to one tick during a chart's
 //  ATR warmup; zero or missing gamma reads "flat" instead of ACCELERATES; the NO KEY
 //  badge names the newest row it does have.
@@ -235,8 +259,23 @@
 //  to the session that owns them, an intraday-only warning, an overlapping-zone
 //  warning, and a dynamic alert() carrying the level that was actually tagged.
 // ═════════════════════════════════════════════════════════════════════════════════════
+// max_bars_back is NOT optional and its absence was a live runtime error.
+// Pine infers how much history to retain by watching the first few hundred bars, and
+// it inferred 547 here. But `anchorSes` anchors every level line to the SESSION OPEN,
+// and a drawing coordinate is a bar index: on an extended-hours futures chart the
+// session runs 1380 minutes, which on a 1m chart is 1380 bars and on a 2m chart is 690,
+// so the moment a session grew past the inferred buffer the script died with
+//     "the requested historical offset (548) is beyond the historicals buffer limit (547)"
+// -- an error, not a truncated line, and one that got MORE likely the lower the
+// timeframe and the longer the session. Reported on MNQ, which is exactly the case
+// this indicator is for.
+// 2000 rather than the platform maximum of 5000: nothing else in this script reaches
+// past offset 1, and every drawing X is clamped to 1500 bars back below, so a larger
+// buffer would only cost load time across six request.security series to protect
+// against a reach that cannot happen. The clamp is what makes the small buffer safe.
 indicator("QT KEY — options reaction zones", "QT KEY", overlay = true,
-     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 20)
+     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 20,
+     max_bars_back = 2000)
 
 // ───────────────────────────────── inputs ─────────────────────────────────
 gK = "Daily key"
@@ -255,8 +294,17 @@ basisMode = input.string("Auto — measure vs cash index", "Key price frame", gr
      options = ["Auto — measure vs cash index", "Off — key already in the chart's frame", "Manual offset"],
      tooltip = "The key is built from the SPX and NDX option books, so its prices are CASH index prices. ES and NQ trade at cash plus basis — tens of points on ES, over a hundred on NQ. Auto measures futures minus cash on bars where the cash index is actually ticking, smooths it, and freezes it at the session open so the levels cannot drift. Switch to Off only if your generator already emits futures-frame prices.")
 basisManual = input.float(0.0, "Manual offset (points, added to every key price)", step = 0.25, group = gB)
-esCash = input.symbol("SP:SPX", "ES cash reference", group = gB)
-nqCash = input.symbol("NASDAQ:NDX", "NQ cash reference", group = gB)
+// THESE MUST STAY CASH INDICES. They are not the instrument being analysed -- the
+// chart is. They exist only to measure how far the future trades above its own cash
+// index, because the option book that produced the levels is priced in cash points.
+// Point one of these at a future and futures-minus-"cash" collapses to roughly zero,
+// the levels stay in the cash frame, and every one of them sits ~150 NQ points from
+// where it belongs while the chart still looks entirely reasonable. The badge now
+// detects that and says so, but the right answer is to leave these alone.
+esCash = input.symbol("SP:SPX", "ES cash INDEX (not a future)", group = gB,
+     tooltip = "Leave this as the S&P 500 cash index. It is not the symbol being analysed — your chart is. This is only the reference the basis is measured against, and setting it to ES, MES or any other future makes the measurement collapse to zero and puts every level in the wrong price frame.")
+nqCash = input.symbol("NASDAQ:NDX", "NQ cash INDEX (not a future)", group = gB,
+     tooltip = "Leave this as the Nasdaq-100 cash index. It is not the symbol being analysed — your chart is. MNQ, NQ and MES all work as CHARTS with no setting changed; this field is only the reference the basis is measured against, and pointing it at a future makes the measurement collapse to zero and puts every level in the wrong price frame.")
 basisLen = input.int(60, "Basis smoothing (live cash samples)", minval = 1, maxval = 5000, group = gB)
 
 gL = "Levels"
@@ -264,7 +312,7 @@ lvlCol    = input.color(#A855F7, "Level colour", group = gL)
 deadCol   = input.color(#787B86, "Consumed colour", group = gL)
 showFlipLine = input.bool(true, "Gamma flip line", group = gL)
 anchorSes = input.bool(true, "Anchor lines to the session open", group = gL, tooltip = "On, each line spans exactly the session its key row belongs to. Off, it runs a fixed number of bars back regardless of where the session started.")
-backBars  = input.int(55, "Line length (bars back, when not anchored)", minval = 5, group = gL)
+backBars  = input.int(55, "Line length (bars back, when not anchored)", minval = 5, maxval = 1500, group = gL)
 extendR   = input.int(30, "Extend right (bars)", minval = 0, group = gL)
 showSign  = input.bool(false, "Dash the ACCELERATES levels", group = gL, tooltip = "Off by default so the levels read as one set. On, a dashed line means negative dealer gamma — hedging runs WITH the move there instead of against it.")
 showWall  = input.bool(true, "Tag the call / put wall on the label", group = gL)
@@ -656,6 +704,11 @@ isManual = basisMode == "Manual offset"
 basisAdj = isManual ? basisManual : isAuto ? nz(basisSelf, 0.0) : 0.0
 basisX   = isAuto ? nz(basisOther, 0.0) : 0.0
 basisBad = isAuto and na(basisSelf)
+// A cash index and its future do NOT track to within a tenth of a percent -- NQ runs
+// roughly 0.5% over NDX. If the reference does, it is not a cash index: it is another
+// future, or this chart again. Cheap arithmetic, and it catches the one settings
+// mistake that silently invalidates every level on the screen.
+basisSuspect = isAuto and not na(cashPx) and close > 0 and math.abs(cashPx - close) / close < 0.0005
 
 // Every consumer of a key price goes through here. The arrays hold the key exactly as
 // pasted; the chart frame is applied at the point of use, once, in one place.
@@ -913,7 +966,12 @@ if bar_index == 0
     array.push(auxLb, label.new(bar_index, close, "", style = label.style_none))
 
 if barstate.islast
-    x1 = anchorSes ? math.max(sesBar, bar_index - 1500) : bar_index - backBars
+    // Nothing may be drawn further back than the buffer declared above, whatever the
+    // session length or the user's line-length setting. This floor is the guard.
+    // math.max(0, ...) matters: on a chart with fewer than 4500 bars this floor would
+    // otherwise be negative, and so would x1 whenever backBars reached past bar zero.
+    xFloor = math.max(0, bar_index - 1900)
+    x1 = math.max(xFloor, anchorSes ? math.max(sesBar, bar_index - 1500) : bar_index - backBars)
     x2 = bar_index + extendR
     for j = 0 to 4
         ln = array.get(lnPool, j)
@@ -1053,7 +1111,7 @@ if barstate.islast
              + (na(newestMine) ? "" : "  (newest row " + str.tostring(newestMine, "#") + ")")
         scol := color.red
     else if keyExact
-        l1   := myTag + "  KEY OK · " + str.tostring(n)
+        l1   := myTag + " · " + syminfo.ticker + "  KEY OK · " + str.tostring(n)
         scol := lvlCol
     else if keyAge < 0
         l1   := myTag + "  KEY " + keyDay + " (next session) · " + str.tostring(n)
@@ -1066,12 +1124,15 @@ if barstate.islast
         scol := color.red
 
     bsgn = basisAdj >= 0 ? "+" : "−"
-    string l2 = not isAuto and not isManual ? "frame: chart (no basis applied)"
-              : isManual ? "basis " + bsgn + str.tostring(math.abs(basisAdj), "#.##") + "  manual"
-              : basisBad ? "⚠ basis unavailable — " + cashSym + " not loading"
-              : "basis " + bsgn + str.tostring(math.abs(basisAdj), "#.##") + "  vs " + cashSym
+    string l2 = not isAuto and not isManual ? "levels drawn as keyed — no basis applied"
+              : isManual ? "levels shifted " + bsgn + str.tostring(math.abs(basisAdj), "#.##") + " onto this chart  (manual)"
+              : basisBad ? "⚠ cannot measure basis — " + cashSym + " not loading"
+              : "levels shifted " + bsgn + str.tostring(math.abs(basisAdj), "#.##")
+                   + " onto this chart  (measured vs " + cashSym + ")"
                    + (basisSelfN < 100 ? "  ⚠ thin (" + str.tostring(basisSelfN) + " samples)" : "")
     if basisBad
+        scol := color.red
+    if basisSuspect
         scol := color.red
 
     string l3 = ""
@@ -1094,6 +1155,11 @@ if barstate.islast
         l4 := l4 + (str.length(l4) > 0 ? "\n" : "") + "⚠ cross-asset basis unmeasured — " + xCashSym
     if haveKey and f_overlap()
         l4 := l4 + (str.length(l4) > 0 ? "\n" : "") + "⚠ zones overlap at this width"
+    if basisSuspect
+        l4 := l4 + (str.length(l4) > 0 ? "\n" : "")
+             + "⚠ " + cashSym + " tracks this chart — that is a FUTURE, not a cash index."
+             + "\n   Basis reads ~0, so every level is in the wrong price frame."
+             + "\n   Set it back to " + (myTag == "NQ" ? "NASDAQ:NDX" : "SP:SPX") + "."
 
     txt = l1 + "\n" + l2 + (str.length(l3) > 0 ? "\n" + l3 : "")
          + (str.length(lD) > 0 ? "\n" + lD : "") + (str.length(l4) > 0 ? "\n" + l4 : "")
