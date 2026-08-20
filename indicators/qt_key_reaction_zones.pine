@@ -1,0 +1,1231 @@
+//@version=6
+// ═════════════════════════════════════════════════════════════════════════════════════
+//  QT KEY — options reaction zones for ES and NQ
+// ─────────────────────────────────────────────────────────────────────────────────────
+//  v5 — FIVE GRADED LEVELS, CHOSEN BY THE MODEL. Nothing to pick in the settings.
+//
+//  ─── HOW THE FIVE ARE CHOSEN
+//  Every gamma concentration in the near book, PLUS the call wall and the put wall,
+//  goes into one candidate pool and each is scored:
+//
+//      score = P(price reaches it today) x (its share of the largest gamma in the book)
+//
+//  The first factor is a real, calibrated probability, and it is REPRODUCIBLE: run
+//  tools/calibrate_reach.py and it refits from public data in about a minute. A level
+//  at anchor+d is reached if and only if the session high clears anchor+d, so daily
+//  O/H/L answers it exactly -- no path model, no estimation error in the label.
+//  Anchored on the prior close, scaled by ATR14 through the prior session; both known
+//  before the open, so nothing leaks. Fitted on 5,016 sessions (2000-2019), validated
+//  on 1,663 holdout sessions (2020-2026) it never saw:
+//
+//      holdout calibration error, mean over the 0.1-3.0 ATR grid   ES 1.68pp  NQ 1.59pp
+//      the same, restricted to levels >= 0.4 ATR out               ES 1.44pp  NQ 1.30pp
+//      worst point, at 0.1 ATR from the prior close                over-predicts 8-12pp
+//
+//  That last row is the honest weak spot: inside a tenth of an ATR of the prior close
+//  the fitted curve is too confident. Levels rarely sit there, and the tooltip prints
+//  the probability so you can discount it yourself, but it is not hidden.
+//  The second factor is an UNWEIGHTED proxy. Whether a level rejects once reached has
+//  no labelled data behind it in this repo, so nothing is fitted to it and no exponent
+//  trades the two factors off -- that would be tuning by taste.
+//  Top five by score, separated by at least a strike step or 5% of ATR, graded 5/5
+//  down to 1/5. The walls earn their slots on merit like everything else.
+//
+//  ONE indicator, BOTH instruments. It reads the instrument off the chart and selects
+//  its own rows out of the key, so the same script runs on ES and NQ untouched.
+//
+//  ─── WHERE THE LEVELS COME FROM
+//  Dealer gamma, computed by tools/gamma_key.py in this repo from the listed option
+//  chain (open interest x Black-Scholes gamma, summed per strike, signed by side) and
+//  pasted in as frozen numbers. `python3 tools/gamma_key.py` prints the key and its
+//  working: which strikes, how much OI, what probability, what score, per level.
+//  TradingView has no options feed and Pine cannot fetch anything, so every options
+//  indicator on this platform works this way. The numbers are fixed before the session
+//  opens and never move.
+//
+//    ES levels  <- SPX book + SPY book folded into the SPX price frame
+//    NQ levels  <- NDX book + QQQ book folded into the NDX price frame
+//
+//  BOTH keys merge an index book with its tracking ETF, for a boring reason and a real
+//  one. The boring one: measured 2026-08-20, open interest inside 7 days was 4,044,633
+//  contracts on SPY against 12,991 on ^SPX, and 1,837,807 on QQQ against 26,153 on
+//  ^NDX -- free index-book OI is simply not populated on most expiries, so an
+//  index-only key gets built from whatever handful of far-OTM strikes happened to
+//  report, and looks entirely plausible while being empty. The real one: the near-tenor
+//  hedging inventory genuinely does sit in the ETF and SPX books, so merging them is
+//  the right book to read, not a workaround.
+//
+//  ─── THE KEY IS IN CASH INDEX POINTS. THE CHART IS NOT.
+//  The books are SPX and NDX, so every price in the key is a CASH index price. ES and
+//  NQ trade at cash plus basis -- carry minus dividends -- which at 4% front rates and
+//  60 days to expiry is roughly 30-35 points on ES and 150+ on NQ. Against a default
+//  zone half-width of 2.5 ES points that is a TEN TO THIRTY ZONE-WIDTH error, decaying
+//  toward zero only into expiry. Drawing the key untranslated puts every level in the
+//  wrong place, all session, in a way that looks entirely plausible on the chart.
+//  So the script measures the basis itself: futures minus cash, sampled only on bars
+//  where the cash index is actually ticking, smoothed, and FROZEN at the session open.
+//  Frozen matters -- a basis that drifts intrabar is a level that moves under you, and
+//  the whole point of this key is that it cannot. The badge always prints the offset in
+//  force, and says so when it could not measure one.
+//
+//  ─── THE GRADE IS A RANK, NOT A SCORE
+//  This draws the five levels the model picked and grades them 5/5 down to 1/5 by that
+//  ranking, so there is exactly one level at each grade every session. A 5/5 is the
+//  largest concentration in TODAY's book -- it is not comparable across days, and it is
+//  not a probability.
+//
+//  ─── WHAT IS PROVEN AND WHAT IS NOT
+//  Proven: Black-Scholes gamma is closed form, and the generator that computes it is
+//  in this repo at tools/gamma_key.py rather than described in a comment; a desk long
+//  gamma that delta-hedges MUST buy dips and sell rallies, which is arithmetic; open
+//  interest is reported data. No agreement against an exchange greeks feed is claimed,
+//  because this repo has no such feed to check against.
+//  NOT proven: WHO is long -- open interest is unsigned, and "dealers are long calls,
+//  short puts" is an assumption about customer behaviour that every public gamma chart
+//  inherits without testing. And critically: the hedging identity forces DAMPED
+//  VOLATILITY near a strike, which is NOT the same claim as a tradeable rejection.
+//  No win rate is printed anywhere on this chart, because none has been measured.
+//
+//  ─── THESE ARE REACTION ZONES, NOT REVERSAL ZONES
+//  A level is where forced flow is likely to appear. It resolves as a fade, as a break,
+//  or as a break-and-retest, and the engine scores all three. Trading THROUGH a level
+//  is a valid read of the same information.
+//
+// ─────────────────────────────────────────────────────────────────────────────────────
+//  v5 — WHAT CHANGED AND WHY
+//
+//  This pass was an audit of v4's own claims. Six of them did not survive it.
+//
+//  A. THE GENERATOR AND THE FIT ARE IN THE REPO NOW. v4's header cited a 6,543-session
+//     probability model, agreement with an exchange greeks feed at r=0.995, and a CLV
+//     proxy good to r=0.73 — none of which existed anywhere you could run. An indicator
+//     whose load-bearing numbers are pasted in from a program nobody can audit is only
+//     as trustworthy as a claim in a comment. So:
+//        tools/gamma_key.py        builds the key from live chains, prints its working
+//        tools/calibrate_reach.py  refits and re-validates P(reached) from public data
+//     Every number in this header now comes out of one of those two, and the two that
+//     could not be reproduced were DELETED rather than restated. Refitting moved the
+//     honest holdout error from the claimed 0.6pp to 1.4-1.7pp, and turned up a real
+//     weak spot at 0.1 ATR that v4 did not know it had.
+//
+//  B. THE FALLBACK WINDOW WAS WRONG IN BOTH DIRECTIONS. v4 gated "draw the newest row"
+//     on the key's OLDEST row. Forward, that let a month-old key paint a month of
+//     history with one session's levels — the exact bug v4's changelog claims to have
+//     fixed, alive in the other direction. Backward, it BLOCKED the only case the
+//     fallback was written for: a single-row key stamped for tomorrow has
+//     oldest == newest == tomorrow, so today failed the test. It is now a bounded
+//     window either side of the NEWEST row, and outside it the script draws nothing and
+//     says NO KEY.
+//
+//  C. H STOPPED PRETENDING TO BE A PERCENTAGE. At most three tests per session, reset
+//     every morning. No weighting makes a logistic on n<=3 into a percentage, so it now
+//     prints the record itself — "2 held / 1 broke (holding)" — and the label is taken
+//     from the evidence with the grade seed subtracted back out.
+//
+//  D. THE DECAY WEIGHTS ARE INPUTS, NOT SECRETS. v4 refused to weight the two selection
+//     factors against each other on the grounds that it would be tuning by taste, then
+//     hard-coded seven unfitted constants in the decay engine. They are now in their own
+//     group, under a heading that says what they are.
+//
+//  E. TWO THINGS THAT SAID "FROZEN AT THE OPEN" WERE NOT. Both the zone width and the
+//     basis latched a value that was still absorbing the opening bar's own ticks, so
+//     both settled over the first bar of the session instead of being fixed before it.
+//     They now latch atr[1] and a previous-bar-committed estimate respectively.
+//
+//  F. CROSS-ASSET CONFIRMATION MEANS SOMETHING NOW. v4 shipped it disabled and admitted
+//     it "fired too often to be informative" — which is a bug report, not a setting. It
+//     read all five of the other book's levels in either direction, so it was live
+//     almost always. It now reads only the top grades and carries the DIRECTION of the
+//     reaction, so a star needs both books defended the same way, not merely both busy.
+//
+//  G. THE HOLD LABEL HAS A NULL TO BEAT NOW. "Holding above +0.5" was a number chosen
+//     by eye, and a score means nothing without knowing what an uninformative level
+//     scores. tools/calibrate_outcome.py runs THIS engine, unmodified, over levels
+//     placed where real levels sit but chosen with no information in them. On 14,454
+//     touches across ES and NQ at 5m, 15m and 60m:
+//
+//         median +0.21      p30 -0.78      p70 +1.16      breaks 43-47% of touches
+//
+//     So an arbitrary level does not score zero, and the old +0.5 was calling about
+//     three in five of them "holding". The thresholds are now that null's p70 and p30,
+//     which gives the label a definition: a level reads "holding" when its average test
+//     beats 70% of levels that know nothing. The label is also computed PER TEST rather
+//     than off the running sum, which had made every level look better the more often
+//     it was tested. The break count is printed against the 45% null beside it.
+//     The score is ATR-normalised and the null's median moved only 0.196 across all six
+//     instrument/timeframe cells, which is why one pair of thresholds serves any chart.
+//
+//  H. ONE DEFINITION OF A BREAK. The tally and the consumption term called it a break
+//     when the excursion through the level exceeded N half-widths; the MARKER called it
+//     one when thru exceeded away. Two different tests, so a bar that spiked through and
+//     then rejected hard could print a rejection triangle and be tallied as a break in
+//     the same breath. The engine now records its outcome once and everything reads it.
+//
+//  I. THE SESSION LENGTH IS MEASURED, NOT ASSUMED. The clock term needs to know how long
+//     a session is, and the default said 390 minutes. On an extended-hours futures chart
+//     the session runs 1380, so the clock saturated a fifth of the way in and greyed out
+//     every level by mid-morning with nothing on screen to explain it. It now counts the
+//     bars in the session that just ended.
+//
+//  J. THE SCORING ZONE IS VISIBLE. Touches, breaks and consumption were all measured
+//     against price ± half-width while the chart drew a LINE — so a wick that visibly
+//     missed could be scored as a tag, and there was no way to see why. The band is
+//     shaded now. It is the same band, it was simply never drawn.
+//
+//  ─── v5.1, from a live MNQ report
+//  K. THE SCRIPT DIED ON LONG SESSIONS. No max_bars_back was declared, so Pine inferred
+//     one (547 bars on the reported chart) — but `anchorSes` anchors every level line to
+//     the SESSION OPEN, and a drawing X is a bar index. An extended-hours futures
+//     session is 1380 minutes, which is 1380 bars on a 1m chart and 690 on a 2m, so as
+//     soon as a session outgrew the inferred buffer the script threw
+//         "the requested historical offset (548) is beyond the historicals buffer limit (547)"
+//     and stopped. An error, not a clipped line, and steadily more likely the lower the
+//     timeframe — on precisely the charts this indicator exists to be used on. The
+//     buffer is declared now and every drawing coordinate is clamped inside it.
+//
+//  L. THE CASH REFERENCE READ AS THE SUBJECT. The reporter saw "SP:SPX" and
+//     "NASDAQ:NDX" in the settings, concluded the indicator was analysing the indices
+//     rather than the futures they trade, and changed them to futures symbols. That is
+//     a reasonable reading of what those fields looked like, and it silently breaks
+//     everything: futures-minus-"cash" collapses to ~0, so the levels stay in the cash
+//     frame and sit ~150 NQ points from where they belong, on a chart that still looks
+//     entirely plausible. Nothing said a word. Now the fields are named "cash INDEX
+//     (not a future)", the badge names the CHART being analysed next to the instrument
+//     tag, it says "levels shifted +148.20 onto this chart" rather than "basis vs NDX",
+//     and if the reference ever tracks the chart to within 0.05% — which a real index
+//     never does, NQ runs about 0.5% over NDX — it says so in red and names the symbol
+//     to put back. MNQ, MES, NQ and ES all work with nothing changed.
+//
+//  Also in v5: a zone width that can no longer collapse to one tick during a chart's
+//  ATR warmup; zero or missing gamma reads "flat" instead of ACCELERATES; the NO KEY
+//  badge names the newest row it does have.
+//
+// ─────────────────────────────────────────────────────────────────────────────────────
+//  v4 — WHAT CHANGED AND WHY
+//
+//  1. BASIS TRANSLATION (above). v3 drew cash prices on a futures chart. This was the
+//     largest error in the script by an order of magnitude and it was invisible: the
+//     levels looked reasonable, they were simply all wrong by the same amount.
+//
+//  2. HISTORY IS NO LONGER PAINTED WITH TODAY'S KEY. v3's "draw the latest row if
+//     none matches" fired on EVERY session that missed, which is every session older
+//     than the key -- so months of history were drawn, touched, scored and marked
+//     against levels that did not exist then, and the level traces that looked like a
+//     record of past sessions were a record of nothing. The fallback now only applies
+//     from the key's own oldest row forward, which still covers the case it was written
+//     for (an RTH-only chart whose last bar sits in the previous session, where the
+//     newest row is stamped for a session the chart has not reached yet) and draws
+//     nothing at all before the key's coverage begins.
+//
+//  3. NOTHING REPAINTS -- INCLUDING THE MARKERS. v3's claim held for the levels and
+//     failed for the signals: outcomes were scored at `bar_index == due` on a bar that
+//     was still forming, so a rejection triangle could become a break triangle as the
+//     bar developed, and alerts could fire on a state that then vanished. The whole
+//     decay engine now runs on confirmed bars only. This also removes a silent
+//     corruption: Pine restores scalars on each realtime tick but mutates ARRAY
+//     CONTENTS in place, so v3's per-tick `lvVol` accumulation added the bar's running
+//     volume once per tick and inflated the consumption term without bound.
+//     The reject/break markers are also drawn with `offset = -evalEff`, so the triangle
+//     sits on the bar that was touched rather than five bars to the right of it.
+//     Intrabar tagging is still available, as its own clearly-named alert.
+//
+//  4. THE SCORING WINDOW CAN NO LONGER BE SILENTLY DESTROYED. With coolBars < evalBars
+//     a re-touch overwrote the pending window before it scored, so D and H simply
+//     stopped updating with no symptom. The window is clamped to the cooldown and the
+//     badge says when the clamp is active.
+//
+//  5. H IS NO LONGER MOSTLY PRIOR. v3 seeded a 5/5 at logit 1.6 -- 83% -- against a
+//     maximum of +/-1.5 of evidence per test and at most three tests. A 5/5 that broke
+//     on its first test still printed 52%. The seed is now 0.25*(grade-3), so 62% down
+//     to 38%, and the tooltip prints the sample count next to it. Untested levels still
+//     print "untested" rather than dressing the prior up as a measurement.
+//
+//  6. VOLUME AT A LEVEL IS PRO-RATED. A one-tick wick into the zone used to credit the
+//     level with the entire bar's volume.
+//
+//  7. THE KEY'S AGE IS AN ALARM, NOT A DATE. A six-day-old key was styled exactly like
+//     a one-day-old one. Stale keys now read "STALE 6d" in red.
+//
+//  8. NOTHING IS COMPUTED AND THEN IGNORED. v3 read net gamma, both walls, charm and
+//     vanna and displayed none of them, counted breaks it never showed, and summed a
+//     session cumulative delta that nothing ever read. The walls are now tagged on the
+//     levels that are them, the flip drives a regime line, cumulative delta is
+//     normalised into a session bias on the badge, and the rest is on the badge's
+//     tooltip. (`max_boxes_count` was removed here as unused; v5 puts it back, because
+//     v5 draws the scoring zone as a box.)
+//
+//  Also: manual instrument override (substring matching would call ESS an ES chart),
+//  optional ATR-based zone width frozen at the open, distance fading, lines anchored
+//  to the session that owns them, an intraday-only warning, an overlapping-zone
+//  warning, and a dynamic alert() carrying the level that was actually tagged.
+// ═════════════════════════════════════════════════════════════════════════════════════
+// max_bars_back is NOT optional and its absence was a live runtime error.
+// Pine infers how much history to retain by watching the first few hundred bars, and
+// it inferred 547 here. But `anchorSes` anchors every level line to the SESSION OPEN,
+// and a drawing coordinate is a bar index: on an extended-hours futures chart the
+// session runs 1380 minutes, which on a 1m chart is 1380 bars and on a 2m chart is 690,
+// so the moment a session grew past the inferred buffer the script died with
+//     "the requested historical offset (548) is beyond the historicals buffer limit (547)"
+// -- an error, not a truncated line, and one that got MORE likely the lower the
+// timeframe and the longer the session. Reported on MNQ, which is exactly the case
+// this indicator is for.
+// 2000 rather than the platform maximum of 5000: nothing else in this script reaches
+// past offset 1, and every drawing X is clamped to 1500 bars back below, so a larger
+// buffer would only cost load time across six request.security series to protect
+// against a reach that cannot happen. The clamp is what makes the small buffer safe.
+indicator("QT KEY — options reaction zones", "QT KEY", overlay = true,
+     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 20,
+     max_bars_back = 2000)
+
+// ───────────────────────────────── inputs ─────────────────────────────────
+gK = "Daily key"
+keyStr = input.text_area("ES,20260818,7757.63,-4.292,5.01,-3.273,6.212,7746.30,7721.23,7756.32,-2.7545,0.8038,7741.28,-3.6957,0.5893,7771.37,-2.2308,0.9390,7721.23,-2.4674,0.3721,7731.26,-1.8141,0.4672;NQ,20260818,29842.37,0.770,10.04,-0.415,0.561,30214.23,30105.88,30105.88,-0.3722,0.9561,30214.23,0.3012,0.7684,30314.61,0.3296,0.5500,30147.69,-0.1691,0.8948,30022.25,-0.1031,0.8026;ES,20260819,7727.30,5.504,5.02,-5.196,12.642,7754.06,7749.04,7749.04,-3.5850,0.4581,7728.97,-1.3745,0.7670,7723.95,-1.0817,0.8444,7718.93,-0.7900,0.9070,7744.02,0.7755,0.5237;NQ,20260819,29480.54,0.533,10.06,-0.814,1.438,29699.57,29575.48,29658.20,-0.4354,0.8525,29575.48,-0.3687,0.9362,29492.75,-0.1847,0.7486,29534.11,-0.1547,0.8439,29616.84,-0.1204,0.9241", "Key", group = gK)
+
+instMode = input.string("Auto", "Instrument", options = ["Auto", "ES", "NQ"], group = gK,
+     tooltip = "Auto reads the ticker. It matches on substring so MES and MNQ are covered, but so is any symbol that happens to contain ES — set this explicitly if the badge names the wrong instrument.")
+statPos = input.string("Bottom right", "Status badge position", group = gK,
+     options = ["Top right", "Top center", "Bottom right", "Bottom left"],
+     tooltip = "Defaults away from the top-right corner because most overlay scripts put their table there, and two tables in one corner means the one underneath is invisible — including the line that tells you the key is stale.")
+useLatest = input.bool(true, "Draw the newest key row if none matches this session", group = gK, tooltip = "The key is generated after the close and stamped for the NEXT session. If the chart's last bar is still in the previous session — which is what happens with extended hours switched off — an exact date match finds nothing. This draws the newest row instead and labels it in the status box. It is bounded on BOTH sides of the key's newest row (see below), so it can never paint a run of history with a single session's levels.")
+keyGrace = input.int(5, "…for at most N sessions after the key's newest row", minval = 0, maxval = 60, group = gK, tooltip = "How long a key keeps drawing once it has gone stale. The badge turns red the moment the row is not an exact match, but beyond this many days the levels stop being drawn at all and the badge reads NO KEY. Set 0 to require an exact date match every session.\n\nThe reach BACKWARD is fixed at 4 calendar days, which is a long weekend — enough for a Friday chart to draw a key stamped for Monday, and not enough to paint arbitrary history.")
+
+gB = "Price frame"
+basisMode = input.string("Auto — measure vs cash index", "Key price frame", group = gB,
+     options = ["Auto — measure vs cash index", "Off — key already in the chart's frame", "Manual offset"],
+     tooltip = "The key is built from the SPX and NDX option books, so its prices are CASH index prices. ES and NQ trade at cash plus basis — tens of points on ES, over a hundred on NQ. Auto measures futures minus cash on bars where the cash index is actually ticking, smooths it, and freezes it at the session open so the levels cannot drift. Switch to Off only if your generator already emits futures-frame prices.")
+basisManual = input.float(0.0, "Manual offset (points, added to every key price)", step = 0.25, group = gB)
+// THESE MUST STAY CASH INDICES. They are not the instrument being analysed -- the
+// chart is. They exist only to measure how far the future trades above its own cash
+// index, because the option book that produced the levels is priced in cash points.
+// Point one of these at a future and futures-minus-"cash" collapses to roughly zero,
+// the levels stay in the cash frame, and every one of them sits ~150 NQ points from
+// where it belongs while the chart still looks entirely reasonable. The badge now
+// detects that and says so, but the right answer is to leave these alone.
+esCash = input.symbol("SP:SPX", "ES cash INDEX (not a future)", group = gB,
+     tooltip = "Leave this as the S&P 500 cash index. It is not the symbol being analysed — your chart is. This is only the reference the basis is measured against, and setting it to ES, MES or any other future makes the measurement collapse to zero and puts every level in the wrong price frame.")
+nqCash = input.symbol("NASDAQ:NDX", "NQ cash INDEX (not a future)", group = gB,
+     tooltip = "Leave this as the Nasdaq-100 cash index. It is not the symbol being analysed — your chart is. MNQ, NQ and MES all work as CHARTS with no setting changed; this field is only the reference the basis is measured against, and pointing it at a future makes the measurement collapse to zero and puts every level in the wrong price frame.")
+basisLen = input.int(60, "Basis smoothing (live cash samples)", minval = 1, maxval = 5000, group = gB)
+
+gL = "Levels"
+lvlCol    = input.color(#A855F7, "Level colour", group = gL)
+deadCol   = input.color(#787B86, "Consumed colour", group = gL)
+showFlipLine = input.bool(true, "Gamma flip line", group = gL)
+anchorSes = input.bool(true, "Anchor lines to the session open", group = gL, tooltip = "On, each line spans exactly the session its key row belongs to. Off, it runs a fixed number of bars back regardless of where the session started.")
+backBars  = input.int(55, "Line length (bars back, when not anchored)", minval = 5, maxval = 1500, group = gL)
+extendR   = input.int(30, "Extend right (bars)", minval = 0, group = gL)
+showSign  = input.bool(false, "Dash the ACCELERATES levels", group = gL, tooltip = "Off by default so the levels read as one set. On, a dashed line means negative dealer gamma — hedging runs WITH the move there instead of against it.")
+showWall  = input.bool(true, "Tag the call / put wall on the label", group = gL)
+showZone  = input.bool(true, "Shade the scoring zone", group = gL, tooltip = "The engine counts a touch when price enters price ± half-width, and until now it drew a LINE — so every touch count, every break and every consumption number was measured against a band you could not see, and a wick that visibly missed the line could still be scored as a tag. This shades the band that is actually being tested. Its width is whatever the Decay engine group is set to, frozen at the open.")
+fadeFar   = input.bool(true, "Fade levels far from price", group = gL)
+farATR    = input.float(3.0, "Far = more than N ATR away", minval = 0.5, step = 0.5, group = gL)
+plotCol   = input.color(#FF9800, "Level trace / price-scale colour", group = gL)
+
+gD = "Decay engine"
+grayAfter = input.int(3, "Grey out after N touches", minval = 1, maxval = 3, group = gD, tooltip = "A level is consumed once it has been tagged this many times. Set 1 to retire every level after its first touch.")
+tolMode   = input.string("Strike step", "Zone width from", options = ["Strike step", "ATR fraction"], group = gD,
+     tooltip = "Either way the width is frozen at the session open — a zone that breathes intrabar is a touch count you cannot reproduce.")
+tolMult   = input.float(1.0, "Zone width (x strike step)", minval = 0.25, maxval = 20.0, step = 0.25, group = gD)
+tolATR    = input.float(0.15, "Zone width (x ATR14 at the open)", minval = 0.02, maxval = 2.0, step = 0.01, group = gD)
+evalBars  = input.int(5,  "Bars to score a touch over", minval = 2, maxval = 60, group = gD, tooltip = "The outcome window starts at the bar AFTER the touch. Scoring the touch bar itself reads the resolution off the bar that created the signal. Clamped to the cooldown below, so a re-touch can never wipe a window before it scores.")
+coolBars  = input.int(10, "Bars before the same level can re-touch", minval = 2, group = gD)
+deadD     = input.float(85.0, "Also grey out above D%", minval = 50, maxval = 100, group = gD)
+autoSes   = input.bool(true, "Measure the session length from the chart", group = gD, tooltip = "The clock term needs to know how long a session is. Assuming it is a footgun: the 390-minute default is the RTH cash session, so on an extended-hours futures chart — where the session is 1380 minutes — the clock term saturated about a fifth of the way through the day and every level read heavily consumed by mid-morning, with nothing on screen to explain why.\n\nOn, the script counts the bars in the session that just ended and uses that. It needs one complete session before it can, and falls back to the figure below until then.")
+sesMins   = input.int(390, "…or assume this many minutes", minval = 60, group = gD, tooltip = "Used until a full session has been observed, or whenever the measurement above is off. 390 is the RTH cash session; 1380 is the full futures session.")
+
+gW = "Decay weights — judgment, not fitted"
+wRej    = input.float(0.30, "Consumption per rejection", minval = 0.0, maxval = 5.0, step = 0.05, group = gW,
+     tooltip = "EVERY NUMBER IN THIS GROUP IS A JUDGMENT CALL, NOT A MEASUREMENT.\n\nThe level-selection score upstream refuses to weight its two factors against each other because there is no labelled data to fit a weight on. The same is true here — nothing in this repo measures how much a rejection consumes a level — so rather than bury seven fitted-looking constants in the source, they are exposed. The defaults encode one claim only, and it is mechanical rather than statistical: a rejection is the level WORKING (little size gets through, the inventory survives) while a break is the level being eaten, so a break consumes several times more. The ratio is arguable. The fact that it is a ratio someone chose is not hidden.")
+wBrk    = input.float(1.60, "Consumption per break", minval = 0.0, maxval = 5.0, step = 0.05, group = gW)
+wOpen   = input.float(0.30, "Consumption while a touch is still unscored", minval = 0.0, maxval = 5.0, step = 0.05, group = gW)
+wClock  = input.float(0.55, "Consumption from the clock alone, over a full session", minval = 0.0, maxval = 5.0, step = 0.05, group = gW)
+wVol    = input.float(2.20, "Consumption from share of session volume", minval = 0.0, maxval = 10.0, step = 0.1, group = gW)
+brkX    = input.float(2.0, "A break is excursion > N × half-width", minval = 0.5, maxval = 10.0, step = 0.25, group = gW)
+evClamp = input.float(1.5, "Cap on evidence from one test (logit)", minval = 0.25, maxval = 5.0, step = 0.25, group = gW)
+holdThr = input.float(1.16, "“holding” above this, per test", minval = -3.0, maxval = 3.0, step = 0.01, group = gW,
+     tooltip = "THESE TWO ARE MEASURED, unlike the rest of this group. tools/calibrate_outcome.py runs this exact engine over levels placed where real levels sit — prior close ± k×ATR — but chosen with NO information in them, and reports what that null scores. On 14,454 touches across ES and NQ at 5m, 15m and 60m:\n\n    median  +0.21      p30  −0.78      p70  +1.16\n\nSo an uninformative level does NOT score zero, and the ±0.5 these defaults replaced was calling roughly three out of five arbitrary levels “holding”. The defaults here are that null's p70 and p30, which makes the label mean something specific: a level reads “holding” when its average test beats 70% of levels that know nothing.\n\nThe score is ATR-normalised and the median moved only 0.196 across all six instrument/timeframe cells, which is why one pair of thresholds serves every chart.")
+failThr = input.float(-0.78, "“failing” below this, per test", minval = -3.0, maxval = 3.0, step = 0.01, group = gW)
+brkBase = input.float(45.0, "Baseline break rate at an arbitrary level (%)", minval = 0.0, maxval = 100.0, step = 1.0, group = gW,
+     tooltip = "Also measured, same run: the engine's break test fires on 43-47% of touches at levels with nothing behind them. Shown next to a level's own break count so the count has something to be compared against.")
+hSeed   = input.float(0.25, "Hold-score seed per grade step (logit)", minval = 0.0, maxval = 1.0, step = 0.05, group = gW,
+     tooltip = "0 means the grade contributes nothing and the test record speaks for itself. The default of 0.25 spans 62% down to 38% across the five grades — small enough that a single test dominates it.")
+
+gF = "Order flow"
+showDelta = input.bool(false, "Delta-coloured candles", group = gF)
+showVwap  = input.bool(false, "Session VWAP", group = gF)
+volLen    = input.int(50, "Delta normalisation length", minval = 5, group = gF)
+
+gX = "Cross-asset"
+useX      = input.bool(false, "ES <-> NQ confirmation", group = gX, tooltip = "Marks a star at the FIRST touch of a level, and only when the other instrument is ALREADY holding one of its own top-graded levels IN THE SAME DIRECTION. The other instrument's levels are basis-translated the same way this chart's are.\n\nv4 tested all five of the other book's levels in either direction, which meant it was live almost continuously and the star meant nothing. Both filters below exist to fix that. Still off by default: it is now selective rather than decorative, but nothing in this repo measures whether it adds anything.")
+xMinGrade = input.int(4, "…only the other book's levels graded N/5 or better", minval = 1, maxval = 5, group = gX)
+esSym     = input.symbol("CME_MINI:ES1!", "ES source", group = gX)
+nqSym     = input.symbol("CME_MINI:NQ1!", "NQ source", group = gX)
+xHold     = input.int(15, "Confirmation stays live for (bars)", minval = 1, group = gX)
+
+// ───────────────────────────── instrument + session ─────────────────────────────
+// MNQ contains "NQ" and MES contains "ES", so plain substring detection covers the
+// micros as well. NQ is tested first: neither Nasdaq ticker contains "ES". It also
+// matches things it should not — ESS, for one — which is what instMode is for.
+tkr = str.upper(syminfo.ticker)
+autoTag = str.contains(tkr, "NQ") ? "NQ" : str.contains(tkr, "ES") ? "ES" : ""
+myTag = instMode == "Auto" ? autoTag : instMode
+otherTag = myTag == "NQ" ? "ES" : myTag == "ES" ? "NQ" : ""
+
+// The SESSION a bar belongs to, not its calendar date. Futures trade 18:00-17:00, so
+// a 22:30 bar belongs to the NEXT day's session.
+//
+// ⚠️ DO NOT USE time_tradingday FOR THIS. It returns the BEGINNING of the trading day,
+// which for an overnight session is the PREVIOUS calendar date: a Wednesday 10:25 ET
+// bar sits in a session that opened Tuesday 18:00, so time_tradingday reads Tuesday
+// and the script looks up Tuesday's key row — then reports "KEY OK" because the date
+// it computed really does match a row that exists. Silent, and wrong all day, every
+// day. Measured 2026-08-19: drew levels 600 points above a market that had left them.
+//
+// Shift the bar's CLOSE forward by 6h instead, so the 18:00 ET roll lands on midnight
+// and the calendar date after the shift IS the session label. Sunday 18:30 -> Monday,
+// Friday 15:00 -> Friday. Same rule scorecard.py and the terminal dashboard already use.
+tShift = time_close + 6 * 60 * 60 * 1000
+tdY = year(tShift, "America/New_York")
+tdM = month(tShift, "America/New_York")
+tdD = dayofmonth(tShift, "America/New_York")
+// Built by hand rather than with str.format's "{0,number,0000}" patterns: those go
+// through MessageFormat, which is one locale setting away from inserting a grouping
+// separator into the year and silently never matching a key row again.
+f_pad2(int v) => (v < 10 ? "0" : "") + str.tostring(v)
+sesKey = str.tostring(tdY) + f_pad2(tdM) + f_pad2(tdD)
+sesNum = tdY * 10000 + tdM * 100 + tdD
+newSes = ta.change(sesNum) != 0
+
+atr = ta.atr(14)
+
+// ───────────────────────────── key parsing ─────────────────────────────
+// Row: tag, yyyymmdd, flip, netgex, step, charm, vanna, callwall, putwall, then
+// 5 x (price, gex, ptouch). 24 fields, ALREADY SCORED AND RANKED — slot 0 is the 5/5.
+// All of the selection happens off-chart where the probability model lives, so Pine
+// only ever draws what it is handed and there is nothing here to second-guess.
+f_findRow(string blob, string tag, string dstr) =>
+    string hit = ""
+    if str.length(blob) > 0 and str.length(tag) > 0
+        rows = str.split(blob, ";")
+        for i = 0 to math.max(0, array.size(rows) - 1)
+            r = array.get(rows, i)
+            f = str.split(r, ",")
+            if array.size(f) >= 24
+                if array.get(f, 0) == tag and array.get(f, 1) == dstr
+                    hit := r
+                    break
+    hit
+
+// How many fields the pasted key actually has. A key written for an older version of
+// this script is REJECTED on field count and then looks exactly like an absent key —
+// which is how a stale paste went unnoticed for a full session. The status badge names
+// the mismatch instead, so the failure describes itself.
+f_widest(string blob) =>
+    int w = 0
+    if str.length(blob) > 0
+        rows = str.split(blob, ";")
+        for i = 0 to math.max(0, array.size(rows) - 1)
+            n = array.size(str.split(array.get(rows, i), ","))
+            w := math.max(w, n)
+    w
+
+// Newest row for this instrument, whatever its date. Dates compare as NUMBERS --
+// Pine has no ordering operators for strings, so comparing "20260818" > "20260817"
+// directly does not compile.
+f_latestRow(string blob, string tag) =>
+    string hit = ""
+    float best = -1.0
+    if str.length(blob) > 0 and str.length(tag) > 0
+        rows = str.split(blob, ";")
+        for i = 0 to math.max(0, array.size(rows) - 1)
+            r = array.get(rows, i)
+            f = str.split(r, ",")
+            if array.size(f) >= 24
+                if array.get(f, 0) == tag
+                    d = str.tonumber(array.get(f, 1))
+                    if not na(d) and d > best
+                        best := d
+                        hit  := r
+    hit
+
+// Oldest / newest date stamped for a tag. The NEWEST is what gates the fallback — see
+// f_fallbackOK. v4 gated on the oldest and got it wrong in both directions; the
+// wantMax = false branch is kept because it costs one argument and the next thing to
+// need a coverage window will want it.
+f_edgeNum(string blob, string tag, bool wantMax) =>
+    float best = na
+    if str.length(blob) > 0 and str.length(tag) > 0
+        rows = str.split(blob, ";")
+        for i = 0 to math.max(0, array.size(rows) - 1)
+            f = str.split(array.get(rows, i), ",")
+            if array.size(f) >= 24 and array.get(f, 0) == tag
+                d = str.tonumber(array.get(f, 1))
+                if not na(d)
+                    best := na(best) ? d : (wantMax ? math.max(best, d) : math.min(best, d))
+    best
+
+f_num(array<string> f, int i) =>
+    i < array.size(f) ? str.tonumber(array.get(f, i)) : na
+
+// yyyymmdd -> a day number, for the staleness alarm. Gregorian JDN in pure integer
+// arithmetic rather than timestamp(): no timezone argument to get wrong, no DST hour
+// to round away, and the difference of two of these IS the calendar day count.
+f_days(float ymd) =>
+    float r = na
+    if not na(ymd) and ymd > 19000000
+        y  = int(ymd / 10000)
+        m  = int((ymd - y * 10000) / 100)
+        d  = int(ymd) - y * 10000 - m * 100
+        a  = int((14 - m) / 12)
+        yy = y + 4800 - a
+        mm = m + 12 * a - 3
+        r := d + int((153 * mm + 2) / 5) + 365 * yy + int(yy / 4) - int(yy / 100) + int(yy / 400) - 32045
+    r
+
+// Grade 5..1 as stars. Written as literals rather than built with str.repeat so a
+// zero-count call can never return something unexpected at either end of the range.
+f_stars(int g) =>
+    switch g
+        5 => "★★★★★"
+        4 => "★★★★"
+        3 => "★★★"
+        2 => "★★"
+        => "★"
+
+// ───────────────────────────── state ─────────────────────────────
+var array<float> lvPx   = array.new<float>(5, na)   // level price, AS KEYED (cash frame)
+var array<float> lvGx   = array.new<float>(5, na)   // signed $bn gamma per 1%
+var array<float> lvP    = array.new<float>(5, na)   // P(price reaches it this session)
+var array<float> lvTch  = array.new<float>(5, 0.0)  // touch count
+var array<float> lvBrk  = array.new<float>(5, 0.0)  // break count
+var array<float> lvCons = array.new<float>(5, 0.0)  // consumption, scored per OUTCOME
+var array<bool>  lvSeen = array.new<bool>(5, false) // has any touch been scored yet
+var array<int>   lvN    = array.new<int>(5, 0)      // number of scored tests, for H
+var array<float> lvVol  = array.new<float>(5, 0.0)  // volume transacted at the level
+var array<float> lvH    = array.new<float>(5, 0.0)  // hold score (logit space)
+var array<bool>  lvIn   = array.new<bool>(5, false) // was inside tolerance last bar
+var array<int>   lvLast = array.new<int>(5, -9999)  // bar index of last touch
+var array<int>   lvDue  = array.new<int>(5, -1)     // bar index the open touch scores on
+var array<int>   lvDir  = array.new<int>(5, 0)      // +1 approached as support, -1 resistance
+var array<float> lvAway = array.new<float>(5, 0.0)  // best excursion away from the level
+var array<float> lvThru = array.new<float>(5, 0.0)  // worst excursion through it
+var array<int>   lvOut  = array.new<int>(5, 0)      // scored outcome: +1 rejected, -1 broke, 0 pending
+
+var float kFlip  = na
+var float kNet   = na
+var float kStep  = na
+var float kCharm = na
+var float kVanna = na
+var float kCW    = na
+var float kPW    = na
+var float kDate  = na
+var bool   haveKey  = false
+var bool   keyExact = false
+var string keyDay   = ""
+var float  keyAge   = 0.0
+var float  halfW    = na
+var float sesVol = 0.0
+var int   sesBar = 0
+var int   sesBarsPrev = 0                           // bars in the session that just ended
+
+// other instrument: levels only, evaluated but never drawn
+var array<float> oxPx = array.new<float>(5, na)
+var float oxStep = na
+
+// One-time scan of the pasted key. These are pure functions of a constant input, so
+// re-splitting the blob on every bar of a multi-year chart buys nothing.
+var float newestMine  = na
+var float newestOther = na
+var int   keyWid      = 0
+if bar_index == 0
+    newestMine  := f_edgeNum(keyStr, myTag, true)
+    newestOther := f_edgeNum(keyStr, otherTag, true)
+    keyWid      := f_widest(keyStr)
+
+// v4 gated the fallback on the key's OLDEST row and got it wrong in both directions.
+// Forward: every session after the newest row passed, so a month-old key painted a
+// month of history with one day's levels — the exact bug v4 claimed to have fixed,
+// surviving in the other direction. Backward: the gate BLOCKED the only case the
+// fallback was written for, since a single-row key stamped for tomorrow has
+// oldest == newest == tomorrow, and today fails `sesNum >= oldest`.
+// The window is now anchored on the NEWEST row and bounded both ways: back far enough
+// for a long weekend, forward only as far as keyGrace tolerates. Outside it the script
+// draws nothing and says NO KEY, which is the honest answer.
+f_fallbackOK(float newest) =>
+    float g = na
+    if not na(newest)
+        g := f_days(sesNum) - f_days(newest)     // + = this session is AFTER the key row
+    not na(g) and g >= -4.0 and g <= keyGrace
+
+// The scoring window can never outrun the cooldown: if it did, a re-touch would
+// overwrite lvDue/lvAway/lvThru before the previous window ever scored, and D and H
+// would quietly stop moving with nothing on screen to say so.
+evalEff = evalBars > coolBars ? coolBars : evalBars
+
+if newSes or bar_index == 0
+    row = f_findRow(keyStr, myTag, sesKey)
+    keyExact := str.length(row) > 0
+    // bounded window around the key's NEWEST row — see f_fallbackOK
+    if not keyExact and useLatest and f_fallbackOK(newestMine)
+        row := f_latestRow(keyStr, myTag)
+    haveKey := str.length(row) > 0
+    keyDay  := haveKey ? array.get(str.split(row, ","), 1) : ""
+    kDate   := haveKey ? str.tonumber(keyDay) : na
+    keyAge  := (haveKey and not keyExact) ? nz(f_days(sesNum) - f_days(kDate), 0.0) : 0.0
+    // reset every piece of session state together — a level carrying yesterday's
+    // touch count into today is exactly the kind of silent staleness this whole
+    // design is trying to avoid
+    for j = 0 to 4
+        array.set(lvPx, j, na)
+        array.set(lvGx, j, na)
+        array.set(lvP, j, na)
+        array.set(lvTch, j, 0.0)
+        array.set(lvBrk, j, 0.0)
+        array.set(lvCons, j, 0.0)
+        array.set(lvSeen, j, false)
+        array.set(lvN, j, 0)
+        array.set(lvVol, j, 0.0)
+        array.set(lvIn, j, false)
+        array.set(lvLast, j, -9999)
+        array.set(lvDue, j, -1)
+        array.set(lvDir, j, 0)
+        array.set(lvAway, j, 0.0)
+        array.set(lvThru, j, 0.0)
+        array.set(lvOut, j, 0)
+        // seed the hold score from the GRADE, but only just: one test is worth up to
+        // +/-evClamp and there are at most three of them, so a heavy prior would still
+        // be the label on screen after the level had been comprehensively disproved.
+        // grade = 5 - j. Set hSeed to 0 to let the test record speak alone.
+        array.set(lvH, j, hSeed * ((5 - j) - 3))
+    kFlip  := na
+    kNet   := na
+    kStep  := na
+    kCharm := na
+    kVanna := na
+    kCW    := na
+    kPW    := na
+    sesVol := 0.0
+    // how long the session that just ended actually ran, for the clock term
+    if bar_index > sesBar
+        sesBarsPrev := bar_index - sesBar
+    sesBar := bar_index
+    if haveKey
+        f = str.split(row, ",")
+        kFlip  := f_num(f, 2)
+        kNet   := f_num(f, 3)
+        kStep  := f_num(f, 4)
+        kCharm := f_num(f, 5)
+        kVanna := f_num(f, 6)
+        kCW    := f_num(f, 7)
+        kPW    := f_num(f, 8)
+        for j = 0 to 4
+            array.set(lvPx, j, f_num(f, 9  + j * 3))
+            array.set(lvGx, j, f_num(f, 10 + j * 3))
+            array.set(lvP,  j, f_num(f, 11 + j * 3))
+    // Zone width, frozen for the session, off a value that exists BEFORE it trades.
+    // atr[1], not atr: this block runs on every tick of the opening bar and ta.atr(14)
+    // moves while that bar forms, so `atr` would have the width breathing for one bar
+    // on exactly the bar that sets it — the drift the freeze exists to prevent.
+    // The stepW fallback matters too: atr is na for a chart's first 14 bars, and
+    // nz(atr) * tolATR would collapse the zone to a single tick, giving a session whose
+    // touches can never register and nothing on screen to explain why.
+    stepW = nz(kStep, 1.0) * tolMult * 0.5
+    atrW  = nz(atr[1]) * tolATR * 0.5
+    halfW := math.max(syminfo.mintick, tolMode == "ATR fraction" and atrW > 0 ? atrW : stepW)
+    // the other instrument's rows, for cross-asset confirmation, gated identically
+    orow = f_findRow(keyStr, otherTag, sesKey)
+    if str.length(orow) == 0 and useLatest and f_fallbackOK(newestOther)
+        orow := f_latestRow(keyStr, otherTag)
+    oxStep := na
+    for j = 0 to 4
+        array.set(oxPx, j, na)
+    if str.length(orow) > 0
+        of = str.split(orow, ",")
+        oxStep := f_num(of, 4)
+        for j = 0 to 4
+            array.set(oxPx, j, f_num(of, 9 + j * 3))
+
+// ───────────────────────────── external data ─────────────────────────────
+// lookahead_off is not optional. With lookahead on, the higher-timeframe request
+// returns the value of a bar that has not closed yet, and the confirmation would
+// fire on information the chart could not have had.
+// ignore_invalid_symbol is not optional either: a user without index data would
+// otherwise get a runtime error instead of a script that says "basis unavailable".
+cashSym  = myTag == "NQ" ? nqCash : esCash
+xCashSym = myTag == "NQ" ? esCash : nqCash
+xoSym    = myTag == "NQ" ? esSym  : nqSym
+
+cashPx = request.security(cashSym, timeframe.period, close,
+     lookahead = barmerge.lookahead_off, ignore_invalid_symbol = true)
+xCashPx = request.security(xCashSym, timeframe.period, close,
+     lookahead = barmerge.lookahead_off, ignore_invalid_symbol = true)
+[oC, oH, oL] = request.security(xoSym, timeframe.period, [close, high, low],
+     lookahead = barmerge.lookahead_off, ignore_invalid_symbol = true)
+
+// ───────────────────────────── basis ─────────────────────────────
+// Sample futures-minus-cash ONLY on bars where the cash index actually moved. Outside
+// RTH the cash print is a frozen 16:00 close, and differencing a live future against a
+// stale cash number measures overnight drift, not carry. Smooth what survives that
+// filter, then FREEZE it at the session open: the offset in force for a session is
+// fixed for the whole session, so a level cannot move under a resting order.
+// Each call site keeps its own state — that is how Pine scopes `var` inside functions —
+// so the same estimator serves this chart and the cross-asset one.
+f_basis(float futPx, float cashRef, bool sesFlag, int smooth) =>
+    var float est = na
+    var int   n   = 0
+    var float use = na
+    var float pre = na                 // est as of the last CONFIRMED bar
+    chg  = ta.change(cashRef)
+    live = not na(cashRef) and not na(futPx) and nz(chg, 0.0) != 0.0
+    if live
+        raw = futPx - cashRef
+        est := na(est) ? raw : est + (raw - est) / math.max(1, smooth)
+        n   += 1
+    // Latch `pre`, not `est`. This runs on every tick of the session's opening bar, and
+    // `est` still absorbs that bar's own samples as it forms, so latching it would let
+    // the offset — and therefore every level — settle over the first bar instead of
+    // being fixed before the first trade. `pre` was committed on the previous bar's
+    // close, which is genuinely pre-open.
+    if sesFlag
+        use := nz(pre, est)
+    // a chart opened mid-session has no frozen value yet; adopt the first estimate
+    // that appears rather than sitting on a knowingly wrong zero
+    if na(use) and not na(est)
+        use := est
+    if barstate.isconfirmed
+        pre := est
+    [use, n]
+
+[basisSelf, basisSelfN]   = f_basis(close, cashPx, newSes, basisLen)
+[basisOther, basisOtherN] = f_basis(oC, xCashPx, newSes, basisLen)
+
+isAuto   = basisMode == "Auto — measure vs cash index"
+isManual = basisMode == "Manual offset"
+basisAdj = isManual ? basisManual : isAuto ? nz(basisSelf, 0.0) : 0.0
+basisX   = isAuto ? nz(basisOther, 0.0) : 0.0
+basisBad = isAuto and na(basisSelf)
+// A cash index and its future do NOT track to within a tenth of a percent -- NQ runs
+// roughly 0.5% over NDX. If the reference does, it is not a cash index: it is another
+// future, or this chart again. Cheap arithmetic, and it catches the one settings
+// mistake that silently invalidates every level on the screen.
+basisSuspect = isAuto and not na(cashPx) and close > 0 and math.abs(cashPx - close) / close < 0.0005
+
+// Every consumer of a key price goes through here. The arrays hold the key exactly as
+// pasted; the chart frame is applied at the point of use, once, in one place.
+f_lv(int j) => array.get(lvPx, j) + basisAdj
+flipAdj = kFlip + basisAdj
+cwAdj   = kCW + basisAdj
+pwAdj   = kPW + basisAdj
+
+// ───────────────────────────── order flow (OHLCV proxies) ─────────────────────────────
+// Bar CLV: where the close sits inside the bar's range. This is a PROXY for order
+// flow and nothing more. No correlation against true aggressor-signed delta has been
+// measured in this repo, so none is claimed and none is printed -- a chart with no
+// tick data cannot see aggressor side, and dressing CLV up with a borrowed r-value
+// would be exactly the unearned precision the rest of this script tries to avoid.
+// It is off by default. Treat it as a tint, not a reading.
+clv = high == low ? 0.0 : ((close - low) - (high - close)) / (high - low)
+dlt = clv * nz(volume)
+dltScale = ta.ema(math.abs(dlt), volLen)
+dltN = dltScale > 0 ? dlt / dltScale : 0.0
+// Session cumulative delta, normalised by the session's cumulative ABSOLUTE delta, so
+// it reads as a bias in [-1, +1] rather than a raw number whose scale means nothing.
+// It inherits the CLV proxy's unmeasured accuracy, and the badge says so.
+var float cumDlt = 0.0
+var float cumAbs = 0.0
+cumDlt := newSes ? dlt : cumDlt + dlt
+cumAbs := newSes ? math.abs(dlt) : cumAbs + math.abs(dlt)
+dltBias = cumAbs > 0 ? cumDlt / cumAbs : 0.0
+
+vwap = ta.vwap(hlc3)
+
+// ───────────────────────────── cross-asset confirmation ─────────────────────────────
+// Returns the DIRECTION of the other instrument's reaction, not merely that one
+// happened: +1 it held a level as support, -1 as resistance, 0 nothing. Direction is
+// the point. Two indices being busy at the same moment is not confirmation; two
+// indices being defended the same way is at least the right shape of claim.
+// Only the top grades are read — grade = 5 - j, so xMinGrade = 4 tests j = 0..1.
+f_xReact() =>
+    int d = 0
+    if useX and not na(oC) and not na(oxStep)
+        hw = math.max(0.01, nz(oxStep, 1.0) * tolMult * 0.5)
+        int last = math.max(0, 5 - xMinGrade)
+        for j = 0 to last
+            p = array.get(oxPx, j)
+            if not na(p)
+                q = p + basisX
+                inZ = oL <= q + hw and oH >= q - hw
+                // reacted = tagged the level and closed back away from it, on a bar
+                // that has already closed. A tag alone is not a reaction.
+                if inZ and oC > q + hw
+                    d := 1
+                else if inZ and oC < q - hw
+                    d := -1
+    d
+// called unconditionally, then gated — Pine treats a user function invoked inside one
+// branch of a ternary as a conditional call, and the habit of avoiding that is cheaper
+// than finding out which builtins care.
+xDirRaw = f_xReact()
+xDirNow = barstate.isconfirmed ? xDirRaw : 0
+var int xBar = -9999
+var int xDir = 0
+if xDirNow != 0
+    xBar := bar_index
+    xDir := xDirNow
+xLive = useX and (bar_index - xBar) <= xHold
+
+// ───────────────────────────── the decay / hold engine ─────────────────────────────
+// D% CONSUMPTION — how much of the level has been used up. Monotone: it only rises.
+//   touches      each tag consumes resting liquidity; the first one consumes the most
+//   breaks       a close well through the level consumes far more than a wick
+//   volume       size actually transacted at the level, as a share of the session
+//   the clock    time alone decays a level, because the option that created it is
+//                being hedged away all session
+// H% HOLD QUALITY — how well it is behaving as support/resistance RIGHT NOW. Not
+// monotone: a clean rejection or a reclaim lifts it even after heavy consumption.
+// Every outcome is scored over a window that STARTS ON THE BAR AFTER THE TOUCH.
+// Scoring the touch bar itself reads the resolution off the bar that produced the
+// signal, which is worth roughly +0.35R of pure illusion and has killed a strategy
+// in this program before.
+//
+// THE WHOLE ENGINE RUNS ON CONFIRMED BARS ONLY, for two separate reasons. One: an
+// outcome scored off a bar that is still forming can reverse before that bar closes,
+// which would make the markers and the alerts repaint. Two: Pine restores scalar
+// variables on every realtime tick but mutates array CONTENTS in place, so anything
+// accumulated into an array per-tick is added again on the next tick of the same bar.
+// Measured beats assumed. sesMins is only a fallback for the first session on a
+// chart, because guessing wrong here is not a small error: assume 390 minutes on an
+// extended-hours chart whose session runs 1380 and the clock term saturates a fifth
+// of the way through the day, greying out every level by mid-morning.
+barsPerSesCfg = math.max(1.0, sesMins / math.max(1.0, timeframe.in_seconds() / 60.0))
+barsPerSes = autoSes and sesBarsPrev > 4 ? float(sesBarsPrev) : barsPerSesCfg
+minFrac = math.min(1.0, math.max(0.0, (bar_index - sesBar) / barsPerSes))
+
+bool   firstTouch = false      // a level tagged for the FIRST time on this bar
+int    ftDir      = 0          // +1 it was approached as support, -1 as resistance
+bool   touchedNow = false
+string touchInfo  = ""
+
+if barstate.isconfirmed
+    sesVol := sesVol + nz(volume)
+    for j = 0 to 4
+        p = f_lv(j)
+        if not na(p)
+            lo = p - halfW
+            hi = p + halfW
+            inZ = low <= hi and high >= lo
+            wasIn = array.get(lvIn, j)
+
+            // volume PRO-RATED by how much of the bar's range sat inside the zone. A
+            // one-tick wick into a 5-point zone on a 40-point bar is not 40 points of
+            // business done at the level, and crediting it as such was inflating the
+            // consumption term on exactly the bars that mattered least.
+            if inZ
+                ovl = math.max(0.0, math.min(high, hi) - math.max(low, lo))
+                rng = high - low
+                frac = rng > 0 ? math.min(1.0, ovl / rng) : 1.0
+                array.set(lvVol, j, array.get(lvVol, j) + nz(volume) * frac)
+
+            // ── a NEW touch
+            if inZ and not wasIn and (bar_index - array.get(lvLast, j)) > coolBars
+                dir = close[1] > hi ? 1 : close[1] < lo ? -1 : (close > p ? 1 : -1)
+                if array.get(lvTch, j) == 0.0
+                    firstTouch := true
+                    ftDir := dir
+                touchedNow := true
+                array.set(lvTch, j, array.get(lvTch, j) + 1.0)
+                array.set(lvLast, j, bar_index)
+                array.set(lvDue, j, bar_index + evalEff)
+                array.set(lvDir, j, dir)
+                array.set(lvAway, j, 0.0)
+                array.set(lvThru, j, 0.0)
+                array.set(lvOut, j, 0)
+                touchInfo := touchInfo + (str.length(touchInfo) > 0 ? " · " : "")
+                     + f_stars(5 - j) + " " + str.tostring(p, format.mintick)
+
+            // ── accumulate the outcome, strictly from the bar AFTER the touch
+            due = array.get(lvDue, j)
+            if due > 0 and bar_index > array.get(lvLast, j) and bar_index <= due
+                d = array.get(lvDir, j)
+                away = d == 1 ? high - p : p - low        // rejection direction
+                thru = d == 1 ? p - low  : high - p       // through the level
+                array.set(lvAway, j, math.max(array.get(lvAway, j), nz(away)))
+                array.set(lvThru, j, math.max(array.get(lvThru, j), nz(thru)))
+
+            // ── score it once the window closes
+            if due > 0 and bar_index == due
+                a = array.get(lvAway, j)
+                t = array.get(lvThru, j)
+                unit = math.max(nz(atr), halfW)
+                score = (a - t) / unit                     // >0 rejected, <0 ran through
+                array.set(lvH, j, array.get(lvH, j) + math.max(-evClamp, math.min(evClamp, score)))
+                array.set(lvN, j, array.get(lvN, j) + 1)
+                array.set(lvSeen, j, true)
+                // `and t > a` matters: without it a bar that spikes clean through the
+                // level AND rejects hard off it counts as a break while the marker,
+                // which compared away against thru, drew a rejection triangle. One
+                // definition now feeds the tally, the consumption and the triangle.
+                broke = t > halfW * brkX and t > a
+                if broke
+                    array.set(lvBrk, j, array.get(lvBrk, j) + 1.0)
+                // CONSUMPTION DEPENDS ON THE OUTCOME, not on the fact of a touch.
+                // Counting every tag the same made D and H independent, so a level that
+                // rejected cleanly three times read "100% consumed" and "100% holding" at
+                // once — the chart telling you to stand aside and to trust it, together.
+                // Mechanically a rejection is the level WORKING: little size gets through,
+                // the desk rebalances and the inventory survives. A break is the level
+                // being eaten. So a break consumes several times what a rejection does
+                // (wBrk vs wRej — both exposed, because the ratio is a judgment call and
+                // burying it in the source would not make it less of one), and the two
+                // numbers can no longer both saturate.
+                array.set(lvCons, j, array.get(lvCons, j) + (broke ? wBrk : wRej))
+                array.set(lvOut, j, broke ? -1 : 1)
+                array.set(lvDue, j, -1)
+
+            array.set(lvIn, j, inZ)
+
+f_D(int j) =>
+    // an OPEN touch that has not been scored yet still counts as partial consumption,
+    // so D does not sit frozen for evalEff bars while price is working the level
+    openT = (array.get(lvDue, j) > 0) ? wOpen : 0.0
+    load = array.get(lvCons, j) + openT + wClock * minFrac + wVol * (sesVol > 0 ? array.get(lvVol, j) / sesVol : 0.0)
+    100.0 * (1.0 - math.exp(-load))
+
+// H IS A TEST RECORD, NOT A PERCENTAGE. v4 printed a logistic — "71%" — off at most
+// three tests, reset every morning. On n<=3 that number is a prior plus noise, and a
+// percent sign claims a precision the sample size cannot support no matter how the
+// weights are tuned. So the tally itself is the readout. The qualitative label is
+// derived from the EVIDENCE ONLY: the grade seed is subtracted back out, so a level
+// that has failed reads as failing however good the grade that seeded it was.
+f_Htxt(int j) =>
+    int n = array.get(lvN, j)
+    string r = "untested"
+    if n > 0
+        brk = int(array.get(lvBrk, j))
+        // PER TEST, not the running sum: lvH accumulates one clamped score per test, so
+        // dividing by n is what makes it comparable to a threshold measured on single
+        // touches. Comparing the sum would have made every level look better the more
+        // often it was tested.
+        ev  = (array.get(lvH, j) - hSeed * ((5 - j) - 3)) / n
+        lab = ev >= holdThr ? "holding" : ev <= failThr ? "failing" : "mixed"
+        r := str.tostring(n - brk) + " held / " + str.tostring(brk) + " broke   ("
+             + lab + ", " + str.tostring(ev, "#.##") + " vs " + str.tostring(holdThr, "#.##") + ")"
+    r
+
+// A level is CONSUMED once it has been tagged grayAfter times, or once decay alone has
+// eaten it. The touch count is the headline rule: it is what stops a level being traded
+// after the flow that created it has already been used.
+f_spent(int j) =>
+    array.get(lvTch, j) >= grayAfter or f_D(j) >= deadD
+
+// Which level, if any, IS one of the walls. The walls compete for their slots on merit,
+// so most sessions one or two of the five are a wall and nothing on screen said which.
+f_wallTag(int j) =>
+    string s = ""
+    p = array.get(lvPx, j)
+    if not na(p)
+        eps = 0.001 + nz(kStep, 1.0) * 0.01
+        if not na(kCW) and math.abs(p - kCW) <= eps
+            s := "CALL WALL"
+        if not na(kPW) and math.abs(p - kPW) <= eps
+            s := str.length(s) > 0 ? "CALL + PUT WALL" : "PUT WALL"
+    s
+f_wallShort(int j) =>
+    w = f_wallTag(j)
+    w == "CALL WALL" ? "CW" : w == "PUT WALL" ? "PW" : w == "CALL + PUT WALL" ? "CW+PW" : ""
+
+// Zones wider than the model's own separation rule start sharing bars: one touch is
+// counted against several levels and the same volume is billed to each.
+f_overlap() =>
+    bool o = false
+    for a = 0 to 3
+        pa = f_lv(a)
+        if not na(pa)
+            for b = a + 1 to 4
+                pb = f_lv(b)
+                if not na(pb) and math.abs(pa - pb) < 2.0 * halfW
+                    o := true
+    o
+
+// ───────────────────────────── drawing ─────────────────────────────
+// One fixed pool of objects, created once and mutated. Recreating them every bar is
+// the usual way these scripts hit the object cap mid-session and silently stop drawing.
+var array<box>   bxPool = array.new<box>()
+var array<line>  lnPool = array.new<line>()
+var array<label> lbPool = array.new<label>()
+var array<line>  auxLn  = array.new<line>()
+var array<label> auxLb  = array.new<label>()
+if bar_index == 0
+    for j = 0 to 4
+        array.push(bxPool, box.new(bar_index, close, bar_index, close, border_width = 0,
+             bgcolor = color.new(color.gray, 100)))
+        array.push(lnPool, line.new(bar_index, close, bar_index, close))
+        array.push(lbPool, label.new(bar_index, close, "", style = label.style_none,
+             textalign = text.align_left))
+    array.push(auxLn, line.new(bar_index, close, bar_index, close))
+    array.push(auxLb, label.new(bar_index, close, "", style = label.style_none))
+
+if barstate.islast
+    // Nothing may be drawn further back than the buffer declared above, whatever the
+    // session length or the user's line-length setting. This floor is the guard.
+    // math.max(0, ...) matters: on a chart with fewer than 1900 bars this floor would
+    // otherwise be negative, and so would x1 whenever backBars reached past bar zero.
+    xFloor = math.max(0, bar_index - 1900)
+    x1 = math.max(xFloor, anchorSes ? math.max(sesBar, bar_index - 1500) : bar_index - backBars)
+    x2 = bar_index + extendR
+    for j = 0 to 4
+        ln = array.get(lnPool, j)
+        lb = array.get(lbPool, j)
+        bx = array.get(bxPool, j)
+        p = f_lv(j)
+        if na(p)
+            line.set_xy1(ln, x1, na)
+            line.set_xy2(ln, x2, na)
+            label.set_xy(lb, x2, na)
+            label.set_text(lb, "")
+            label.set_tooltip(lb, "")
+            box.set_top(bx, na)
+            box.set_bottom(bx, na)
+        else
+            g = 5 - j                                  // grade: one of each, 5/5 .. 1/5
+            spent = f_spent(j)
+            // L-NUMBER IS BY PRICE, TOP DOWN — it is a position on the chart, not a
+            // rank. The stars carry the rank, so numbering by grade too would put two
+            // different orderings on one label and read as a contradiction.
+            int rank = 1
+            for k = 0 to 4
+                q = f_lv(k)
+                if not na(q) and q > p
+                    rank := rank + 1
+            base = spent ? deadCol : lvlCol
+            far = fadeFar and not na(atr) and atr > 0 and math.abs(close - p) > farATR * atr
+            tp = spent ? 72 : math.min(88, 20 + (5 - g) * 11 + (far ? 24 : 0))
+            wshort = showWall ? f_wallShort(j) : ""
+            // the band the engine actually tests, drawn at last
+            if showZone and not na(halfW)
+                box.set_lefttop(bx, x1, p + halfW)
+                box.set_rightbottom(bx, x2, p - halfW)
+                box.set_bgcolor(bx, color.new(base, math.min(97, 88 + (far ? 5 : 0) + (spent ? 4 : 0))))
+            else
+                box.set_top(bx, na)
+                box.set_bottom(bx, na)
+            line.set_xy1(ln, x1, p)
+            line.set_xy2(ln, x2, p)
+            line.set_color(ln, color.new(base, tp))
+            line.set_width(ln, g >= 5 ? 3 : g >= 3 ? 2 : 1)
+            line.set_style(ln, (showSign and array.get(lvGx, j) < 0) ? line.style_dashed : line.style_solid)
+            label.set_xy(lb, x2 + 1, p)
+            label.set_text(lb, "L" + str.tostring(rank) + " " + f_stars(g)
+                 + (str.length(wshort) > 0 ? "  " + wshort : ""))
+            label.set_textcolor(lb, color.new(base, spent ? 45 : 0))
+            label.set_size(lb, size.small)
+            // everything the label no longer says is still one hover away, rather
+            // than deleted: the decay engine keeps running whether or not it is drawn
+            hTxt = f_Htxt(j)
+            pTxt = array.get(lvTch, j) > 0 ? "reached"
+                 : na(array.get(lvP, j)) ? "—"
+                 : str.tostring(array.get(lvP, j) * 100, "#") + "%"
+            dTxt = (not na(atr) and atr > 0)
+                 ? str.tostring(close - p, "#.##") + "   (" + str.tostring(math.abs(close - p) / atr, "#.##") + " ATR)"
+                 : str.tostring(close - p, "#.##")
+            wall = f_wallTag(j)
+            label.set_tooltip(lb, "L" + str.tostring(rank) + "   grade " + str.tostring(g) + "/5"
+                 + (str.length(wall) > 0 ? "   " + wall : "")
+                 + "\n" + str.tostring(p, format.mintick)
+                 + (basisAdj != 0.0 ? "   (key " + str.tostring(array.get(lvPx, j), format.mintick)
+                      + (basisAdj > 0 ? " + " : " − ") + str.tostring(math.abs(basisAdj), "#.##") + " basis)" : "")
+                 + "\ndistance from price   " + dTxt
+                 + "\nP(reached), at the open   " + pTxt
+                 + "\nD " + str.tostring(f_D(j), "#") + "%    H " + hTxt
+                 + "\ntouches " + str.tostring(array.get(lvTch, j), "#")
+                 + "   breaks " + str.tostring(array.get(lvBrk, j), "#")
+                 + (array.get(lvN, j) > 0
+                      ? " of " + str.tostring(array.get(lvN, j)) + " scored   (an arbitrary level breaks ≈ "
+                           + str.tostring(brkBase, "#") + "% of the time)"
+                      : "")
+                 + "\ngamma " + str.tostring(array.get(lvGx, j), "#.##") + " $bn / 1%  →  "
+                 + (na(array.get(lvGx, j)) or array.get(lvGx, j) == 0.0
+                      ? "flat — no net hedging lean"
+                      : array.get(lvGx, j) > 0 ? "PINS — hedging leans against the move"
+                                               : "ACCELERATES — hedging runs with it")
+                 + (spent ? "\nCONSUMED" : ""))
+
+    // the gamma FLIP is a regime boundary, not a level: net gamma is zero there by
+    // construction, so it can never score in the pool and is drawn on its own terms
+    fl = array.get(auxLn, 0)
+    flb = array.get(auxLb, 0)
+    if na(flipAdj) or not showFlipLine
+        line.set_xy1(fl, x1, na)
+        line.set_xy2(fl, x2, na)
+        label.set_xy(flb, x2, na)
+        label.set_text(flb, "")
+    else
+        line.set_xy1(fl, x1, flipAdj)
+        line.set_xy2(fl, x2, flipAdj)
+        line.set_color(fl, color.new(lvlCol, 60))
+        line.set_width(fl, 1)
+        line.set_style(fl, line.style_dotted)
+        label.set_xy(flb, x2 + 1, flipAdj)
+        label.set_text(flb, "FLIP")
+        label.set_textcolor(flb, color.new(lvlCol, 35))
+        label.set_size(flb, size.tiny)
+
+// ───────────────────────────── level traces ─────────────────────────────
+// The five levels plotted as series, which does two things at once: it puts each
+// level's price on the RIGHT-HAND SCALE where it can be read without hovering, and it
+// leaves a trace of where the levels sat on previous sessions. That trace is only ever
+// as long as the key: sessions the key does not cover plot nothing, rather than
+// plotting today's numbers backwards through history and calling it a record.
+plot(f_lv(0), "L·1", color = plotCol, linewidth = 1, style = plot.style_linebr)
+plot(f_lv(1), "L·2", color = plotCol, linewidth = 1, style = plot.style_linebr)
+plot(f_lv(2), "L·3", color = plotCol, linewidth = 1, style = plot.style_linebr)
+plot(f_lv(3), "L·4", color = plotCol, linewidth = 1, style = plot.style_linebr)
+plot(f_lv(4), "L·5", color = plotCol, linewidth = 1, style = plot.style_linebr)
+
+// ───────────────────────────── candles, vwap ─────────────────────────────
+dltCol = color.from_gradient(math.max(-2.0, math.min(2.0, dltN)), -2.0, 2.0, color.new(#ef5350, 0), color.new(#26a69a, 0))
+barcolor(showDelta ? dltCol : na, title = "Delta-coloured candles")
+plot(showVwap ? vwap : na, "Session VWAP", color = color.new(color.yellow, 20), linewidth = 1)
+
+// ───────────────────────────── status ─────────────────────────────
+tbPos = statPos == "Top right" ? position.top_right
+      : statPos == "Top center" ? position.top_center
+      : statPos == "Bottom left" ? position.bottom_left : position.bottom_right
+var table tb = table.new(tbPos, 1, 1, border_width = 0)
+if barstate.islast
+    int n = 0
+    for j = 0 to 4
+        if not na(f_lv(j))
+            n := n + 1
+
+    string l1 = ""
+    color  scol = lvlCol
+    if str.length(myTag) == 0
+        l1   := "ES or NQ only — set Instrument manually"
+        scol := color.red
+    else if not haveKey and keyWid > 0 and keyWid < 24
+        l1   := myTag + "  OLD KEY — " + str.tostring(keyWid) + " fields, need 24"
+        scol := color.red
+    else if not haveKey
+        l1   := myTag + "  NO KEY for " + sesKey
+             + (na(newestMine) ? "" : "  (newest row " + str.tostring(newestMine, "#") + ")")
+        scol := color.red
+    else if keyExact
+        l1   := myTag + " · " + syminfo.ticker + "  KEY OK · " + str.tostring(n)
+        scol := lvlCol
+    else if keyAge < 0
+        l1   := myTag + "  KEY " + keyDay + " (next session) · " + str.tostring(n)
+        scol := color.orange
+    else if keyAge <= 1
+        l1   := myTag + "  KEY " + keyDay + " (−1d) · " + str.tostring(n)
+        scol := color.orange
+    else
+        l1   := myTag + "  ⚠ STALE " + str.tostring(keyAge, "#") + "d — key " + keyDay
+        scol := color.red
+
+    bsgn = basisAdj >= 0 ? "+" : "−"
+    string l2 = not isAuto and not isManual ? "levels drawn as keyed — no basis applied"
+              : isManual ? "levels shifted " + bsgn + str.tostring(math.abs(basisAdj), "#.##") + " onto this chart  (manual)"
+              : basisBad ? "⚠ cannot measure basis — " + cashSym + " not loading"
+              : "levels shifted " + bsgn + str.tostring(math.abs(basisAdj), "#.##")
+                   + " onto this chart  (measured vs " + cashSym + ")"
+                   + (basisSelfN < 100 ? "  ⚠ thin (" + str.tostring(basisSelfN) + " samples)" : "")
+    if basisBad
+        scol := color.red
+    if basisSuspect
+        scol := color.red
+
+    string l3 = ""
+    if not na(flipAdj)
+        above = close > flipAdj
+        l3 := (above ? "above" : "below") + " FLIP " + str.tostring(flipAdj, format.mintick)
+             + " · " + (above ? "net long gamma — moves damped" : "net short gamma — moves amplified")
+
+    string lD = ""
+    if showDelta and cumAbs > 0
+        dsgn = dltBias >= 0 ? "+" : "−"
+        lD := "session Δ " + dsgn + str.tostring(math.abs(dltBias), "#.##") + "  (CLV proxy — unvalidated)"
+
+    string l4 = ""
+    if not timeframe.isintraday
+        l4 := "⚠ intraday charts only"
+    if evalBars > coolBars
+        l4 := l4 + (str.length(l4) > 0 ? "\n" : "") + "⚠ scoring window clamped to " + str.tostring(evalEff) + " bars"
+    if useX and isAuto and (na(basisOther) or basisOtherN < 100)
+        l4 := l4 + (str.length(l4) > 0 ? "\n" : "") + "⚠ cross-asset basis unmeasured — " + xCashSym
+    if haveKey and f_overlap()
+        l4 := l4 + (str.length(l4) > 0 ? "\n" : "") + "⚠ zones overlap at this width"
+    if basisSuspect
+        l4 := l4 + (str.length(l4) > 0 ? "\n" : "")
+             + "⚠ " + cashSym + " tracks this chart — that is a FUTURE, not a cash index."
+             + "\n   Basis reads ~0, so every level is in the wrong price frame."
+             + "\n   Set it back to " + (myTag == "NQ" ? "NASDAQ:NDX" : "SP:SPX") + "."
+
+    txt = l1 + "\n" + l2 + (str.length(l3) > 0 ? "\n" + l3 : "")
+         + (str.length(lD) > 0 ? "\n" + lD : "") + (str.length(l4) > 0 ? "\n" + l4 : "")
+
+    tip = "session " + sesKey + "   ·   key row " + (haveKey ? keyDay : "none")
+         + "\nzone ±" + str.tostring(halfW, "#.##") + " (" + tolMode + ")"
+         + "\nstrike step " + str.tostring(kStep, "#.##")
+         + "\n\nflip " + str.tostring(flipAdj, format.mintick)
+         + "\nnet gamma " + str.tostring(kNet, "#.###") + " $bn / 1%"
+         + "\ncall wall " + str.tostring(cwAdj, format.mintick)
+         + "   put wall " + str.tostring(pwAdj, format.mintick)
+         + "\ncharm " + str.tostring(kCharm, "#.###") + "   vanna " + str.tostring(kVanna, "#.###")
+         + "\n\nPrices shown are key prices plus the basis in force for this session. "
+         + "The key is built from the cash option books; the chart is a future. "
+         + "The basis is measured only while the cash index is ticking and is frozen at "
+         + "the open, so the levels do not move intraday."
+
+    table.cell(tb, 0, 0, txt, text_color = scol, text_size = size.tiny,
+         text_halign = text.align_left, bgcolor = color.new(color.black, 70), tooltip = tip)
+
+// ───────────────────────────── alerts and markers ─────────────────────────────
+// Reads the OUTCOME THE ENGINE RECORDED rather than re-deriving one. An earlier draft
+// re-derived it as away > thru, which is a different test from the one that filled
+// lvBrk, so a touch could print a rejection triangle and be tallied as a break at once.
+f_anyScored(bool wantReject) =>
+    bool t = false
+    for j = 0 to 4
+        o = array.get(lvOut, j)
+        if o != 0 and array.get(lvLast, j) == bar_index - evalEff
+            t := t or (wantReject ? o > 0 : o < 0)
+    t
+
+// A live, stateless read of "price is in a zone right now", for the one alert where
+// waiting for the close costs you the entry. It touches none of the engine's state.
+f_liveIn() =>
+    bool t = false
+    for j = 0 to 4
+        p = f_lv(j)
+        if not na(p) and low <= p + halfW and high >= p - halfW
+            t := true
+    t
+inAny = f_liveIn()
+liveTag = inAny and not inAny[1]
+
+touched  = touchedNow
+rejected = barstate.isconfirmed and f_anyScored(true)
+brokeThr = barstate.isconfirmed and f_anyScored(false)
+xStar    = firstTouch and xLive and ftDir != 0 and xDir == ftDir   // first touch, same direction, both books
+
+alertcondition(liveTag,  "Zone touched (intrabar)", "{{ticker}} is in an options reaction zone")
+alertcondition(touched,  "Zone tagged (bar close)", "{{ticker}} tagged an options reaction level")
+alertcondition(rejected, "Zone rejected",           "{{ticker}} rejected an options reaction level")
+alertcondition(brokeThr, "Zone broken",             "{{ticker}} traded through an options reaction level")
+alertcondition(xStar,    "First touch + cross",     "{{ticker}} first touch of a level with cross-asset confirmation")
+
+// alertcondition messages are static strings. This one carries the level that was
+// actually tagged, for anyone routing alerts somewhere that has to act on them.
+if touchedNow
+    alert("QT KEY · " + syminfo.ticker + " tagged " + touchInfo, alert.freq_once_per_bar_close)
+
+// Pine has no shape.star — plotshape offers circle, square, diamond, flag, arrows,
+// crosses and triangles, and nothing else — so the star is drawn as a CHARACTER.
+plotchar(xStar, "cross-asset first touch", "★", location.belowbar, color.new(#A855F7, 0), size = size.tiny)
+// offset puts the outcome marker back on the bar that was touched. Without it the
+// triangle prints evalEff bars to the right of the event it describes.
+plotshape(rejected, "reject", shape.triangleup,   location.belowbar, color.new(#26a69a, 0),
+     size = size.tiny, offset = -evalEff)
+plotshape(brokeThr, "break",  shape.triangledown, location.abovebar, color.new(#ef5350, 0),
+     size = size.tiny, offset = -evalEff)
