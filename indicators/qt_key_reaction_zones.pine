@@ -38,12 +38,13 @@
 //  Dealer gamma, computed by tools/gamma_key.py in this repo from the listed option
 //  chain (open interest x Black-Scholes gamma, summed per strike, signed by side) and
 //  pasted in as frozen numbers. `python3 tools/gamma_key.py` prints the key and its
-//  working: which strikes, how much OI, what probability, what score, per level. TradingView has no options feed and Pine cannot fetch anything, so
-//  every options indicator on this platform works this way. The numbers are fixed
-//  before the session opens and never move.
+//  working: which strikes, how much OI, what probability, what score, per level.
+//  TradingView has no options feed and Pine cannot fetch anything, so every options
+//  indicator on this platform works this way. The numbers are fixed before the session
+//  opens and never move.
 //
+//    ES levels  <- SPX book + SPY book folded into the SPX price frame
 //    NQ levels  <- NDX book + QQQ book folded into the NDX price frame
-//    ES levels  <- SPX book
 //
 //  BOTH keys merge an index book with its tracking ETF, for a boring reason and a real
 //  one. The boring one: measured 2026-08-20, open interest inside 7 days was 4,044,633
