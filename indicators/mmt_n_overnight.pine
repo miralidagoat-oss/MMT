@@ -1,0 +1,129 @@
+//@version=6
+// MMT-N — the overnight session on MNQ/NQ
+//
+// WHAT THIS IS, PLAINLY: this is not a day-trading system and it is not alpha.
+// Across 2,998 sessions of 1-minute Nasdaq data (2015-2026), the RTH session
+// drifts +2.13 points a day at t = 0.80 — indistinguishable from zero, which
+// is why every intraday rule tested in this repo landed at a profit factor
+// near 1.00. The overnight window carries +4.54 points a day at t = 2.18.
+// The return is in the night. You are paid to hold index risk through the
+// gap, not to outsmart anyone, and you can lose that pay in a bad regime.
+//
+// Walk-forward result, filter length re-chosen each year on prior data only,
+// MNQ costs charged (0.60pt commission + 0.50pt slippage per night):
+//     2,049 nights   WR 56.3%   PF 1.27   Sharpe 1.21   t +3.46
+//     max drawdown 2,063 pts    8 of 10 out-of-sample years positive
+//     deflated Sharpe PSR 0.890 — short of the 0.95 bar, but it clears the
+//     null threshold, which nothing else tested in this repo did
+//
+// The trend filter is the part that matters: unfiltered, 2022 cost 3,382
+// points. Filtered, it cost 475 and the strategy was flat for most of the
+// year. Do not remove it because it is "missing trades".
+
+strategy("MMT-N (overnight, MNQ/NQ)", overlay=true, initial_capital=25000,
+     default_qty_type=strategy.fixed, default_qty_value=1,
+     commission_type=strategy.commission.cash_per_order, commission_value=0.60,
+     slippage=1, pyramiding=0, calc_on_every_tick=false, max_labels_count=500)
+
+// ── inputs ───────────────────────────────────────────────────────────────────
+g_s = "Session (exchange time)"
+tz      = input.string("America/New_York", "Timezone", group=g_s)
+entryHM = input.string("1555", "Enter at  (HHMM)", group=g_s,
+     tooltip="Just before the cash close. Earlier is fine; the last five " +
+     "minutes are the noisiest part of the session.")
+exitHM  = input.string("0930", "Exit at   (HHMM)", group=g_s)
+
+g_f = "Regime filter"
+useTrend = input.bool(true,  "Require price above the long-term mean", group=g_f)
+trendLen = input.int(200, "Daily SMA length", minval=20, maxval=400, group=g_f,
+     tooltip="Walk-forward selected 200 in every single fold. 100 and 150 " +
+     "also work (Sharpe 1.03 / 0.88), so this is a plateau, not a knife edge.")
+
+g_r = "Risk"
+useVT    = input.bool(true, "Volatility targeting", group=g_r)
+targetVol= input.float(0.15, "Annualised vol target", minval=0.02, maxval=0.60,
+     step=0.01, group=g_r)
+volLen   = input.int(20, "Realised vol lookback (days)", minval=5, group=g_r)
+maxLev   = input.float(3.0, "Max size multiple", minval=0.5, step=0.5, group=g_r)
+baseQty  = input.float(1.0, "Base contracts", minval=0.1, step=0.1, group=g_r)
+useStop  = input.bool(true, "Disaster stop", group=g_r)
+stopMult = input.float(2.0, "Stop (x daily range scale)", minval=0.5, step=0.25,
+     group=g_r, tooltip="Tested on the real overnight path. A WIDE stop is " +
+     "roughly free. Tighter stops cost money AND increase drawdown: at 1.0x " +
+     "the study lost 1,000 points and drawdown rose from 2,063 to 3,200.")
+
+// ── daily context, taken from completed daily bars only ──────────────────────
+dClose = request.security(syminfo.tickerid, "D", close[1],
+     lookahead=barmerge.lookahead_off)
+dSma   = request.security(syminfo.tickerid, "D", ta.sma(close, trendLen)[1],
+     lookahead=barmerge.lookahead_off)
+dRet   = request.security(syminfo.tickerid, "D",
+     (close[1] - close[2]) / close[2], lookahead=barmerge.lookahead_off)
+dVol   = request.security(syminfo.tickerid, "D",
+     ta.stdev((close - close[1]) / close[1], volLen)[1] * math.sqrt(252),
+     lookahead=barmerge.lookahead_off)
+dRange = request.security(syminfo.tickerid, "D", ta.sma(high - low, 20)[1],
+     lookahead=barmerge.lookahead_off)
+
+// ── session clock ────────────────────────────────────────────────────────────
+toMin(hm) =>
+    str.tonumber(str.substring(hm, 0, 2)) * 60 + str.tonumber(str.substring(hm, 2, 4))
+
+nowMin   = hour(time, tz) * 60 + minute(time, tz)
+entryMin = toMin(entryHM)
+exitMin  = toMin(exitHM)
+
+isEntryBar = nowMin >= entryMin and nowMin[1] < entryMin
+isExitBar  = nowMin >= exitMin  and nowMin[1] < exitMin
+
+// ── sizing ───────────────────────────────────────────────────────────────────
+volOK  = not na(dVol) and dVol > 0
+sizeMult = useVT ? (volOK ? math.min(targetVol / dVol, maxLev) : 0.0) : 1.0
+qty = math.max(baseQty * sizeMult, 0.0)
+
+trendOK = not useTrend or (not na(dSma) and not na(dClose) and dClose > dSma)
+canEnter = isEntryBar and trendOK and qty > 0 and barstate.isconfirmed
+
+// ── orders ───────────────────────────────────────────────────────────────────
+if isExitBar and strategy.position_size != 0
+    strategy.close_all("morning exit")
+
+if canEnter and strategy.position_size == 0
+    strategy.entry("N", strategy.long, qty=qty)
+
+var float stopPx = na
+if strategy.position_size != 0 and strategy.position_size[1] == 0
+    stopPx := strategy.position_avg_price - stopMult * nz(dRange, ta.atr(20) * 4)
+if strategy.position_size != 0 and useStop and not na(stopPx)
+    strategy.exit("XN", from_entry="N", stop=stopPx)
+if strategy.position_size == 0
+    stopPx := na
+
+// ── display ──────────────────────────────────────────────────────────────────
+bgcolor(strategy.position_size != 0 ? color.new(color.blue, 92) : na,
+     title="Overnight position held")
+plot(strategy.position_size != 0 and useStop ? stopPx : na, "Disaster stop",
+     color.new(color.red, 0), 1, plot.style_linebr)
+
+var table tb = table.new(position.top_right, 2, 7, border_width=1)
+if barstate.islast
+    table.cell(tb, 0, 0, "MMT-N", text_color=color.white, bgcolor=color.new(color.blue, 20))
+    table.cell(tb, 1, 0, "overnight", text_color=color.white, bgcolor=color.new(color.blue, 20))
+    table.cell(tb, 0, 1, "Nights")
+    table.cell(tb, 1, 1, str.tostring(strategy.closedtrades))
+    table.cell(tb, 0, 2, "Profit factor")
+    pf = strategy.grossloss > 0 ? strategy.grossprofit / strategy.grossloss : na
+    table.cell(tb, 1, 2, na(pf) ? "-" : str.tostring(pf, "#.##"),
+         text_color = na(pf) ? color.gray : (pf >= 1 ? color.green : color.red))
+    table.cell(tb, 0, 3, "Net profit")
+    table.cell(tb, 1, 3, str.tostring(strategy.netprofit, "#.##"))
+    table.cell(tb, 0, 4, "Regime")
+    table.cell(tb, 1, 4, trendOK ? "risk on" : "FLAT (below SMA)",
+         text_color = trendOK ? color.green : color.orange)
+    table.cell(tb, 0, 5, "Size multiple")
+    table.cell(tb, 1, 5, str.tostring(sizeMult, "#.##"))
+    table.cell(tb, 0, 6, "Beta, not alpha", text_color=color.orange)
+    table.cell(tb, 1, 6, "size accordingly", text_color=color.orange)
+
+alertcondition(canEnter, "MMT-N enter", "Overnight long: enter now")
+alertcondition(isExitBar, "MMT-N exit", "Overnight long: flatten at the open")

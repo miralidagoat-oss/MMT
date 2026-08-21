@@ -1,31 +1,119 @@
-# MMT — Nasdaq futures intraday research
+# MMT — Nasdaq futures research
 
-This repo started as a Pine indicator that faded liquidity sweeps on MNQ/NQ and
-reported a profit factor of 1.35. This pass rebuilt the evidence base from
-scratch: 11.9 years of 1-minute Nasdaq data, a cost model, an execution
-simulator that resolves fills on the minute clock, and a validation harness.
+Three strategies, all walk-forward validated on 11.9 years of 1-minute data
+with MNQ costs charged. Headline first, because the answer is not the one that
+was asked for.
 
-**The headline is negative, and it is the most useful thing here.** The sweep
-setup this repo was built on has no measurable forward edge. Neither does any
-of the eleven other intraday predictors tested against it. The one candidate
-left standing — an opening-range breakout — is positive in walk-forward but
-fails its significance test once you account for how many configurations were
-searched to find it.
+**NQ's intraday session has no edge in it. Its return happens overnight.**
 
-That result cost a lot of compute to establish and it is worth more than
-another indicator would have been. Details below, including the two bugs that
-each produced a spectacular fake edge before being caught.
+| | intraday 09:30→15:55 | overnight 15:55→09:30 |
+|---|---|---|
+| drift | +2.13 pts/day | **+4.54 pts/day** |
+| t-stat | +0.80 | **+2.18** |
+| Sharpe | 0.23 | **0.63** |
+| profitable years | 6 / 12 | **10 / 12** |
+
+That single decomposition explains every result in this repo. Three
+generations of intraday rules all landed at a profit factor near 1.00 because
+they were dividing up a session whose total drift is statistically zero. The
+money is in the window when the cash market is shut.
 
 ---
 
-## What you should actually take away
+## The strategies, WR and PF by year
 
-| Question you asked | Answer the data gives |
-|---|---|
-| Best timeframe? | **15m–60m for decisions, 1m for execution.** Not because higher is magic, but because friction is fixed per trade: it costs 0.147R per trade at 1m and 0.020R at 60m. At 1m you must out-earn a 15% handicap on every trade. |
-| Top/bottom-tick entries with high RR and no tradeoff? | Not available. A limit at the extreme is a *worse* fill rate, not a free better price — that is the tradeoff, and it is priced. Across the whole sweep study, entering closer to the extreme bought a better price and lost more than it gained in missed trades. |
-| MNQ or NQ? | **NQ if you can carry it.** Costs are 0.71pt round turn on NQ versus 1.10pt on MNQ — a third less drag for the identical trade, because commission does not scale with the 10x contract size. |
-| Is there an elite edge in here? | Not one that survives validation. What survives is the *machinery* to test the next idea in an afternoon instead of three versions of self-deception. |
+All numbers are **out-of-sample**: parameters for each year come only from
+prior years. Costs charged every trade (MNQ: $1.20 commission + 1 tick
+slippage per side).
+
+### MMT-N — overnight hold, trend-filtered, vol-targeted  ← the one to trade
+
+`indicators/mmt_n_overnight.pine` · `research/overnight.py`
+
+| year | nights | WR % | PF | net pts | $ (1 MNQ) |
+|---|---|---|---|---|---|
+| 2017 | 257 | 56.4 | 1.38 | +974 | +1,947 |
+| 2018 | 209 | 56.0 | 0.89 | −390 | −780 |
+| 2019 | 219 | 56.2 | 1.08 | +340 | +679 |
+| 2020 | 237 | 60.3 | 1.27 | +1,426 | +2,852 |
+| 2021 | 258 | 57.8 | 1.16 | +1,311 | +2,621 |
+| 2022 | **15** | 46.7 | 0.39 | −475 | −950 |
+| 2023 | 237 | 50.2 | 1.15 | +989 | +1,979 |
+| 2024 | 259 | 55.6 | 1.42 | +3,771 | +7,543 |
+| 2025 | 211 | 59.7 | 1.68 | +6,277 | +12,555 |
+| 2026 | 147 | 54.4 | 1.15 | +1,420 | +2,840 |
+| **all** | **2,049** | **56.3** | **1.27** | **+15,643** | **+31,287** |
+
+Sharpe 1.21 · t = +3.46 · max drawdown 2,063 pts · 8 of 10 years positive.
+
+Look at 2022: fifteen nights. The trend filter took the strategy flat through
+the bear market. Unfiltered, 2022 cost 3,382 points — more than any other
+year made. **The filter is the strategy.** Do not switch it off because it
+looks like it is missing trades.
+
+### MMT-X — intraday multi-signal model
+
+`research/model.py`. Ridge over 28 features (NQ microstructure + S&P and
+bond cross-asset), triple-barrier labels, hyperparameters chosen on a
+validation split, refit and traded each year forward.
+
+| year | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | all |
+|---|---|---|---|---|---|---|---|---|
+| PF | 1.30 | 1.43 | 1.31 | 0.61 | 1.28 | 1.03 | 1.15 | **1.13** |
+| WR % | 47.9 | 50.6 | 50.7 | 40.6 | 58.5 | 51.6 | 50.0 | **51.6** |
+
+667 trades, +0.029R each. Six of seven years positive, which looks better
+than it is: 667 trades is a thin sample and PF 1.13 at that count is not
+significant. Worth noting for one reason only — the cross-asset features are
+what lifted it. On NQ data alone the identical model returns **PF 0.92**.
+
+### MMT-ORB — opening range breakout
+
+`indicators/mmt_orb_nq.pine` · `research/orb.py`. PF 1.09, WR 39.2% over
+2,639 OOS trades. Deflated Sharpe **PSR 0.071** — worse than the best of the
+384 configurations searched to find it. Six consecutive losing years to 2020,
+five winning years from 2021, negative in 2026. Shipped for completeness and
+because the regime story is interesting. **Not recommended.**
+
+---
+
+## What MMT-N actually is, and what it is not
+
+It is not alpha. It is the equity risk premium, collected in the window where
+it accrues, with a trend overlay to sit out the regimes that do not pay it.
+The night effect is documented across equity indices for two decades
+(Cliff/Cooper/Gulen; Lachance; Boyarchenko et al.). You are being paid to hold
+risk through the gap.
+
+That has consequences you need to price in:
+
+- **Deflated Sharpe PSR 0.890.** Short of the 0.95 bar. It is the only thing
+  tested here that clears its null threshold at all, but it is not proven.
+- **Gap risk is the real risk.** Worst night in the sample: −622 pts
+  (−$1,245 on 1 MNQ, −$12,449 on 1 NQ). A geopolitical print can gap through
+  any stop.
+- **Stops do not help — measured on the real overnight path.** A first pass
+  that only floored losses said tighter stops improved everything. That test
+  was rigged: it never let a stop trigger on a night that would have
+  recovered. Walking the actual 1-minute path from 15:55 to 09:30 reverses
+  the conclusion:
+
+  | stop | net pts | Sharpe | max DD | worst night |
+  |---|---|---|---|---|
+  | none | 15,252 | 1.12 | 2,063 | −622 |
+  | 2.0× scale | 15,267 | 1.13 | 2,063 | −559 |
+  | 1.5× scale | 14,449 | 1.05 | 2,851 | −605 |
+  | 1.0× scale | 14,257 | 1.07 | **3,200** | −404 |
+
+  A wide disaster stop is roughly free. Tighter stops cost about 1,000 points
+  and make drawdown *worse*. Default is 2.0×, and it is there for the tail,
+  not for risk control.
+- **Correlated with everything else you own.** This is long index exposure. It
+  does not diversify a stock portfolio; it concentrates it.
+- **Observation, not a rule:** Monday nights are the only negative weekday
+  (−2.65 pts mean vs +11 to +13 on Tue/Wed). Deliberately not built in — a
+  five-way split of one sample is how post-hoc rules get born. Watch it
+  forward.
 
 ---
 
@@ -151,60 +239,28 @@ documented intraday effects as event studies with MNQ costs charged.
 
 ---
 
-## MMT-ORB — the one candidate, and its honest numbers
+## MMT-ORB detail, and why costs govern your timeframe
 
-`indicators/mmt_orb_nq.pine`, `research/orb.py`. Break of the opening range,
-stop at the far side, risk capped, flat at 15:55 ET. Shipped as a Pine
-`strategy()` rather than an indicator so TradingView's engine grades it
-independently of my Python.
+The full ORB numbers are in the table above. Two things from that study
+generalise beyond it.
 
-**Anchored walk-forward, 8 folds, parameters chosen only on prior data, MNQ
-costs charged, stitched out-of-sample:**
-
-```
-n = 2,639   WR 39.2%   PF 1.09   +0.043R/trade   net +113.8R   maxDD 29.7R
-```
-
-And then the tests that matter:
-
-| test | result | reading |
-|---|---|---|
-| Deflated Sharpe (Bailey & López de Prado) | **PSR 0.071** | per-trade Sharpe 0.031 vs a 0.058 null threshold for a 384-config search — **the result is worse than the best of 384 coin flips** |
-| t-stat, 2,639 OOS trades | +1.58 | not significant |
-| Block bootstrap, expectancy | +0.042R, 5–95%: **+0.002 to +0.083** | the low end is zero |
-| Bootstrap drawdown | median 42.9R, 95th pct **79.8R** | a plausible drawdown is 70% of the entire 11-year gain |
-| Buy and hold 09:30→15:55, same period | **$15,745** vs ORB's $20,883 | the margin over doing nothing clever is inside the noise |
-
-**Per year, out-of-sample:**
-
-```
-2016  -5.1R   2017  -3.2R   2018 +26.6R   2019  +3.7R
-2020  +0.6R   2021  +0.4R   2022 +31.8R   2023  +0.8R
-2024 +34.7R   2025 +32.9R   2026  -9.4R (partial)
-```
-
-Four years produced essentially all of it. On the raw un-walk-forward version
-the split is starker: **six consecutive losing years to 2020, five consecutive
-winning years from 2021, negative again in 2026.** That is a regime change —
-plausibly the 0DTE/retail-flow era — not a stable edge. It may persist. You
-cannot tell from this data, and anyone who tells you otherwise is selling.
-
-Costs are not what kills this one; the edge is simply small:
-
-| setup | round-turn cost | as fraction of avg 74pt risk | net expectancy |
-|---|---|---|---|
-| MNQ, modelled | 1.10pt | 0.015R | +0.034R |
-| MNQ, 2-tick slippage | 1.60pt | 0.022R | +0.025R |
-| NQ (10x contract) | 0.71pt | 0.010R | **+0.041R** |
-
-Cost drag by decision timeframe, from the sweep study — this is the number
-that should govern your timeframe choice more than any pattern:
+**Cost drag by decision timeframe.** Friction is fixed per trade, so the
+faster you trade the more of any edge it eats. This should govern your
+timeframe choice more than any pattern:
 
 | tf | 1m | 3m | 5m | 15m | 30m | 60m |
 |---|---|---|---|---|---|---|
 | cost, R/trade | 0.147 | 0.077 | 0.063 | 0.037 | 0.027 | 0.020 |
 
----
+At 1 minute you are spotting the market a 15% handicap on every trade. This
+is why "scalp the 1-minute for top-tick entries" does not work arithmetically,
+before any question of whether the pattern is real.
+
+**MNQ vs NQ.** Commission does not scale with contract size, so the same
+trade costs 1.10pt round turn on MNQ and 0.71pt on NQ — a third less drag.
+Trade NQ if you can carry the size; trade MNQ if you cannot, and accept the
+handicap.
+
 
 ## The failure checklist
 
@@ -232,6 +288,8 @@ that hurt a mean-reversion setup.
 | 7 | No fees or slippage anywhere | costs charged in points on every trade; sensitivity table published |
 | 8 | Verdicts from 16–75 trades | 2,998 sessions; nothing reported under ~250 trades |
 | 9 | ET session clock approximated as UTC−4 | real IANA tz with DST transitions |
+| 10 | A stop test that could only ever improve results (it floored losses but never let a stop trigger on a night that recovered) | stops walked on the real 1-minute path; the honest test reversed the conclusion |
+| 11 | Hyperparameters picked by my own judgement after seeing results | nested walk-forward — the intraday model drops from PF 1.04 to 0.92 when the grid is chosen honestly, which is the size of that bias |
 
 **What genuinely worked, and still does:** breakeven-at-+1R management (it
 converts roughly 40% of losses into scratches — the largest single
@@ -245,20 +303,27 @@ tie-breaking in the fill model.
 
 ```
 research/
-  core.py          bars, resampling, ET session clock, indicators (self-testing)
-  engine.py        execution simulator, MNQ cost model, trade ledger
-  strategy.py      liquidity-sweep signal generation (causality self-tested)
-  probe.py         forward-excursion edge probe vs matched baseline
-  edge_search.py   feature/response scan + the three nulls
-  events.py        ORB / intraday-momentum / time-of-day event studies
-  orb.py           MMT-ORB strategy and its walk-forward
-  validate.py      walk-forward, deflated Sharpe, block bootstrap
-  diagnose.py      final report on the OOS ledger
-  fetch_duka.py    1-minute history downloader
-  repair_duka.py   coverage repair
+  core.py            bars, resampling, ET session clock, indicators (self-testing)
+  engine.py          execution simulator, MNQ cost model, trade ledger
+  strategy.py        liquidity-sweep signal generation (causality self-tested)
+  probe.py           forward-excursion edge probe vs matched baseline
+  edge_search.py     feature/response scan + the three nulls
+  events.py          ORB / intraday-momentum / time-of-day event studies
+  orb.py             MMT-ORB strategy and its walk-forward
+  overnight.py       MMT-N: the overnight strategy + honest stop study
+  validate_night.py  MMT-N walk-forward, deflated Sharpe, tail risk
+  report.py          regenerates the headline WR/PF-by-year table
+  model.py           MMT-X: ridge over 28 features, nested walk-forward
+  xpanel.py          cross-asset alignment (S&P, VIX, bonds, gold, FX)
+  validate.py        walk-forward, deflated Sharpe, block bootstrap
+  diagnose.py        report on the ORB OOS ledger
+  fetch_duka.py      1-minute Nasdaq downloader
+  fetch_symbol.py    generic multi-instrument downloader
+  repair_duka.py     coverage repair
 indicators/
-  mmt_orb_nq.pine              MMT-ORB as a Pine v6 strategy()
-  alpha_predictive_limit_matrix.pine   previous sweep indicator (superseded)
+  mmt_n_overnight.pine   MMT-N as a Pine v6 strategy()   <- the one to trade
+  mmt_orb_nq.pine        MMT-ORB as a Pine v6 strategy()
+  alpha_predictive_limit_matrix.pine   original sweep indicator (superseded)
 ```
 
 Reproduce:
@@ -268,10 +333,12 @@ pip install numpy
 python3 research/fetch_duka.py 2015 && python3 research/repair_duka.py 5
 cd research
 python3 core.py && python3 engine.py && python3 strategy.py   # self-tests
-python3 probe.py          # the sweep premise
-python3 edge_search.py    # feature scan against the null
-python3 events.py         # documented effects
-python3 diagnose.py       # walk-forward ORB + significance
+python3 probe.py            # the sweep premise
+python3 edge_search.py      # feature scan against the null
+python3 events.py           # documented effects
+python3 overnight.py        # the intraday/overnight decomposition
+python3 report.py           # MMT-N headline: WR and PF by year
+python3 diagnose.py         # walk-forward ORB + significance
 ```
 
 ---
@@ -294,3 +361,19 @@ at, none of them tested here:
 
 Run each through `edge_search.py` with the path-permutation null before
 believing anything, and quote deflated Sharpe on whatever survives.
+
+Cross-asset conditioning has now been tested and is the reason MMT-X exists:
+S&P relative value and bond moves lifted the intraday model from PF 0.92 to
+1.13. That is real but thin. The obvious extensions, in order of expected
+value:
+
+1. **Order flow.** Everything here is OHLCV. Resting size, aggressor
+   imbalance and book depletion are not in a candle, and they are the most
+   likely place for a genuine intraday edge. Databento MBO/MBP-10 for CME.
+2. **VIX term structure.** The VIX spot download is in `research/data`;
+   contango/backwardation as a regime input for MMT-N is the single cheapest
+   improvement available, because MMT-N is a risk-premium harvest and the
+   term structure prices that premium directly.
+3. **Event conditioning.** FOMC, CPI, NFP, opex. Small per-event samples but
+   large effects where they exist — and MMT-N holds overnight through all of
+   them, which is exactly where its tail risk lives.
