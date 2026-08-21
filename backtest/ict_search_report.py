@@ -75,7 +75,7 @@ def full_picture(cfg):
     m, t = tstat(rs_of(tr))
     oos = []
     for sym in S.MARKETS:
-        if sym in S.DATA:
+        if sym in S.RAW:                    # S.DATA is keyed by (market, pv, kz)
             oos += rs_of(evaluate(cfg, sym))
     om, ot = tstat(oos)
     gp = sum(x for x in oos if x > 0)

@@ -393,3 +393,53 @@ They are not independent — breakeven win rate is `1 / (1 + RR)`:
 `PF = (WR x RR) / (1 - WR)`. Asking for the highest win rate, the highest profit
 factor, the highest RR and the most trades at once is asking for four things that
 trade against each other; the presets are three chosen points on that curve.
+
+
+## The 10,000-configuration search
+
+`backtest/ict_search.py` samples 10,000 random configurations across every
+meaningful lever — threshold, the three hard gates, stop placement, entry
+depth, target logic, R multiples, ATR stop bounds, breakeven, scale-outs,
+pivot/structure/sweep lookbacks, displacement thresholds, zone type, OTE
+levels, time stop, RVOL gates, HTF confirm, seven killzone combinations and
+long/short-only variants.
+
+The same 10,000 are then run against a **null series**: identical timestamps,
+identical volumes, identical volatility and fat tails (σ 0.000895, p99/p50 |r|
+= 8.22 on both), but a structureless price path built by permuting bar
+returns. Volatility clustering falls from 0.29 to −0.01, so no trend, level or
+mean-reversion survives. Whatever score the best of 10,000 reaches there is
+what luck alone buys at this sample size.
+
+| percentile | real t | null t | real PF | null PF |
+|---|---:|---:|---:|---:|
+| 50% | −0.497 | −0.551 | 0.847 | 0.894 |
+| 90% | +0.724 | +0.766 | 1.183 | 1.266 |
+| 95% | +1.068 | +1.042 | 1.337 | 1.411 |
+| 99% | +1.710 | +1.634 | 1.667 | 1.753 |
+| max | +3.360 | +2.613 | 2.654 | 2.266 |
+
+Real configurations exceeding the null's 95th percentile: **5.3%** (5.0%
+expected under no edge). Exceeding the 99th: **1.1%** (1.0% expected).
+Mann-Whitney across the whole distribution: **z = +1.31**, inside the ±1.96
+band. And if both samples came from the same distribution, the chance that the
+best real configuration beats the best null configuration is **49.9%** — so
+"the winner cleared the noise bar" is a coin flip, not evidence.
+
+Correlation between in-sample and out-of-sample t across the 250 leaders:
+**+0.144**. Only 19% of them are positive on the five untouched markets. The
+in-sample ranking carries essentially no information about the future.
+
+Two harness bugs were found and fixed during this work, both of which had
+produced confident wrong answers:
+
+- `prep()` consumes 18 parameters. The harness called it once with defaults
+  and reused the result for all 10,000 configurations, silently freezing the
+  killzone selection (all seven variants were identical), pivot length, both
+  bias EMAs and the HTF timeframe. Caught by re-running the reported winner
+  through the ordinary CLI: search said PF 1.16, the rebuild said PF 0.72.
+  Every nominated configuration is now re-evaluated from scratch and discarded
+  if it does not reproduce.
+- `full_picture()` tested `sym in S.DATA` while `S.DATA` is keyed by
+  `(market, pivot, killzone)` tuples, so the check never matched and
+  out-of-sample silently reported as exactly zero.
