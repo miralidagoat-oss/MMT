@@ -166,7 +166,7 @@ useVwTgt  = input.bool(true, "VWAP bands count as target pools", group = G_FIL)
 showVWAP  = input.bool(true,  "VWAP + bands",       group = G_VIS)
 showVP    = input.bool(true,  "Profile POC/VA",     group = G_VIS)
 showLevel = input.bool(true,  "Liquidity levels",   group = G_VIS)
-showRange = input.bool(true,  "Asian / OR boxes",   group = G_VIS)
+showRange = input.bool(true,  "Initial balance lines", group = G_VIS, tooltip = "IBH / IBL. The Asian range and opening range are drawn by 'Liquidity levels' above.")
 showKZ    = input.bool(true,  "Killzone shading",   group = G_VIS)
 showFVG   = input.bool(true,  "Fair value gaps",    group = G_VIS)
 showSig   = input.bool(true,  "Signals & trade levels", group = G_VIS)
@@ -306,6 +306,16 @@ estDelta  = high > low ? volume * (2.0 * (close - low) / (high - low) - 1.0) : 0
 ltfBars   = array.size(ltfV)
 barDelta  = useLTF and ltfBars > 0 ? f_intrabarDelta(ltfO, ltfH, ltfL, ltfC, ltfV) : estDelta
 deltaLive = useLTF and ltfBars > 0
+
+// How much of the loaded history actually received true intrabar delta. Plans
+// cap the number of intrabars request.security_lower_tf() may pull, so older
+// bars can silently fall back to the bar-resolution estimate - which would
+// make the delta score inconsistent across the very history being graded.
+var int deltaBars    = 0
+var int deltaLtfBars = 0
+deltaBars += 1
+if deltaLive
+    deltaLtfBars += 1
 
 var float cvd = 0.0
 if newDay
@@ -1285,5 +1295,6 @@ if showTable and barstate.islast
     f_row(dash, 28, "Relative volume",     f_num(rvol, "#.##"), rvol >= rvolMin ? color.lime : color.red)
     f_row(dash, 29, "Bar delta",           f_num(barDelta, "#.#"), barDelta >= 0 ? color.lime : color.red)
     f_row(dash, 30, "Session CVD",         f_num(cvd, "#.#"), cvd >= 0 ? color.lime : color.red)
-    f_row(dash, 31, "Delta source",        deltaLive ? ltfIn + " intrabar" : "bar estimate", deltaLive ? color.lime : color.orange)
+    float ltfCov = deltaBars > 0 ? deltaLtfBars / deltaBars * 100.0 : 0.0
+    f_row(dash, 31, "Delta source",        (deltaLive ? ltfIn + " intrabar" : "bar estimate") + " (" + str.tostring(ltfCov, "#") + "% of bars)", ltfCov > 95 or ltfCov < 1 ? color.lime : color.orange)
     f_row(dash, 32, "Killzone",            inKZ ? "ACTIVE" : blackout ? "NEWS BLACKOUT" : "-", inKZ ? color.lime : blackout ? color.red : color.gray)
