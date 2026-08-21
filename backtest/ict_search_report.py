@@ -52,6 +52,23 @@ def evaluate(cfg, key):
     return tr
 
 
+def clean_room(cfg, d):
+    """Evaluate a configuration from scratch: fresh load, fresh prep using the
+    configuration's OWN parameters, no cache of any kind.
+
+    This exists because the harness once reused one prepped dataset across
+    every configuration, silently freezing the killzone, pivot length, bias
+    EMAs and HTF timeframe. The reported winner then failed to reproduce. Any
+    result that does not survive this check is discarded, loudly."""
+    P = dict(P0, **{k: v for k, v in cfg.items() if not k.startswith("_")})
+    b = prep(load(primary_csv(d)), P)
+    tr, _ = run(b, P, True)
+    st = stats(tr, [], P0)
+    m, t = tstat(rs_of(tr))
+    return dict(n=st.get("trades", 0), wr=st.get("wr", 0),
+                pf=st.get("pf", 0), avgR=m, t=t)
+
+
 def full_picture(cfg):
     tr = evaluate(cfg, "MNQ")
     s = stats(tr, [], P0)
@@ -216,7 +233,14 @@ def pick_and_verify(d):
     print("=" * 78)
     base = full_picture(cfg)
     print(f"  baseline: MNQ n={base['n']} WR={base['wr']:.1f}% PF={base['pf']:.2f} "
-          f"avgR={base['avgR']:+.3f} | OOS avgR={base['oos_avgR']:+.3f}\n")
+          f"avgR={base['avgR']:+.3f} | OOS avgR={base['oos_avgR']:+.3f}")
+    cr = clean_room(cfg, d)
+    agree = (cr["n"] == base["n"] and abs(cr["pf"] - base["pf"]) < 0.02)
+    print(f"  clean-room re-run (fresh prep, no cache): n={cr['n']} WR={cr['wr']:.1f}% "
+          f"PF={cr['pf']:.2f} avgR={cr['avgR']:+.3f}")
+    print(f"  REPRODUCIBILITY: {'PASS - identical' if agree else 'FAIL - DISCARD THIS RESULT'}\n")
+    if not agree:
+        return None, res
     nb = neighbourhood(cfg)
     ok = [x for x in nb if x[1]["n"] >= 25]
     worse = [x for x in ok if x[1]["avgR"] <= 0]
