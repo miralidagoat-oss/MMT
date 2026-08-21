@@ -231,3 +231,126 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+---
+
+# MMT ICT / Orderflow Suite (MNQ 5m)
+
+`indicators/mmt_ict_orderflow_suite.pine` — a Pine v6 **strategy** (it draws like an
+indicator *and* reports Profit Factor / Win Rate in the Strategy Tester and in an
+on-chart dashboard).
+
+`backtest/ict_of_backtest.py` — a line-for-line Python port of that Pine file, used
+to measure it on real MNQ data offline.
+
+## The trade model
+
+One model, scored — not a pile of unrelated signals:
+
+1. **Liquidity raid.** Price takes out a tracked pool and closes back inside.
+   Pools: PDH/PDL and prior-week high/low (RTH-only by default), Asian range,
+   opening range, initial balance, prior-day value area, developing VAH/VAL,
+   equal highs/lows, confirmed swing pivots, and the running session extreme.
+2. **Displacement / MSS.** An expansion candle closes through the last opposing
+   short-term structure point, leaving a fair value gap behind it.
+3. **PD-array retrace.** A resting limit order in the FVG / order block / OTE
+   (0.62–0.79) zone the displacement left behind.
+4. **Target.** Fixed R, the nearest opposing liquidity pool, or the pool with a
+   minimum-R floor — selectable.
+
+Everything else is a **filter or a score component**: VWAP and its sigma bands,
+a developing session volume profile (POC/VAH/VAL, built forward-only from
+executed bars), cumulative volume delta from true intrabar data with divergence
+detection, the opening range, ICT killzones, HTF and chart trend bias,
+premium/discount, relative volume, ATR regime, a news blackout, and daily
+trade/loss caps.
+
+Nothing repaints: every decision is taken on a closed bar, higher-timeframe
+requests are `lookahead_off` with a `[1]` offset, the profile is forward-only,
+and entries are resting limit orders that can first fill on the bar *after* the
+signal bar. The protective bracket is submitted together with the entry, so the
+stop is live the instant the limit fills.
+
+## What the measurement actually says
+
+**Data available to this study: 13,828 MNQ 5-minute bars — 72 calendar days
+(~48 sessions), 2026-06-10 to 2026-08-21.** That is the maximum intraday history
+the free Yahoo endpoint serves for a 5-minute series. It is a small sample.
+
+Fill model: limit fills at the limit price only; the stop is live on the fill
+bar; market exits (time stop, EOD flat, daily stop) fill at the *next* bar's
+open; stop exits pay 2 ticks of slippage; $0.62/contract/side commission. When a
+bar contains both the stop and the target the **pessimistic** run books the
+stop; the **optimistic** run books the target. The truth is between them.
+
+MNQ 5m, risk-based sizing at $250/trade (pessimistic fills):
+
+| preset    |   n | WR %  |  PF  | avg R | trades/day | 1st-half PF | 2nd-half PF | P(PF>1) |
+|-----------|----:|------:|-----:|------:|-----------:|------------:|------------:|--------:|
+| Precision |  34 | 52.9  | 1.49 |  0.20 |       0.71 |        1.56 |        1.43 |     85% |
+| Balanced  |  63 | 39.7  | 1.10 |  0.05 |       1.23 |        1.05 |        1.15 |     62% |
+| Volume    | 167 | 38.3  | 1.11 |  0.07 |       3.25 |        0.99 |        1.27 |     72% |
+
+**These numbers do not survive an honest out-of-sample test.** Running the exact
+same settings on six index futures over the same window, normalised to R so
+position sizing cannot flatter the result:
+
+| preset    |   n | WR %  |  avg R  |  SE   |   t   | 95% CI          |
+|-----------|----:|------:|--------:|------:|------:|-----------------|
+| Precision | 208 | 40.9  | −0.026  | 0.087 | −0.30 | [−0.195, +0.144]|
+| Balanced  | 325 | 35.7  | −0.022  | 0.078 | −0.28 | [−0.175, +0.132]|
+| Volume    | 885 | 35.1  | −0.047  | 0.048 | −0.99 | [−0.142, +0.047]|
+
+Zero. Slightly negative after costs, and statistically indistinguishable from
+random in every case.
+
+Three further findings from the study that are worth more than the headline
+numbers, because they were stable across the whole parameter space:
+
+- **Breakeven stops hurt, consistently.** Moving the stop to entry at +1R cut PF
+  in every configuration tested (Balanced: 1.10 → 0.57). Default is now OFF.
+- **Scale-outs hurt slightly** and never improved PF. Default OFF — which also
+  keeps the Strategy Tester honest (one entry = one closed trade).
+- **Requiring a fair value gap as a hard gate is destructive** (Precision:
+  34 trades → 6, PF 1.49 → 0.32). Displacement rarely leaves a clean FVG *and*
+  a deep retracement. The FVG is now a score component, never a gate.
+- **The killzone filter is the one filter that clearly earns its place**
+  (Precision PF 1.49 → 0.89 with it off).
+
+Also measured: the bar-resolution delta estimate (Pine's fallback when intrabar
+data is unavailable) agrees in *sign* with true 1-minute delta only 76.6% of the
+time, and its magnitudes correlate at r = 0.13. CVD built from the estimate is a
+materially different series from the real one.
+
+## How to get a number you can trust
+
+72 days is not enough. TradingView carries **years** of MNQ 5-minute history.
+Load the script, open the Strategy Tester, and let it run the full series — the
+on-chart dashboard reports Profit Factor, Win Rate, expectancy, avg R and max
+drawdown live. That sample will be an order of magnitude larger than anything
+this repository could download.
+
+Reproduce the offline study:
+
+```
+python3 backtest/fetch_yahoo.py data MNQ=F
+python3 backtest/ict_of_backtest.py data presets   # the table above
+python3 backtest/ict_of_backtest.py data final '{"thresh":7}'   # + bootstrap CIs
+python3 backtest/ict_of_backtest.py data diag      # signal funnel
+python3 backtest/ict_of_backtest.py data cross     # other index futures
+```
+
+## Choosing win rate vs reward:risk
+
+They are not independent — breakeven win rate is `1 / (1 + RR)`:
+
+| target RR | breakeven WR | WR for PF 1.5 | WR for PF 2.0 |
+|-----------|-------------:|--------------:|--------------:|
+| 1.0 : 1   |       50.0 % |        60.0 % |        66.7 % |
+| 1.5 : 1   |       40.0 % |        50.0 % |        57.1 % |
+| 2.0 : 1   |       33.3 % |        42.9 % |        50.0 % |
+| 3.0 : 1   |       25.0 % |        33.3 % |        40.0 % |
+
+`PF = (WR x RR) / (1 - WR)`. Asking for the highest win rate, the highest profit
+factor, the highest RR and the most trades at once is asking for four things that
+trade against each other; the presets are three chosen points on that curve.
