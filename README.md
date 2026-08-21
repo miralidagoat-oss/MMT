@@ -236,9 +236,10 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
 
 # MMT ICT / Orderflow Suite (MNQ 5m)
 
-`indicators/mmt_ict_orderflow_suite.pine` — a Pine v6 **strategy** (it draws like an
-indicator *and* reports Profit Factor / Win Rate in the Strategy Tester and in an
-on-chart dashboard).
+`indicators/mmt_ict_orderflow_suite.pine` — a Pine v6 **indicator** that grades
+itself. It carries its own fill simulator, so Profit Factor, Win Rate,
+expectancy, average R and max drawdown appear in the on-chart dashboard over
+whatever history your plan loads. **No Strategy Tester, no paid plan.**
 
 `backtest/ict_of_backtest.py` — a line-for-line Python port of that Pine file, used
 to measure it on real MNQ data offline.
@@ -324,21 +325,59 @@ materially different series from the real one.
 
 ## How to get a number you can trust
 
-72 days is not enough. TradingView carries **years** of MNQ 5-minute history.
-Load the script, open the Strategy Tester, and let it run the full series — the
-on-chart dashboard reports Profit Factor, Win Rate, expectancy, avg R and max
-drawdown live. That sample will be an order of magnitude larger than anything
-this repository could download.
+72 days is not enough, and the answer is not the Strategy Tester — the panel
+itself is free, but Deep Backtesting and the larger bar limits are not, so a
+free plan only loads a few thousand 5-minute bars anyway. Two better routes:
 
-Reproduce the offline study:
+**1. On the chart.** Drop the indicator on MNQ 5m. The dashboard grades every
+historical signal the chart has loaded and shows PF, WR, expectancy, avg R and
+max drawdown directly. Flip *"When one bar holds both stop and target"* between
+the two settings and treat the pair as a range — see below.
+
+**2. Offline, with as much history as you can get.** The backtester needs only
+Python 3 (no numpy, no pandas, nothing to install) and downloads its own data on
+first run:
 
 ```
-python3 backtest/fetch_yahoo.py data MNQ=F
-python3 backtest/ict_of_backtest.py data presets   # the table above
-python3 backtest/ict_of_backtest.py data final '{"thresh":7}'   # + bootstrap CIs
-python3 backtest/ict_of_backtest.py data diag      # signal funnel
-python3 backtest/ict_of_backtest.py data cross     # other index futures
+python3 backtest/ict_of_backtest.py data presets      # the table above
+python3 backtest/ict_of_backtest.py data report       # exits, score buckets, hours
+python3 backtest/ict_of_backtest.py data final --cfg='{"thresh":9}'
+python3 backtest/ict_of_backtest.py data diag         # where signals are discarded
+python3 backtest/ict_of_backtest.py data cross        # the out-of-sample check
+python3 backtest/ict_of_backtest.py --help
 ```
+
+Yahoo caps 5-minute history at 60 days, so **export from your broker instead** —
+that is how you get years rather than weeks:
+
+```
+python3 backtest/ict_of_backtest.py data presets --csv=~/mnq_5m.csv --tz=America/Chicago
+```
+
+Column names are matched case-insensitively with the usual broker aliases
+(`Date/Time`, `Last`, `Vol`, …), newest-first files are re-sorted, and both unix
+timestamps and datetime strings are accepted. `--tz` declares the timezone of
+naive timestamps and **matters enormously** — get it wrong and every killzone,
+the opening range and the Asian range land on the wrong bars. The loader checks
+your data on every run and refuses to stay quiet about it:
+
+```
+  data check ok: 300s bars, settlement break at 17:00 ET, heaviest volume at 10:00 ET
+```
+
+It keys on the CME settlement halt (17:00–18:00 New York), which is a far
+sharper landmark than a volume peak — a five-hour timezone error slides straight
+past a volume test but cannot hide the empty hour.
+
+## The intrabar problem, stated plainly
+
+A 5-minute MNQ bar is often wide enough to contain both your stop and your
+target. Which one filled first is not in the data — 5-minute OHLC does not
+record the tick sequence. So every number here comes as a **range**: the
+conservative run books the stop, the optimistic run books the target, and the
+dashboard reports what percentage of trades were decided this way
+(*"Coin-flip trades %"*). If that figure is high, the backtest is measuring
+luck, not the model. It is the reason the ATR-relative minimum stop exists.
 
 ## Choosing win rate vs reward:risk
 

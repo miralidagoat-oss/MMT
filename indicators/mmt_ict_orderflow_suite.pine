@@ -23,27 +23,23 @@
 //  requests are lookahead_off and offset [1]; the volume profile is built
 //  forward-only from executed bars; entries are resting limit orders that can
 //  only fill on a bar AFTER the signal bar.
+//
+//  SELF-GRADING: this is an indicator, not a strategy, so it carries its own
+//  fill simulator and grades every historical signal itself. Profit factor,
+//  win rate, expectancy, average R and max drawdown appear in the on-chart
+//  dashboard - no Strategy Tester and no paid plan required. The order
+//  lifecycle mirrors backtest/ict_of_backtest.py exactly, so the on-chart
+//  numbers and the offline study are measuring the same thing.
 // ===========================================================================
 
-strategy(
-     title                   = "MMT ICT Orderflow Suite - MNQ 5m",
-     shorttitle              = "MMT ICT/OF",
-     overlay                 = true,
-     max_bars_back           = 1000,
-     max_lines_count         = 500,
-     max_labels_count        = 500,
-     max_boxes_count         = 500,
-     initial_capital         = 25000,
-     currency                = currency.USD,
-     default_qty_type        = strategy.fixed,
-     default_qty_value       = 1,
-     pyramiding              = 0,
-     calc_on_every_tick      = false,
-     calc_on_order_fills     = false,
-     process_orders_on_close = false,
-     commission_type         = strategy.commission.cash_per_contract,
-     commission_value        = 0.62,
-     slippage                = 2)
+indicator(
+     title            = "MMT ICT Orderflow Suite - MNQ 5m",
+     shorttitle       = "MMT ICT/OF",
+     overlay          = true,
+     max_bars_back    = 1000,
+     max_lines_count  = 500,
+     max_labels_count = 500,
+     max_boxes_count  = 500)
 
 // ===========================================================================
 //  1. INPUTS
@@ -68,6 +64,10 @@ cReqMSS   = input.bool(true, "Custom: require displacement / MSS", group = G_ENG
 cReqFVG   = input.bool(false, "Custom: require a fair value gap", group = G_ENG)
 cReqKZ    = input.bool(true, "Custom: require a killzone", group = G_ENG)
 
+startCap  = input.float(25000.0, "Starting capital ($)", minval = 100, step = 500, group = G_RSK)
+commUSD   = input.float(0.62, "Commission per contract per side ($)", minval = 0, step = 0.01, group = G_RSK)
+slipTk    = input.int(2, "Slippage on stop / market exits (ticks)", minval = 0, group = G_RSK)
+intrabar  = input.string("Stop first (conservative)", "When one bar holds both stop and target", options = ["Stop first (conservative)", "Target first (optimistic)"], group = G_RSK, tooltip = "A 5-minute bar that contains BOTH your stop and your target is a coin flip - the tick sequence inside it is not in the data. Conservative books the stop, optimistic books the target. The truth is between the two, so run both and treat them as a range. The dashboard reports how many trades were decided this way.")
 sizeMode  = input.string("Risk-based", "Position sizing", options = ["Risk-based", "Fixed contracts"], group = G_RSK)
 riskUSD   = input.float(250.0, "Risk per trade ($)", minval = 1, step = 25, group = G_RSK)
 fixedQty  = input.int(1, "Fixed contracts", minval = 1, group = G_RSK)
@@ -743,7 +743,152 @@ float oteN    = haveOte ? swRun - swDir * oteLo * rngD : na
 float oteF    = haveOte ? swRun - swDir * oteHi * rngD : na
 
 // ===========================================================================
-//  11. SETUP CONSTRUCTION + CONFLUENCE SCORE
+//  11. TRADE SIMULATOR - STATE AND BROKER PHASE
+// ===========================================================================
+// Orders created at the close of the PREVIOUS bar act on THIS bar. That is the
+// sequencing TradingView's own broker emulator uses with
+// process_orders_on_close = false, and the sequencing backtest/ict_of_backtest.py
+// uses, so chart and offline study agree. A signal bar can never fill itself.
+
+stopFirst = intrabar == "Stop first (conservative)"
+slipPx    = slipTk * tick
+
+// -- resting limit order ----------------------------------------------------
+var int    pendDir   = 0
+var float  pendE     = na
+var float  pendS     = na
+var float  pendT     = na
+var float  pendInval = na
+var int    pendBar   = na
+var float  pendQty   = na
+var float  pendRisk  = na
+var int    pendScore = 0
+
+// -- open position ----------------------------------------------------------
+var int    posDir    = 0
+var float  posE      = na
+var float  posS      = na
+var float  posS0     = na
+var float  posT      = na
+var float  posTp1    = na
+var float  posQty    = na
+var float  posRem    = na
+var float  posRisk   = na
+var float  posReal   = 0.0
+var int    posBar    = na
+var bool   posBE     = false
+var bool   posTp1Hit = false
+var int    posScore  = 0
+var string closeReq  = ""
+
+// -- ledger -----------------------------------------------------------------
+var float  equity   = na
+var float  peakEq   = na
+var float  maxDDv   = 0.0
+var int    nTrades  = 0
+var int    nWins    = 0
+var float  grossP   = 0.0
+var float  grossL   = 0.0
+var float  sumR     = 0.0
+var int    nAmb     = 0
+var int    nLong    = 0
+var int    nLongW   = 0
+var int    nShort   = 0
+var int    nShortW  = 0
+if na(equity)
+    equity := startCap
+    peakEq := startCap
+
+float  exitPx   = na
+string exitWhy  = ""
+bool   ambig    = false
+bool   filledNow = false
+
+// (a) a market close requested by the previous bar fills at this bar's open
+if posDir != 0 and closeReq != ""
+    exitPx  := open - posDir * slipPx
+    exitWhy := closeReq
+
+// (b) the resting limit fills only if price trades through it
+if na(exitPx) and posDir == 0 and pendDir != 0
+    if pendDir == 1 ? low <= pendE : high >= pendE
+        posDir    := pendDir
+        posE      := pendE
+        posS      := pendS
+        posS0     := pendS
+        posT      := pendT
+        posQty    := pendQty
+        posRem    := pendQty
+        posRisk   := pendRisk
+        posScore  := pendScore
+        posBar    := bar_index
+        posBE     := false
+        posTp1Hit := false
+        posReal   := 0.0
+        posTp1    := f_tick(pendE + (pendE - pendS) * tp1R)
+        pendDir   := 0
+        filledNow := true
+
+// (c) the protective bracket - live from the instant the limit fills
+if na(exitPx) and posDir != 0
+    bool stopHit = posDir == 1 ? low <= posS : high >= posS
+    bool tgtHit  = posDir == 1 ? high >= posT : low <= posT
+    bool tp1Hit  = usePart and not posTp1Hit and (posDir == 1 ? high >= posTp1 : low <= posTp1)
+    if stopHit and tgtHit
+        ambig := true
+    // On the fill bar a favourable touch is ambiguous - the extreme may have
+    // printed BEFORE the limit filled. Only the stop is deterministic there,
+    // because it sits beyond the fill price.
+    bool blockFav = filledNow and stopFirst
+    float gapT = (posDir == 1 ? open < posT : open > posT) ? posT : open
+    float stopFill = (posDir == 1 ? math.min(posS, open) : math.max(posS, open)) - posDir * slipPx
+    if stopFirst and stopHit
+        exitPx  := stopFill
+        exitWhy := "stop"
+    else if not blockFav
+        if tp1Hit
+            float q1 = math.min(math.floor(posQty * tp1Pct / 100.0), posRem - 1)
+            posTp1Hit := true
+            if q1 >= 1
+                posReal += (posTp1 - posE) * posDir * ptVal * q1 - 2.0 * commUSD * q1
+                posRem  -= q1
+        if tgtHit
+            exitPx  := gapT
+            exitWhy := "target"
+        else if stopHit
+            exitPx  := stopFill
+            exitWhy := "stop"
+
+// (d) book the round trip - one closed trade per ENTRY, netting any scale-out
+if not na(exitPx)
+    int   dClosed = posDir
+    float net = posReal + (exitPx - posE) * posDir * ptVal * posRem - 2.0 * commUSD * posRem
+    equity  += net
+    peakEq  := math.max(peakEq, equity)
+    maxDDv  := math.max(maxDDv, peakEq - equity)
+    nTrades += 1
+    if net > 0
+        nWins  += 1
+        grossP += net
+    else
+        grossL += -net
+    if not na(posRisk) and posRisk > 0
+        sumR += net / posRisk
+    if ambig
+        nAmb += 1
+    if dClosed == 1
+        nLong += 1
+        if net > 0
+            nLongW += 1
+    else
+        nShort += 1
+        if net > 0
+            nShortW += 1
+    posDir   := 0
+    closeReq := ""
+
+// ===========================================================================
+//  12. SETUP CONSTRUCTION + CONFLUENCE SCORE
 // ===========================================================================
 var int    setDir   = 0
 var float  setE     = na
@@ -755,7 +900,6 @@ var int    setBar   = na
 var int    setScore = 0
 var float  setInval = na
 var string setWhy   = ""
-var bool   pending  = false
 
 gateMSS  = not reqMSS or (mssNow and dispNow)
 gateFVG  = not reqFVG or haveFvg
@@ -780,7 +924,7 @@ if haveFvg and haveOte
         ovN  := cN
         ovF  := cF
 
-if trigger and gateMSS and gateFVG and gateKZ and gateATR and gateRV and gateVeto and gateWin and not pending and strategy.position_size == 0
+if trigger and gateMSS and gateFVG and gateKZ and gateATR and gateRV and gateVeto and gateWin and pendDir == 0 and posDir == 0
     // ---- pick the entry zone ----
     float zN = na
     float zF = na
@@ -927,14 +1071,16 @@ if madeSetup
     swDir := 0
 
 // ===========================================================================
-//  12. EXECUTION - SIZING, ORDERS, MANAGEMENT, RISK CAPS
+//  13. ORDER PLACEMENT, MANAGEMENT AND RISK CAPS
 // ===========================================================================
 var int   tradesToday = 0
 var float dayStartEq  = na
 if newDay or na(dayStartEq)
     tradesToday := 0
-    dayStartEq  := strategy.equity
-dayPnl = strategy.equity - nz(dayStartEq, strategy.equity)
+    dayStartEq  := equity
+if filledNow
+    tradesToday += 1
+dayPnl = equity - nz(dayStartEq, equity)
 ddHit  = dayPnl <= -maxDayDD
 riskOk = tradesToday < maxTrades and not ddHit
 
@@ -947,98 +1093,46 @@ f_qty(rPts) =>
         q := maxQty
     q
 
-var float planRisk = na
-var float entryPx  = na
-var float stopPx   = na
-var float tpPx     = na
-var int   entryBar = na
-var int   posDir   = 0
-var bool  beDone   = false
-var float sumR     = 0.0
-var int   nR       = 0
-var int   lastCT   = 0
-var float pendR    = 0.0
-
-// -- place the resting limit order ------------------------------------------
-if madeSetup and engineOn and riskOk
+// -- place the resting limit -------------------------------------------------
+if madeSetup and engineOn and riskOk and posDir == 0 and pendDir == 0
     float rp = (setE - setS) * setDir
     int   q  = f_qty(rp)
     if q < 1
         q := skipUnfund ? 0 : 1
     if q >= 1
-        string eid = setDir == 1 ? "LONG" : "SHORT"
-        if setDir == 1
-            strategy.entry(eid, strategy.long,  qty = q, limit = setE, comment = "L" + str.tostring(setScore))
-        else
-            strategy.entry(eid, strategy.short, qty = q, limit = setE, comment = "S" + str.tostring(setScore))
-        // Arm the protective bracket together with the entry so the stop is live
-        // the instant the limit fills - not one bar later.
-        if usePart
-            strategy.exit("X1", from_entry = eid, qty_percent = tp1Pct, stop = setS, limit = f_tick(setE + (setE - setS) * tp1R))
-            strategy.exit("X2", from_entry = eid, stop = setS, limit = setT)
-        else
-            strategy.exit("X", from_entry = eid, stop = setS, limit = setT)
-        pending  := true
-        planRisk := rp * ptVal * q
+        pendDir   := setDir
+        pendE     := setE
+        pendS     := setS
+        pendT     := setT
+        pendInval := setInval
+        pendBar   := bar_index
+        pendQty   := q
+        pendRisk  := rp * ptVal * q
+        pendScore := setScore
 
-// -- cancel unfilled orders --------------------------------------------------
-if pending
-    if strategy.position_size != 0
-        pending := false
-    else
-        bool expired = bar_index - setBar > zoneValid
-        bool invalid = (close - setInval) * setDir < 0
-        if expired or invalid or not engineOn or not riskOk or (flatOn and inFlat)
-            strategy.cancel_all()
-            pending := false
+// -- withdraw it if the idea expires or is invalidated -----------------------
+if pendDir != 0 and posDir == 0
+    bool expired = bar_index - pendBar > zoneValid
+    bool invalid = (close - pendInval) * pendDir < 0
+    if expired or invalid or not engineOn or not riskOk or (flatOn and inFlat)
+        pendDir := 0
 
-// -- position bookkeeping ----------------------------------------------------
-justOpened = strategy.position_size != 0 and strategy.position_size[1] == 0
-justClosed = strategy.position_size == 0 and strategy.position_size[1] != 0
-
-if justOpened
-    posDir      := strategy.position_size > 0 ? 1 : -1
-    entryPx     := strategy.position_avg_price
-    stopPx      := setS
-    tpPx        := setT
-    entryBar    := bar_index
-    beDone      := false
-    tradesToday += 1
-
-// R accounting: accumulate every closed fill (including partials) against the
-// risk that was actually planned for that entry, and book one result per trade.
-if strategy.closedtrades > lastCT
-    if not na(planRisk) and planRisk > 0
-        for i = lastCT to strategy.closedtrades - 1
-            pendR += strategy.closedtrades.profit(i) / planRisk
-    lastCT := strategy.closedtrades
-if strategy.position_size == 0 and pendR != 0.0
-    sumR  += pendR
-    nR    += 1
-    pendR := 0.0
-
-// -- manage the open position ------------------------------------------------
-if strategy.position_size != 0 and not na(entryPx) and not na(stopPx)
-    float r0    = (entryPx - stopPx) * posDir
+// -- manage the open position (takes effect on the NEXT bar) -----------------
+if posDir != 0
+    float r0    = (posE - posS0) * posDir
     float favEx = posDir == 1 ? high : low
-    if beOn and not beDone and r0 > 0 and (favEx - entryPx) * posDir >= r0 * beTrigR
-        beDone := true
-    float useStop = beDone and beOn ? f_tick(entryPx + posDir * beOffTk * tick) : stopPx
-    string fromId = posDir == 1 ? "LONG" : "SHORT"
-    if usePart
-        strategy.exit("X1", from_entry = fromId, qty_percent = tp1Pct, stop = useStop, limit = f_tick(entryPx + posDir * r0 * tp1R))
-        strategy.exit("X2", from_entry = fromId, stop = useStop, limit = tpPx)
-    else
-        strategy.exit("X", from_entry = fromId, stop = useStop, limit = tpPx)
-    if bar_index - entryBar >= maxHold
-        strategy.close_all(comment = "time stop")
-    if ddHit
-        strategy.close_all(comment = "daily stop")
-    if flatOn and inFlat
-        strategy.close_all(comment = "EOD flat")
+    if beOn and not posBE and r0 > 0 and (favEx - posE) * posDir >= r0 * beTrigR
+        posBE := true
+        posS  := f_tick(posE + posDir * beOffTk * tick)
+    if bar_index - posBar >= maxHold
+        closeReq := "time stop"
+    else if ddHit
+        closeReq := "daily stop"
+    else if flatOn and inFlat
+        closeReq := "EOD flat"
 
 // ===========================================================================
-//  13. VISUALS
+//  14. VISUALS
 // ===========================================================================
 plot(showVWAP ? vwapVal : na, "VWAP", color = color.new(color.orange, 0), linewidth = 2)
 p1u = plot(showVWAP ? vw1u : na, "VWAP +1s", color = color.new(color.orange, 65))
@@ -1097,23 +1191,36 @@ if showSig and madeSetup
          tooltip   = setWhy + "\nentry " + str.tostring(setE, format.mintick) + "  stop " + str.tostring(setS, format.mintick) + "  target " + str.tostring(setT, format.mintick))
 
 // ===========================================================================
-//  14. ALERTS
+//  15. ALERTS
 // ===========================================================================
 if madeSetup
-    alert((setDir == 1 ? "LONG" : "SHORT") + " " + syminfo.ticker + " " + timeframe.period +
+    alert((setDir == 1 ? "LONG" : "SHORT") + " setup " + syminfo.ticker + " " + timeframe.period +
          " | limit " + str.tostring(setE, format.mintick) +
          " | stop " + str.tostring(setS, format.mintick) +
          " | target " + str.tostring(setT, format.mintick) +
          " | score " + str.tostring(setScore) + "/" + str.tostring(thresh) +
          " | " + setWhy, alert.freq_once_per_bar_close)
-if justOpened
-    alert("FILLED " + (posDir == 1 ? "LONG" : "SHORT") + " " + syminfo.ticker + " @ " + str.tostring(entryPx, format.mintick), alert.freq_once_per_bar_close)
-if justClosed
-    alert("CLOSED " + syminfo.ticker + " | day P/L " + str.tostring(dayPnl, "#.##"), alert.freq_once_per_bar_close)
+if filledNow
+    alert("FILLED " + (posDir == 1 ? "LONG" : "SHORT") + " " + syminfo.ticker +
+         " @ " + str.tostring(posE, format.mintick) +
+         " | stop " + str.tostring(posS, format.mintick) +
+         " | target " + str.tostring(posT, format.mintick), alert.freq_once_per_bar_close)
+if not na(exitPx)
+    alert("CLOSED " + syminfo.ticker + " (" + exitWhy + ") @ " + str.tostring(exitPx, format.mintick) +
+         " | day P/L " + str.tostring(dayPnl, "#.##"), alert.freq_once_per_bar_close)
+
+// Separate alertcondition() hooks, so a single alert can be pointed at just one
+// event from TradingView's dropdown without parsing the message text.
+alertcondition(madeSetup and setDir == 1,  "New long setup",  "MMT ICT: long setup")
+alertcondition(madeSetup and setDir == -1, "New short setup", "MMT ICT: short setup")
+alertcondition(filledNow,                  "Entry filled",    "MMT ICT: entry filled")
+alertcondition(not na(exitPx),             "Trade closed",    "MMT ICT: trade closed")
 
 // ===========================================================================
-//  15. DASHBOARD - LIVE PROFIT FACTOR / WIN RATE / EXPECTANCY
+//  16. DASHBOARD - SELF-GRADED PROFIT FACTOR / WIN RATE / EXPECTANCY
 // ===========================================================================
+// Every number here is produced by this script's own fill simulator over the
+// history your plan loads. Nothing needs the Strategy Tester.
 f_num(v, fmt) => na(v) ? "-" : str.tostring(v, fmt)
 
 f_row(tb, r, k, v, c) =>
@@ -1121,45 +1228,55 @@ f_row(tb, r, k, v, c) =>
     table.cell(tb, 1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
 
 tPos = tblPos == "Top right" ? position.top_right : tblPos == "Middle right" ? position.middle_right : tblPos == "Bottom right" ? position.bottom_right : tblPos == "Top left" ? position.top_left : position.bottom_left
-var table dash = table.new(tPos, 2, 27, bgcolor = color.new(color.black, 15), frame_color = color.new(color.gray, 40), frame_width = 1, border_color = color.new(color.gray, 70), border_width = 1)
+var table dash = table.new(tPos, 2, 31, bgcolor = color.new(color.black, 15), frame_color = color.new(color.gray, 40), frame_width = 1, border_color = color.new(color.gray, 70), border_width = 1)
 
-float pf     = strategy.grossloss > 0 ? strategy.grossprofit / strategy.grossloss : na
-float wr     = strategy.closedtrades > 0 ? strategy.wintrades / strategy.closedtrades * 100.0 : na
-float avgR   = nR > 0 ? sumR / nR : na
-float expc   = strategy.closedtrades > 0 ? strategy.netprofit / strategy.closedtrades : na
-float avgW   = strategy.wintrades  > 0 ? strategy.grossprofit / strategy.wintrades  : na
-float avgL   = strategy.losstrades > 0 ? strategy.grossloss   / strategy.losstrades : na
-float payoff = not na(avgW) and not na(avgL) and avgL > 0 ? avgW / avgL : na
+int   nLoss  = nTrades - nWins
+float pf     = grossL > 0 ? grossP / grossL : na
+float wr     = nTrades > 0 ? nWins / nTrades * 100.0 : na
+float avgR   = nTrades > 0 ? sumR / nTrades : na
+float netPl  = grossP - grossL
+float expc   = nTrades > 0 ? netPl / nTrades : na
+float avgW   = nWins > 0 ? grossP / nWins : na
+float avgL   = nLoss > 0 ? grossL / nLoss : na
+float payoff = (not na(avgW) and not na(avgL) and avgL > 0) ? avgW / avgL : na
+float ambPct = nTrades > 0 ? nAmb / nTrades * 100.0 : na
+float wrL    = nLong  > 0 ? nLongW  / nLong  * 100.0 : na
+float wrS    = nShort > 0 ? nShortW / nShort * 100.0 : na
 
 if showTable and barstate.islast
-    string state = strategy.position_size != 0 ? (posDir == 1 ? "IN LONG" : "IN SHORT") : pending ? "ORDER RESTING" : swDir == 1 ? "ARMED LONG" : swDir == -1 ? "ARMED SHORT" : "SCANNING"
+    string state = posDir != 0 ? (posDir == 1 ? "IN LONG" : "IN SHORT") : pendDir != 0 ? "ORDER RESTING" : swDir == 1 ? "ARMED LONG" : swDir == -1 ? "ARMED SHORT" : "SCANNING"
     color  cPf   = na(pf) ? color.gray : pf >= 1.5 ? color.lime : pf >= 1.0 ? color.orange : color.red
     color  cWr   = na(wr) ? color.gray : wr >= 50 ? color.lime : wr >= 40 ? color.orange : color.red
+    color  cAmb  = na(ambPct) ? color.gray : ambPct <= 15 ? color.lime : ambPct <= 30 ? color.orange : color.red
     table.cell(dash, 0, 0, "MMT ICT / ORDERFLOW", text_color = color.white, text_size = size.small, text_halign = text.align_left)
     table.cell(dash, 1, 0, preset, text_color = color.aqua, text_size = size.small, text_halign = text.align_right)
-    f_row(dash, 1,  "Profit factor",      f_num(pf, "#.###"), cPf)
-    f_row(dash, 2,  "Win rate %",         f_num(wr, "#.##"), cWr)
-    f_row(dash, 3,  "Closed trades",      str.tostring(strategy.closedtrades), color.white)
-    f_row(dash, 4,  "Wins / losses",      str.tostring(strategy.wintrades) + " / " + str.tostring(strategy.losstrades), color.white)
-    f_row(dash, 5,  "Net P/L $",          f_num(strategy.netprofit, "#.##"), strategy.netprofit >= 0 ? color.lime : color.red)
-    f_row(dash, 6,  "Expectancy $/trade", f_num(expc, "#.##"), na(expc) ? color.gray : expc >= 0 ? color.lime : color.red)
-    f_row(dash, 7,  "Avg R / trade",      f_num(avgR, "#.###"), na(avgR) ? color.gray : avgR >= 0 ? color.lime : color.red)
-    f_row(dash, 8,  "Payoff (avgW/avgL)", f_num(payoff, "#.##"), color.white)
-    f_row(dash, 9,  "Max drawdown $",     f_num(strategy.max_drawdown, "#.##"), color.orange)
-    f_row(dash, 10, "Threshold",          str.tostring(thresh) + "  (MSS " + (reqMSS ? "on" : "off") + ", FVG " + (reqFVG ? "on" : "off") + ", KZ " + (reqKZ ? "on" : "off") + ")", color.aqua)
-    f_row(dash, 11, "State",              state, color.yellow)
-    f_row(dash, 12, "Trades today / cap", str.tostring(tradesToday) + " / " + str.tostring(maxTrades), color.white)
-    f_row(dash, 13, "Day P/L $",          f_num(dayPnl, "#.##"), dayPnl >= 0 ? color.lime : color.red)
-    f_row(dash, 14, "Bias chart / HTF",   (chartBias == 1 ? "up" : chartBias == -1 ? "down" : "flat") + " / " + (htfBias == 1 ? "up" : htfBias == -1 ? "down" : "flat"), color.white)
-    f_row(dash, 15, "VWAP",               f_num(vwapVal, format.mintick), color.orange)
-    f_row(dash, 16, "POC / VAH / VAL",    f_num(vpPoc, format.mintick) + " / " + f_num(vpVah, format.mintick) + " / " + f_num(vpVal, format.mintick), color.fuchsia)
-    f_row(dash, 17, "PDH / PDL",          f_num(pdh, format.mintick) + " / " + f_num(pdl, format.mintick), color.silver)
-    f_row(dash, 18, "ONH / ONL",          f_num(asiaHi, format.mintick) + " / " + f_num(asiaLo, format.mintick), color.yellow)
-    f_row(dash, 19, "ORH / ORL",          f_num(orHi, format.mintick) + " / " + f_num(orLo, format.mintick), color.blue)
-    f_row(dash, 20, "IBH / IBL",          f_num(ibHi, format.mintick) + " / " + f_num(ibLo, format.mintick), color.blue)
-    f_row(dash, 21, "ATR pts",            f_num(atr, "#.##"), gateATR ? color.lime : color.red)
-    f_row(dash, 22, "Relative volume",    f_num(rvol, "#.##"), rvol >= rvolMin ? color.lime : color.red)
-    f_row(dash, 23, "Bar delta",          f_num(barDelta, "#.#"), barDelta >= 0 ? color.lime : color.red)
-    f_row(dash, 24, "Session CVD",        f_num(cvd, "#.#"), cvd >= 0 ? color.lime : color.red)
-    f_row(dash, 25, "Delta source",       deltaLive ? ltfIn + " intrabar" : "bar estimate", deltaLive ? color.lime : color.orange)
-    f_row(dash, 26, "Killzone",           inKZ ? "ACTIVE" : blackout ? "NEWS BLACKOUT" : "-", inKZ ? color.lime : blackout ? color.red : color.gray)
+    f_row(dash, 1,  "Profit factor",       f_num(pf, "#.###"), cPf)
+    f_row(dash, 2,  "Win rate %",          f_num(wr, "#.##"), cWr)
+    f_row(dash, 3,  "Closed trades",       str.tostring(nTrades), color.white)
+    f_row(dash, 4,  "Wins / losses",       str.tostring(nWins) + " / " + str.tostring(nLoss), color.white)
+    f_row(dash, 5,  "WR long / short",     f_num(wrL, "#.#") + "% / " + f_num(wrS, "#.#") + "%", color.white)
+    f_row(dash, 6,  "Net P/L $",           f_num(netPl, "#.##"), netPl >= 0 ? color.lime : color.red)
+    f_row(dash, 7,  "Expectancy $/trade",  f_num(expc, "#.##"), na(expc) ? color.gray : expc >= 0 ? color.lime : color.red)
+    f_row(dash, 8,  "Avg R / trade",       f_num(avgR, "#.###"), na(avgR) ? color.gray : avgR >= 0 ? color.lime : color.red)
+    f_row(dash, 9,  "Payoff (avgW/avgL)",  f_num(payoff, "#.##"), color.white)
+    f_row(dash, 10, "Max drawdown $",      f_num(maxDDv, "#.##"), color.orange)
+    f_row(dash, 11, "Equity $",            f_num(equity, "#.##"), equity >= startCap ? color.lime : color.red)
+    f_row(dash, 12, "Coin-flip trades %",  f_num(ambPct, "#.#"), cAmb)
+    f_row(dash, 13, "Intrabar rule",       stopFirst ? "stop first" : "target first", color.aqua)
+    f_row(dash, 14, "Threshold",           str.tostring(thresh) + "  (MSS " + (reqMSS ? "on" : "off") + ", FVG " + (reqFVG ? "on" : "off") + ", KZ " + (reqKZ ? "on" : "off") + ")", color.aqua)
+    f_row(dash, 15, "State",               state, color.yellow)
+    f_row(dash, 16, "Trades today / cap",  str.tostring(tradesToday) + " / " + str.tostring(maxTrades), color.white)
+    f_row(dash, 17, "Day P/L $",           f_num(dayPnl, "#.##"), dayPnl >= 0 ? color.lime : color.red)
+    f_row(dash, 18, "Bias chart / HTF",    (chartBias == 1 ? "up" : chartBias == -1 ? "down" : "flat") + " / " + (htfBias == 1 ? "up" : htfBias == -1 ? "down" : "flat"), color.white)
+    f_row(dash, 19, "VWAP",                f_num(vwapVal, format.mintick), color.orange)
+    f_row(dash, 20, "POC / VAH / VAL",     f_num(vpPoc, format.mintick) + " / " + f_num(vpVah, format.mintick) + " / " + f_num(vpVal, format.mintick), color.fuchsia)
+    f_row(dash, 21, "PDH / PDL",           f_num(pdh, format.mintick) + " / " + f_num(pdl, format.mintick), color.silver)
+    f_row(dash, 22, "ONH / ONL",           f_num(asiaHi, format.mintick) + " / " + f_num(asiaLo, format.mintick), color.yellow)
+    f_row(dash, 23, "ORH / ORL",           f_num(orHi, format.mintick) + " / " + f_num(orLo, format.mintick), color.blue)
+    f_row(dash, 24, "IBH / IBL",           f_num(ibHi, format.mintick) + " / " + f_num(ibLo, format.mintick), color.blue)
+    f_row(dash, 25, "ATR pts",             f_num(atr, "#.##"), gateATR ? color.lime : color.red)
+    f_row(dash, 26, "Relative volume",     f_num(rvol, "#.##"), rvol >= rvolMin ? color.lime : color.red)
+    f_row(dash, 27, "Bar delta",           f_num(barDelta, "#.#"), barDelta >= 0 ? color.lime : color.red)
+    f_row(dash, 28, "Session CVD",         f_num(cvd, "#.#"), cvd >= 0 ? color.lime : color.red)
+    f_row(dash, 29, "Delta source",        deltaLive ? ltfIn + " intrabar" : "bar estimate", deltaLive ? color.lime : color.orange)
+    f_row(dash, 30, "Killzone",            inKZ ? "ACTIVE" : blackout ? "NEWS BLACKOUT" : "-", inKZ ? color.lime : blackout ? color.red : color.gray)

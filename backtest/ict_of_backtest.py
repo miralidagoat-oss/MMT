@@ -24,6 +24,7 @@ Usage
 """
 import csv
 import json
+import re
 import math
 import os
 import sys
@@ -92,17 +93,157 @@ PRESETS = {
 # ---------------------------------------------------------------------------
 # data
 # ---------------------------------------------------------------------------
+CSV_OVERRIDE = None
+SYMBOL = "MNQ=F"
+
+
+def primary_csv(d):
+    """Path to the 5-minute series, downloading it on first use.
+
+    Pass --csv=<file> to use your own export instead (broker platforms will
+    give you far more than the 60 days Yahoo serves). Columns required:
+    time,open,high,low,close,volume  with time as a unix timestamp.
+    """
+    if CSV_OVERRIDE:
+        if not os.path.exists(CSV_OVERRIDE):
+            sys.exit(f"no such file: {CSV_OVERRIDE}")
+        return CSV_OVERRIDE
+    tag = SYMBOL.replace("=F", "")
+    path = os.path.join(d, f"{tag}_5m.csv")
+    if not os.path.exists(path):
+        os.makedirs(d, exist_ok=True)
+        print(f"downloading {SYMBOL} 5m (60 days, the free maximum) ...", flush=True)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fetch_yahoo import fetch, save
+        rows = fetch(SYMBOL, "5m", "60d")
+        if not rows:
+            sys.exit(f"download returned no rows for {SYMBOL}")
+        save(path, rows)
+        print(f"saved {len(rows)} bars -> {path}\n", flush=True)
+    return path
+
+
+INPUT_TZ = "UTC"
+
+_TIME_FORMATS = ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S%z",
+                 "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",
+                 "%Y-%m-%d %H:%M", "%Y%m%d %H%M%S",
+                 "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%d/%m/%Y %H:%M")
+
+
+def _parse_time(v):
+    """Unix seconds/millis, or a datetime string. Naive strings are read in
+    INPUT_TZ (--tz), which MUST match your export or every session filter -
+    killzones, the opening range, the Asian range - lands on the wrong bars."""
+    v = v.strip().replace("Z", "+0000") if v.strip().endswith("Z") else v.strip()
+    if re.fullmatch(r"-?\d{9,13}", v):
+        x = int(v)
+        return x // 1000 if abs(x) > 10 ** 11 else x
+    for f in _TIME_FORMATS:
+        try:
+            dt = datetime.strptime(v, f)
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo(INPUT_TZ))
+        return int(dt.timestamp())
+    raise SystemExit(f"cannot parse timestamp {v!r}. Supported: unix seconds/millis "
+                     f"or one of {_TIME_FORMATS}")
+
+
 def load(path):
+    """Read an OHLCV csv. Column names are matched case-insensitively and
+    common broker aliases are accepted, so most platform exports load as-is."""
+    alias = {"time": "time", "timestamp": "time", "date": "time",
+             "datetime": "time", "date/time": "time", "open time": "time",
+             "open": "open", "o": "open", "high": "high", "h": "high",
+             "low": "low", "l": "low", "close": "close", "c": "close",
+             "last": "close", "volume": "volume", "vol": "volume", "v": "volume"}
     t, o, h, l, c, v = [], [], [], [], [], []
-    with open(path) as f:
-        for row in csv.DictReader(f):
-            t.append(int(row["time"]))
-            o.append(float(row["open"]))
-            h.append(float(row["high"]))
-            l.append(float(row["low"]))
-            c.append(float(row["close"]))
-            v.append(float(row["volume"]))
+    with open(path, newline="") as f:
+        rdr = csv.DictReader(f)
+        if not rdr.fieldnames:
+            raise SystemExit(f"{path} has no header row")
+        cols = {}
+        for raw in rdr.fieldnames:
+            key = alias.get(raw.strip().lower().lstrip("\ufeff"))
+            if key and key not in cols:
+                cols[key] = raw
+        missing = [k for k in ("time", "open", "high", "low", "close") if k not in cols]
+        if missing:
+            raise SystemExit(f"{path}: missing column(s) {missing}. "
+                             f"Found {rdr.fieldnames}. Need at least "
+                             f"time,open,high,low,close (volume optional).")
+        for row in rdr:
+            try:
+                ts = _parse_time(row[cols["time"]])
+                po, ph, pl, pc = (float(row[cols[k]]) for k in ("open", "high", "low", "close"))
+            except (TypeError, ValueError):
+                continue          # blank or malformed line
+            if ph < pl:
+                continue
+            t.append(ts)
+            o.append(po)
+            h.append(ph)
+            l.append(pl)
+            c.append(pc)
+            v.append(float(row[cols["volume"]] or 0) if "volume" in cols else 0.0)
+    if len(t) < 300:
+        raise SystemExit(f"{path}: only {len(t)} usable rows - not enough to test anything")
+    if t != sorted(t):                      # some exports are newest-first
+        order = sorted(range(len(t)), key=lambda i: t[i])
+        t, o, h, l, c, v = ([x[i] for i in order] for x in (t, o, h, l, c, v))
     return dict(t=t, o=o, h=h, l=l, c=c, v=v, n=len(t))
+
+
+def sanity_check(b):
+    """Shout about the two mistakes that silently ruin a bring-your-own-data run:
+    the wrong bar interval, and timestamps in the wrong timezone.
+
+    The timezone test keys on the CME maintenance halt. Equity-index futures
+    stop trading 17:00-18:00 New York time every weekday, so the emptiest hour
+    of the day is a hard landmark - far sharper than looking for a volume peak,
+    which survives a five-hour error unnoticed."""
+    gaps = sorted(b["t"][i + 1] - b["t"][i] for i in range(min(len(b["t"]) - 1, 4000)))
+    step = gaps[len(gaps) // 2]
+    warn = []
+    if step != 300:
+        warn.append(f"bar interval looks like {step}s, not 300s (5 minutes). Every "
+                    f"ATR and lookback default in this script assumes 5m bars.")
+
+    bars_per_hour = [0] * 24
+    vol_per_hour = [0.0] * 24
+    for i, ts in enumerate(b["t"]):
+        hh = datetime.fromtimestamp(ts, timezone.utc).astimezone(ET).hour
+        bars_per_hour[hh] += 1
+        vol_per_hour[hh] += b["v"][i]
+    quiet = min(range(24), key=lambda x: bars_per_hour[x])
+    # a genuine 24h futures series has exactly one near-empty hour; a
+    # cash-hours-only export has many, and this landmark does not apply to it
+    busiest_bars = max(bars_per_hour)
+    empty_hours = sum(1 for n in bars_per_hour if n < busiest_bars * 0.05)
+    if empty_hours <= 3 and quiet != 17:
+        shift = (17 - quiet) % 24
+        shift = shift - 24 if shift > 12 else shift
+        warn.append(f"the quietest hour is {quiet:02d}:00 New York time, but the CME "
+                    f"settlement break is 17:00. Your timestamps look about "
+                    f"{shift:+d}h off, which moves every killzone, the opening range "
+                    f"and the Asian range onto the wrong bars. Re-run with --tz set "
+                    f"to the timezone your export is actually in.")
+    peak_vol = max(range(24), key=lambda x: vol_per_hour[x]) if sum(vol_per_hour) > 0 else None
+    if peak_vol is not None and peak_vol not in (9, 10, 15):
+        warn.append(f"the heaviest-volume hour is {peak_vol:02d}:00 New York time. For "
+                    f"index futures that should be 09:00 or 10:00 (the cash open) or "
+                    f"15:00 (the close). Either the timezone is wrong or the volume "
+                    f"column is not real traded volume - the volume profile, relative "
+                    f"volume and delta all depend on it.")
+
+    for w in warn:
+        print(f"  !! {w}")
+    if not warn:
+        print(f"  data check ok: {step}s bars, settlement break at {quiet:02d}:00 ET, "
+              f"heaviest volume at {peak_vol:02d}:00 ET")
+    return not warn
 
 
 def rma(xs, n):
@@ -892,9 +1033,10 @@ def with_preset(name, **over):
 
 
 def cmd_presets(d):
-    path = os.path.join(d, "MNQ_5m.csv")
+    path = primary_csv(d)
     print(f"\nMNQ 5m  |  {os.path.basename(path)}")
     b = load(path)
+    sanity_check(b)
     span = (b["t"][-1] - b["t"][0]) / 86400.0
     print(f"bars={b['n']}  span={span:.1f} calendar days\n")
     for name in ("Precision", "Balanced", "Volume"):
@@ -913,7 +1055,7 @@ def cmd_presets(d):
 
 
 def cmd_sweep(d):
-    path = os.path.join(d, "MNQ_5m.csv")
+    path = primary_csv(d)
     b = prep(load(path), P0)
     rows = []
     for th in (4, 5, 6, 7, 8, 9, 10):
@@ -935,7 +1077,7 @@ def cmd_sweep(d):
 
 def cmd_wf(d):
     """Walk-forward: pick the threshold on fold k, trade it on fold k+1."""
-    path = os.path.join(d, "MNQ_5m.csv")
+    path = primary_csv(d)
     raw = load(path)
     n = raw["n"]
     folds = 6
@@ -974,10 +1116,18 @@ def cmd_wf(d):
 
 def cmd_cross(d):
     print("\nSame model, same parameters, other index futures (5m, same window)")
+    global SYMBOL, CSV_OVERRIDE
+    if CSV_OVERRIDE:
+        print("  (--csv is ignored here: the cross-market check needs one file per symbol)")
+        CSV_OVERRIDE = None
     for sym in ("MNQ", "NQ", "MES", "ES", "YM", "RTY"):
-        path = os.path.join(d, f"{sym}_5m.csv")
-        if not os.path.exists(path):
+        keep, SYMBOL = SYMBOL, f"{sym}=F"
+        try:
+            path = primary_csv(d)
+        except SystemExit:
+            SYMBOL = keep
             continue
+        SYMBOL = keep
         pvs = dict(MNQ=2.0, NQ=20.0, MES=5.0, ES=50.0, YM=5.0, RTY=5.0)
         tks = dict(MNQ=0.25, NQ=0.25, MES=0.25, ES=0.25, YM=1.0, RTY=0.1)
         P = with_preset("Balanced", point_value=pvs[sym], tick=tks[sym])
@@ -1023,7 +1173,7 @@ CFG = {}
 
 def cmd_final(d):
     P = dict(P0, **CFG)
-    path = os.path.join(d, "MNQ_5m.csv")
+    path = primary_csv(d)
     b = prep(load(path), P)
     trp, eqp = run(b, P, pessimistic=True)
     tro, eqo = run(b, P, pessimistic=False)
@@ -1072,7 +1222,7 @@ def cmd_final(d):
 
 
 def cmd_diag(d):
-    path = os.path.join(d, "MNQ_5m.csv")
+    path = primary_csv(d)
     P = with_preset("Balanced")
     b = prep(load(path), P)
     DIAG.clear()
@@ -1088,7 +1238,7 @@ def cmd_diag(d):
 
 
 def cmd_report(d):
-    path = os.path.join(d, "MNQ_5m.csv")
+    path = primary_csv(d)
     P = with_preset("Balanced")
     b = prep(load(path), P)
     tr, eq = run(b, P, pessimistic=True)
@@ -1129,11 +1279,68 @@ def cmd_report(d):
             print(f"  RR {lo}-{hi}  n={len(sub):>4}  WR={w:>5.1f}%  PF={(gp/gl if gl else float('inf')):>5.2f}")
 
 
+USAGE = """MMT ICT/Orderflow suite - offline backtester (no subscription, no dependencies)
+
+  python3 backtest/ict_of_backtest.py <data_dir> <command> [options]
+
+commands
+  presets   the three presets side by side, pessimistic and optimistic fills
+  report    exit reasons, score buckets, hour-of-day and RR breakdowns
+  final     one config with bootstrap confidence intervals and half-splits
+  diag      the signal funnel - where candidate trades are being discarded
+  cross     the same settings on six index futures (the out-of-sample check)
+  sweep     parameter sweep ranked by profit factor
+  wf        walk-forward: fit the threshold on one fold, trade the next
+
+options
+  --symbol=MNQ=F      Yahoo ticker (default MNQ=F). 5m history is capped at 60d.
+  --csv=<file>        use your own export instead - the way to get real history.
+                      needs columns time,open,high,low,close (+volume if you
+                      have it); common broker column names are recognised and
+                      newest-first files are re-sorted automatically.
+  --tz=<zone>         timezone of naive timestamps in --csv (default UTC), e.g.
+                      --tz=America/Chicago. Getting this wrong silently moves
+                      every killzone; the loader warns if the volume profile
+                      of the day looks wrong.
+  --cfg='{"thresh":7}'  override any parameter in P0 (see the top of this file)
+
+examples
+  python3 backtest/ict_of_backtest.py data presets
+  python3 backtest/ict_of_backtest.py data final --cfg='{"thresh":9}'
+  python3 backtest/ict_of_backtest.py data presets --csv=~/mnq_5m_3years.csv
+"""
+
 if __name__ == "__main__":
-    d = sys.argv[1] if len(sys.argv) > 1 else "data"
-    cmd = sys.argv[2] if len(sys.argv) > 2 else "presets"
-    if len(sys.argv) > 3:
-        CFG.update(json.loads(sys.argv[3]))
-    {"presets": cmd_presets, "sweep": cmd_sweep, "wf": cmd_wf,
-     "cross": cmd_cross, "report": cmd_report, "diag": cmd_diag,
-     "final": cmd_final}[cmd](d)
+    args = [a for a in sys.argv[1:]]
+    opts = [a for a in args if a.startswith("--")]
+    pos = [a for a in args if not a.startswith("--")]
+    for o in opts:
+        if o in ("--help", "-h"):
+            print(USAGE)
+            sys.exit(0)
+        if o.startswith("--symbol="):
+            SYMBOL = o.split("=", 1)[1]
+            if not SYMBOL.endswith("=F") and "=" not in SYMBOL:
+                SYMBOL += "=F"
+        elif o.startswith("--csv="):
+            CSV_OVERRIDE = os.path.expanduser(o.split("=", 1)[1])
+        elif o.startswith("--tz="):
+            INPUT_TZ = o.split("=", 1)[1]
+            try:
+                ZoneInfo(INPUT_TZ)
+            except Exception:
+                sys.exit(f"unknown timezone {INPUT_TZ!r}")
+        elif o.startswith("--cfg="):
+            CFG.update(json.loads(o.split("=", 1)[1]))
+        else:
+            sys.exit(f"unknown option {o}\n\n{USAGE}")
+    d = pos[0] if pos else "data"
+    cmd = pos[1] if len(pos) > 1 else "presets"
+    if len(pos) > 2:
+        CFG.update(json.loads(pos[2]))
+    table = {"presets": cmd_presets, "sweep": cmd_sweep, "wf": cmd_wf,
+             "cross": cmd_cross, "report": cmd_report, "diag": cmd_diag,
+             "final": cmd_final}
+    if cmd not in table:
+        sys.exit(f"unknown command '{cmd}'\n\n{USAGE}")
+    table[cmd](d)
