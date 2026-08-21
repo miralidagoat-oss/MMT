@@ -58,7 +58,7 @@ G_STR = "7 - Structure & PD arrays"
 G_FIL = "8 - Confluence filters"
 G_VIS = "9 - Visuals"
 
-preset    = input.string("Balanced", "Signal preset", options = ["Precision", "Balanced", "Volume", "Custom"], group = G_ENG, tooltip = "Precision = fewest trades, highest bar for entry.\nBalanced = the default.\nVolume = loosest filters, most trades.\nCustom = use the four manual overrides below.")
+preset    = input.string("Balanced", "Signal preset", options = ["Precision", "Balanced", "Volume", "Custom"], group = G_ENG, tooltip = "Each preset is a configuration that was measured end to end on MNQ 5m - see README.md for the numbers AND their confidence intervals.\nPrecision = fewest trades, deepest entry, 1.5R.\nBalanced = 2R off a zone stop.\nVolume = loosest, no MSS requirement.\nCustom = every knob below becomes live.")
 tzIn      = input.string("America/New_York", "Exchange timezone", group = G_ENG)
 engineOn  = input.bool(true, "Trade engine ON (uncheck = draw-only)", group = G_ENG)
 allowLong = input.bool(true,  "Longs",  inline = "dir", group = G_ENG)
@@ -73,7 +73,7 @@ riskUSD   = input.float(250.0, "Risk per trade ($)", minval = 1, step = 25, grou
 fixedQty  = input.int(1, "Fixed contracts", minval = 1, group = G_RSK)
 maxQty    = input.int(20, "Max contracts", minval = 1, group = G_RSK)
 skipUnfund= input.bool(true, "Skip trade if 1 contract exceeds risk budget", group = G_RSK)
-minStopPt = input.float(0.0, "Min stop distance (points)", minval = 0.25, step = 0.25, group = G_RSK, tooltip = "MNQ point = $2. Stops tighter than this are noise-range and get wicked out.")
+minStopPt = input.float(0.0, "Min stop distance (points)", minval = 0, step = 0.25, group = G_RSK, tooltip = "Absolute floor, in points. Left at 0 by default because the ATR-relative bound below is the one doing the work - raise this only if you want a hard point floor as well.")
 maxStopPt = input.float(1000.0, "Max stop distance (points)", minval = 1, step = 0.25, group = G_RSK)
 minStopAtr_i = input.float(0.75,  "Min stop distance (ATR x)", minval = 0, step = 0.05, group = G_RSK, tooltip = "Guards against stops so tight that the stop and the target both sit inside one 5-minute bar - those trades are coin flips, not edges.")
 maxStopAtr= input.float(2.5,  "Max stop distance (ATR x)", minval = 0.1, step = 0.05, group = G_RSK)
