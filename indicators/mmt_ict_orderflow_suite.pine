@@ -986,7 +986,10 @@ if trigger and gateMSS and gateFVG and gateKZ and gateATR and gateRV and gateVet
                 sBase := swDir == 1 ? math.min(swExt, zF) : math.max(swExt, zF)
             float sPx  = f_tick(sBase - swDir * stopBufA * atr)
             float rPts = (ePx - sPx) * swDir
-            float rLo  = math.max(minStopPt, minStopAtr * atr)
+            // A stop may never collapse onto the entry: zero risk makes R
+            // undefined and every R-derived target degenerate. Two ticks is the
+            // hard floor whatever the point/ATR bounds are set to.
+            float rLo  = math.max(math.max(minStopPt, minStopAtr * atr), 2.0 * tick)
             float rHi  = math.min(maxStopPt, maxStopAtr * atr)
             if rPts >= rLo and rPts <= rHi
                 // ---- target ----

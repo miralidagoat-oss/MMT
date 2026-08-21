@@ -827,7 +827,11 @@ def run(b, P, pessimistic=True):
                         s = ftick(sbase - D * P["stop_buf_atr"] * atr)
                         rpts = (e - s) * D
                         tp = None
-                        lo_b_pt = max(P["min_stop_pt"], P["min_stop_atr"] * atr)
+                        # A stop is never allowed to collapse onto the entry:
+                        # zero risk makes R undefined and every R-derived target
+                        # degenerate. Two ticks is the hard floor whatever the
+                        # point/ATR bounds are set to.
+                        lo_b_pt = max(P["min_stop_pt"], P["min_stop_atr"] * atr, 2 * tick)
                         hi_b_pt = min(P["max_stop_pt"], P["max_stop_atr"] * atr)
                         if not (lo_b_pt <= rpts <= hi_b_pt):
                             _d("stop_oob")
