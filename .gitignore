@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# Regenerable market data (68MB+). Rebuild with:
+#   python3 research/fetch_duka.py 2015 && python3 research/repair_duka.py 5
+research/data/

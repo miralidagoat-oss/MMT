@@ -1,233 +1,296 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Nasdaq futures intraday research
 
-Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
-limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
-fixed risk:reward target, then **grades its own historical signals** and shows
-the results in an on-chart dashboard.
+This repo started as a Pine indicator that faded liquidity sweeps on MNQ/NQ and
+reported a profit factor of 1.35. This pass rebuilt the evidence base from
+scratch: 11.9 years of 1-minute Nasdaq data, a cost model, an execution
+simulator that resolves fills on the minute clock, and a validation harness.
 
-- **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
-- **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
+**The headline is negative, and it is the most useful thing here.** The sweep
+setup this repo was built on has no measurable forward edge. Neither does any
+of the eleven other intraday predictors tested against it. The one candidate
+left standing — an opening-range breakout — is positive in walk-forward but
+fails its significance test once you account for how many configurations were
+searched to find it.
 
-## Audit findings (why v1's "backtest" was fiction)
+That result cost a lot of compute to establish and it is worth more than
+another indicator would have been. Details below, including the two bugs that
+each produced a spectacular fake edge before being caught.
 
-Three defects made v1 decorative rather than predictive:
+---
 
-1. **The volatility engine was dead.** `logReturn = math.log(close / nz(close, close))`
-   is `log(close/close) = 0` on every bar (the intent was `close[1]`). EWMA
-   variance of a constant-zero series is zero, so `ewmaVolatility` was always 0
-   and every "dynamic volatility stop" sat on the exact wick high/low — the
-   single most stop-hunted price on the chart.
-2. **Every setup filled itself on its own signal bar.** The mitigation loop ran
-   on the bar that created the block, and the entry (wick midpoint) is by
-   construction inside that bar's range, so `low <= entry and high >= entry`
-   was true immediately. The yellow "limit hit" highlight carried zero
-   information.
-3. **There was no outcome accounting at all.** Nothing ever checked the take
-   profit. Stops only greyed the box (including for orders that were never
-   filled, which is not a loss). No win rate, no R tally — there was no
-   backtest to evaluate.
+## What you should actually take away
 
-Structural issues fixed alongside:
+| Question you asked | Answer the data gives |
+|---|---|
+| Best timeframe? | **15m–60m for decisions, 1m for execution.** Not because higher is magic, but because friction is fixed per trade: it costs 0.147R per trade at 1m and 0.020R at 60m. At 1m you must out-earn a 15% handicap on every trade. |
+| Top/bottom-tick entries with high RR and no tradeoff? | Not available. A limit at the extreme is a *worse* fill rate, not a free better price — that is the tradeoff, and it is priced. Across the whole sweep study, entering closer to the extreme bought a better price and lost more than it gained in missed trades. |
+| MNQ or NQ? | **NQ if you can carry it.** Costs are 0.71pt round turn on NQ versus 1.10pt on MNQ — a third less drag for the identical trade, because commission does not scale with the 10x contract size. |
+| Is there an elite edge in here? | Not one that survives validation. What survives is the *machinery* to test the next idea in an afternoon instead of three versions of self-deception. |
 
-- `max_lines_count` was left at its default of 50 while boxes were capped at
-  500, so entry/stop/TP lines silently vanished from all but the ~16 newest
-  blocks while their boxes lived on.
-- `ta.variance` was called inside a conditional branch (inconsistent-series
-  behavior); it is now computed unconditionally and only consumed as the seed.
-- The tracking array grew without bound and was re-scanned in full every bar;
-  closed setups are now pruned and the managed set is capped (`maxTracked`).
-- Setups never expired — a block could "fill" 200 bars after its zone stopped
-  being drawn. Unfilled setups now expire after `validityBars`.
-- The `optionsDev` input ("Dealer Option Delta Skew Sigma") and the
-  `G_FLOW` group were never referenced anywhere. Removed.
-- Signals used the live bar's close without `barstate.isconfirmed`, so they
-  flickered in and out intrabar. Now gated on confirmed bars.
-- Prices were formatted with `"#.#"` (one decimal — useless on FX/crypto);
-  now `format.mintick`.
-- The stop comment claimed "1.5 ATR" while the code hard-coded `0.2`; the
-  multiplier is now an input (`stopSigma`, default 0.5σ).
-- Symbols without volume data (many FX/index feeds) produced `na` signals;
-  v2 falls back to a structural wick-dominance check.
+---
 
-## v2.1 hardening (flaws found re-auditing v2)
+## The data
 
-- **Order-flow confirmation read the wrong wick.** v2 confirmed signals with
-  the *dominant* wick (`max(topWick, botWick)`), so a bullish low-sweep could
-  be "confirmed" by a large upper wick — evidence against the setup. v2.1
-  confirms with the rejection-side wick only (lower for longs, upper for
-  shorts).
-- **Degenerate zero-risk setups.** A signal bar opening exactly on its low
-  put the long entry (wick midpoint) at the low itself, collapsing risk to ~0
-  and stop/TP onto the entry. A minimum rejection-wick fraction
-  (`minWickFrac`, default 25% of range) removes the case and raises signal
-  quality.
-- **Signals before the vol engine was seeded.** The first `seedLen` bars had
-  `na` variance, giving stops with zero volatility buffer. Signals now wait
-  for `engineReady`.
-- **Correlated signal spam.** Choppy sweeps could fire near-identical setups
-  on consecutive bars, padding the stats with pseudo-replicated trades. A
-  per-direction cooldown (`cooldownBars`, default 5) suppresses re-fires.
-- **Open trades could linger forever / vanish from accounting.** An optional
-  time stop (`maxHoldBars`, default off) books open trades at market in
-  fractional R; filled trades evicted by the tracking cap are booked the same
-  way instead of silently disappearing.
-- **Optional EMA regime filter** (`useTrendFilter`, default off): longs only
-  above the EMA, shorts only below, for testing trend alignment.
-- Dashboard now shows live pending/open counts and time-exit totals; a signal
-  alert with full entry/stop/target levels fires alongside the static
-  alertconditions.
+`research/fetch_duka.py` + `research/repair_duka.py` pull per-day 1-minute
+candles from the Dukascopy free datafeed for `USATECHIDXUSD` (Nasdaq-100).
 
-## v3 — selectivity release, with a real out-of-sample backtest
+- **3,561,730 one-minute bars, 2015-01-06 → 2026-07-28, 2,998 RTH sessions**
+- Validated against the real contract over the 60-day overlap with Yahoo's
+  `MNQ=F` 5-minute series: **return correlation 0.9894**, return volatility
+  9.13bp vs 9.14bp, median 30-minute opening-range width 243.4pt vs 243.5pt.
+  It is the same tape.
 
-v3 adds three confluence gates on top of v2.1 — **all** must pass, so only
-clean, textbook rejections signal:
+This matters because it is the thing the previous study could not have. Yahoo
+caps intraday history at 7 days of 1m and 60 days of 5m, so every sub-hourly
+verdict in the old README rested on 16 to 75 trades. Those verdicts were not
+wrong so much as uninformative.
 
-- **Close-position gate** (`minClosePos`, 0.7): the signal bar must close in
-  the top 30% of its range for longs (bottom 30% for shorts). A sweep that
-  closes mid-bar is indecision, not rejection.
-- **Sweep-depth gate** (`sweepSigmaIn`, 0.5σ): the raid must run at least
-  half an EWMA sigma beyond the prior extreme. One-tick pokes are noise, not
-  liquidity grabs.
-- **Range-expansion gate** (`rangeExpMult`, 0.8×): the signal bar's range
-  must be at least 0.8× its 20-bar average. Micro bars are not visible
-  rejections.
+The first download pass silently lost 40% of the days: an empty HTTP body was
+treated as "this day has no data", which is indistinguishable from a throttled
+request. `repair_duka.py` retries until coverage stops improving and accepts
+only a real 404 as absence. **Check coverage before trusting a backtest** —
+1,226 trading days in what should be 2,900 is a data bug wearing a strategy's
+clothes.
 
-Cooldown default rises to 10 bars. The EMA regime filter stays available but
-**off** — backtesting showed it hurts everywhere, which makes sense: these
-are mean-reversion signals, and demanding trend alignment deletes the good
-counter-trend fills.
+---
 
-### Backtest methodology
+## Two bugs that each produced a fake edge
 
-The exact fill model (same pessimistic rules as below) was ported to Python
-(`backtest/backtest.py`) and run on Coinbase spot data: BTC-USD, ETH-USD,
-SOL-USD at 1h (4,200 bars ≈ 6 months each) and 6h (2,000 bars ≈ 16 months
-each). Parameters were **walk-forward validated** (`backtest/walkforward.py`):
-tuned on the first 60% of each 1h series, then evaluated untouched on the
-last 40%.
+Both were caught by controls, not by reading the code. Both would have looked
+like a discovery.
 
-- In-sample (tuning): PF 1.54, 27.8% WR at 1:4, +0.39R/trade
-- **Out-of-sample (untouched last 40%): PF 3.20, 44.4% WR at 1:4,
-  +1.22R/trade, 36 closed trades**
+### 1. One leaking bar out of 390 manufactured an IC of −0.34
 
-### Full-sample results, v3 defaults (RR 4, breakeven WR 20%)
+The overnight-range features scored an information coefficient of **−0.342
+against end-of-day returns, z = −43, and were stable to three decimal places
+across both halves of the sample** (−0.347 / −0.338). That is not a good
+signal; that is an impossible one.
 
-| dataset | signals | fills | W | L | WR% | PF | net R | exp R | maxDD |
-|---|---|---|---|---|---|---|---|---|---|
-| BTC-USD 1h | 30 | 26 | 11 | 15 | 42.3 | 2.93 | +29R | +1.12 | 7R |
-| ETH-USD 1h | 29 | 24 | 9 | 15 | 37.5 | 2.40 | +21R | +0.88 | 7R |
-| SOL-USD 1h | 33 | 24 | 6 | 18 | 25.0 | 1.33 | +6R | +0.25 | 6R |
-| **1h pooled** | **92** | **74** | **26** | **48** | **35.1** | **2.17** | **+56R** | **+0.76** | — |
-| BTC-USD 6h | 15 | 14 | 1 | 13 | 7.1 | 0.31 | −9R | −0.64 | 13R |
-| ETH-USD 6h | 16 | 12 | 2 | 9 | 18.2 | 0.89 | −1R | −0.09 | 5R |
-| SOL-USD 6h | 13 | 11 | 1 | 10 | 9.1 | 0.40 | −6R | −0.55 | 8R |
+The cause: the overnight window for day D was defined as "not RTH, session
+flipping at 18:00 ET", which put day D's own **16:00 print — the closing
+price — inside day D's overnight high/low**. One bar per day. That bar leaks
+the session's outcome into a feature used to predict that session, and it
+leaks with exactly the sign of the effect being measured.
 
-**The edge is strictly intraday.** On 6h the same logic loses on all three
-symbols — swept levels on higher timeframes tend to keep going rather than
-mean-revert. The dashboard shows a warning on charts above 2h. Selectivity
-is the point: ~1 signal per 130 hourly bars per symbol, ~80% fill rate.
+Fixed to "from D−1's 16:00 close up to, but not including, D's 09:30 open":
 
-Reproduce: `python3 backtest/fetch_data.py data && python3 backtest/backtest.py data report '{}'`
+| feature → response | IC before | IC after | verdict |
+|---|---|---|---|
+| `on_range_pos` → EOD | −0.342 (z −43) | **+0.015 (z +1.0)** | artifact |
+| `dist_onh` → EOD | −0.308 (z −37) | **+0.021 (z +0.9)** | artifact |
+| `dist_onl` → EOD | −0.260 (z −21) | +0.019 (z +3.0) | weak |
 
-### MNQ / NQ (Nasdaq futures) validation — v3.1 presets
+Nothing else in the scan exceeded |IC| 0.02.
 
-The crypto-tuned defaults were tested unchanged on CME data (Yahoo Finance:
-MNQ=F and NQ=F; 2 years of 1h, 60 days of 5m/15m/30m, 7 days of 1m, 4h
-resampled from 1h) and **lost money pooled (PF 0.88)** — parameters do not
-transfer across markets. MNQ was then tuned walk-forward on its own 1h
-series (first 60% tune, last 40% untouched validation) and cross-validated
-on full-size NQ (`backtest/mnq_walkforward.py`). MNQ wants deeper sweeps
-(0.75σ), wider stops (1.5σ) and a lighter volume gate (0.8×); those now ship
-as the **Index Futures (MNQ/NQ)** preset, the indicator's default. The
-Crypto Intraday preset carries the previous defaults; Custom exposes the
-manual inputs.
+### 2. The weekday mapping deleted every Friday
 
-MNQ-preset results by timeframe (RR 4, breakeven WR 20%):
+`weekday = (day + 4) % 7` puts Sunday at 0, because 1970-01-01 was a Thursday
+and Monday-zero indexing needs `+3`. Every `wd < 5` session filter in the
+codebase was therefore keeping Sundays and **discarding all 600 Fridays**.
+The panel was 2,408 sessions when it should have been 2,998. `core.py` now
+asserts the mapping against five known calendar dates.
 
-| timeframe | span | trades | WR% | PF | net R | verdict |
+### The control that found the first one
+
+The IC table alone cannot tell you which of its rows are real. Three nulls
+were tried and they disagreed, which is the informative part:
+
+- **synthetic random walk** → `on_range_pos` IC −0.19, t −122, era-stable. On
+  data with no edge in it whatsoever.
+- **day-permuted responses** → IC ≈ 0.00. This null breaks the shared `C_m`
+  term between feature and response, so it cannot see that class of artifact
+  at all — it dissolves the very thing in question.
+- **path permutation** (`edge_search.path_null_panel`) → the decisive one.
+  Each day keeps its real overnight context but receives another day's
+  intraday path, volatility-matched. Every shared-term and horizon-shrinkage
+  effect survives intact; only the genuine link is destroyed.
+
+Under the third null the leak was unmissable. **A significance test whose null
+does not preserve the geometry of your estimator is not a significance test.**
+
+---
+
+## What was tested and what it did
+
+### The original premise: liquidity sweep + reclaim
+
+`research/probe.py` measures forward excursion after a sweep of a *named*
+level (prior-day, overnight, opening-range extremes) with a close back inside
+— a stricter and better-motivated setup than the rolling-N-bar sweep the old
+indicator used. No entry model, no exit model, no costs, against a matched
+baseline of every other bar in the same session window:
+
+| timeframe | MFE/MAE, fade | MFE/MAE, continuation | baseline |
+|---|---|---|---|
+| 5m | 1.05 | 0.96 | 1.00 |
+| 15m | 1.01 | 0.99 | 1.00 |
+| 30m | 0.95 | 1.05 | 1.00 |
+| 60m | 0.93 | **1.08** | 1.00 |
+
+The setup selects volatile moments — conditional MFE 3.08σ against a baseline
+2.27σ — but **symmetrically**. It predicts that something will happen, not
+which way. At 30m and 60m the *continuation* side is the better one, which is
+the opposite of what the indicator was built to do.
+
+The old README's "MNQ 1h, PF 1.35, 87 trades" was noise. So was the "OOS PF
+3.20" from 36 trades. A single 60/40 split is one draw.
+
+### Everything else
+
+`research/edge_search.py` scans 13 causal features against 30m/60m/EOD
+forward returns on a 179,020-observation grid; `research/events.py` runs the
+documented intraday effects as event studies with MNQ costs charged.
+
+- **Intraday momentum** (Gao, Han, Li & Zhou 2018 — first half-hour predicts
+  last half-hour, documented on ES/SPY): **does not replicate on NQ**.
+  −0.97pt/day, t = −1.53. Flipped, it is also negative. Both signs lose.
+- **Time-of-day drift**: nothing above |t| 2.4, and what there is concentrates
+  entirely in 2021+.
+- **Day-of-week, gap, VWAP distance, realised-vol ratio, range position,
+  distance to prior-day levels**: all |IC| < 0.02, none surviving the null.
+
+---
+
+## MMT-ORB — the one candidate, and its honest numbers
+
+`indicators/mmt_orb_nq.pine`, `research/orb.py`. Break of the opening range,
+stop at the far side, risk capped, flat at 15:55 ET. Shipped as a Pine
+`strategy()` rather than an indicator so TradingView's engine grades it
+independently of my Python.
+
+**Anchored walk-forward, 8 folds, parameters chosen only on prior data, MNQ
+costs charged, stitched out-of-sample:**
+
+```
+n = 2,639   WR 39.2%   PF 1.09   +0.043R/trade   net +113.8R   maxDD 29.7R
+```
+
+And then the tests that matter:
+
+| test | result | reading |
+|---|---|---|
+| Deflated Sharpe (Bailey & López de Prado) | **PSR 0.071** | per-trade Sharpe 0.031 vs a 0.058 null threshold for a 384-config search — **the result is worse than the best of 384 coin flips** |
+| t-stat, 2,639 OOS trades | +1.58 | not significant |
+| Block bootstrap, expectancy | +0.042R, 5–95%: **+0.002 to +0.083** | the low end is zero |
+| Bootstrap drawdown | median 42.9R, 95th pct **79.8R** | a plausible drawdown is 70% of the entire 11-year gain |
+| Buy and hold 09:30→15:55, same period | **$15,745** vs ORB's $20,883 | the margin over doing nothing clever is inside the noise |
+
+**Per year, out-of-sample:**
+
+```
+2016  -5.1R   2017  -3.2R   2018 +26.6R   2019  +3.7R
+2020  +0.6R   2021  +0.4R   2022 +31.8R   2023  +0.8R
+2024 +34.7R   2025 +32.9R   2026  -9.4R (partial)
+```
+
+Four years produced essentially all of it. On the raw un-walk-forward version
+the split is starker: **six consecutive losing years to 2020, five consecutive
+winning years from 2021, negative again in 2026.** That is a regime change —
+plausibly the 0DTE/retail-flow era — not a stable edge. It may persist. You
+cannot tell from this data, and anyone who tells you otherwise is selling.
+
+Costs are not what kills this one; the edge is simply small:
+
+| setup | round-turn cost | as fraction of avg 74pt risk | net expectancy |
+|---|---|---|---|
+| MNQ, modelled | 1.10pt | 0.015R | +0.034R |
+| MNQ, 2-tick slippage | 1.60pt | 0.022R | +0.025R |
+| NQ (10x contract) | 0.71pt | 0.010R | **+0.041R** |
+
+Cost drag by decision timeframe, from the sweep study — this is the number
+that should govern your timeframe choice more than any pattern:
+
+| tf | 1m | 3m | 5m | 15m | 30m | 60m |
 |---|---|---|---|---|---|---|
-| **1H (MNQ)** | 2 y | 87 | 25.3 | **1.35** | +23R | ✅ tradeable |
-| **1H (NQ cross-val)** | 2 y | 89 | 22.5 | **1.16** | +11R | ✅ confirms |
-| 1H OOS only (MNQ) | last 40% | 30 | 23.3 | 1.22 | +5R | ✅ holds up |
-| 1m | 7 d | 55 | 18.2 | 0.89 | −5R | ❌ |
-| 5m | 60 d | 75 | 20.0 | 1.00 | 0R | ❌ breakeven pre-costs |
-| 15m | 60 d | 24 | 16.7 | 0.80 | −4R | ❌ |
-| 30m | 60 d | 16 | 12.5 | 0.57 | −6R | ❌ (sign flips between configs — noise) |
-| 4H | 2 y | 13 | 7.7 | 0.33 | −8R | ❌ worst of all |
+| cost, R/trade | 0.147 | 0.077 | 0.063 | 0.037 | 0.027 | 0.020 |
 
-A 1:2-RR variant showed the same shape (1H PF 1.38 at 40.8% WR; everything
-below 1H negative), so the conclusion is about the timeframe, not the RR
-choice. **On MNQ, trade this on 1H only.** The dashboard warns whenever the
-MNQ preset is active on a chart outside 45m–2h. Note the sub-hourly series
-are short (7–60 days) — treat those verdicts as "no evidence of an edge",
-not proof of the opposite; the 4H verdict matches the crypto 6h finding and
-is more trustworthy.
+---
 
-### v3.2 — session gating + breakeven management (MNQ study)
+## The failure checklist
 
-A deeper study on MNQ/NQ 1h (`backtest/study_mnq.py`) tested the three levers
-that could improve the raw PF-1.35 edge:
+Carried forward from the earlier audits, plus what this pass added. Every item
+is enforced by an assertion or a control, not by intention.
 
-- **Direction:** longs PF 1.30 / shorts PF 1.44 on MNQ — both positive on
-  both contracts, so both sides stay on.
-- **Session:** signals essentially only fire 06:00–16:00 ET (volume gate
-  kills Globex); the 09–12 ET open block carries most of the edge (PF 1.37)
-  and the few evening signals lose. RTH-only (09:30–16:00 ET) improved OOS
-  and cross-val at negligible trade cost.
-- **Breakeven stop:** moving the stop to entry once the trade reaches +1R
-  was the single biggest improvement — ~40% of former losses become 0R
-  scratches. (BE at +1R beat +1.5R and +2R across the grid.)
+**Caught previously** — dead volatility engine (`log(close/close)` ≡ 0);
+setups filling on their own signal bar; no outcome accounting at all;
+order-flow confirmation reading the wrong wick; zero-risk degenerate setups;
+signals firing before the vol engine seeded; correlated signal spam; trades
+evicted from the ledger without booking; crypto-tuned parameters applied to
+MNQ (PF 0.88 — parameters do not transfer across markets); an EMA trend filter
+that hurt a mean-reversion setup.
 
-Final MNQ configuration (RTH + BE@1R), all panels positive:
+**Caught in this pass:**
 
-| panel | trades | W/L/BE | WR (dec.) | PF | net R |
-|---|---|---|---|---|---|
-| MNQ 1h in-sample (first 60%) | 51 | 9/22/20 | 29.0% | **1.64** | +14R |
-| MNQ 1h out-of-sample (last 40%) | 29 | 5/14/10 | 26.3% | **1.43** | +6R |
-| NQ 1h full (cross-val) | 81 | 11/35/35 | 23.9% | **1.26** | +9R |
+| # | Failure | Guard now in place |
+|---|---|---|
+| 1 | 16:00 bar leaking the close into the overnight range → fake IC −0.34 | overnight window defined by explicit session boundaries; path-permutation null |
+| 2 | `(day+4)%7` deleting every Friday | `core._selftest` asserts the mapping against known dates |
+| 3 | NaN poisoning `cumsum` → all-NaN variance ratio | NaN-safe rolling mean; `core._selftest` |
+| 4 | 40% of days silently missing from the download | `repair_duka.py`; coverage printed before every study |
+| 5 | Reporting a tuned config on the sample that tuned it | walk-forward only; in-sample numbers are not quoted |
+| 6 | Ignoring how many configs were searched | deflated Sharpe on every headline result |
+| 7 | No fees or slippage anywhere | costs charged in points on every trade; sensitivity table published |
+| 8 | Verdicts from 16–75 trades | 2,998 sessions; nothing reported under ~250 trades |
+| 9 | ET session clock approximated as UTC−4 | real IANA tz with DST transitions |
 
-Both rules ship in the MNQ preset (session 09:30–16:00 America/New_York,
-BE trigger 1.0R) and are configurable in Custom mode. The crypto preset
-keeps sessions off (24/7 market) and BE off (untested there). Scratches are
-tracked separately on the dashboard and excluded from the win rate but
-included in expectancy.
+**What genuinely worked, and still does:** breakeven-at-+1R management (it
+converts roughly 40% of losses into scratches — the largest single
+improvement found across all versions); volatility-normalised stops; strict
+walk-forward; cross-validation on a correlated instrument; pessimistic
+tie-breaking in the fill model.
 
-### Statistical honesty
+---
 
-- 74 pooled closed trades is a modest sample; the OOS PF of 3.20 comes from
-  36 trades. The direction of the evidence is good; the point estimates are
-  not gospel.
-- No fees/slippage. Limit entries earn maker rebates on most venues, so the
-  cost drag in R terms is small but not zero — roughly `fee% × (entry/risk)`
-  per side.
-- Crypto-only validation. Test on your market before trusting it there.
-- All three 1h symbols were profitable, but SOL was materially weaker —
-  expect dispersion across symbols.
+## Layout
 
-## How v2 grades trades (fill model)
+```
+research/
+  core.py          bars, resampling, ET session clock, indicators (self-testing)
+  engine.py        execution simulator, MNQ cost model, trade ledger
+  strategy.py      liquidity-sweep signal generation (causality self-tested)
+  probe.py         forward-excursion edge probe vs matched baseline
+  edge_search.py   feature/response scan + the three nulls
+  events.py        ORB / intraday-momentum / time-of-day event studies
+  orb.py           MMT-ORB strategy and its walk-forward
+  validate.py      walk-forward, deflated Sharpe, block bootstrap
+  diagnose.py      final report on the OOS ledger
+  fetch_duka.py    1-minute history downloader
+  repair_duka.py   coverage repair
+indicators/
+  mmt_orb_nq.pine              MMT-ORB as a Pine v6 strategy()
+  alpha_predictive_limit_matrix.pine   previous sweep indicator (superseded)
+```
 
-The accounting is deliberately **pessimistic** — OHLC bars don't reveal the
-intrabar path, so every ambiguity is resolved against the strategy:
+Reproduce:
 
-- A limit fills when price trades through it on a bar **after** the signal bar.
-- If the fill bar also trades through the stop, the trade books as a loss.
-- TP is never credited on the fill bar.
-- If stop and TP both print inside one bar, the stop wins.
-- Wins book `+RR` R, losses `-1` R, at the posted levels (no slippage/fees).
-- Time-stop and eviction exits book at the bar's close in fractional R; they
-  count toward expectancy but not toward the TP-vs-stop win rate.
+```
+pip install numpy
+python3 research/fetch_duka.py 2015 && python3 research/repair_duka.py 5
+cd research
+python3 core.py && python3 engine.py && python3 strategy.py   # self-tests
+python3 probe.py          # the sweep premise
+python3 edge_search.py    # feature scan against the null
+python3 events.py         # documented effects
+python3 diagnose.py       # walk-forward ORB + significance
+```
 
-The dashboard shows signals, fill rate, wins/losses, expired setups, win rate
-against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
-**20% at 1:4**), net R, and expectancy per closed trade.
+---
 
-## Honest caveats
+## If you want to keep hunting
 
-- This is an indicator-side simulation, not a `strategy()` backtest: no
-  commission, slippage, or position sizing. Treat the expectancy line as an
-  upper-bound sanity check, not a P&L forecast.
-- Setups beyond `maxTracked` are evicted oldest-first (pending ones count as
-  expired, filled ones book at market); on very signal-dense charts raise the
-  cap or tighten the filters.
-- With the time stop off (default), a filled trade runs until TP or stop is
-  touched.
+The infrastructure is the asset. Three directions the evidence actually points
+at, none of them tested here:
+
+1. **Order flow.** Everything above is OHLCV. The information that plausibly
+   predicts a sweep's outcome — resting size, aggressor imbalance, book
+   depletion — is not in a candle. This is the most likely place for a real
+   intraday edge and it needs a different data subscription (Databento
+   MBO/MBP-10 for CME).
+2. **Cross-asset conditioning.** NQ intraday conditioned on ES, VIX term
+   structure, rates, or the NQ/ES spread. Costs nothing to test with the
+   existing harness.
+3. **Event conditioning.** FOMC, CPI, NFP, opex, quarter-end. Small samples
+   per event type, but the effects are large where they exist.
+
+Run each through `edge_search.py` with the path-permutation null before
+believing anything, and quote deflated Sharpe on whatever survives.

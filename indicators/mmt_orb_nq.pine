@@ -1,0 +1,199 @@
+//@version=6
+// MMT-ORB — Opening Range Breakout for MNQ/NQ
+//
+// Shipped as strategy() rather than indicator() on purpose. The Python study
+// in research/ is the primary evidence; this exists so you can check that
+// evidence against an engine nobody in this repo wrote. Set commission and
+// slippage in the Properties tab and TradingView will grade it independently.
+// If its numbers and research/diagnose.py disagree, trust neither until you
+// find out why.
+//
+// READ THIS BEFORE TRADING IT. Over 2,998 NQ sessions (2015-2026, 1-minute
+// data), walked forward with parameters chosen only on prior data:
+//     PF 1.09, +0.043R/trade, 39.2% win rate, max drawdown 29.7R
+//     deflated Sharpe PSR 0.071 -- it FAILS the standard significance bar
+//     once you account for the 384 configurations that were searched
+// Four of eleven years produced essentially all of the profit. This is a
+// candidate, not an edge. Size it like one.
+
+strategy("MMT-ORB (MNQ/NQ)", overlay=true, initial_capital=25000,
+     default_qty_type=strategy.fixed, default_qty_value=1,
+     commission_type=strategy.commission.cash_per_order, commission_value=0.60,
+     slippage=1, pyramiding=0, calc_on_every_tick=false,
+     max_labels_count=500, max_lines_count=500)
+
+// ── inputs ───────────────────────────────────────────────────────────────────
+g_s  = "Session (exchange time)"
+tz       = input.string("America/New_York", "Timezone", group=g_s)
+openHM   = input.string("0930", "RTH open  (HHMM)", group=g_s)
+flatHM   = input.string("1555", "Flatten   (HHMM)", group=g_s)
+orMin    = input.int(5,  "Opening range (minutes)", minval=1, maxval=120, group=g_s,
+     tooltip="Walk-forward selected 5m in the most recent folds. 15m and 30m " +
+     "tested similarly; none was stable across the whole sample.")
+
+g_e  = "Entry / risk"
+bufTicks = input.float(1.0, "Entry buffer (ticks beyond the range)", minval=0, step=0.25, group=g_e)
+stopMode = input.string("Opposite side", "Stop placement", options=["Opposite side", "Volatility"], group=g_e)
+stopSig  = input.float(1.0, "Volatility stop (x daily scale)", minval=0.1, step=0.05, group=g_e)
+maxSig   = input.float(1.5, "Max risk cap (x daily scale)", minval=0.2, step=0.05, group=g_e,
+     tooltip="Caps risk on wide-range mornings so one gap day cannot dominate the sample.")
+minOR    = input.float(0.0, "Min OR width (x daily scale)", minval=0, step=0.05, group=g_e)
+maxOR    = input.float(9.9, "Max OR width (x daily scale)", minval=0.1, step=0.05, group=g_e)
+dirMode  = input.string("Both", "Direction", options=["Both", "Long only", "Short only"], group=g_e)
+
+g_m  = "Management"
+trailSig = input.float(0.0, "Trail (x daily scale, 0 = off)", minval=0, step=0.05, group=g_m)
+beAtR    = input.float(0.0, "Breakeven at +R (0 = off)", minval=0, step=0.25, group=g_m)
+reentry  = input.bool(false, "Allow one re-entry after a stop-out", group=g_m)
+
+g_v  = "Display"
+showOR   = input.bool(true, "Draw opening range", group=g_v)
+showLvl  = input.bool(true, "Draw entry / stop levels", group=g_v)
+
+// ── session clock ────────────────────────────────────────────────────────────
+toMin(hm) =>
+    str.tonumber(str.substring(hm, 0, 2)) * 60 + str.tonumber(str.substring(hm, 2, 4))
+
+openMin = toMin(openHM)
+flatMin = toMin(flatHM)
+nowMin  = hour(time, tz) * 60 + minute(time, tz)
+newDay  = ta.change(time(timeframe.isintraday ? "D" : timeframe.period, "0000-0000", tz)) != 0
+
+inOR    = nowMin >= openMin and nowMin < openMin + orMin
+afterOR = nowMin >= openMin + orMin and nowMin < flatMin
+atFlat  = nowMin >= flatMin
+
+// ── daily volatility scale: 20-day mean RTH range, known before the day ─────
+// Uses only completed prior sessions, so nothing about today is in it.
+var float dayHi = na
+var float dayLo = na
+var float scale = na
+rthNow = nowMin >= openMin and nowMin < flatMin
+if newDay
+    dayHi := na
+    dayLo := na
+if rthNow
+    dayHi := na(dayHi) ? high : math.max(dayHi, high)
+    dayLo := na(dayLo) ? low  : math.min(dayLo, low)
+
+dayRange = ta.valuewhen(newDay, nz(dayHi - dayLo, na), 1)
+scaleRaw = ta.sma(dayRange, 20)
+if newDay
+    scale := scaleRaw
+sc = nz(scale, ta.atr(20) * 4)
+
+// ── opening range ────────────────────────────────────────────────────────────
+var float orH = na
+var float orL = na
+var bool  orDone = false
+var bool  tradedToday = false
+var int   entriesToday = 0
+
+if newDay
+    orH := na
+    orL := na
+    orDone := false
+    tradedToday := false
+    entriesToday := 0
+
+if inOR
+    orH := na(orH) ? high : math.max(orH, high)
+    orL := na(orL) ? low  : math.min(orL, low)
+
+if afterOR and not orDone and not na(orH)
+    orDone := true
+
+orWidth = (na(orH) or na(orL) or sc <= 0) ? na : (orH - orL) / sc
+widthOK = not na(orWidth) and orWidth >= minOR and orWidth <= maxOR
+
+buf     = bufTicks * syminfo.mintick
+longLvl  = na(orH) ? na : orH + buf
+shortLvl = na(orL) ? na : orL - buf
+
+// ── orders ───────────────────────────────────────────────────────────────────
+maxTrades = reentry ? 2 : 1
+canTrade  = orDone and afterOR and widthOK and strategy.position_size == 0
+     and entriesToday < maxTrades and barstate.isconfirmed
+
+riskFor(entry, dir) =>
+    float st = stopMode == "Opposite side" ? (dir > 0 ? orL : orH)
+         : entry - dir * stopSig * sc
+    if math.abs(entry - st) > maxSig * sc
+        st := entry - dir * maxSig * sc
+    st
+
+longStop  = riskFor(longLvl, 1)
+shortStop = riskFor(shortLvl, -1)
+
+longOK  = canTrade and dirMode != "Short only" and not na(longLvl)
+     and (longLvl - longStop) > 4 * syminfo.mintick
+shortOK = canTrade and dirMode != "Long only" and not na(shortLvl)
+     and (shortStop - shortLvl) > 4 * syminfo.mintick
+
+if longOK
+    strategy.entry("L", strategy.long, stop=longLvl)
+if shortOK
+    strategy.entry("S", strategy.short, stop=shortLvl)
+if not canTrade or atFlat
+    strategy.cancel("L")
+    strategy.cancel("S")
+
+// ── management ───────────────────────────────────────────────────────────────
+var float initStop = na
+var float initRisk = na
+var float peak     = na
+
+justEntered = strategy.position_size != 0 and strategy.position_size[1] == 0
+if justEntered
+    entriesToday += 1
+    initStop := strategy.position_size > 0 ? longStop : shortStop
+    initRisk := math.abs(strategy.position_avg_price - initStop)
+    peak     := strategy.position_avg_price
+
+if strategy.position_size != 0
+    isLong = strategy.position_size > 0
+    peak := isLong ? math.max(nz(peak, high), high) : math.min(nz(peak, low), low)
+    float st = initStop
+    if beAtR > 0 and initRisk > 0
+        mfe = (peak - strategy.position_avg_price) * (isLong ? 1 : -1) / initRisk
+        if mfe >= beAtR
+            st := isLong ? math.max(st, strategy.position_avg_price)
+                 : math.min(st, strategy.position_avg_price)
+    if trailSig > 0
+        cand = peak - (isLong ? 1 : -1) * trailSig * sc
+        st := isLong ? math.max(st, cand) : math.min(st, cand)
+    strategy.exit(isLong ? "XL" : "XS", from_entry=isLong ? "L" : "S", stop=st)
+
+if atFlat and strategy.position_size != 0
+    strategy.close_all("session flat")
+
+// ── plotting ─────────────────────────────────────────────────────────────────
+plot(showOR and orDone and widthOK ? orH : na, "OR high", color.new(color.teal, 0),
+     1, plot.style_linebr)
+plot(showOR and orDone and widthOK ? orL : na, "OR low", color.new(color.teal, 0),
+     1, plot.style_linebr)
+bgcolor(inOR ? color.new(color.teal, 92) : na, title="Opening range window")
+plot(showLvl and strategy.position_size != 0 ? initStop : na, "Stop",
+     color.new(color.red, 0), 1, plot.style_linebr)
+
+// ── honesty panel ────────────────────────────────────────────────────────────
+var table tb = table.new(position.top_right, 2, 6, border_width=1)
+if barstate.islast
+    table.cell(tb, 0, 0, "MMT-ORB", text_color=color.white, bgcolor=color.new(color.teal, 20))
+    table.cell(tb, 1, 0, str.tostring(orMin) + "m OR", text_color=color.white,
+         bgcolor=color.new(color.teal, 20))
+    table.cell(tb, 0, 1, "Trades")
+    table.cell(tb, 1, 1, str.tostring(strategy.closedtrades))
+    table.cell(tb, 0, 2, "Profit factor")
+    pf = strategy.grossloss > 0 ? strategy.grossprofit / strategy.grossloss : na
+    table.cell(tb, 1, 2, na(pf) ? "-" : str.tostring(pf, "#.##"),
+         text_color = na(pf) ? color.gray : (pf >= 1 ? color.green : color.red))
+    table.cell(tb, 0, 3, "Net profit")
+    table.cell(tb, 1, 3, str.tostring(strategy.netprofit, "#.##"))
+    table.cell(tb, 0, 4, "OR width (x scale)")
+    table.cell(tb, 1, 4, na(orWidth) ? "-" : str.tostring(orWidth, "#.##"))
+    table.cell(tb, 0, 5, "Study: PSR 0.07", text_color=color.orange)
+    table.cell(tb, 1, 5, "not significant", text_color=color.orange)
+
+alertcondition(longOK,  "MMT-ORB long armed",  "ORB long stop order working")
+alertcondition(shortOK, "MMT-ORB short armed", "ORB short stop order working")
