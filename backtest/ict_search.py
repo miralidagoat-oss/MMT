@@ -92,9 +92,9 @@ def sample_config(rnd):
     c["use_delta_score"] = rnd.random() < 0.7
     c["use_htf"] = rnd.random() < 0.7
     c["veto_htf"] = rnd.random() < 0.3
-    c["htf_min"] = rnd.choice([15, 30, 60])
-    c["ema_fast"] = rnd.choice([9, 21, 34])
-    c["ema_slow"] = rnd.choice([50, 89, 144])
+    # NOTE: htf_min, ema_fast, ema_slow, atr_len and rvol_len are consumed by
+    # prep(), not run(). They are held at defaults so the prepped-data cache
+    # stays small; pv_len and the killzone set ARE varied and ARE keyed below.
     c["use_vw_tgt"] = rnd.random() < 0.6
     c["allow_long"] = True
     c["allow_short"] = True
@@ -140,7 +140,20 @@ def make_null(b, seed=1):
     return dict(t=list(b["t"]), o=o, h=h, l=l, c=c, v=list(b["v"]), n=n)
 
 
-DATA = {}
+DATA = {}          # key -> prepped bars.  key = (market, pv_len, kz_name)
+RAW = {}           # market -> raw bars, shared by every variant
+
+
+def prep_key(cfg):
+    return (cfg["pv_len"], cfg["_kz"])
+
+
+def build_variant(market, pv_len, kz_name):
+    """prep() reads sessions and pivot length, so every distinct combination
+    needs its own prepped copy. The raw OHLCV lists are shared - only the
+    derived series are duplicated."""
+    P = dict(P0, pv_len=pv_len, **KZ_SETS[kz_name])
+    return prep(dict(RAW[market]), P)
 
 
 def _score(trp, tro):
@@ -164,7 +177,7 @@ def _score(trp, tro):
 
 def eval_one(args):
     idx, cfg, key = args
-    b = DATA[key]
+    b = DATA[(key,) + prep_key(cfg)]
     P = dict(P0, **{k: v for k, v in cfg.items() if not k.startswith("_")})
     P["point_value"], P["tick"] = PVS["MNQ"], TKS["MNQ"]
     trp, _ = run(b, P, True)
@@ -187,9 +200,12 @@ def eval_oos(args):
     idx, cfg = args
     out = []
     for sym in MARKETS:
+        b = DATA.get((sym,) + prep_key(cfg))
+        if b is None:
+            continue
         P = dict(P0, **{k: v for k, v in cfg.items() if not k.startswith("_")})
         P["point_value"], P["tick"] = PVS[sym], TKS[sym]
-        tr, _ = run(DATA[sym], P, True)
+        tr, _ = run(b, P, True)
         out += [t["R"] for t in tr]
     if len(out) < 40:
         return idx, None
@@ -204,18 +220,22 @@ def eval_oos(args):
 
 
 def main(d, n_cfg):
-    print(f"preparing data ...", flush=True)
-    DATA["MNQ"] = prep(load(primary_csv(d)), P0)
+    print("preparing data ...", flush=True)
+    RAW["MNQ"] = load(primary_csv(d))
     for sym in MARKETS:
         p = os.path.join(d, f"{sym}_5m.csv")
         if os.path.exists(p):
-            DATA[sym] = prep(load(p), P0)
-    DATA["NULL"] = prep(make_null(DATA["MNQ"]), P0)
-    print(f"  MNQ {DATA['MNQ']['n']} bars | markets {[m for m in MARKETS if m in DATA]}"
-          f" | null series built", flush=True)
+            RAW[sym] = load(p)
+    RAW["NULL"] = make_null(prep(dict(RAW["MNQ"]), P0))
 
     rnd = random.Random(20260821)
     cfgs = [sample_config(rnd) for _ in range(n_cfg)]
+    variants = sorted({prep_key(c) for c in cfgs})
+    print(f"  {len(variants)} prep variants (pivot length x killzone set)", flush=True)
+    for pv, kz in variants:
+        for m in ("MNQ", "NULL"):
+            DATA[(m, pv, kz)] = build_variant(m, pv, kz)
+    print(f"  MNQ {RAW['MNQ']['n']} bars | {len(DATA)} prepped datasets cached", flush=True)
 
     with Pool(4) as pool:
         print(f"\nstage 1/3: grading {n_cfg} configurations on MNQ ...", flush=True)
@@ -228,11 +248,23 @@ def main(d, n_cfg):
             eval_one, [(i, c, "NULL") for i, c in enumerate(cfgs)], chunksize=25) if r]
         print(f"  {len(null)} passed", flush=True)
 
-        real.sort(key=lambda r: -r["t"])
-        top = real[:250]
-        print(f"\nstage 3/3: validating the top {len(top)} on five untouched markets ...", flush=True)
-        oos = dict(pool.imap_unordered(
-            eval_oos, [(r["idx"], cfgs[r["idx"]]) for r in top], chunksize=5))
+    real.sort(key=lambda r: -r["t"])
+    top = real[:250]
+    print(f"\nstage 3/3: validating the top {len(top)} on five untouched markets ...", flush=True)
+    # grouped by prep variant so only five prepped markets are held at a time
+    groups = {}
+    for r in top:
+        groups.setdefault(prep_key(cfgs[r["idx"]]), []).append(r)
+    oos = {}
+    for (pv, kz), members in groups.items():
+        for sym in MARKETS:
+            if sym in RAW:
+                DATA[(sym, pv, kz)] = build_variant(sym, pv, kz)
+        with Pool(4) as pool:
+            oos.update(dict(pool.imap_unordered(
+                eval_oos, [(r["idx"], cfgs[r["idx"]]) for r in members], chunksize=2)))
+        for sym in MARKETS:
+            DATA.pop((sym, pv, kz), None)
     for r in top:
         r["oos"] = oos.get(r["idx"])
 

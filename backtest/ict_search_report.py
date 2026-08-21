@@ -41,9 +41,14 @@ def tstat(rs):
 
 
 def evaluate(cfg, key):
-    P = dict(P0, **{k: v for k, v in cfg.items() if not k.startswith("_")})
+    """prep() depends on pivot length and the killzone set, so each variant
+    gets its own prepped copy - built on demand and cached."""
+    k = (key,) + S.prep_key(cfg)
+    if k not in S.DATA:
+        S.DATA[k] = S.build_variant(key, cfg["pv_len"], cfg["_kz"])
+    P = dict(P0, **{kk: v for kk, v in cfg.items() if not kk.startswith("_")})
     P["point_value"], P["tick"] = S.PVS.get(key, 2.0), S.TKS.get(key, 0.25)
-    tr, _ = run(S.DATA[key], P, True)
+    tr, _ = run(S.DATA[k], P, True)
     return tr
 
 
@@ -174,23 +179,6 @@ def main(d):
     return res, real, null, withoos, cfgs
 
 
-if __name__ == "__main__":
-    d = sys.argv[1] if len(sys.argv) > 1 else "data"
-    S.DATA["MNQ"] = prep(load(primary_csv(d)), P0)
-    for sym in S.MARKETS:
-        p = os.path.join(d, f"{sym}_5m.csv")
-        if os.path.exists(p):
-            S.DATA[sym] = prep(load(p), P0)
-    _cfg, _res = None, None
-    main(d)
-    _cfg, _res = pick_and_verify(d)
-    if _cfg:
-        import ict_to_tradingview as TV
-        print()
-        print(TV.render(_cfg, "BEST VALIDATED CONFIGURATION"))
-        json.dump(_cfg, open(os.path.join(d, "best_config.json"), "w"), default=str)
-
-
 def pick_and_verify(d):
     """Select the configuration that is strongest OUT of sample among the
     in-sample leaders, then test whether it is a plateau or a spike."""
@@ -243,3 +231,20 @@ def pick_and_verify(d):
     for lab, st in ok[-4:]:
         print(f"    {lab:<34} n={st['n']:>3}  avgR={st['avgR']:+.3f}  PF={st['pf']:.2f}")
     return cfg, res
+
+
+if __name__ == "__main__":
+    d = sys.argv[1] if len(sys.argv) > 1 else "data"
+    S.RAW["MNQ"] = load(primary_csv(d))
+    for sym in S.MARKETS:
+        p = os.path.join(d, f"{sym}_5m.csv")
+        if os.path.exists(p):
+            S.RAW[sym] = load(p)
+    _cfg, _res = None, None
+    main(d)
+    _cfg, _res = pick_and_verify(d)
+    if _cfg:
+        import ict_to_tradingview as TV
+        print()
+        print(TV.render(_cfg, "BEST VALIDATED CONFIGURATION"))
+        json.dump(_cfg, open(os.path.join(d, "best_config.json"), "w"), default=str)
