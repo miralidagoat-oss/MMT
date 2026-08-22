@@ -37,6 +37,10 @@ TKS = dict(MNQ=0.25, NQ=0.25, MES=0.25, ES=0.25, YM=1.0, RTY=0.1)
 BASE = dict(min_stop_pt=0.0, max_stop_pt=1e9, atr_min_pt=0.0, atr_max_pt=1e9,
             max_trades=99, max_day_dd=1e9, size_mode="fixed")
 
+MIN_TRADES = 40          # raised by --freq
+FREQ = False             # frequency-hunting sampling profile
+
+
 KZ_SETS = {
     "NY AM only":      dict(kz_lon=None, kz_am=(510, 660), kz_sb=None, kz_pm=None),
     "NY PM only":      dict(kz_lon=None, kz_am=None, kz_sb=None, kz_pm=(810, 960)),
@@ -45,15 +49,20 @@ KZ_SETS = {
     "London + AM":     dict(kz_lon=(120, 300), kz_am=(510, 660), kz_sb=None, kz_pm=None),
     "All three":       dict(kz_lon=(120, 300), kz_am=(510, 660), kz_sb=None, kz_pm=(810, 960)),
     "RTH only":        dict(kz_lon=None, kz_am=(570, 960), kz_sb=None, kz_pm=None),
+    "RTH + London":    dict(kz_lon=(120, 300), kz_am=(570, 960), kz_sb=None, kz_pm=None),
+    "Almost all day":  dict(kz_lon=(120, 300), kz_am=(480, 960), kz_sb=None, kz_pm=(960, 1140)),
 }
 
 
 def sample_config(rnd):
     c = dict(BASE)
-    c["thresh"] = rnd.randint(0, 11)
-    c["req_mss"] = rnd.random() < 0.6
-    c["req_fvg"] = rnd.random() < 0.35
-    c["req_kz"] = rnd.random() < 0.75
+    # FREQ tilts every lever that gates trade COUNT: a low bar to qualify, few
+    # hard gates, wide stop bands, a market fallback when price will not
+    # retrace, and short holds so the single-position slot frees up quickly.
+    c["thresh"] = rnd.randint(0, 6) if FREQ else rnd.randint(0, 11)
+    c["req_mss"] = rnd.random() < (0.20 if FREQ else 0.6)
+    c["req_fvg"] = rnd.random() < (0.12 if FREQ else 0.35)
+    c["req_kz"] = rnd.random() < (0.55 if FREQ else 0.75)
     c["_kz"] = rnd.choice(list(KZ_SETS))
     c.update(KZ_SETS[c["_kz"]])
     c["stop_mode"] = rnd.choice(["raid", "zone", "tighter"])
@@ -63,15 +72,15 @@ def sample_config(rnd):
     c["min_r"] = rnd.choice([0.75, 1.0, 1.25, 1.5, 2.0, 2.5])
     c["max_r"] = rnd.choice([3.0, 4.0, 5.0, 6.0, 8.0])
     c["def_r"] = rnd.choice([1.5, 2.0, 2.5, 3.0])
-    c["min_stop_atr"] = rnd.choice([0.0, 0.25, 0.5, 0.75, 1.0, 1.25])
-    c["max_stop_atr"] = rnd.choice([1.5, 2.0, 2.5, 3.0, 4.0])
+    c["min_stop_atr"] = rnd.choice([0.1, 0.25, 0.4, 0.5, 0.75] if FREQ else [0.0, 0.25, 0.5, 0.75, 1.0, 1.25])
+    c["max_stop_atr"] = rnd.choice([2.0, 2.5, 3.0, 4.0] if FREQ else [1.5, 2.0, 2.5, 3.0, 4.0])
     c["stop_buf_atr"] = rnd.choice([0.0, 0.1, 0.2, 0.3, 0.5])
     c["be_on"] = rnd.random() < 0.4
     c["be_trig_r"] = rnd.choice([0.5, 0.75, 1.0, 1.5, 2.0])
     c["use_part"] = rnd.random() < 0.4
     c["tp1_r"] = rnd.choice([0.5, 0.75, 1.0, 1.5])
     c["tp1_pct"] = rnd.choice([25, 33, 50, 66, 75])
-    c["sweep_lb"] = rnd.randint(1, 6)
+    c["sweep_lb"] = rnd.randint(1, 8) if FREQ else rnd.randint(1, 6)
     c["struct_lb"] = rnd.choice([6, 8, 10, 12, 16, 20, 24])
     c["pv_len"] = rnd.randint(1, 4)
     c["min_pen_ticks"] = rnd.randint(0, 4)
@@ -84,9 +93,10 @@ def sample_config(rnd):
     c["ote_lo"] = rnd.choice([0.5, 0.62, 0.705])
     c["ote_hi"] = rnd.choice([0.705, 0.79, 0.89])
     c["ob_lb"] = rnd.choice([5, 10, 15, 25])
-    c["max_hold"] = rnd.choice([12, 18, 24, 36, 48, 72])
-    c["no_retrace"] = rnd.choice(["Skip", "Market"])
-    c["rvol_min"] = rnd.choice([0.0, 0.5, 0.8, 1.0, 1.2])
+    c["max_hold"] = rnd.choice([4, 6, 9, 12, 18, 24] if FREQ else [12, 18, 24, 36, 48, 72])
+    c["no_retrace"] = rnd.choice(["Market", "Market", "Skip"] if FREQ else ["Skip", "Market"])
+    c["zone_valid"] = rnd.choice([2, 3, 4, 6, 8, 12]) if FREQ else c["zone_valid"]
+    c["rvol_min"] = rnd.choice([0.0, 0.3, 0.5, 0.8] if FREQ else [0.0, 0.5, 0.8, 1.0, 1.2])
     c["rvol_hot"] = rnd.choice([1.0, 1.3, 1.6, 2.0])
     c["div_len"] = rnd.choice([10, 20, 30])
     c["use_delta_score"] = rnd.random() < 0.7
@@ -160,7 +170,7 @@ def _score(trp, tro):
     """In-sample quality: expectancy in R, penalised for small samples and for
     outcomes that were decided by intrabar sequencing rather than by the model."""
     s = stats(trp, [], P0)
-    if s.get("trades", 0) < 40:
+    if s.get("trades", 0) < MIN_TRADES:
         return None
     op = {t["t"]: t for t in tro}
     dis = sum(1 for t in trp if op.get(t["t"]) and (t["net"] > 0) != (op[t["t"]]["net"] > 0))
@@ -181,7 +191,7 @@ def eval_one(args):
     P = dict(P0, **{k: v for k, v in cfg.items() if not k.startswith("_")})
     P["point_value"], P["tick"] = PVS["MNQ"], TKS["MNQ"]
     trp, _ = run(b, P, True)
-    if len(trp) < 40:
+    if len(trp) < MIN_TRADES:
         return None
     tro, _ = run(b, P, False)
     sc = _score(trp, tro)
@@ -278,4 +288,8 @@ def main(d, n_cfg):
 if __name__ == "__main__":
     d = sys.argv[1] if len(sys.argv) > 1 else "data"
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 10000
+    if "--freq" in sys.argv:
+        FREQ = True
+        MIN_TRADES = 150
+        print("FREQUENCY MODE: sampling tilted for trade count, minimum 150 trades")
     main(d, n)
