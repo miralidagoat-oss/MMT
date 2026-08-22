@@ -890,7 +890,12 @@ if na(exitPx) and posDir != 0
     bool stopHit = posDir == 1 ? low <= posS : high >= posS
     bool tgtHit  = posDir == 1 ? high >= posT : low <= posT
     bool tp1Hit  = usePart and not posTp1Hit and (posDir == 1 ? high >= posTp1 : low <= posTp1)
-    if stopHit and tgtHit
+    // An outcome depends on intrabar sequencing in TWO cases, not one:
+    //   - the bar holds both the stop and the target
+    //   - a favourable level is touched on the FILL bar, where the extreme may
+    //     have printed before the limit filled
+    // Counting only the first understated this badly on tight-stop settings.
+    if (stopHit and tgtHit) or (filledNow and (tgtHit or tp1Hit))
         ambig := true
     // On the fill bar a favourable touch is ambiguous - the extreme may have
     // printed BEFORE the limit filled. Only the stop is deterministic there,
@@ -1332,7 +1337,7 @@ if showTable and barstate.islast
     f_row(dash, 11,  "Payoff (avgW/avgL)",  f_num(payoff, "#.##"), color.white)
     f_row(dash, 12, "Max drawdown $",      f_num(maxDDv, "#.##"), color.orange)
     f_row(dash, 13, "Equity $",            f_num(equity, "#.##"), equity >= startCap ? color.lime : color.red)
-    f_row(dash, 14, "Coin-flip trades %",  f_num(ambPct, "#.#"), cAmb)
+    f_row(dash, 14, "Coin-flip trades %",  f_num(ambPct, "#.#") + (na(ambPct) ? "" : ambPct > 30 ? "  RESULTS UNRELIABLE" : ""), cAmb)
     f_row(dash, 15, "Intrabar rule",       stopFirst ? "stop first" : "target first", color.aqua)
     // What is ACTUALLY running. A preset other than Custom overrides the
     // inputs below it, so read these rows rather than the settings panel.

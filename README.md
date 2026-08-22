@@ -503,3 +503,51 @@ Precision reads t = 1.07, needs 136, has 40.
   to the signal bar's close and still rested a *limit* there, so a long only
   filled if price traded back down to that level. Renamed "Limit at signal
   close" and documented; behaviour unchanged so the measurements still hold.
+
+
+## A bug that mattered: the coin-flip metric under-counted
+
+The "Coin-flip trades %" row existed to stop the dashboard presenting an
+intrabar artifact as a result. It counted only bars holding BOTH the stop and
+the target. It missed the larger case: a favourable level touched on the
+**fill bar**, where the extreme may have printed before the limit filled.
+
+On a real user configuration (score 10, MSS/FVG off, aggressive fill, tighter
+stop, breakeven on, "nearest pool min 1R" target, 33% scale at 0.75R) the row
+displayed **0%**. The true rate was **67%** — six of nine trades reversed
+outcome between the two intrabar assumptions:
+
+| intrabar rule | WR | PF | avg R |
+|---|---:|---:|---:|
+| Target first (optimistic) | 88.9% | **9.46** | +1.022 |
+| Stop first (conservative) | 22.2% | **0.56** | −0.138 |
+
+Same trades, same signals. The metric built to catch exactly this said the
+sample was clean. Now counted correctly, and the row appends
+"RESULTS UNRELIABLE" above 30%.
+
+Tight stop + near target + aggressive fill is the combination that produces
+it: the entry fills early in a bar that can still reach a 1R target before it
+closes. The "Max frequency" preset by contrast runs at **1.4%** ambiguity.
+
+## Getting more trades without diluting the edge
+
+Loosening filters spreads one edge thinner. Running the *same* selective
+configuration across genuinely different instruments samples that edge more
+times instead. Max frequency preset, per market:
+
+| market | trades | avg R | t |
+|---|---:|---:|---:|
+| MNQ | 284 | +0.127 | +1.51 |
+| MES | 278 | +0.101 | +1.13 |
+| **MNQ + MES** | **562** (11.7/day) | **+0.114** | **+1.87** |
+
+Nearly double the trades, per-trade edge essentially unchanged, and the
+t-statistic *improves* because the sample grew.
+
+Two warnings. **NQ and MNQ are the same underlying**, as are ES and MES —
+trading both is leverage, not diversification, and pooling them overstates
+significance. And on that same underlying the two feeds disagree: MES gives
++0.101 while ES gives −0.030. A strategy cannot work on the S&P through one
+contract and fail through another; that gap is the noise floor of a 72-day
+sample, visible directly.
