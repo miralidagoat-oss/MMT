@@ -54,7 +54,7 @@ G_STR = "7 - Structure & PD arrays"
 G_FIL = "8 - Confluence filters"
 G_VIS = "9 - Visuals"
 
-preset    = input.string("Balanced", "Signal preset", options = ["Precision", "Balanced", "Volume", "Custom"], group = G_ENG, tooltip = "Each preset is a configuration that was measured end to end on MNQ 5m - see README.md for the numbers AND their confidence intervals.\nPrecision = fewest trades, deepest entry, 1.5R.\nBalanced = 2R off a zone stop.\nVolume = loosest, no MSS requirement.\nCustom = every knob below becomes live.")
+preset    = input.string("Balanced", "Signal preset", options = ["Precision", "Balanced", "Volume", "Max frequency", "Custom"], group = G_ENG, tooltip = "Each preset is a configuration that was measured end to end on MNQ 5m - see README.md for the numbers AND their confidence intervals.\nPrecision = fewest trades, deepest entry, 1.5R.\nBalanced = 2R off a zone stop.\nVolume = loosest, no MSS requirement.\nMax frequency = the configuration a 6,000-run search picked as the highest trade count that still validated out of sample: 284 trades over 72 days (5.9/day) vs 40 for Precision. Read the caveats in README.md - its per-trade edge is thin.\nCustom = every knob below becomes live.")
 tzIn      = input.string("America/New_York", "Exchange timezone", group = G_ENG)
 engineOn  = input.bool(true, "Trade engine ON (uncheck = draw-only)", group = G_ENG)
 allowLong = input.bool(true,  "Longs",  inline = "dir", group = G_ENG)
@@ -76,12 +76,12 @@ skipUnfund= input.bool(true, "Skip trade if 1 contract exceeds risk budget", gro
 minStopPt = input.float(0.0, "Min stop distance (points)", minval = 0, step = 0.25, group = G_RSK, tooltip = "Absolute floor, in points. Left at 0 by default because the ATR-relative bound below is the one doing the work - raise this only if you want a hard point floor as well.")
 maxStopPt = input.float(1000.0, "Max stop distance (points)", minval = 1, step = 0.25, group = G_RSK)
 minStopAtr_i = input.float(0.75,  "[Custom] Min stop distance (ATR x)", minval = 0, step = 0.05, group = G_RSK, tooltip = "ONLY ACTIVE WHEN 'Signal preset' IS SET TO Custom. Any other preset overrides this - the dashboard's 'effective' rows show what is really running.\n\nGuards against stops so tight that the stop and the target both sit inside one 5-minute bar - those trades are coin flips, not edges.")
-maxStopAtr= input.float(2.5,  "Max stop distance (ATR x)", minval = 0.1, step = 0.05, group = G_RSK)
+maxStopAtr_i= input.float(2.5,  "Max stop distance (ATR x)", minval = 0.1, step = 0.05, group = G_RSK)
 rrMode_i  = input.string("Fixed R", "[Custom] Target logic", options = ["Stretch to min R", "Nearest pool (skip if short)", "Fixed R"], group = G_RSK, tooltip = "Stretch = always take the trade, push the target out to Min R.\nNearest pool = target the real liquidity pool and SKIP the trade when it is closer than Min R.\nFixed R = ignore pools, target a constant multiple of risk.")
 fixedR_i  = input.float(2.0, "[Custom] Fixed R target", minval = 0.25, step = 0.25, group = G_RSK, tooltip = "ONLY ACTIVE WHEN 'Signal preset' IS SET TO Custom. Any other preset overrides this - the dashboard's 'effective' rows show what is really running.")
-minR      = input.float(1.5, "Min reward:risk", minval = 0.25, step = 0.25, group = G_RSK)
-defR      = input.float(2.0, "Default R when no pool in range", minval = 0.25, step = 0.25, group = G_RSK)
-maxR      = input.float(5.0, "Max reward:risk", minval = 0.5, step = 0.25, group = G_RSK)
+minR_i      = input.float(1.5, "Min reward:risk", minval = 0.25, step = 0.25, group = G_RSK)
+defR_i      = input.float(2.0, "Default R when no pool in range", minval = 0.25, step = 0.25, group = G_RSK)
+maxR_i      = input.float(5.0, "Max reward:risk", minval = 0.5, step = 0.25, group = G_RSK)
 tgtOffTk  = input.int(4, "Stand off target pool by (ticks)", minval = 0, group = G_RSK)
 usePart_i = input.bool(false, "[Custom] Scale out at TP1", group = G_RSK, tooltip = "ONLY ACTIVE WHEN 'Signal preset' IS SET TO Custom. Any other preset overrides this - the dashboard's 'effective' rows show what is really running.\n\nOFF gives clean strategy-tester statistics: one entry = one closed trade. ON books each partial as its own closed trade, which inflates the trade count and the win rate.")
 tp1R      = input.float(1.0, "TP1 at R", minval = 0.25, step = 0.25, group = G_RSK)
@@ -89,21 +89,21 @@ tp1Pct    = input.int(50, "TP1 size (%)", minval = 1, maxval = 99, group = G_RSK
 beOn_i    = input.bool(false, "[Custom] Move stop to breakeven", group = G_RSK, tooltip = "ONLY ACTIVE WHEN 'Signal preset' IS SET TO Custom. Any other preset overrides this - the dashboard's 'effective' rows show what is really running.")
 beTrigR   = input.float(1.0, "Breakeven trigger (R)", minval = 0.1, step = 0.1, group = G_RSK)
 beOffTk   = input.int(4, "Breakeven offset (ticks)", minval = 0, group = G_RSK)
-maxHold   = input.int(36, "Time stop (bars in trade)", minval = 4, group = G_RSK)
-maxTrades = input.int(6, "Max trades per day", minval = 1, group = G_RSK)
+maxHold_i   = input.int(36, "Time stop (bars in trade)", minval = 4, group = G_RSK)
+maxTrades_i = input.int(6, "Max trades per day", minval = 1, group = G_RSK)
 maxDayDD  = input.float(750.0, "Daily loss limit ($)", minval = 50, step = 50, group = G_RSK)
 
 rthSess   = input.session("0930-1600", "RTH session",       group = G_SES)
 asiaSess  = input.session("2000-0000", "Asian range",       group = G_SES)
 orSess    = input.session("0930-1000", "Opening range",     group = G_SES)
 ibSess    = input.session("0930-1030", "Initial balance",   group = G_SES)
-useKZlon  = input.bool(false, "London killzone",  inline = "k1", group = G_SES)
+useKZlon_i  = input.bool(false, "London killzone",  inline = "k1", group = G_SES)
 kzLonS    = input.session("0200-0500", "", inline = "k1", group = G_SES)
-useKZam   = input.bool(true,  "NY AM killzone",   inline = "k2", group = G_SES)
+useKZam_i   = input.bool(true,  "NY AM killzone",   inline = "k2", group = G_SES)
 kzAmS     = input.session("0830-1100", "", inline = "k2", group = G_SES)
-useKZsb   = input.bool(true,  "Silver bullet",    inline = "k3", group = G_SES)
+useKZsb_i   = input.bool(true,  "Silver bullet",    inline = "k3", group = G_SES)
 kzSbS     = input.session("1000-1100", "", inline = "k3", group = G_SES)
-useKZpm   = input.bool(true,  "NY PM killzone",   inline = "k4", group = G_SES)
+useKZpm_i   = input.bool(true,  "NY PM killzone",   inline = "k4", group = G_SES)
 kzPmS     = input.session("1330-1600", "", inline = "k4", group = G_SES)
 winSess   = input.session("0000-2359", "Hard trading window", group = G_SES)
 useNews   = input.bool(true, "News blackout", group = G_SES)
@@ -127,41 +127,41 @@ vaPct     = input.float(70.0, "Value area (%)", minval = 30, maxval = 95, step =
 
 useLTF    = input.bool(true, "Use true intrabar delta", group = G_OF, tooltip = "Pulls lower-timeframe bars and signs each one. Falls back to a close-position-in-range estimate when the lower timeframe is unavailable.")
 ltfIn     = input.timeframe("1", "Delta timeframe", group = G_OF)
-divLen    = input.int(20, "Delta divergence lookback", minval = 5, group = G_OF)
+divLen_i    = input.int(20, "Delta divergence lookback", minval = 5, group = G_OF)
 
-pvLen     = input.int(2,  "Swing pivot length", minval = 1, group = G_STR)
-structLb  = input.int(12, "Structure lookback (bars)", minval = 3, group = G_STR)
-sweepLb   = input.int(3,  "Sweep window (bars)", minval = 1, group = G_STR)
-minPenTk  = input.int(1,  "Min sweep penetration (ticks)", minval = 0, group = G_STR)
-eqTolAtr  = input.float(0.15, "Equal high/low tolerance (ATR x)", minval = 0.01, step = 0.01, group = G_STR)
-dispAtr   = input.float(0.55, "Displacement body (ATR x)", minval = 0.05, step = 0.05, group = G_STR)
-legAtr    = input.float(1.10, "or displacement leg (ATR x)", minval = 0.1, step = 0.05, group = G_STR)
-mssMaxBar = input.int(12, "Max bars sweep -> MSS", minval = 1, group = G_STR)
-zoneValid = input.int(12, "Limit order validity (bars)", minval = 1, group = G_STR)
-zoneMode  = input.string("Auto", "Entry zone", options = ["Auto", "FVG", "Order block", "OTE", "FVG + OTE"], group = G_STR)
+pvLen_i     = input.int(2,  "Swing pivot length", minval = 1, group = G_STR)
+structLb_i  = input.int(12, "Structure lookback (bars)", minval = 3, group = G_STR)
+sweepLb_i   = input.int(3,  "Sweep window (bars)", minval = 1, group = G_STR)
+minPenTk_i  = input.int(1,  "Min sweep penetration (ticks)", minval = 0, group = G_STR)
+eqTolAtr_i  = input.float(0.15, "Equal high/low tolerance (ATR x)", minval = 0.01, step = 0.01, group = G_STR)
+dispAtr_i   = input.float(0.55, "Displacement body (ATR x)", minval = 0.05, step = 0.05, group = G_STR)
+legAtr_i    = input.float(1.10, "or displacement leg (ATR x)", minval = 0.1, step = 0.05, group = G_STR)
+mssMaxBar_i = input.int(12, "Max bars sweep -> MSS", minval = 1, group = G_STR)
+zoneValid_i = input.int(12, "Limit order validity (bars)", minval = 1, group = G_STR)
+zoneMode_i  = input.string("Auto", "Entry zone", options = ["Auto", "FVG", "Order block", "OTE", "FVG + OTE"], group = G_STR)
 fillPref_i= input.string("Zone edge (aggressive)", "[Custom] Limit sits at", options = ["Zone edge (aggressive)", "Zone mid (CE)", "Zone far side (patient)"], group = G_STR)
-oteHi     = input.float(0.79, "OTE deep", minval = 0.5, maxval = 0.95, step = 0.01, group = G_STR)
-oteLo     = input.float(0.62, "OTE shallow", minval = 0.5, maxval = 0.95, step = 0.01, group = G_STR)
-obLb      = input.int(15, "Order block lookback", minval = 2, group = G_STR)
+oteHi_i     = input.float(0.79, "OTE deep", minval = 0.5, maxval = 0.95, step = 0.01, group = G_STR)
+oteLo_i     = input.float(0.62, "OTE shallow", minval = 0.5, maxval = 0.95, step = 0.01, group = G_STR)
+obLb_i      = input.int(15, "Order block lookback", minval = 2, group = G_STR)
 obBody    = input.bool(false, "Order block = body only", group = G_STR)
-noRetrace = input.string("Skip", "If price never retraces", options = ["Skip", "Market"], group = G_STR)
+noRetrace_i = input.string("Skip", "If price never retraces", options = ["Skip", "Market"], group = G_STR)
 stopMode_i= input.string("Beyond entry zone", "[Custom] Stop sits", options = ["Beyond the raid", "Beyond entry zone", "Tighter of the two"], group = G_STR, tooltip = "ONLY ACTIVE WHEN 'Signal preset' IS SET TO Custom. Any other preset overrides this - the dashboard's 'effective' rows show what is really running.\n\nBeyond the raid = classic ICT structural stop (widest, fewest stop-outs, lowest R).\nBeyond entry zone = tighter, more trades survive the point/ATR filter, more stop-outs.")
-stopBufA  = input.float(0.20, "Stop buffer (ATR x)", minval = 0, step = 0.05, group = G_STR)
+stopBufA_i  = input.float(0.20, "Stop buffer (ATR x)", minval = 0, step = 0.05, group = G_STR)
 
 atrLen    = input.int(14, "ATR length", minval = 2, group = G_FIL)
 atrMinPt  = input.float(0.0,   "Min ATR (points)", minval = 0, step = 0.5, group = G_FIL)
 atrMaxPt  = input.float(500.0, "Max ATR (points)", minval = 1, step = 0.5, group = G_FIL)
 rvolLen   = input.int(20, "Relative volume length", minval = 5, group = G_FIL)
-rvolMin   = input.float(0.80, "Min relative volume (hard gate)", minval = 0, step = 0.05, group = G_FIL)
-rvolHot   = input.float(1.30, "Elevated relative volume (scores)", minval = 0, step = 0.05, group = G_FIL)
-useDeltaSc= input.bool(true, "Delta contributes to the score", group = G_FIL)
+rvolMin_i   = input.float(0.80, "Min relative volume (hard gate)", minval = 0, step = 0.05, group = G_FIL)
+rvolHot_i   = input.float(1.30, "Elevated relative volume (scores)", minval = 0, step = 0.05, group = G_FIL)
+useDeltaSc_i= input.bool(true, "Delta contributes to the score", group = G_FIL)
 emaFast   = input.int(21, "Chart bias EMA fast", minval = 2, group = G_FIL)
 emaSlow   = input.int(89, "Chart bias EMA slow", minval = 3, group = G_FIL)
-useHTF    = input.bool(true, "HTF bias confirm", inline = "h", group = G_FIL)
+useHTF_i    = input.bool(true, "HTF bias confirm", inline = "h", group = G_FIL)
 htfTF     = input.timeframe("30", "", inline = "h", group = G_FIL)
 htfEmaLen = input.int(21, "HTF EMA length", minval = 2, group = G_FIL)
-vetoHTF   = input.bool(false, "Veto trades against HTF bias", group = G_FIL)
-useVwTgt  = input.bool(true, "VWAP bands count as target pools", group = G_FIL)
+vetoHTF_i   = input.bool(false, "Veto trades against HTF bias", group = G_FIL)
+useVwTgt_i  = input.bool(true, "VWAP bands count as target pools", group = G_FIL)
 
 showVWAP  = input.bool(true,  "VWAP + bands",       group = G_VIS)
 showVP    = input.bool(true,  "Profile POC/VA",     group = G_VIS)
@@ -185,17 +185,62 @@ isCustom   = preset == "Custom"
 isPrec     = preset == "Precision"
 isBal      = preset == "Balanced"
 
-thresh     = isCustom ? cThresh : isPrec ? 7 : isBal ? 5 : 3
-reqMSS     = isCustom ? cReqMSS : preset != "Volume"
+thresh     = isCustom ? cThresh : isPrec ? 7 : isBal ? 5 : preset == "Max frequency" ? 5 : 3
+reqMSS     = isCustom ? cReqMSS : (preset != "Volume" and preset != "Max frequency")
 reqFVG     = isCustom ? cReqFVG : false
 reqKZ      = isCustom ? cReqKZ  : true
-stopMode   = isCustom ? stopMode_i : isPrec ? "Tighter of the two" : "Beyond entry zone"
+stopMode   = isCustom ? stopMode_i : isPrec ? "Tighter of the two" : preset == "Max frequency" ? "Beyond the raid" : "Beyond entry zone"
 fillPref   = isCustom ? fillPref_i : "Zone edge (aggressive)"
 rrMode     = isCustom ? rrMode_i   : "Fixed R"
 fixedR     = isCustom ? fixedR_i   : isPrec ? 1.5 : 2.0
-minStopAtr = isCustom ? minStopAtr_i : isPrec ? 1.0 : isBal ? 0.75 : 0.5
+minStopAtr = isCustom ? minStopAtr_i : isPrec ? 1.0 : isBal ? 0.75 : preset == "Max frequency" ? 0.25 : 0.5
 beOn       = isCustom ? beOn_i    : false
 usePart    = isCustom ? usePart_i : false
+
+// ---------------------------------------------------------------------------
+//  "Max frequency" - the winner of a 6,000-configuration search run
+//  specifically for trade count, then validated on five index futures the
+//  search never saw. Measured on MNQ 5m over 72 days:
+//      284 trades (5.9/day), WR 41.2%, PF 1.17
+//      out of sample: 1378 trades, PF 1.04, +0.024 R/trade
+//  Total out-of-sample edge is the SAME as the 40-trade configuration
+//  (+33.0R vs +33.2R) - frequency spreads one edge thinner, it does not
+//  create more. Trade it small until your own sample says otherwise.
+// ---------------------------------------------------------------------------
+isHF       = preset == "Max frequency"
+pvLen      = isHF ? 1 : pvLen_i
+structLb   = isHF ? 12 : structLb_i
+sweepLb    = isHF ? 7 : sweepLb_i
+minPenTk   = isHF ? 0 : minPenTk_i
+eqTolAtr   = isHF ? 0.10 : eqTolAtr_i
+dispAtr    = isHF ? 0.55 : dispAtr_i
+legAtr     = isHF ? 1.80 : legAtr_i
+mssMaxBar  = isHF ? 12 : mssMaxBar_i
+zoneValid  = isHF ? 4 : zoneValid_i
+zoneMode   = isHF ? "Auto" : zoneMode_i
+oteHi      = isHF ? 0.79 : oteHi_i
+oteLo      = isHF ? 0.62 : oteLo_i
+obLb       = isHF ? 10 : obLb_i
+noRetrace  = isHF ? "Market" : noRetrace_i
+stopBufA   = isHF ? 0.50 : stopBufA_i
+maxStopAtr = isHF ? 4.0 : maxStopAtr_i
+minR       = isHF ? 2.0 : minR_i
+defR       = isHF ? 1.5 : defR_i
+maxR       = isHF ? 4.0 : maxR_i
+maxHold    = isHF ? 18 : maxHold_i
+rvolMin    = isHF ? 0.80 : rvolMin_i
+rvolHot    = isHF ? 2.0 : rvolHot_i
+divLen     = isHF ? 20 : divLen_i
+useDeltaSc = isHF ? false : useDeltaSc_i
+useVwTgt   = isHF ? true : useVwTgt_i
+useHTF     = isHF ? true : useHTF_i
+vetoHTF    = isHF ? false : vetoHTF_i
+useKZlon   = isHF ? true : useKZlon_i
+useKZam    = isHF ? true : useKZam_i
+useKZsb    = isHF ? false : useKZsb_i
+useKZpm    = isHF ? false : useKZpm_i
+maxTrades  = isHF ? 10 : maxTrades_i
+
 
 // ===========================================================================
 //  3. PRIMITIVES
