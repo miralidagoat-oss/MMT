@@ -54,7 +54,7 @@ G_STR = "7 - Structure & PD arrays"
 G_FIL = "8 - Confluence filters"
 G_VIS = "9 - Visuals"
 
-preset    = input.string("Balanced", "Signal preset", options = ["Precision", "Balanced", "Volume", "Max frequency", "Custom"], group = G_ENG, tooltip = "Each preset is a configuration that was measured end to end on MNQ 5m - see README.md for the numbers AND their confidence intervals.\nPrecision = fewest trades, deepest entry, 1.5R.\nBalanced = 2R off a zone stop.\nVolume = loosest, no MSS requirement.\nMax frequency = the configuration a 6,000-run search picked as the highest trade count that still validated out of sample: 284 trades over 72 days (5.9/day) vs 40 for Precision. Read the caveats in README.md - its per-trade edge is thin.\nCustom = every knob below becomes live.")
+preset    = input.string("Balanced", "Signal preset", options = ["Precision", "Balanced", "Volume", "Max frequency", "Custom"], group = G_ENG, tooltip = "Each preset is a configuration that was measured end to end on MNQ 5m - see README.md for the numbers AND their confidence intervals.\nPrecision = fewest trades, deepest entry, 1.5R.\nBalanced = 2R off a zone stop.\nVolume = loosest, no MSS requirement.\nMax frequency = highest trade count found by a 6,000-run search (284 trades / 5.9 per day vs 40 for Precision). IT IS THE MOST OVERFIT SETTING HERE: out of sample its 95% confidence interval spans zero, it is negative on 3 of 5 index futures, and it loses money across the middle third of its own test period. Use it to gather a sample quickly, not because it is proven.\nCustom = every knob below becomes live.")
 tzIn      = input.string("America/New_York", "Exchange timezone", group = G_ENG)
 engineOn  = input.bool(true, "Trade engine ON (uncheck = draw-only)", group = G_ENG)
 allowLong = input.bool(true,  "Longs",  inline = "dir", group = G_ENG)
@@ -144,7 +144,7 @@ oteHi_i     = input.float(0.79, "OTE deep", minval = 0.5, maxval = 0.95, step = 
 oteLo_i     = input.float(0.62, "OTE shallow", minval = 0.5, maxval = 0.95, step = 0.01, group = G_STR)
 obLb_i      = input.int(15, "Order block lookback", minval = 2, group = G_STR)
 obBody    = input.bool(false, "Order block = body only", group = G_STR)
-noRetrace_i = input.string("Skip", "If price never retraces", options = ["Skip", "Market"], group = G_STR)
+noRetrace_i = input.string("Skip", "If price never retraces", options = ["Skip", "Limit at signal close"], group = G_STR, tooltip = "NOT a market order. It rests a limit at the signal bar's close, so it still only fills if price trades back to that level - it just stops requiring a retrace all the way into the PD array.")
 stopMode_i= input.string("Beyond entry zone", "[Custom] Stop sits", options = ["Beyond the raid", "Beyond entry zone", "Tighter of the two"], group = G_STR, tooltip = "ONLY ACTIVE WHEN 'Signal preset' IS SET TO Custom. Any other preset overrides this - the dashboard's 'effective' rows show what is really running.\n\nBeyond the raid = classic ICT structural stop (widest, fewest stop-outs, lowest R).\nBeyond entry zone = tighter, more trades survive the point/ATR filter, more stop-outs.")
 stopBufA_i  = input.float(0.20, "Stop buffer (ATR x)", minval = 0, step = 0.05, group = G_STR)
 
@@ -221,7 +221,7 @@ zoneMode   = isHF ? "Auto" : zoneMode_i
 oteHi      = isHF ? 0.79 : oteHi_i
 oteLo      = isHF ? 0.62 : oteLo_i
 obLb       = isHF ? 10 : obLb_i
-noRetrace  = isHF ? "Market" : noRetrace_i
+noRetrace  = isHF ? "Limit at signal close" : noRetrace_i
 stopBufA   = isHF ? 0.50 : stopBufA_i
 maxStopAtr = isHF ? 4.0 : maxStopAtr_i
 minR       = isHF ? 2.0 : minR_i
@@ -845,6 +845,7 @@ var int    nWins    = 0
 var float  grossP   = 0.0
 var float  grossL   = 0.0
 var float  sumR     = 0.0
+var float  sumR2    = 0.0
 var int    nAmb     = 0
 var int    nLong    = 0
 var int    nLongW   = 0
@@ -928,7 +929,9 @@ if not na(exitPx)
     else
         grossL += -net
     if not na(posRisk) and posRisk > 0
-        sumR += net / posRisk
+        float rMult = net / posRisk
+        sumR  += rMult
+        sumR2 += rMult * rMult
     if ambig
         nAmb += 1
     if dClosed == 1
@@ -1016,7 +1019,7 @@ if trigger and gateMSS and gateFVG and gateKZ and gateATR and gateRV and gateVet
     if not na(zN) and not na(zF)
         float ePx = fillPref == "Zone edge (aggressive)" ? zN : fillPref == "Zone far side (patient)" ? zF : (zN + zF) / 2.0
         bool  retraceOk = (close - ePx) * swDir > tick
-        if not retraceOk and noRetrace == "Market"
+        if not retraceOk and noRetrace == "Limit at signal close"
             ePx := close
             retraceOk := true
         if retraceOk
@@ -1286,7 +1289,7 @@ f_row(tb, r, k, v, c) =>
     table.cell(tb, 1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
 
 tPos = tblPos == "Top right" ? position.top_right : tblPos == "Middle right" ? position.middle_right : tblPos == "Bottom right" ? position.bottom_right : tblPos == "Top left" ? position.top_left : position.bottom_left
-var table dash = table.new(tPos, 2, 33, bgcolor = color.new(color.black, 15), frame_color = color.new(color.gray, 40), frame_width = 1, border_color = color.new(color.gray, 70), border_width = 1)
+var table dash = table.new(tPos, 2, 35, bgcolor = color.new(color.black, 15), frame_color = color.new(color.gray, 40), frame_width = 1, border_color = color.new(color.gray, 70), border_width = 1)
 
 int   nLoss  = nTrades - nWins
 float pf     = grossL > 0 ? grossP / grossL : na
@@ -1300,49 +1303,59 @@ float payoff = (not na(avgW) and not na(avgL) and avgL > 0) ? avgW / avgL : na
 float ambPct = nTrades > 0 ? nAmb / nTrades * 100.0 : na
 float wrL    = nLong  > 0 ? nLongW  / nLong  * 100.0 : na
 float wrS    = nShort > 0 ? nShortW / nShort * 100.0 : na
+// Is the result distinguishable from luck? avg R over its own standard error.
+// A profit factor printed on 30 trades is a rumour; this row says so.
+float sdR    = nTrades > 1 ? math.sqrt(math.max((sumR2 - nTrades * avgR * avgR) / (nTrades - 1), 0.0)) : na
+float tR     = (not na(sdR) and sdR > 0 and nTrades > 1) ? avgR / (sdR / math.sqrt(nTrades)) : na
+// Trades this edge would need before 95% confidence is even possible.
+float needN  = (not na(sdR) and not na(avgR) and avgR > 0 and sdR > 0) ? math.pow(1.96 * sdR / avgR, 2) : na
 
 if showTable and barstate.islast
     string state = posDir != 0 ? (posDir == 1 ? "IN LONG" : "IN SHORT") : pendDir != 0 ? "ORDER RESTING" : swDir == 1 ? "ARMED LONG" : swDir == -1 ? "ARMED SHORT" : "SCANNING"
-    color  cPf   = na(pf) ? color.gray : pf >= 1.5 ? color.lime : pf >= 1.0 ? color.orange : color.red
-    color  cWr   = na(wr) ? color.gray : wr >= 50 ? color.lime : wr >= 40 ? color.orange : color.red
+    // Greyed out until the sample is large enough to mean anything.
+    color  cPf   = nTrades < 30 ? color.gray : na(pf) ? color.gray : (not na(tR) and tR >= 1.96 and pf > 1) ? color.lime : pf >= 1.0 ? color.orange : color.red
+    color  cWr   = nTrades < 30 ? color.gray : na(wr) ? color.gray : wr >= 50 ? color.lime : wr >= 40 ? color.orange : color.red
     color  cAmb  = na(ambPct) ? color.gray : ambPct <= 15 ? color.lime : ambPct <= 30 ? color.orange : color.red
     table.cell(dash, 0, 0, "MMT ICT / ORDERFLOW", text_color = color.white, text_size = size.small, text_halign = text.align_left)
     table.cell(dash, 1, 0, preset, text_color = color.aqua, text_size = size.small, text_halign = text.align_right)
     f_row(dash, 1,  "Profit factor",       f_num(pf, "#.###"), cPf)
     f_row(dash, 2,  "Win rate %",          f_num(wr, "#.##"), cWr)
-    f_row(dash, 3,  "Closed trades",       str.tostring(nTrades), color.white)
+    f_row(dash, 3,  "Closed trades",       str.tostring(nTrades) + (nTrades < 30 ? "  (too few to judge)" : ""), nTrades < 30 ? color.orange : color.white)
     f_row(dash, 4,  "Wins / losses",       str.tostring(nWins) + " / " + str.tostring(nLoss), color.white)
     f_row(dash, 5,  "WR long / short",     f_num(wrL, "#.#") + "% / " + f_num(wrS, "#.#") + "%", color.white)
     f_row(dash, 6,  "Net P/L $",           f_num(netPl, "#.##"), netPl >= 0 ? color.lime : color.red)
     f_row(dash, 7,  "Expectancy $/trade",  f_num(expc, "#.##"), na(expc) ? color.gray : expc >= 0 ? color.lime : color.red)
     f_row(dash, 8,  "Avg R / trade",       f_num(avgR, "#.###"), na(avgR) ? color.gray : avgR >= 0 ? color.lime : color.red)
-    f_row(dash, 9,  "Payoff (avgW/avgL)",  f_num(payoff, "#.##"), color.white)
-    f_row(dash, 10, "Max drawdown $",      f_num(maxDDv, "#.##"), color.orange)
-    f_row(dash, 11, "Equity $",            f_num(equity, "#.##"), equity >= startCap ? color.lime : color.red)
-    f_row(dash, 12, "Coin-flip trades %",  f_num(ambPct, "#.#"), cAmb)
-    f_row(dash, 13, "Intrabar rule",       stopFirst ? "stop first" : "target first", color.aqua)
+    color cSig = na(tR) ? color.gray : tR >= 1.96 ? color.lime : tR > 0 ? color.orange : color.red
+    f_row(dash, 9,  "Edge t-stat",         na(tR) ? "-" : str.tostring(tR, "#.##") + (tR >= 1.96 ? "  SIGNIFICANT" : "  not significant"), cSig)
+    f_row(dash, 10, "Trades for 95% proof", na(needN) ? (nTrades > 0 and avgR <= 0 ? "edge is negative" : "-") : str.tostring(math.ceil(needN), "#") + "  (have " + str.tostring(nTrades) + ")", na(needN) ? color.gray : nTrades >= needN ? color.lime : color.orange)
+    f_row(dash, 11,  "Payoff (avgW/avgL)",  f_num(payoff, "#.##"), color.white)
+    f_row(dash, 12, "Max drawdown $",      f_num(maxDDv, "#.##"), color.orange)
+    f_row(dash, 13, "Equity $",            f_num(equity, "#.##"), equity >= startCap ? color.lime : color.red)
+    f_row(dash, 14, "Coin-flip trades %",  f_num(ambPct, "#.#"), cAmb)
+    f_row(dash, 15, "Intrabar rule",       stopFirst ? "stop first" : "target first", color.aqua)
     // What is ACTUALLY running. A preset other than Custom overrides the
     // inputs below it, so read these rows rather than the settings panel.
     string sEntry = fillPref == "Zone edge (aggressive)" ? "edge" : fillPref == "Zone mid (CE)" ? "mid" : "far"
     string sStop  = stopMode == "Beyond the raid" ? "beyond raid" : stopMode == "Beyond entry zone" ? "beyond zone" : "tighter"
     string sTgt   = rrMode == "Fixed R" ? "fixed " + str.tostring(fixedR, "#.##") + "R" : rrMode == "Nearest pool (skip if short)" ? "pool, min " + str.tostring(minR, "#.##") + "R" : "stretch, min " + str.tostring(minR, "#.##") + "R"
-    f_row(dash, 14, "Gates (effective)",   "score " + str.tostring(thresh) + " | MSS " + (reqMSS ? "on" : "off") + " | FVG " + (reqFVG ? "on" : "off") + " | KZ " + (reqKZ ? "on" : "off"), color.aqua)
-    f_row(dash, 15, "Entry / stop / BE",   sEntry + " | " + sStop + " | BE " + (beOn ? "on" : "off"), color.aqua)
-    f_row(dash, 16, "Target / scale-out",  sTgt + " | " + (usePart ? "scale " + str.tostring(tp1Pct) + "% @" + str.tostring(tp1R, "#.##") + "R" : "no scale-out"), color.aqua)
-    f_row(dash, 17, "State",               state, color.yellow)
-    f_row(dash, 18, "Trades today / cap",  str.tostring(tradesToday) + " / " + str.tostring(maxTrades), color.white)
-    f_row(dash, 19, "Day P/L $",           f_num(dayPnl, "#.##"), dayPnl >= 0 ? color.lime : color.red)
-    f_row(dash, 20, "Bias chart / HTF",    (chartBias == 1 ? "up" : chartBias == -1 ? "down" : "flat") + " / " + (htfBias == 1 ? "up" : htfBias == -1 ? "down" : "flat"), color.white)
-    f_row(dash, 21, "VWAP",                f_num(vwapVal, format.mintick), color.orange)
-    f_row(dash, 22, "POC / VAH / VAL",     f_num(vpPoc, format.mintick) + " / " + f_num(vpVah, format.mintick) + " / " + f_num(vpVal, format.mintick), color.fuchsia)
-    f_row(dash, 23, "PDH / PDL",           f_num(pdh, format.mintick) + " / " + f_num(pdl, format.mintick), color.silver)
-    f_row(dash, 24, "ONH / ONL",           f_num(asiaHi, format.mintick) + " / " + f_num(asiaLo, format.mintick), color.yellow)
-    f_row(dash, 25, "ORH / ORL",           f_num(orHi, format.mintick) + " / " + f_num(orLo, format.mintick), color.blue)
-    f_row(dash, 26, "IBH / IBL",           f_num(ibHi, format.mintick) + " / " + f_num(ibLo, format.mintick), color.blue)
-    f_row(dash, 27, "ATR pts",             f_num(atr, "#.##"), gateATR ? color.lime : color.red)
-    f_row(dash, 28, "Relative volume",     f_num(rvol, "#.##"), rvol >= rvolMin ? color.lime : color.red)
-    f_row(dash, 29, "Bar delta",           f_num(barDelta, "#.#"), barDelta >= 0 ? color.lime : color.red)
-    f_row(dash, 30, "Session CVD",         f_num(cvd, "#.#"), cvd >= 0 ? color.lime : color.red)
+    f_row(dash, 16, "Gates (effective)",   "score " + str.tostring(thresh) + " | MSS " + (reqMSS ? "on" : "off") + " | FVG " + (reqFVG ? "on" : "off") + " | KZ " + (reqKZ ? "on" : "off"), color.aqua)
+    f_row(dash, 17, "Entry / stop / BE",   sEntry + " | " + sStop + " | BE " + (beOn ? "on" : "off"), color.aqua)
+    f_row(dash, 18, "Target / scale-out",  sTgt + " | " + (usePart ? "scale " + str.tostring(tp1Pct) + "% @" + str.tostring(tp1R, "#.##") + "R" : "no scale-out"), color.aqua)
+    f_row(dash, 19, "State",               state, color.yellow)
+    f_row(dash, 20, "Trades today / cap",  str.tostring(tradesToday) + " / " + str.tostring(maxTrades), color.white)
+    f_row(dash, 21, "Day P/L $",           f_num(dayPnl, "#.##"), dayPnl >= 0 ? color.lime : color.red)
+    f_row(dash, 22, "Bias chart / HTF",    (chartBias == 1 ? "up" : chartBias == -1 ? "down" : "flat") + " / " + (htfBias == 1 ? "up" : htfBias == -1 ? "down" : "flat"), color.white)
+    f_row(dash, 23, "VWAP",                f_num(vwapVal, format.mintick), color.orange)
+    f_row(dash, 24, "POC / VAH / VAL",     f_num(vpPoc, format.mintick) + " / " + f_num(vpVah, format.mintick) + " / " + f_num(vpVal, format.mintick), color.fuchsia)
+    f_row(dash, 25, "PDH / PDL",           f_num(pdh, format.mintick) + " / " + f_num(pdl, format.mintick), color.silver)
+    f_row(dash, 26, "ONH / ONL",           f_num(asiaHi, format.mintick) + " / " + f_num(asiaLo, format.mintick), color.yellow)
+    f_row(dash, 27, "ORH / ORL",           f_num(orHi, format.mintick) + " / " + f_num(orLo, format.mintick), color.blue)
+    f_row(dash, 28, "IBH / IBL",           f_num(ibHi, format.mintick) + " / " + f_num(ibLo, format.mintick), color.blue)
+    f_row(dash, 29, "ATR pts",             f_num(atr, "#.##"), gateATR ? color.lime : color.red)
+    f_row(dash, 30, "Relative volume",     f_num(rvol, "#.##"), rvol >= rvolMin ? color.lime : color.red)
+    f_row(dash, 31, "Bar delta",           f_num(barDelta, "#.#"), barDelta >= 0 ? color.lime : color.red)
+    f_row(dash, 32, "Session CVD",         f_num(cvd, "#.#"), cvd >= 0 ? color.lime : color.red)
     float ltfCov = deltaBars > 0 ? deltaLtfBars / deltaBars * 100.0 : 0.0
-    f_row(dash, 31, "Delta source",        (deltaLive ? ltfIn + " intrabar" : "bar estimate") + " (" + str.tostring(ltfCov, "#") + "% of bars)", ltfCov > 95 or ltfCov < 1 ? color.lime : color.orange)
-    f_row(dash, 32, "Killzone",            inKZ ? "ACTIVE" : blackout ? "NEWS BLACKOUT" : "-", inKZ ? color.lime : blackout ? color.red : color.gray)
+    f_row(dash, 33, "Delta source",        (deltaLive ? ltfIn + " intrabar" : "bar estimate") + " (" + str.tostring(ltfCov, "#") + "% of bars)", ltfCov > 95 or ltfCov < 1 ? color.lime : color.orange)
+    f_row(dash, 34, "Killzone",            inKZ ? "ACTIVE" : blackout ? "NEWS BLACKOUT" : "-", inKZ ? color.lime : blackout ? color.red : color.gray)

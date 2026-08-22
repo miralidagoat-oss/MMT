@@ -443,3 +443,63 @@ produced confident wrong answers:
 - `full_picture()` tested `sym in S.DATA` while `S.DATA` is keyed by
   `(market, pivot, killzone)` tuples, so the check never matched and
   out-of-sample silently reported as exactly zero.
+
+
+## Overfitting audit of the "Max frequency" preset
+
+Run after the preset was added, on the configuration that was added:
+
+**Time-ordered thirds of its own test period.** Not stable — it loses money
+across the middle third.
+
+| third | trades | WR | PF | avg R |
+|---|---:|---:|---:|---:|
+| 1 | 88 | 51.1% | 1.61 | +0.432 |
+| 2 | 92 | 32.6% | **0.76** | **−0.162** |
+| 3 | 104 | 40.4% | 1.20 | +0.123 |
+
+**Per-market out of sample.** Positive on 2 of 5, and the pooled confidence
+interval spans zero.
+
+| market | trades | avg R | t |
+|---|---:|---:|---:|
+| NQ | 265 | +0.156 | +1.79 |
+| MES | 278 | +0.101 | +1.13 |
+| ES | 283 | −0.030 | −0.37 |
+| YM | 256 | −0.025 | −0.28 |
+| RTY | 296 | −0.073 | −0.88 |
+| **pooled** | **1378** | **+0.024** | **+0.63**, 95% CI [−0.051, +0.099] |
+
+**Plateau or spike.** 51 single-parameter perturbations: 50 of 51 stay
+positive on MNQ, but only **32 of 51** stay positive out of sample. That gap
+is itself the overfitting signature — the in-sample surface is flat because
+the whole neighbourhood is fitted, while the out-of-sample surface is not.
+
+By comparison the 40-trade Precision configuration is positive on 4 of 5
+markets with pooled t = +1.80. Neither is significant; the low-frequency one
+is closer.
+
+The preset stays in the dropdown because gathering 120 trades a month beats
+gathering 16 a year when the goal is to find out whether anything is real.
+Its tooltip now says outright that it is the most overfit setting in the file.
+
+## Statistics moved onto the chart
+
+A profit factor printed on 30 trades is a rumour. The dashboard now carries:
+
+- **Edge t-stat** — average R over its own standard error, labelled
+  SIGNIFICANT only at t ≥ 1.96
+- **Trades for 95% proof** — `(1.96 × sd / avgR)²`, the sample this edge size
+  would need before significance is even possible, next to what you have
+- **Closed trades** flags "(too few to judge)" under 30, and profit factor and
+  win rate grey out rather than showing an authoritative-looking number
+
+On the 72-day sample: Max frequency reads t = 1.51, needs 476 trades, has 284.
+Precision reads t = 1.07, needs 136, has 40.
+
+## Corrected in this pass
+
+- `"If price never retraces → Market"` was not a market order. It set the entry
+  to the signal bar's close and still rested a *limit* there, so a long only
+  filled if price traded back down to that level. Renamed "Limit at signal
+  close" and documented; behaviour unchanged so the measurements still hold.
