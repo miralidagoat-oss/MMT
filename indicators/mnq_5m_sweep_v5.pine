@@ -11,13 +11,18 @@
 //   fade, momentum continuation.
 //
 //   WINNER: this one. 5-minute MNQ liquidity sweep, RTH only, volume gate,
-//   realised-volatility regime gate, breakeven at +1R.
-//     273 trades / 3 years   0.41 per session
-//     expectancy  +0.293 R net of 1.5 index points round-turn cost
-//     profit factor 1.60     t = 2.15
-//     bootstrap 95% CI on expectancy [+0.026, +0.570] — EXCLUDES ZERO
-//     positive in 4 of 4 calendar years (2023 +0.69, 2024 +0.34,
-//     2025 +0.05, 2026 +0.52)
+//   breakeven at +1R, sweep depth 0.25 sigma. Version A, gate OFF.
+//     325 trades / 3 years   0.49 per session
+//     expectancy  +0.294 R net of 1.5 index points round-turn cost
+//     profit factor 1.60     t = 2.34
+//     bootstrap 95% CI on expectancy EXCLUDES ZERO
+//     max drawdown 19.0 R, net/drawdown 5.04
+//     positive in 4 of 4 calendar years
+//
+//   The volatility gate (Version B) earned its place at the OLD 0.75 sigma
+//   sweep depth. At 0.25 it does not: fewer trades, lower expectancy and a
+//   LARGER drawdown. It is retained as an option, not as the default —
+//   a component that stops adding value gets demoted, not kept for looks.
 //
 //   Sweep depth is a PLATEAU, not a tuned spike: 0.15s / 0.25s / 0.35s all
 //   give t = 2.12-2.21. The shipped 0.25 sits mid-plateau deliberately, so
@@ -69,13 +74,16 @@ var string G_VOL   = "Volatility Engine (EWMA)"
 var string G_TRADE = "Trade Construction"
 var string G_UI    = "Display"
 
-modelVer = input.string("B — baseline + volatility gate (recommended)",
-     "Model version", options = ["A — baseline only",
-     "B — baseline + volatility gate (recommended)",
+modelVer = input.string("A — baseline (recommended)",
+     "Model version", options = ["A — baseline (recommended)",
+     "B — baseline + volatility gate",
      "C — research overlay (UNVALIDATED)"], group = G_MODE,
-     tooltip = "A and B are the tested systems. C enables an experimental " +
-               "short-horizon reversal overlay that was profitable in only " +
-               "1 of 13 quarters tested. Do not trade C.")
+     tooltip = "A is the recommended system. B adds a realised-volatility " +
+               "gate which EARNED its place at the old 0.75 sigma sweep depth " +
+               "but no longer does at 0.25: it cuts 13% of trades, lowers " +
+               "expectancy (+0.281 vs +0.294 R) and RAISES max drawdown " +
+               "(27.3R vs 19.0R). C adds a diagnostic-only reversal overlay " +
+               "that was profitable in 1 of 13 quarters. Do not trade C.")
 
 rbLookback   = input.int(12,    "Sweep lookback window",              minval = 2,                                group = G_STRUCT)
 rbBodyThresh = input.float(0.33,"Max body-to-range ratio",            minval = 0.05, maxval = 0.95, step = 0.01, group = G_STRUCT)
@@ -134,8 +142,8 @@ showStats    = input.bool(true, "Show self-audit dashboard",          group = G_
 bullBase     = input.color(#00E676, "Bull color",                     group = G_UI)
 bearBase     = input.color(#FF5252, "Bear color",                     group = G_UI)
 
-var string OPT_A = "A — baseline only"
-var string OPT_B = "B — baseline + volatility gate (recommended)"
+var string OPT_A = "A — baseline (recommended)"
+var string OPT_B = "B — baseline + volatility gate"
 var string OPT_C = "C — research overlay (UNVALIDATED)"
 bool verC = modelVer == OPT_C
 bool verB = modelVer == OPT_B or verC   // C is B plus the diagnostic overlay

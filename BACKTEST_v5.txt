@@ -1,0 +1,106 @@
+
+====================================================================================
+MNQ 5m LIQUIDITY SWEEP v5 — COMPLETE BACKTEST
+====================================================================================
+  data      Nasdaq-100 5m (Dukascopy), 2023-08-23 .. 2026-08-21
+            232,704 bars, 669 RTH sessions, 3.00 years
+  costs     1.5 index points round turn charged on every trade
+  target    RR 6  (Target mode: Max expectancy)
+
+====================================================================================
+HEADLINE
+====================================================================================
+  signals generated          405
+  limits filled              325   (80.2% fill rate)
+  expired unfilled           80
+  CLOSED TRADES              325
+  trades per session         0.486   (~108/year)
+  win rate (net of cost)     13.2%
+  expectancy per trade       +0.294 R
+  profit factor              1.60
+  t-statistic                +2.34
+  bootstrap 95% CI           [+0.053, +0.549] R  -> EXCLUDES ZERO
+  net result                 +95.6 R
+
+====================================================================================
+WIN / LOSS ANATOMY
+====================================================================================
+  exits by target           43  (13.2%)
+  exits by stop            134  (41.2%)
+  exits by stop-on-fill     14  ( 4.3%)
+  exits by breakeven       134  (41.2%)
+
+  average win                +5.957 R
+  average loss               -0.569 R
+  largest win                +5.984 R
+  largest loss               -1.100 R
+  win/loss size ratio        10.46x
+  median R                   -0.070 R
+  avg bars held (after fill) 61.5  = 307 minutes
+  avg risk per trade         43.2 index points ($86 on 1 contract)
+  cost as share of avg R     3.5%
+
+====================================================================================
+RISK / DRAWDOWN  (equity in R, 1 unit risked per trade)
+====================================================================================
+  max drawdown               19.0 R
+  net / max drawdown         5.04
+  longest drawdown           54 trades
+  return per year            +31.9 R
+  Sharpe (annualised)        1.35
+  Sortino (annualised)       4.34
+  max consecutive wins       3
+  max consecutive losses     31
+
+====================================================================================
+DOLLAR P&L — 1 MNQ CONTRACT, FIXED 1 CONTRACT PER TRADE
+====================================================================================
+  net P&L                    $+7,069  over 3.00 years
+  per year                   $+2,358
+  max drawdown               $3,791
+  average trade              $+22
+  NOTE: fixed 1 contract means risk per trade VARIES with the stop
+  distance. Sizing to constant risk would change these dollars.
+
+====================================================================================
+LONG vs SHORT
+====================================================================================
+  LONG   n= 205  WR  13.2%  exp +0.287 R  PF  1.58  net   +58.9 R
+  SHORT  n= 120  WR  13.3%  exp +0.305 R  PF  1.62  net   +36.7 R
+
+====================================================================================
+PER CALENDAR YEAR
+====================================================================================
+  2023   n=  39  WR  17.9%  exp +0.604 R  PF  2.30  net   +23.5 R
+  2024   n=  80  WR  12.5%  exp +0.251 R  PF  1.51  net   +20.1 R
+  2025   n= 134  WR  10.4%  exp +0.106 R  PF  1.20  net   +14.1 R
+  2026   n=  72  WR  16.7%  exp +0.525 R  PF  2.11  net   +37.8 R
+  -> positive in 4/4 years
+
+====================================================================================
+BY SESSION BLOCK (ET)
+====================================================================================
+  09:30-11:00 open       n= 192  WR  11.5%  exp +0.186 R  net   +35.8 R
+  11:00-13:00 midday     n=  27  WR  11.1%  exp +0.185 R  net    +5.0 R
+  13:00-15:00 afternoon  n=  58  WR  22.4%  exp +0.884 R  net   +51.3 R
+  15:00-16:00 close      n=  48  WR  10.4%  exp +0.073 R  net    +3.5 R
+  NOTE: session conditioning FAILED out-of-sample in earlier testing
+  (sign flipped between panels). Shown for information, not as a filter.
+
+====================================================================================
+COST SENSITIVITY — the assumption that matters most
+====================================================================================
+  round turn  0.5 pts  ->  exp +0.324 R   PF  1.69   t +2.58   profitable
+  round turn  1.0 pts  ->  exp +0.309 R   PF  1.64   t +2.46   profitable
+  round turn  1.5 pts  ->  exp +0.294 R   PF  1.60   t +2.34   profitable
+  round turn  2.0 pts  ->  exp +0.279 R   PF  1.55   t +2.22   profitable
+  round turn  2.5 pts  ->  exp +0.264 R   PF  1.51   t +2.11   profitable
+  round turn  3.0 pts  ->  exp +0.250 R   PF  1.47   t +1.99   profitable
+
+====================================================================================
+REGIME GATE CONTRIBUTION
+====================================================================================
+  gate ON    n= 283  exp +0.281 R  PF 1.56
+  gate OFF   n= 325  exp +0.294 R  PF 1.60   <- shipped
+  The gate helped at the old 0.75 sigma sweep depth. At 0.25 it
+  cuts trades, lowers expectancy and raises drawdown, so it is off.

@@ -24,8 +24,8 @@
 // produce fewer trades and a somewhat different equity curve.
 //
 // HONEST EXPECTATION: on 3 years of Nasdaq-100 5m data this rule set returns
-// +0.293 R per trade net of cost, PF 1.60, t = 2.15, bootstrap 95% CI
-// [+0.026, +0.570] which excludes zero, positive in 4 of 4 calendar years.
+// +0.294 R per trade net of cost, PF 1.60, t = 2.34, bootstrap 95% CI
+// excluding zero, positive in 4 of 4 calendar years, max drawdown 19.0 R.
 // That is the best of 384 configurations searched — treat it as one draw
 // from a distribution, and expect roughly 0.41 trades per session, i.e. a
 // selective system, not a high-frequency one.
@@ -52,9 +52,11 @@ var string G_REG   = "Volatility Regime (Version B)"
 var string G_VOL   = "Volatility Engine"
 var string G_TRADE = "Trade Construction"
 
-useRegime    = input.bool(true, "Version B: volatility regime gate", group = G_MODE,
-     tooltip = "Off = Version A baseline. On = the one filter that survived " +
-               "out-of-sample testing.")
+useRegime    = input.bool(false, "Version B: volatility regime gate", group = G_MODE,
+     tooltip = "Default OFF. At the 0.25 sigma sweep depth the gate cuts 13% " +
+               "of trades, lowers expectancy (+0.281 vs +0.294 R) and raises " +
+               "max drawdown (27.3R vs 19.0R). It helped at the old 0.75 " +
+               "setting; it no longer does.")
 
 rbLookback   = input.int(12,    "Sweep lookback window",              minval = 2,                                group = G_STRUCT)
 rbBodyThresh = input.float(0.33,"Max body-to-range ratio",            minval = 0.05, maxval = 0.95, step = 0.01, group = G_STRUCT)
