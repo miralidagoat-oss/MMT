@@ -1,0 +1,412 @@
+//@version=6
+// ============================================================================
+// MNQ 5-Minute Liquidity Sweep — v4 (evidence-gated)
+// ============================================================================
+// WHAT THE RESEARCH ACTUALLY SUPPORTS  (see README "5-minute research" section)
+//
+//   Baseline (VERSION A): liquidity-sweep rejection, RTH only, stop to
+//   breakeven at +1R, 1:4 target. On 3 years of independent Nasdaq-100 5m
+//   data (669 sessions, 222 trades) this returned +0.159 R per trade net of
+//   1.5 index points of round-turn cost, PF 1.32, t = 1.34.
+//
+//   VERSION B adds the ONE filter that survived out-of-sample testing:
+//   a realised-volatility regime gate. 202-183 trades, +0.219 R/trade,
+//   PF 1.45, t = 1.73. Consistent in both chronological halves and robust
+//   across gate windows of 500-5000 bars.
+//
+//   t = 1.73 IS NOT SIGNIFICANT. The bootstrap 95% CI on expectancy includes
+//   zero. Roughly 271 trades (~4 years at this rate) would be needed to reach
+//   t = 2 if the current expectancy is the true one. This indicator is a
+//   research instrument, not a validated edge. Trade it only on that basis.
+//
+// WHAT WAS TESTED AND DELIBERATELY LEFT OUT
+//   - CFTC COT positioning (leveraged money net): no incremental value. The
+//     sign of its effect FLIPPED between train and test, and in the test
+//     panel the trades it would have removed were BETTER than the ones it
+//     kept. Also 3 days stale at publication, so it cannot inform a 5m entry.
+//   - VIX level / VIX-VXN: its apparent value is the same information as the
+//     realised-volatility gate, which is cheaper and does not need a second
+//     data feed. Adding it on top changed nothing.
+//   - Session-of-day and weekday filters: sign flipped between train and
+//     test (open block -0.100 R train, +0.182 R test). Pure noise.
+//   - Intraday momentum (first 30m -> last 30m, Gao et al. 2018): dead on
+//     this sample, t = 0.06. Consistent with the published post-2013 decay.
+//   - Options/gamma exposure: not available to Pine at all. See README.
+//
+// NON-REPAINTING. Every signal is evaluated only on barstate.isconfirmed,
+// uses no request.security(), no higher-timeframe lookahead, and no pivot or
+// swing function that needs future bars. A signal that prints stays printed.
+// ============================================================================
+
+indicator("MNQ 5m Liquidity Sweep v4", overlay = true, max_bars_back = 5000,
+     max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_MODE  = "Model Version"
+var string G_STRUCT= "Structure Detection"
+var string G_REG   = "Volatility Regime (Version B)"
+var string G_VOL   = "Volatility Engine (EWMA)"
+var string G_TRADE = "Trade Construction"
+var string G_UI    = "Display"
+
+modelVer = input.string("B — baseline + volatility gate (recommended)",
+     "Model version", options = ["A — baseline only",
+     "B — baseline + volatility gate (recommended)",
+     "C — research overlay (UNVALIDATED)"], group = G_MODE,
+     tooltip = "A and B are the tested systems. C enables an experimental " +
+               "short-horizon reversal overlay that was profitable in only " +
+               "1 of 13 quarters tested. Do not trade C.")
+
+rbLookback   = input.int(12,    "Sweep lookback window",              minval = 2,                                group = G_STRUCT)
+rbBodyThresh = input.float(0.33,"Max body-to-range ratio",            minval = 0.05, maxval = 0.95, step = 0.01, group = G_STRUCT)
+minWickFrac  = input.float(0.35,"Min rejection wick (fraction of range)", minval = 0.05, maxval = 0.9, step = 0.05, group = G_STRUCT)
+minClosePos  = input.float(0.7, "Min close position (fraction of range)", minval = 0.5, maxval = 0.95, step = 0.05, group = G_STRUCT)
+sweepSigma   = input.float(0.75,"Min sweep depth (sigma beyond prior extreme)", minval = 0.0, maxval = 3.0, step = 0.25, group = G_STRUCT)
+rangeExpMult = input.float(1.0, "Min range expansion (x 20-bar avg range)", minval = 0.0, maxval = 3.0, step = 0.1, group = G_STRUCT)
+volMult      = input.float(0.8, "Volume imbalance multiplier",        minval = 0.0,  step = 0.1,                 group = G_STRUCT)
+volLen       = input.int(20,    "Volume baseline length",             minval = 1,                                group = G_STRUCT)
+cooldownBars = input.int(10,    "Signal cooldown (bars, per direction)", minval = 0,                             group = G_STRUCT)
+
+// Version B gate. Window is deliberately mid-range: expectancy was +0.205 at
+// W=500, +0.213 at W=1000 and +0.231 at W=2000, so 1000 is not the peak and
+// the result does not depend on choosing it.
+rvLen        = input.int(78,    "Realised-vol window (bars, 78 = one session)", minval = 10, group = G_REG)
+rvBaseLen    = input.int(1000,  "Regime baseline window (bars)",      minval = 100, maxval = 2000,               group = G_REG)
+
+lambda       = input.float(0.94,"EWMA decay factor (RiskMetrics)",    minval = 0.85, maxval = 0.99, step = 0.01, group = G_VOL)
+seedLen      = input.int(20,    "Variance seed length",               minval = 5,                                group = G_VOL)
+stopSigma    = input.float(1.5, "Stop distance (sigma past the wick)",minval = 0.0,  step = 0.1,                 group = G_VOL)
+
+useSession   = input.bool(true, "Restrict signals to session",                                                   group = G_TRADE)
+sessionStr   = input.session("0930-1600", "Signal session",                                                      group = G_TRADE)
+sessionTz    = input.string("America/New_York", "Session timezone",                                              group = G_TRADE)
+rrTarget     = input.float(4.0, "Risk : reward target",               minval = 0.5,  step = 0.5,                 group = G_TRADE)
+beTrigger    = input.float(1.0, "Breakeven trigger (R, 0 = off)",     minval = 0.0,  step = 0.5,                 group = G_TRADE)
+validityBars = input.int(24,    "Unfilled setup expiry (bars)",       minval = 1,                                group = G_TRADE)
+maxTracked   = input.int(40,    "Max concurrently tracked setups",    minval = 1,    maxval = 100,               group = G_TRADE)
+costPoints   = input.float(1.5, "Assumed round-turn cost (index points)", minval = 0.0, step = 0.25,             group = G_TRADE,
+     tooltip = "MNQ is $2/point, tick 0.25pt. 1.5 points ~= 1-tick spread " +
+               "both ways + commission + typical stop slippage. The dashboard " +
+               "charges this against every closed trade.")
+
+showZones    = input.bool(true, "Show setup zones",                   group = G_UI)
+showLabels   = input.bool(true, "Show entry labels",                  group = G_UI)
+showStats    = input.bool(true, "Show self-audit dashboard",          group = G_UI)
+bullBase     = input.color(#00E676, "Bull color",                     group = G_UI)
+bearBase     = input.color(#FF5252, "Bear color",                     group = G_UI)
+
+var string OPT_A = "A — baseline only"
+var string OPT_B = "B — baseline + volatility gate (recommended)"
+var string OPT_C = "C — research overlay (UNVALIDATED)"
+bool verC = modelVer == OPT_C
+bool verB = modelVer == OPT_B or verC   // C is B plus the diagnostic overlay
+
+// ─────────────────────────────────────────────────────────────
+// TYPES & STATE
+// ─────────────────────────────────────────────────────────────
+type Setup
+    box   zone
+    line  entryLine
+    line  stopLine
+    line  tpLine
+    float entry
+    float stop
+    float tp
+    float risk        // initial entry-to-stop distance, in index points
+    bool  isBull
+    int   createdBar
+    bool  filled
+    bool  beArmed
+
+var array<Setup> book = array.new<Setup>()
+
+var int   cSignals = 0
+var int   cFilled  = 0
+var int   cWins    = 0
+var int   cLosses  = 0
+var int   cScratch = 0
+var int   cExpired = 0
+var int   cEvicted = 0
+var float netR     = 0.0      // gross, in R
+var float netRnet  = 0.0      // after costPoints charged per closed trade
+var int   lastBull = na
+var int   lastBear = na
+
+// ─────────────────────────────────────────────────────────────
+// EWMA VOLATILITY ENGINE
+// ─────────────────────────────────────────────────────────────
+float logRet   = na(close[1]) ? 0.0 : math.log(close / close[1])
+float seedVar  = ta.variance(logRet, seedLen)
+var float ewmaVar = na
+ewmaVar := na(ewmaVar) ? seedVar : lambda * ewmaVar + (1.0 - lambda) * logRet * logRet
+float sigmaPts   = math.sqrt(math.max(nz(ewmaVar), 0.0)) * close
+bool  engineReady = not na(ewmaVar) and sigmaPts > 0
+
+// ─────────────────────────────────────────────────────────────
+// VOLATILITY REGIME (Version B gate)
+// ─────────────────────────────────────────────────────────────
+// realised vol = mean |log return| over one session, in bp.
+// gate = current realised vol above its own trailing mean.
+float absRet    = math.abs(logRet) * 10000.0
+float rvNow     = ta.sma(absRet, rvLen)
+float rvBase    = ta.sma(rvNow, rvBaseLen)
+bool  regimeOk  = not verB or (not na(rvBase) and rvNow > rvBase)
+
+// ─────────────────────────────────────────────────────────────
+// STRUCTURE DETECTION
+// ─────────────────────────────────────────────────────────────
+float rng       = high - low
+float safeRange = math.max(rng, syminfo.mintick)
+float body      = math.abs(close - open)
+float topWick   = high - math.max(close, open)
+float botWick   = math.min(close, open) - low
+float bullWick  = botWick / safeRange
+float bearWick  = topWick / safeRange
+float bullClose = (close - low) / safeRange
+float bearClose = (high - close) / safeRange
+float volSMA    = ta.sma(nz(volume), volLen)
+float rangeSMA  = ta.sma(rng, 20)
+
+// Order-flow proxy. On feeds without volume, fall back to a structural
+// wick-dominance test rather than emitting na signals.
+bool bullFlowOk = volMult <= 0 ? true : (na(volume) or volSMA <= 0 ? bullWick >= 0.5 : nz(volume) * bullWick >= volSMA * volMult)
+bool bearFlowOk = volMult <= 0 ? true : (na(volume) or volSMA <= 0 ? bearWick >= 0.5 : nz(volume) * bearWick >= volSMA * volMult)
+
+bool bullCool = cooldownBars == 0 or na(lastBull) or bar_index - lastBull >= cooldownBars
+bool bearCool = cooldownBars == 0 or na(lastBear) or bar_index - lastBear >= cooldownBars
+
+float prevHH = ta.highest(high, rbLookback)[1]
+float prevLL = ta.lowest(low, rbLookback)[1]
+
+bool smallBody = body <= rng * rbBodyThresh
+bool rangeOk   = rng >= rangeSMA * rangeExpMult
+bool inSession = not useSession or not na(time(timeframe.period, sessionStr, sessionTz))
+
+bool baseOk = barstate.isconfirmed and engineReady and inSession and rangeOk and smallBody and regimeOk
+
+bool bullSig = baseOk and low < prevLL and close > prevLL and
+     bullWick  >= minWickFrac and
+     bullClose >= minClosePos and
+     (prevLL - low) >= sweepSigma * sigmaPts and
+     bullFlowOk and bullCool
+bool bearSig = baseOk and high > prevHH and close < prevHH and
+     bearWick  >= minWickFrac and
+     bearClose >= minClosePos and
+     (high - prevHH) >= sweepSigma * sigmaPts and
+     bearFlowOk and bearCool
+
+// ─────────────────────────────────────────────────────────────
+// SETUP CONSTRUCTION
+// ─────────────────────────────────────────────────────────────
+spawn(bool isBull) =>
+    float entry = isBull ? low + (math.min(open, close) - low) / 2.0
+                         : high - (high - math.max(open, close)) / 2.0
+    float stop  = isBull ? low - sigmaPts * stopSigma : high + sigmaPts * stopSigma
+    float risk  = math.abs(entry - stop)
+    float tp    = isBull ? entry + risk * rrTarget : entry - risk * rrTarget
+    color col   = isBull ? bullBase : bearBase
+
+    box zb = na
+    if showZones
+        zb := box.new(bar_index, isBull ? math.min(open, close) : high,
+                      bar_index + 1, isBull ? low : math.max(open, close),
+                      bgcolor = color.new(col, 85), border_color = col)
+    line el = line.new(bar_index, entry, bar_index + 1, entry, color = col, width = 2)
+    line sl = line.new(bar_index, stop,  bar_index + 1, stop,  color = color.red,  style = line.style_dotted)
+    line tl = line.new(bar_index, tp,    bar_index + 1, tp,    color = color.blue, width = 2)
+
+    array.push(book, Setup.new(zb, el, sl, tl, entry, stop, tp, risk, isBull,
+         bar_index, false, false))
+
+    if showLabels
+        label.new(bar_index, isBull ? low : high,
+             text = (isBull ? "LONG " : "SHORT ") + str.tostring(entry, format.mintick) +
+                  "\nstop "   + str.tostring(stop, format.mintick) +
+                  "\ntarget " + str.tostring(tp, format.mintick) +
+                  "\nrisk "   + str.tostring(risk, "#.##") + " pts",
+             style = isBull ? label.style_label_up : label.style_label_down,
+             color = color.new(col, 20), textcolor = color.white, size = size.small)
+
+    alert("MNQ sweep: " + (isBull ? "LONG" : "SHORT") + " limit " +
+         str.tostring(entry, format.mintick) + " | stop " + str.tostring(stop, format.mintick) +
+         " | target " + str.tostring(tp, format.mintick), alert.freq_once_per_bar_close)
+
+if bullSig
+    spawn(true)
+    cSignals += 1
+    lastBull := bar_index
+if bearSig
+    spawn(false)
+    cSignals += 1
+    lastBear := bar_index
+
+// Cap the tracked set. Evicted filled trades are booked at market so the R
+// tally never silently loses a position.
+while array.size(book) > maxTracked
+    Setup old = array.shift(book)
+    if old.filled
+        float exitR = old.risk > 0 ? (old.isBull ? close - old.entry : old.entry - close) / old.risk : 0.0
+        netR    += exitR
+        netRnet += exitR - (old.risk > 0 ? costPoints / old.risk : 0.0)
+        cEvicted += 1
+    else
+        cExpired += 1
+
+// ─────────────────────────────────────────────────────────────
+// EXECUTION STATE ENGINE
+// ─────────────────────────────────────────────────────────────
+// Pessimistic by construction: a limit fills only on a bar AFTER the signal
+// bar; a fill bar that also trades the stop books the loss immediately; the
+// target is never credited on the fill bar; if stop and target both print
+// inside one bar the stop wins. OHLC does not reveal the intrabar path, so
+// every ambiguity resolves against the strategy.
+if barstate.isconfirmed and array.size(book) > 0
+    for i = array.size(book) - 1 to 0
+        Setup s = array.get(book, i)
+        if bar_index <= s.createdBar
+            continue
+
+        if showZones and not na(s.zone)
+            box.set_right(s.zone, bar_index)
+        line.set_x2(s.entryLine, bar_index)
+        line.set_x2(s.stopLine,  bar_index)
+        line.set_x2(s.tpLine,    bar_index)
+
+        int outcome = 0   // 1 win, -1 loss, 2 expired, 4 breakeven scratch
+
+        if not s.filled
+            if s.isBull ? low <= s.entry : high >= s.entry
+                s.filled := true
+                cFilled  += 1
+                line.set_color(s.entryLine, color.yellow)
+                line.set_width(s.entryLine, 3)
+                if s.isBull ? low <= s.stop : high >= s.stop
+                    outcome := -1
+                alert("MNQ sweep: " + (s.isBull ? "long" : "short") + " filled @ " +
+                     str.tostring(s.entry, format.mintick), alert.freq_once_per_bar_close)
+            else if bar_index - s.createdBar >= validityBars
+                outcome := 2
+        else
+            bool stopHit = s.isBull ? low <= s.stop : high >= s.stop
+            bool tpHit   = s.isBull ? high >= s.tp  : low <= s.tp
+            outcome := stopHit ? (s.beArmed ? 4 : -1) : tpHit ? 1 : 0
+            // Arm breakeven only AFTER the exit checks, so it can never take
+            // effect on the same bar it was triggered — the intrabar sequence
+            // is unknowable.
+            if outcome == 0 and beTrigger > 0 and not s.beArmed
+                float beLevel = s.isBull ? s.entry + beTrigger * s.risk
+                                         : s.entry - beTrigger * s.risk
+                if s.isBull ? high >= beLevel : low <= beLevel
+                    s.beArmed := true
+                    s.stop    := s.entry
+                    line.set_y1(s.stopLine, s.entry)
+                    line.set_y2(s.stopLine, s.entry)
+                    line.set_color(s.stopLine, color.orange)
+
+        if outcome != 0
+            float costR = s.risk > 0 ? costPoints / s.risk : 0.0
+            if outcome == 2
+                cExpired += 1
+            else if outcome == 4
+                cScratch += 1
+                netRnet  -= costR
+                alert("MNQ sweep: scratched at breakeven", alert.freq_once_per_bar_close)
+            else
+                bool win = outcome == 1
+                netR    += win ? rrTarget : -1.0
+                netRnet += (win ? rrTarget : -1.0) - costR
+                cWins   += win ? 1 : 0
+                cLosses += win ? 0 : 1
+                alert("MNQ sweep: " + (win ? "target hit" : "stopped out"),
+                     alert.freq_once_per_bar_close)
+            if outcome != 1 and showZones and not na(s.zone)
+                box.set_bgcolor(s.zone, color.new(color.gray, 92))
+                box.set_border_color(s.zone, color.new(color.gray, 60))
+            array.remove(book, i)
+
+// ─────────────────────────────────────────────────────────────
+// REGIME RIBBON
+// ─────────────────────────────────────────────────────────────
+plotshape(verB and barstate.isconfirmed and not regimeOk, "Low-vol regime (signals muted)",
+     shape.square, location.bottom, color.new(color.gray, 60), size = size.tiny)
+
+// ─────────────────────────────────────────────────────────────
+// VERSION C — RESEARCH OVERLAY (DIAGNOSTIC ONLY, GENERATES NO TRADES)
+// ─────────────────────────────────────────────────────────────
+// Short-horizon reversal: fade the previous bar's direction. Measured on
+// 3 years of Nasdaq-100 5m data this earned +0.129 bp per bar against a
+// ~0.68 bp round-turn cost — i.e. it LOST money on average. It cleared cost
+// in exactly ONE of thirteen calendar quarters (2026 Q3, +0.755 bp, t 3.98),
+// which two independent feeds confirmed is a real regime and not a data
+// artefact. It is displayed so the regime can be watched, and deliberately
+// wired to nothing: it creates no setups and enters no statistic.
+// Computed UNCONDITIONALLY. A ta.* call placed inside a ternary or an if is
+// only evaluated on some bars, which silently corrupts its internal state —
+// the same defect this project previously had with ta.variance. Gate the
+// CONSUMPTION of the value, never its computation.
+float revRaw    = -math.sign(nz(close[1] - close[2])) * (close - close[1])
+float revEdge   = ta.sma(revRaw, 200)
+bool  revActive = verC and not na(revEdge) and revEdge > 0
+plotshape(verC and barstate.isconfirmed and revActive, "C: reversal regime (diagnostic)",
+     shape.circle, location.top, color.new(color.purple, 55), size = size.tiny)
+
+// ─────────────────────────────────────────────────────────────
+// SELF-AUDIT DASHBOARD
+// ─────────────────────────────────────────────────────────────
+row(table t, int r, string k, string v, color vc) =>
+    table.cell(t, 0, r, k, text_color = color.new(color.silver, 0), text_halign = text.align_left,  text_size = size.small)
+    table.cell(t, 1, r, v, text_color = vc,                         text_halign = text.align_right, text_size = size.small)
+
+if showStats and barstate.islast
+    var table dash = table.new(position.top_right, 2, 14,
+         bgcolor = color.new(#101418, 12), border_width = 1,
+         border_color = color.new(color.gray, 70), frame_width = 1,
+         frame_color = color.new(color.gray, 55))
+
+    int   decisive = cWins + cLosses
+    int   closed   = decisive + cScratch + cEvicted
+    float wr       = decisive > 0 ? 100.0 * cWins / decisive : na
+    float fillRate = cSignals > 0 ? 100.0 * cFilled / cSignals : na
+    float expR     = closed > 0 ? netRnet / closed : na
+    float beWR     = 100.0 / (1.0 + rrTarget)
+
+    // The research validated this on 5m charts only. 1H was materially
+    // weaker (PF 1.18 net) and everything else was untested or negative.
+    int  tfSec  = timeframe.in_seconds()
+    bool tfOk   = tfSec == 300
+
+    table.cell(dash, 0, 0, "MNQ 5m SWEEP v4 — " + (verC ? "C" : verB ? "B" : "A"),
+         text_color = color.white, text_size = size.small)
+    table.merge_cells(dash, 0, 0, 1, 0)
+    row(dash, 1,  "Signals",           str.tostring(cSignals), color.white)
+    row(dash, 2,  "Filled",            str.tostring(cFilled) + " (" + (na(fillRate) ? "—" : str.tostring(fillRate, "#.#") + "%") + ")", color.white)
+    row(dash, 3,  "Wins",              str.tostring(cWins),    color.new(color.teal, 0))
+    row(dash, 4,  "Losses",            str.tostring(cLosses),  color.new(color.red, 0))
+    row(dash, 5,  "Breakeven scratch", str.tostring(cScratch), color.orange)
+    row(dash, 6,  "Expired unfilled",  str.tostring(cExpired), color.gray)
+    row(dash, 7,  "Win rate (BE " + str.tostring(beWR, "#.#") + "%)",
+         na(wr) ? "—" : str.tostring(wr, "#.#") + "%",
+         na(wr) ? color.white : wr > beWR ? color.new(color.teal, 0) : color.new(color.red, 0))
+    row(dash, 8,  "Net R (gross)",     (netR >= 0 ? "+" : "") + str.tostring(netR, "#.#") + "R",
+         netR >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+    row(dash, 9,  "Net R (after cost)",(netRnet >= 0 ? "+" : "") + str.tostring(netRnet, "#.#") + "R",
+         netRnet >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+    row(dash, 10, "Expectancy / trade",na(expR) ? "—" : str.tostring(expR, "#.###") + "R",
+         na(expR) ? color.white : expR >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+    row(dash, 11, "Vol regime",
+         not verB ? "gate off (Version A)" : na(rvBase) ? "warming up" : rvNow > rvBase ? "ACTIVE (above baseline)" : "muted (low vol)",
+         not verB ? color.gray : na(rvBase) ? color.gray : rvNow > rvBase ? color.new(color.teal, 0) : color.new(color.orange, 0))
+    row(dash, 12, "Chart TF", tfOk ? "5m — validated" : "NOT 5m — untested",
+         tfOk ? color.new(color.teal, 0) : color.new(color.orange, 0))
+    if verC
+        row(dash, 13, "C overlay (no trades)",
+             na(revEdge) ? "warming up" : revActive ? "reversal regime ON" : "reversal regime off",
+             color.new(color.purple, 0))
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(bullSig, "Bullish sweep", "MNQ 5m: bullish liquidity sweep — long limit posted")
+alertcondition(bearSig, "Bearish sweep", "MNQ 5m: bearish liquidity sweep — short limit posted")

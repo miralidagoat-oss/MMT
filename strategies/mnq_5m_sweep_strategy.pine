@@ -1,0 +1,218 @@
+//@version=6
+// ============================================================================
+// MNQ 5-Minute Liquidity Sweep — STRATEGY (v4)
+// ============================================================================
+// Backtestable counterpart of "MNQ 5m Liquidity Sweep v4". Same signal rules,
+// same breakeven management, but with TradingView's real order engine so
+// commission, slippage and position sizing are charged properly.
+//
+// COST MODEL (MNQ, verified against CME contract specs):
+//   multiplier   $2.00 per index point
+//   tick         0.25 index points = $0.50
+//   commission   $0.75 per contract PER SIDE  -> $1.50 round turn = 0.75 pts
+//   slippage     2 ticks = 0.50 pts per fill  -> 1.00 pt round turn
+//   total        ~1.75 index points round turn
+// That is slightly MORE conservative than the 1.5 points used in the offline
+// research, which is deliberate: the research charged a flat 1.5 pts, and the
+// entry here is a LIMIT order that in reality would often avoid paying the
+// spread on entry. Erring high is the safer direction.
+//
+// DIFFERENCE FROM THE RESEARCH HARNESS — read before comparing numbers:
+// the offline study allowed several setups to be live at once. This strategy
+// takes ONE position at a time (a new signal is ignored while in a trade or
+// while an unfilled limit is working). That is more conservative and will
+// produce fewer trades and a somewhat different equity curve.
+//
+// HONEST EXPECTATION: on 3 years of Nasdaq-100 5m data the underlying rules
+// returned +0.219 R per trade net of cost with t = 1.73 — NOT statistically
+// significant, CI includes zero. Treat any equity curve this produces as one
+// draw from a wide distribution, not as a forecast.
+// ============================================================================
+
+strategy("MNQ 5m Liquidity Sweep — Strategy v4", overlay = true,
+     max_bars_back              = 5000,
+     initial_capital            = 25000,
+     default_qty_type           = strategy.fixed,
+     default_qty_value          = 1,
+     pyramiding                 = 0,
+     commission_type            = strategy.commission.cash_per_contract,
+     commission_value           = 0.75,
+     slippage                   = 2,
+     calc_on_every_tick         = false,
+     process_orders_on_close    = false)
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_MODE  = "Model Version"
+var string G_STRUCT= "Structure Detection"
+var string G_REG   = "Volatility Regime (Version B)"
+var string G_VOL   = "Volatility Engine"
+var string G_TRADE = "Trade Construction"
+
+useRegime    = input.bool(true, "Version B: volatility regime gate", group = G_MODE,
+     tooltip = "Off = Version A baseline. On = the one filter that survived " +
+               "out-of-sample testing.")
+
+rbLookback   = input.int(12,    "Sweep lookback window",              minval = 2,                                group = G_STRUCT)
+rbBodyThresh = input.float(0.33,"Max body-to-range ratio",            minval = 0.05, maxval = 0.95, step = 0.01, group = G_STRUCT)
+minWickFrac  = input.float(0.35,"Min rejection wick (fraction of range)", minval = 0.05, maxval = 0.9, step = 0.05, group = G_STRUCT)
+minClosePos  = input.float(0.7, "Min close position (fraction of range)", minval = 0.5, maxval = 0.95, step = 0.05, group = G_STRUCT)
+sweepSigma   = input.float(0.75,"Min sweep depth (sigma beyond prior extreme)", minval = 0.0, maxval = 3.0, step = 0.25, group = G_STRUCT)
+rangeExpMult = input.float(1.0, "Min range expansion (x 20-bar avg range)", minval = 0.0, maxval = 3.0, step = 0.1, group = G_STRUCT)
+volMult      = input.float(0.8, "Volume imbalance multiplier",        minval = 0.0,  step = 0.1,                 group = G_STRUCT)
+volLen       = input.int(20,    "Volume baseline length",             minval = 1,                                group = G_STRUCT)
+cooldownBars = input.int(10,    "Signal cooldown (bars, per direction)", minval = 0,                             group = G_STRUCT)
+
+rvLen        = input.int(78,    "Realised-vol window (bars)",         minval = 10,                               group = G_REG)
+rvBaseLen    = input.int(1000,  "Regime baseline window (bars)",      minval = 100, maxval = 2000,               group = G_REG)
+
+lambda       = input.float(0.94,"EWMA decay factor",                  minval = 0.85, maxval = 0.99, step = 0.01, group = G_VOL)
+seedLen      = input.int(20,    "Variance seed length",               minval = 5,                                group = G_VOL)
+stopSigma    = input.float(1.5, "Stop distance (sigma past the wick)",minval = 0.0,  step = 0.1,                 group = G_VOL)
+
+useSession   = input.bool(true, "Restrict signals to session",                                                   group = G_TRADE)
+sessionStr   = input.session("0930-1600", "Signal session",                                                      group = G_TRADE)
+sessionTz    = input.string("America/New_York", "Session timezone",                                              group = G_TRADE)
+rrTarget     = input.float(4.0, "Risk : reward target",               minval = 0.5,  step = 0.5,                 group = G_TRADE)
+beTrigger    = input.float(1.0, "Breakeven trigger (R, 0 = off)",     minval = 0.0,  step = 0.5,                 group = G_TRADE)
+validityBars = input.int(24,    "Unfilled setup expiry (bars)",       minval = 1,                                group = G_TRADE)
+flattenEOD   = input.bool(true, "Flatten at session close",                                                      group = G_TRADE,
+     tooltip = "The research measured RTH-only signals. Holding through the " +
+               "close adds overnight gap risk the study never tested.")
+
+// ─────────────────────────────────────────────────────────────
+// VOLATILITY ENGINE
+// ─────────────────────────────────────────────────────────────
+float logRet  = na(close[1]) ? 0.0 : math.log(close / close[1])
+float seedVar = ta.variance(logRet, seedLen)
+var float ewmaVar = na
+ewmaVar := na(ewmaVar) ? seedVar : lambda * ewmaVar + (1.0 - lambda) * logRet * logRet
+float sigmaPts    = math.sqrt(math.max(nz(ewmaVar), 0.0)) * close
+bool  engineReady = not na(ewmaVar) and sigmaPts > 0
+
+float absRet   = math.abs(logRet) * 10000.0
+float rvNow    = ta.sma(absRet, rvLen)
+float rvBase   = ta.sma(rvNow, rvBaseLen)
+bool  regimeOk = not useRegime or (not na(rvBase) and rvNow > rvBase)
+
+// ─────────────────────────────────────────────────────────────
+// STRUCTURE
+// ─────────────────────────────────────────────────────────────
+float rng       = high - low
+float safeRange = math.max(rng, syminfo.mintick)
+float body      = math.abs(close - open)
+float bullWick  = (math.min(close, open) - low) / safeRange
+float bearWick  = (high - math.max(close, open)) / safeRange
+float bullClose = (close - low) / safeRange
+float bearClose = (high - close) / safeRange
+float volSMA    = ta.sma(nz(volume), volLen)
+float rangeSMA  = ta.sma(rng, 20)
+
+bool bullFlowOk = volMult <= 0 ? true : (na(volume) or volSMA <= 0 ? bullWick >= 0.5 : nz(volume) * bullWick >= volSMA * volMult)
+bool bearFlowOk = volMult <= 0 ? true : (na(volume) or volSMA <= 0 ? bearWick >= 0.5 : nz(volume) * bearWick >= volSMA * volMult)
+
+var int lastBull = na
+var int lastBear = na
+bool bullCool = cooldownBars == 0 or na(lastBull) or bar_index - lastBull >= cooldownBars
+bool bearCool = cooldownBars == 0 or na(lastBear) or bar_index - lastBear >= cooldownBars
+
+float prevHH = ta.highest(high, rbLookback)[1]
+float prevLL = ta.lowest(low, rbLookback)[1]
+
+bool inSession = not useSession or not na(time(timeframe.period, sessionStr, sessionTz))
+bool baseOk = barstate.isconfirmed and engineReady and inSession and regimeOk and
+     rng >= rangeSMA * rangeExpMult and body <= rng * rbBodyThresh
+
+bool bullSig = baseOk and low < prevLL and close > prevLL and
+     bullWick >= minWickFrac and bullClose >= minClosePos and
+     (prevLL - low) >= sweepSigma * sigmaPts and bullFlowOk and bullCool
+bool bearSig = baseOk and high > prevHH and close < prevHH and
+     bearWick >= minWickFrac and bearClose >= minClosePos and
+     (high - prevHH) >= sweepSigma * sigmaPts and bearFlowOk and bearCool
+
+// ─────────────────────────────────────────────────────────────
+// ORDER MANAGEMENT
+// ─────────────────────────────────────────────────────────────
+var float pEntry   = na
+var float pStop    = na
+var float pTp      = na
+var float pRisk    = na
+var int   pBar     = na
+var bool  pIsBull  = na
+var bool  beArmed  = false
+var bool  working  = false     // an unfilled limit is live
+
+bool flat = strategy.position_size == 0
+
+// --- post a new limit only when genuinely idle -------------------------------
+if (bullSig or bearSig) and flat and not working
+    bool isBull = bullSig
+    float e = isBull ? low + (math.min(open, close) - low) / 2.0
+                     : high - (high - math.max(open, close)) / 2.0
+    float s = isBull ? low - sigmaPts * stopSigma : high + sigmaPts * stopSigma
+    float r = math.abs(e - s)
+    if r > 0
+        pEntry  := e
+        pStop   := s
+        pRisk   := r
+        pTp     := isBull ? e + r * rrTarget : e - r * rrTarget
+        pIsBull := isBull
+        pBar    := bar_index
+        beArmed := false
+        working := true
+        if isBull
+            lastBull := bar_index
+            strategy.entry("L", strategy.long, limit = e)
+        else
+            lastBear := bar_index
+            strategy.entry("S", strategy.short, limit = e)
+
+// --- expire an unfilled limit ------------------------------------------------
+if working and flat and not na(pBar) and bar_index - pBar >= validityBars
+    strategy.cancel("L")
+    strategy.cancel("S")
+    working := false
+
+// --- once filled, manage stop / target --------------------------------------
+if strategy.position_size != 0
+    working := false
+    bool isLong = strategy.position_size > 0
+    // arm breakeven once the trade has travelled beTrigger R in our favour
+    if beTrigger > 0 and not beArmed and not na(pRisk)
+        float beLevel = isLong ? pEntry + beTrigger * pRisk : pEntry - beTrigger * pRisk
+        if isLong ? high >= beLevel : low <= beLevel
+            beArmed := true
+    float liveStop = beArmed ? pEntry : pStop
+    if isLong
+        strategy.exit("Lx", from_entry = "L", stop = liveStop, limit = pTp)
+    else
+        strategy.exit("Sx", from_entry = "S", stop = liveStop, limit = pTp)
+
+// --- flatten at the session close -------------------------------------------
+// Explicit ET clock test. A "first bar outside the session" test would never
+// fire on a chart configured to show regular hours only, silently leaving
+// positions open overnight.
+int  etHour  = hour(time, sessionTz)
+int  etMin   = minute(time, sessionTz)
+bool lastBar = etHour == 15 and etMin >= 55
+bool sessionEnding = flattenEOD and barstate.isconfirmed and lastBar
+if sessionEnding
+    strategy.cancel("L")
+    strategy.cancel("S")
+    working := false
+    if strategy.position_size != 0
+        strategy.close_all(comment = "EOD flat")
+
+// A limit that fills AND exits inside one bar would leave `working` stuck
+// true (position_size is back to 0 by the time we read it), blocking every
+// later signal until the expiry timer cleared it. Watching the closed-trade
+// counter releases the flag immediately instead.
+var int seenClosed = 0
+if strategy.closedtrades > seenClosed
+    seenClosed := strategy.closedtrades
+    working    := false
+
+plotshape(useRegime and barstate.isconfirmed and not regimeOk,
+     "Low-vol regime (muted)", shape.square, location.bottom,
+     color.new(color.gray, 60), size = size.tiny)

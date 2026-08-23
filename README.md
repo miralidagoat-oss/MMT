@@ -1,4 +1,32 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Quant Engine
+
+> ## ⚠️ 2026-08 re-audit: three claims below did not survive
+>
+> A fresh study on **669 independent trading sessions** (vs the 50–60 days most
+> of the results below rest on) overturned part of this README. See
+> **[RESEARCH_MNQ_5M.md](RESEARCH_MNQ_5M.md)** for the full report.
+>
+> 1. **"MNQ edge is 1H only" — not supported.** On 3 years of independent data
+>    1H gives PF 1.18 net of costs over 47 trades. **5m was better than 1H**, the
+>    reverse of the claim below.
+> 2. **"5m is breakeven (PF 1.00)" — not supported.** That rested on 60 days /
+>    75 trades. On 669 sessions the same rules give PF 1.32 net of costs.
+> 3. **`backtest/study_mnq.py` has a DST bug.** `et_hour()` uses a fixed UTC−4
+>    offset, so its "RTH" window is shifted by one hour for ~40% of the calendar.
+>    Session-attribution conclusions drawn from it are unreliable.
+>    `backtest/lib5m.py` does proper DST conversion; prefer it.
+>
+> **Also important:** every result below is reported with **zero transaction
+> costs**. At 5m that is not a minor omission. The new work charges 1.5 index
+> points round turn throughout.
+>
+> Current best configuration (5m, RTH, breakeven at 1R, + volatility regime
+> gate): 202 trades, **+0.219 R/trade net, PF 1.45, t = 1.73** — the confidence
+> interval still includes zero. Promising, unproven.
+
+---
+
+# Alpha Predictive Limit Matrix (prior work)
 
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
@@ -231,3 +259,30 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+
+---
+
+## 5-minute research line (2026-08)
+
+New, self-contained. Reads none of the tuning above.
+
+| file | purpose |
+|---|---|
+| `backtest/lib5m.py` | loading, DST-correct US-Eastern sessions, HAC t-stats |
+| `backtest/fetch_dukascopy.py` | 3 years of free 1m history (resumable, cached) |
+| `backtest/fetch_cot.py` | CFTC TFF positioning **with release timestamps** |
+| `backtest/research5m.py` | 15-hypothesis battery, BH-FDR corrected |
+| `backtest/falsify_reversal.py` | tradeability / bid-ask-bounce decomposition |
+| `backtest/lag_profile.py` | decay-profile artifact discriminator |
+| `backtest/window_compare.py` | separates feed artifacts from regime effects |
+| `backtest/reaudit.py` | shipped v3.2 rules re-run with costs |
+| `backtest/evaluate.py` | bootstrap CI + parameter sensitivity |
+| `backtest/final_config.py` | rolling volatility gate, Pine-implementable |
+| `indicators/mnq_5m_sweep_v4.pine` | indicator, Versions A/B/C |
+| `strategies/mnq_5m_sweep_strategy.pine` | strategy with commission + slippage |
+
+Headline: of 15 pre-registered hypotheses on 669 sessions, **zero survived FDR
+correction in the untouched test panel.** COT positioning, VIX, session and
+weekday filters, opening-range breakout and intraday momentum all failed. One
+filter survived — a realized-volatility regime gate — and it ships.
