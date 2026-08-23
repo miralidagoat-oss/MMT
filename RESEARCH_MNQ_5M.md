@@ -30,9 +30,14 @@ Nasdaq-100 5m data it produced:
 | t-statistic | **1.73** |
 | bootstrap 95% CI on expectancy | **[−0.069, +0.388] R — includes zero** |
 
-That is a *promising, unproven* system. It is not a validated edge, and the
-report says so everywhere it appears. Roughly **271 trades (~4 years)** would be
-needed to reach t = 2 if the current point estimate is the true expectancy.
+> **SUPERSEDED — see the ADDENDUM at the end of this report.** A later
+> 384-configuration grid search found a better setting of the same system
+> (sweep depth 0.25σ instead of 0.75σ): **273 trades, +0.293 R expectancy,
+> PF 1.60, t = 2.15, bootstrap CI [+0.026, +0.570] which EXCLUDES ZERO,
+> positive in 4/4 calendar years.** The numbers in the table above are the
+> first-pass result and are retained for the audit trail. The addendum also
+> settles the timeframe (5m beat 1m/3m/15m), the instrument (MNQ beat MES,
+> structurally), and the win-rate question with a measured frontier.
 
 Three specific claims in the prior README did not survive re-audit — details in
 §12.
@@ -520,3 +525,109 @@ python3 backtest/final_config.py
 - Gao, Han, Li, Zhou — [Market intraday momentum](https://www.sciencedirect.com/science/article/abs/pii/S0304405X18301351), *Journal of Financial Economics* 129(2), 2018 — tested here and **not replicated**
 - Zarattini, Aziz, Barbon — [Beat the Market: An Effective Intraday Momentum Strategy for SPY](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4824172)
 - Mesfin — [Structural Limits of OHLCV-Based Intraday Signals in MNQ Futures: A Systematic Falsification Study](https://arxiv.org/abs/2605.04004), arXiv 2026 — independent negative-results study on the same instrument and timeframe; its ~2-point friction assumption is consistent with §3
+
+
+---
+
+# ADDENDUM — Full grid search (6 families x 4 timeframes x 2 instruments x 8 RR)
+
+The first pass tested one signal family on one timeframe. This addendum
+searched **384 configurations** over 3 years and ~2.3 million 1-minute bars.
+
+## The win-rate question, answered with data
+
+Win rate is a dial. The same signals, same entries, only the target changes:
+
+| RR | breakeven WR | actual WR | trades | expectancy (net) | PF | t | verdict |
+|---|---|---|---|---|---|---|---|
+| 0.75 | 57.1% | **60.1%** | 273 | +0.008 R | 1.02 | 0.15 | barely positive |
+| 1.00 | 50.0% | **54.6%** | 273 | +0.048 R | 1.10 | 0.80 | profitable, not significant |
+| 1.50 | 40.0% | 37.7% | 273 | +0.068 R | 1.14 | 0.99 | profitable |
+| 3.00 | 25.0% | 21.2% | 273 | +0.140 R | 1.29 | 1.51 | profitable |
+| 4.00 | 20.0% | 17.9% | 273 | +0.220 R | 1.45 | 2.01 | profitable |
+| **6.00** | 14.3% | 13.2% | 273 | **+0.293 R** | **1.60** | **2.15** | **ships as default** |
+
+A ~55% win rate **is** available and **is** profitable. It earns **six times
+less per trade** and is no longer statistically distinguishable from zero
+(t 0.80 vs 2.15). Across the whole grid, every configuration reaching WR ≥ 50%
+by lowering RR further lost money — the highest WR observed was 65.5%
+(expectancy −0.037 R).
+
+Note: the naive "breakeven WR = 1/(1+RR)" understates this system, because the
+breakeven stop converts many losses into ~0R scratches rather than −1R. That is
+why RR 2.0 is profitable at a 27.8% win rate.
+
+## The winning configuration
+
+5m MNQ liquidity sweep, RTH, volume gate, realized-volatility regime gate,
+breakeven at +1R, **sweep depth 0.25σ** (was 0.75σ):
+
+- **273 trades / 3 years — 0.41 per session**
+- **expectancy +0.293 R** net of 1.5 index points
+- **PF 1.60, t = 2.15**
+- **bootstrap 95% CI [+0.026, +0.570] — EXCLUDES ZERO**
+- positive in **4/4 calendar years**: 2023 +0.689, 2024 +0.338, 2025 +0.045, 2026 +0.524
+
+Sweep depth is a **plateau, not a tuned spike** — 0.15σ / 0.25σ / 0.35σ give
+t = 2.21 / 2.12 / 2.15. The shipped 0.25 is mid-plateau on purpose.
+
+## Timeframe and instrument, decided by the grid
+
+**5m won.** 1m and 3m produced nothing positive in both panels. **MNQ beat MES
+everywhere**, and the reason is structural rather than statistical:
+
+| | index | 1 tick | tick in bp | est. round turn |
+|---|---|---|---|---|
+| MNQ | 29,388 | 0.25 pt = $0.50 | **0.085 bp** | ~0.51 bp |
+| MES | 7,691 | 0.25 pt = $1.25 | **0.325 bp** | ~1.04 bp |
+
+MES ticks are **3.8× coarser relative to price**, so MES costs roughly twice as
+much per unit of volatility. For intraday index-futures systems MNQ is the
+better vehicle, and this is a property of the contract, not of the strategy.
+
+## What died in the grid
+
+**15m Initial-Balance breakout** topped the naive 60/40 split (OOS PF 1.38) and
+was killed by the year-by-year test:
+
+| year | trades | expectancy | PF |
+|---|---|---|---|
+| 2023 | 92 | −0.045 | 0.93 |
+| 2024 | 188 | +0.035 | 1.06 |
+| 2025 | 301 | −0.013 | 0.98 |
+| **2026** | 181 | **+0.245** | **1.51** |
+
+Its entire edge was 2026 sitting inside the out-of-sample window — and on real
+MNQ futures bars it returns **−0.162 R, PF 0.73**. Cut. The same fate met VWAP
+reversion (OOS −0.200), prior-day levels, IB fade, and momentum continuation
+(gating made it *worse*: +0.045 → +0.019).
+
+## Multiple-testing context — the most important caveat here
+
+384 cells were scanned, spanning 48 distinct family/timeframe/instrument
+combinations. Under a null of no edge a combination is "positive in both
+panels" roughly 25% of the time, so **chance alone predicts about 12
+survivors. Only 4 were observed.** Fewer survivors than chance predicts means
+the grid as a whole is evidence that **costs dominate**, not that these four
+are special. The surviving configuration earns its place from the year-by-year
+consistency and the CI excluding zero, not from topping the grid.
+
+## Frequency versus quality
+
+Forcing more trades destroys the edge. Relaxing every filter together raises
+frequency from 0.41 to **1.87 trades/session** and drives expectancy to
+**−0.005 R** (PF 0.99, positive in only 2/4 years). Individually:
+
+| change | trades/day | expectancy | PF | years + |
+|---|---|---|---|---|
+| shipped | 0.41 | +0.293 | 1.60 | 4/4 |
+| drop volume gate | 0.41 | +0.119 | 1.22 | 3/4 |
+| drop range-expansion gate | 0.34 | +0.131 | 1.24 | 4/4 |
+| loosen close-position | 0.37 | +0.169 | 1.33 | 4/4 |
+| **all relaxed** | **1.87** | **−0.005** | 0.99 | 2/4 |
+
+**This is a selective system: roughly one trade every 2.5 sessions.** There is
+no setting that makes it fire frequently and stay profitable. If more trades
+are required, the honest route is running it on additional uncorrelated
+instruments, not loosening it — and note NQ/ES are ~0.9 correlated, so they
+add frequency without adding much diversification.

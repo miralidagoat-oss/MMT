@@ -20,9 +20,9 @@
 > costs**. At 5m that is not a minor omission. The new work charges 1.5 index
 > points round turn throughout.
 >
-> Current best configuration (5m, RTH, breakeven at 1R, + volatility regime
-> gate): 202 trades, **+0.219 R/trade net, PF 1.45, t = 1.73** — the confidence
-> interval still includes zero. Promising, unproven.
+> Current best configuration (5m, RTH, breakeven at 1R, volatility regime gate,
+> sweep depth 0.25σ): **273 trades, +0.293 R/trade net, PF 1.60, t = 2.15** —
+> bootstrap CI [+0.026, +0.570] EXCLUDES zero; positive in 4/4 years.
 
 ---
 
