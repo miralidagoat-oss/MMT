@@ -102,6 +102,7 @@ enableShorts = input.bool(true, "Shorts", group=gDIR)
 gVIS = "6 · Display"
 showRange = input.bool(true,  "Plot overnight range", group=gVIS)
 showPanel = input.bool(true,  "Show statistics panel", group=gVIS)
+showLevels = input.bool(true, "Show entry / stop / target levels", group=gVIS)
 
 // ───────────────────── ET clock and session state ──────────────────────
 TZ  = "America/New_York"
@@ -207,27 +208,79 @@ if strategy.position_size != 0 and (heldBars >= maxHoldBars or eodFlat)
     strategy.close_all(comment = eodFlat ? "EOD" : "time")
 
 // ───────────────────────────── plotting ──────────────────────────────
-plot(showRange and onValid ? onH : na, "Overnight high", color.new(color.teal, 0),
-     2, plot.style_linebr)
-plot(showRange and onValid ? onL : na, "Overnight low",  color.new(color.red, 0),
-     2, plot.style_linebr)
+// DISPLAY ONLY. Nothing from here down feeds a signal, an order, or a filter.
+
+// Palette — three hues and a neutral, so the chart reads at a glance.
+cUp    = #26A69A
+cDn    = #EF5350
+cRange = #5B8DEF
+cLine  = #B2B5BE
+
+// Live trade levels. The bracket is sent as tick-relative loss/profit measured
+// from the fill, so these lines sit exactly where the working orders are.
+inTrade = strategy.position_size != 0
+posLong = strategy.position_size > 0
+entryPx = inTrade ? strategy.position_avg_price : na
+stopPx  = inTrade and not na(riskPts) ? (posLong ? entryPx - riskPts : entryPx + riskPts) : na
+tgtPx   = inTrade and not na(riskPts) ? (posLong ? entryPx + riskPts * rr : entryPx - riskPts * rr) : na
+
+// Overnight range as one soft band rather than two loud lines.
+pOnH = plot(showRange and onValid ? onH : na, "Overnight high",
+     color.new(cRange, 30), 1, plot.style_linebr)
+pOnL = plot(showRange and onValid ? onL : na, "Overnight low",
+     color.new(cRange, 30), 1, plot.style_linebr)
+fill(pOnH, pOnL, color = color.new(cRange, 94), title = "Overnight range")
+
+// Entry, stop and target, with the risk and reward zones shaded behind them.
+pEntry = plot(showLevels ? entryPx : na, "Entry",     color.new(cLine, 20), 1, plot.style_linebr)
+pStop  = plot(showLevels ? stopPx  : na, "Stop loss", color.new(cDn, 0),    2, plot.style_linebr)
+pTgt   = plot(showLevels ? tgtPx   : na, "Target",    color.new(cUp, 0),    2, plot.style_linebr)
+fill(pEntry, pStop, color = color.new(cDn, 90), title = "Risk zone")
+fill(pEntry, pTgt,  color = color.new(cUp, 90), title = "Reward zone")
 
 plotshape(longSig  and allowNew and enableLongs,  "Long signal",  shape.triangleup,
-     location.belowbar, color.new(color.teal, 0), size=size.tiny)
+     location.belowbar, color.new(cUp, 0), size = size.tiny)
 plotshape(shortSig and allowNew and enableShorts, "Short signal", shape.triangledown,
-     location.abovebar, color.new(color.red, 0),  size=size.tiny)
+     location.abovebar, color.new(cDn, 0), size = size.tiny)
 
-bgcolor(onValid ? color.new(color.blue, 96) : na, title="Range active")
+// Price tags at the right edge, so the stop is readable without hovering.
+var label lbEntry = na
+var label lbStop  = na
+var label lbTgt   = na
+
+if showLevels and barstate.islast
+    label.delete(lbEntry)
+    label.delete(lbStop)
+    label.delete(lbTgt)
+    if inTrade
+        lbEntry := label.new(bar_index + 3, entryPx,
+             "ENTRY  " + str.tostring(entryPx, format.mintick),
+             xloc = xloc.bar_index, style = label.style_label_left,
+             color = color.new(#1E222D, 20), textcolor = cLine, size = size.small)
+        lbStop := label.new(bar_index + 3, stopPx,
+             "STOP  " + str.tostring(stopPx, format.mintick),
+             xloc = xloc.bar_index, style = label.style_label_left,
+             color = color.new(cDn, 15), textcolor = color.white, size = size.small)
+        lbTgt := label.new(bar_index + 3, tgtPx,
+             "TARGET  " + str.tostring(tgtPx, format.mintick),
+             xloc = xloc.bar_index, style = label.style_label_left,
+             color = color.new(cUp, 15), textcolor = color.white, size = size.small)
 
 // ────────────────────────── statistics panel ─────────────────────────
-var table t = table.new(position.top_right, 2, 11,
-     bgcolor = color.new(color.black, 15), border_width = 1,
-     border_color = color.new(color.gray, 60))
-
-// The null threshold is the point of this panel. PF p95 ≈ 1 + 3.5/sqrt(n) was
+// The chance threshold is the point of this panel. PF p95 ≈ 1 + 3.5/sqrt(n) was
 // fitted to Monte-Carlo random-entry runs on the real MNQ series at this payoff
 // (measured: 1.45 @ n=70, 1.32 @ n=128, 1.26 @ n=200, 1.19 @ n=313, 1.14 @ n=514).
 // A profit factor below this line is not evidence of an edge.
+var table t = table.new(position.top_right, 2, 16,
+     bgcolor      = color.new(#1E222D, 12),
+     frame_color  = color.new(#434651, 40),
+     frame_width  = 1,
+     border_width = 0)
+
+cLabel = #787B86
+cValue = #D1D4DC
+cHead  = #5B8DEF
+
 if showPanel and barstate.islast
     n     = strategy.closedtrades
     wins  = strategy.wintrades
@@ -236,46 +289,62 @@ if showPanel and barstate.islast
     pf    = gl > 0 ? gp / gl : na
     wr    = n > 0 ? 100.0 * wins / n : na
     avgT  = n > 0 ? strategy.netprofit / n : na
-    tpd   = dayCount > 0 ? n * 1.0 / dayCount : na   // *1.0 forces float division
+    tpd   = dayCount > 0 ? n * 1.0 / dayCount : na
     p95   = n > 0 ? 1.0 + 3.5 / math.sqrt(n) : na
     beats = not na(pf) and not na(p95) and pf > p95
+    cVerd = n < 30 ? color.new(cLabel, 0) : beats ? color.new(cUp, 0) : color.new(#F0A030, 0)
 
-    hdr = color.new(color.yellow, 0)
-    txt = color.new(color.white, 0)
+    table.cell(t, 0, 0, "ON RANGE BREAKOUT", text_color = cValue, text_size = size.normal, text_halign = text.align_left)
+    table.cell(t, 1, 0, "RESEARCH",          text_color = cLabel, text_size = size.tiny,   text_halign = text.align_right)
 
-    table.cell(t, 0, 0, "ON RANGE BREAKOUT [RESEARCH]", text_color=hdr, text_size=size.small)
-    table.cell(t, 1, 0, "", text_color=hdr, text_size=size.small)
+    table.cell(t, 0, 1, " ", text_size = size.tiny)
+    table.cell(t, 1, 1, " ", text_size = size.tiny)
 
-    table.cell(t, 0, 1, "Closed trades",  text_color=txt, text_size=size.small)
-    table.cell(t, 1, 1, str.tostring(n),  text_color=txt, text_size=size.small)
+    table.cell(t, 0, 2, "POSITION", text_color = cHead, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(t, 1, 2, inTrade ? (posLong ? "LONG" : "SHORT") : "FLAT",
+         text_color = inTrade ? (posLong ? cUp : cDn) : cLabel, text_size = size.tiny, text_halign = text.align_right)
 
-    table.cell(t, 0, 2, "Trading days",   text_color=txt, text_size=size.small)
-    table.cell(t, 1, 2, str.tostring(dayCount), text_color=txt, text_size=size.small)
+    table.cell(t, 0, 3, "Entry", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 3, inTrade ? str.tostring(entryPx, format.mintick) : "—",
+         text_color = cValue, text_size = size.small, text_halign = text.align_right)
 
-    table.cell(t, 0, 3, "Trades / day",   text_color=txt, text_size=size.small)
-    table.cell(t, 1, 3, na(tpd) ? "—" : str.tostring(tpd, "#.##"), text_color=txt, text_size=size.small)
+    table.cell(t, 0, 4, "Stop loss", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 4, inTrade and not na(stopPx) ? str.tostring(stopPx, format.mintick) : "—",
+         text_color = cDn, text_size = size.small, text_halign = text.align_right)
 
-    table.cell(t, 0, 4, "Win rate",       text_color=txt, text_size=size.small)
-    table.cell(t, 1, 4, na(wr) ? "—" : str.tostring(wr, "#.#") + "%", text_color=txt, text_size=size.small)
+    table.cell(t, 0, 5, "Target", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 5, inTrade and not na(tgtPx) ? str.tostring(tgtPx, format.mintick) : "—",
+         text_color = cUp, text_size = size.small, text_halign = text.align_right)
 
-    table.cell(t, 0, 5, "Profit factor",  text_color=txt, text_size=size.small)
-    table.cell(t, 1, 5, na(pf) ? "—" : str.tostring(pf, "#.##"), text_color=txt, text_size=size.small)
+    table.cell(t, 0, 6, "Risk (pts)", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 6, inTrade and not na(riskPts) ? str.tostring(riskPts, "#.##") : "—",
+         text_color = cValue, text_size = size.small, text_halign = text.align_right)
 
-    table.cell(t, 0, 6, "Avg trade ($)",  text_color=txt, text_size=size.small)
-    table.cell(t, 1, 6, na(avgT) ? "—" : str.tostring(avgT, "#.##"), text_color=txt, text_size=size.small)
+    table.cell(t, 0, 7, " ", text_size = size.tiny)
+    table.cell(t, 1, 7, " ", text_size = size.tiny)
 
-    table.cell(t, 0, 7, "Max drawdown ($)", text_color=txt, text_size=size.small)
-    table.cell(t, 1, 7, str.tostring(strategy.max_drawdown, "#.##"), text_color=txt, text_size=size.small)
+    table.cell(t, 0, 8, "PERFORMANCE", text_color = cHead, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(t, 1, 8, str.tostring(dayCount) + " days", text_color = cLabel, text_size = size.tiny, text_halign = text.align_right)
 
-    table.cell(t, 0, 8, "Chance threshold (PF p95)", text_color=hdr, text_size=size.small)
-    table.cell(t, 1, 8, na(p95) ? "—" : str.tostring(p95, "#.##"), text_color=hdr, text_size=size.small)
+    table.cell(t, 0, 9, "Closed trades", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 9, str.tostring(n), text_color = cValue, text_size = size.small, text_halign = text.align_right)
 
-    table.cell(t, 0, 9, "Verdict",
-         text_color = beats ? color.new(color.lime, 0) : color.new(color.orange, 0),
-         text_size = size.small)
-    table.cell(t, 1, 9, n < 30 ? "TOO FEW TRADES" : beats ? "beats chance (nominal)" : "INSIDE NOISE",
-         text_color = beats ? color.new(color.lime, 0) : color.new(color.orange, 0),
-         text_size = size.small)
+    table.cell(t, 0, 10, "Trades / day", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 10, na(tpd) ? "—" : str.tostring(tpd, "#.##"), text_color = cValue, text_size = size.small, text_halign = text.align_right)
 
-    table.cell(t, 0, 10, "Failed 4 robustness tests — see header", text_color=color.new(color.orange, 0), text_size=size.tiny)
-    table.cell(t, 1, 10, "", text_size=size.tiny)
+    table.cell(t, 0, 11, "Win rate", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 11, na(wr) ? "—" : str.tostring(wr, "#.#") + "%", text_color = cValue, text_size = size.small, text_halign = text.align_right)
+
+    table.cell(t, 0, 12, "Profit factor", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 12, na(pf) ? "—" : str.tostring(pf, "#.00"), text_color = cValue, text_size = size.small, text_halign = text.align_right)
+
+    table.cell(t, 0, 13, "Avg trade / Max DD", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 13, (na(avgT) ? "—" : "$" + str.tostring(avgT, "#.##")) + "  /  $" + str.tostring(strategy.max_drawdown, "#.##"),
+         text_color = cValue, text_size = size.small, text_halign = text.align_right)
+
+    table.cell(t, 0, 14, "Chance threshold (PF p95)", text_color = cHead, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 14, na(p95) ? "—" : str.tostring(p95, "#.00"), text_color = cHead, text_size = size.small, text_halign = text.align_right)
+
+    table.cell(t, 0, 15, "Verdict", text_color = cLabel, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, 15, n < 30 ? "TOO FEW TRADES" : beats ? "BEATS CHANCE" : "INSIDE NOISE",
+         text_color = cVerd, text_size = size.small, text_halign = text.align_right)
