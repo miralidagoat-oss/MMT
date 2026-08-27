@@ -55,3 +55,49 @@ Status key: `RETAINED` / `REJECTED` / `PROMOTED` / `PARKED`
   envelope ($60–120/trade) accepted.
 - **Consequence:** Track A output is *screening*. Any edge that survives it is
   handed to the user for Track B validation, and only Track B can promote it.
+
+---
+
+## P2-001 — Baseline B1, session-VWAP mean reversion (5m)
+
+- **Hypothesis:** price stretched from session VWAP reverts toward it.
+- **Params:** k∈{1.5,2.0,2.5,3.0} σ, stop 1.25 ATR, rr 0.643, cooldown 12, max_hold 48.
+- **Result:** PF 0.72 / 0.79 / 0.75 (moderate cost). **Zero-cost PF 1.01, WR 61.5%
+  vs random-walk expectation 60.9% → no signal content whatsoever.**
+- **Path band:** 0.00–0.02 PF — confirms the Phase 1 viable region works.
+- **Status:** `REJECTED` — no gross edge; not a cost problem.
+
+## P2-002 — Engine validation + null calibration
+
+- Random entries reproduce the theoretical WR 60.9% / PF 1.00 → engine unbiased.
+- **Null PF p95: 1.31 at ~170 trades; 1.52 at ~70 trades. Null WR p95 at ~70
+  trades = 69.7%.** The brief's 70% WR / 1.5 PF targets are inside the chance
+  band at these sample sizes.
+- **Status:** `RETAINED` — this null is the yardstick for every later result.
+
+## P3-001 — Family premise battery (A1, B2, C1, C2, VWAP) on 1h and 5m
+
+- 18 a-priori configurations per timeframe, all reported, judged against a null
+  calibrated on the same series at the same trade count, Bonferroni K=18.
+- **1h (612 trading days, up to 1,655 trades): 0 of 18 survive.**
+- **5m (45 usable days): 0 of 18 survive.**
+- Caught trap: VWAP fade k=2.5 confirm=True on 1h shows PF ∞ / 100% WR at n=10;
+  null p95 at n≈15 is 2.28. Pure noise.
+- **Bug found and fixed:** the opening-range window [570,600) does not exist on
+  this feed's 1h bars (they align to :00), so B2-OR silently produced 0 trades
+  and read as a loss. `add_levels` is now parametrised per timeframe and the
+  battery was re-run. Untested is not the same as disproven.
+- **Status:** `REJECTED` for all tested families.
+
+## P3-002 — Kill-test of the best candidate (B2 overnight-range continuation, 5m)
+
+- Headline: n=150, WR 67.3%, PF 1.40, 3.3 trades/day — meets most brief targets.
+- Survives costs (PF 1.24 harsh). Fails everything else:
+  - same rule on 1h, 794 trades: **PF 0.84** (sign inverts on the larger sample);
+  - screen→holdout: **PF 1.50 → 1.03**;
+  - **49% of total profit from a single hour (13 ET), 19 trades at 89.5% WR**,
+    while 09/11/15 ET are negative.
+- **Status:** `REJECTED` — profit concentration + holdout collapse.
+- **Fair caveat logged:** 5m and 1h breakouts are not identical trades, so the
+  sign inversion alone would not be conclusive; the holdout and concentration
+  results are what settle it.
