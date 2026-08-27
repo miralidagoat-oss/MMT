@@ -333,6 +333,33 @@ Two advisory long lines remain (39, 54) plus one at 304; each is a single
 string literal that cannot be wrapped without splitting the string, which would
 be a code edit rather than a formatting one. They were left alone.
 
+### Compile/runtime errors fixed
+
+TradingView reported two failures that the offline checks could not catch:
+
+1. **`str.substring` out of bounds (CE10276)** -- *Invalid value "1" for
+   "begin_pos" ... It must be >= 0 or lower than the "source" length: (0)*.
+   In `isPhase9Contract`, `yearCode` is `""` whenever `validLength` is false,
+   which is exactly the shipped state (`FROZEN_EXECUTION_CONTRACT` is the
+   10-character `"UNASSIGNED"`). Pine folds const arguments and evaluates the
+   `if validLength` body anyway, so `str.substring(yearCode, 1, 2)` indexed
+   into an empty string. Fixed by slicing a guaranteed six-character surrogate
+   (`safeName`); `validLength` alone still decides the verdict.
+2. **`shorttitle` too long** -- 15 characters, limit is 10. `"MNQ UNVALIDATED"`
+   became `"MNQ UNVAL"` (9).
+
+`isLowerHexSha256` carried the identical latent bug -- a hard-coded
+`for index = 0 to 63` against `FROZEN_RULE_SHA256 = "UNASSIGNED"` -- and would
+have crashed as soon as the first fix landed. Its loop is now bounded by the
+string's real length. `isAuthorizationId` got the same length guard so all
+three validators are uniformly safe against const folding.
+
+Equivalence was checked over 1,240 inputs (real contract codes, placeholders,
+boundary lengths, random junk): **zero behaviour differences** between the old
+and new validators on every input the old code could evaluate without
+crashing. `isPhase9Contract("MNQU26")` is still `true`;
+`isPhase9Contract("UNASSIGNED")` is now `false` instead of a crash.
+
 ### Proof the reformat changed no logic
 
 Renaming and moving code is only safe if it provably preserves behaviour. The
@@ -340,7 +367,8 @@ original was re-parsed, the same rename map applied to it, and the result
 compared against the committed file:
 
 - statement multiset identical (nothing added or removed)
-- token count identical: **2,626 before, 2,626 after**
+- token count identical: **2,626 before, 2,626 after** (measured before
+  the bounds fixes above, which intentionally alter these three functions)
 - token multiset identical
 - token *sequence* differs by exactly one `insert` + one `delete` opcode -- the
   signature of a single contiguous block relocation, i.e. the alerts move and

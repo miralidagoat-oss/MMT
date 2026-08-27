@@ -1,7 +1,7 @@
 //@version=6
 indicator(
      "MNQ 5m ETH Final Indicator Scaffold - UNVALIDATED",
-     shorttitle = "MNQ UNVALIDATED",
+     shorttitle = "MNQ UNVAL",
      overlay = true,
      max_labels_count = 500)
 
@@ -99,34 +99,42 @@ validBracket(int direction, float entryPrice, float stopPrice, float targetPrice
     complete and (longGeometry or shortGeometry)
 
 isLowerHexSha256(string value) =>
-    bool valid = str.length(value) == 64
-    if valid
-        for index = 0 to 63
+    int valueLength = str.length(value)
+    bool valid = valueLength == 64
+    // Bound the scan by the actual length, never a hard-coded 63. Pine folds
+    // const arguments and evaluates this block even when valid is false, so a
+    // placeholder such as "UNASSIGNED" would otherwise index past its end.
+    if valid and valueLength > 0
+        for index = 0 to valueLength - 1
             string character = str.substring(value, index, index + 1)
             valid := valid and str.contains("0123456789abcdef", character)
     valid
 
 isPhase9Contract(string contractName) =>
     bool validLength = str.length(contractName) == 6
-    string rootCode = validLength ? str.substring(contractName, 0, 3) : ""
-    string monthCode = validLength ? str.substring(contractName, 3, 4) : ""
-    string yearCode = validLength ? str.substring(contractName, 4, 6) : ""
+    // Every slice below reads a fixed index, so it must never see a shorter
+    // string. Substituting a well-formed six-character surrogate keeps all
+    // indices in bounds; validLength alone still decides the verdict.
+    string safeName = validLength ? contractName : "MNQZ00"
+    string rootCode = str.substring(safeName, 0, 3)
+    string monthCode = str.substring(safeName, 3, 4)
+    string firstYearDigit = str.substring(safeName, 4, 5)
+    string secondYearDigit = str.substring(safeName, 5, 6)
     bool validMonth =
          monthCode == "H" or monthCode == "M" or
          monthCode == "U" or monthCode == "Z"
-    bool validYear = false
-    if validLength
-        string firstYearDigit = str.substring(yearCode, 0, 1)
-        string secondYearDigit = str.substring(yearCode, 1, 2)
-        validYear :=
-             str.contains("0123456789", firstYearDigit) and
-             str.contains("0123456789", secondYearDigit)
+    bool validYear =
+         str.contains("0123456789", firstYearDigit) and
+         str.contains("0123456789", secondYearDigit)
     validLength and rootCode == "MNQ" and validMonth and validYear
 
 isAuthorizationId(string value) =>
     int valueLength = str.length(value)
     bool valid = valueLength >= 1 and valueLength <= 96
-    if valid
+    // valid already implies a non-empty string; the explicit length guard keeps
+    // the slices in bounds even when Pine folds a const argument and evaluates
+    // this block anyway.
+    if valid and valueLength > 0
         string firstCharacter = str.substring(value, 0, 1)
         valid := str.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", firstCharacter)
         for index = 0 to valueLength - 1
