@@ -55,7 +55,10 @@ strategy("MNQ 5m ETH — ON Range Breakout [RESEARCH]",
      process_orders_on_close = false,
      margin_long          = 0,
      margin_short         = 0,
-     pyramiding           = 0)
+     pyramiding           = 0,
+     max_labels_count     = 500,
+     max_boxes_count      = 500,
+     max_lines_count      = 500)
 
 // ─────────────────────────── inputs ────────────────────────────
 gRES = "1 · Research window (for in-sample / out-of-sample splits)"
@@ -210,40 +213,77 @@ if strategy.position_size != 0 and (heldBars >= maxHoldBars or eodFlat)
 // ───────────────────────────── plotting ──────────────────────────────
 // DISPLAY ONLY. Nothing from here down feeds a signal, an order, or a filter.
 
-// Palette — three hues and a neutral, so the chart reads at a glance.
+// Palette — two hues and a neutral.
 cUp    = #26A69A
 cDn    = #EF5350
 cRange = #5B8DEF
 cLine  = #B2B5BE
 
-// Live trade levels. The bracket is sent as tick-relative loss/profit measured
-// from the fill, so these lines sit exactly where the working orders are.
+// Overnight range as one soft band.
+pOnH = plot(showRange and onValid ? onH : na, "Overnight high",
+     color.new(cRange, 35), 1, plot.style_linebr)
+pOnL = plot(showRange and onValid ? onL : na, "Overnight low",
+     color.new(cRange, 35), 1, plot.style_linebr)
+fill(pOnH, pOnL, color = color.new(cRange, 95), title = "Overnight range")
+
+// ── BUY / SELL markers with the TP and SL bracket ──
+// A trade is "new" when the combined open+closed count rises. Counting both
+// matters: 30.7% of trades open and close inside one bar, and watching
+// strategy.opentrades alone would never see those, so a third of the BUY/SELL
+// markers would simply be missing from the chart.
+tradeCount = strategy.opentrades + strategy.closedtrades
+newTrade   = tradeCount > nz(tradeCount[1])
+
+var box   bxRew   = na
+var box   bxRisk  = na
+var bool  drawing = false
+
+if showLevels and newTrade
+    liveNow = strategy.opentrades > 0
+    ci      = math.max(strategy.closedtrades - 1, 0)
+    // Entry price and direction, read from the open position when there is one
+    // and from the closed-trade ledger when the trade already resolved.
+    ePx = liveNow ? strategy.position_avg_price
+         : strategy.closedtrades > 0 ? strategy.closedtrades.entry_price(ci) : na
+    eDir = liveNow ? (strategy.position_size > 0 ? 1 : -1)
+         : strategy.closedtrades > 0 ? (strategy.closedtrades.size(ci) > 0 ? 1 : -1) : 0
+
+    if not na(ePx) and not na(riskPts) and eDir != 0
+        slPx = ePx - eDir * riskPts
+        tpPx = ePx + eDir * riskPts * rr
+
+        bxRew := box.new(bar_index, math.max(ePx, tpPx), bar_index + 1, math.min(ePx, tpPx),
+             border_color = color.new(cUp, 55), border_width = 1,
+             bgcolor = color.new(cUp, 88))
+        bxRisk := box.new(bar_index, math.max(ePx, slPx), bar_index + 1, math.min(ePx, slPx),
+             border_color = color.new(cDn, 55), border_width = 1,
+             bgcolor = color.new(cDn, 88))
+        drawing := liveNow
+
+        label.new(bar_index, eDir > 0 ? low : high,
+             eDir > 0 ? "BUY" : "SELL",
+             style     = eDir > 0 ? label.style_label_up : label.style_label_down,
+             color     = eDir > 0 ? cUp : cDn,
+             textcolor = color.white,
+             size      = size.small,
+             tooltip   = "Entry " + str.tostring(ePx, format.mintick) +
+                         "\nTP " + str.tostring(tpPx, format.mintick) +
+                         "\nSL " + str.tostring(slPx, format.mintick))
+
+// Stretch the bracket to the right while the trade is live, then stop.
+if drawing and not na(bxRew)
+    box.set_right(bxRew, bar_index + 1)
+    box.set_right(bxRisk, bar_index + 1)
+    if strategy.opentrades == 0
+        drawing := false
+
+// ── Price tags for the trade that is open right now ──
 inTrade = strategy.position_size != 0
 posLong = strategy.position_size > 0
 entryPx = inTrade ? strategy.position_avg_price : na
 stopPx  = inTrade and not na(riskPts) ? (posLong ? entryPx - riskPts : entryPx + riskPts) : na
 tgtPx   = inTrade and not na(riskPts) ? (posLong ? entryPx + riskPts * rr : entryPx - riskPts * rr) : na
 
-// Overnight range as one soft band rather than two loud lines.
-pOnH = plot(showRange and onValid ? onH : na, "Overnight high",
-     color.new(cRange, 30), 1, plot.style_linebr)
-pOnL = plot(showRange and onValid ? onL : na, "Overnight low",
-     color.new(cRange, 30), 1, plot.style_linebr)
-fill(pOnH, pOnL, color = color.new(cRange, 94), title = "Overnight range")
-
-// Entry, stop and target, with the risk and reward zones shaded behind them.
-pEntry = plot(showLevels ? entryPx : na, "Entry",     color.new(cLine, 20), 1, plot.style_linebr)
-pStop  = plot(showLevels ? stopPx  : na, "Stop loss", color.new(cDn, 0),    2, plot.style_linebr)
-pTgt   = plot(showLevels ? tgtPx   : na, "Target",    color.new(cUp, 0),    2, plot.style_linebr)
-fill(pEntry, pStop, color = color.new(cDn, 90), title = "Risk zone")
-fill(pEntry, pTgt,  color = color.new(cUp, 90), title = "Reward zone")
-
-plotshape(longSig  and allowNew and enableLongs,  "Long signal",  shape.triangleup,
-     location.belowbar, color.new(cUp, 0), size = size.tiny)
-plotshape(shortSig and allowNew and enableShorts, "Short signal", shape.triangledown,
-     location.abovebar, color.new(cDn, 0), size = size.tiny)
-
-// Price tags at the right edge, so the stop is readable without hovering.
 var label lbEntry = na
 var label lbStop  = na
 var label lbTgt   = na
@@ -253,18 +293,15 @@ if showLevels and barstate.islast
     label.delete(lbStop)
     label.delete(lbTgt)
     if inTrade
-        lbEntry := label.new(bar_index + 3, entryPx,
-             "ENTRY  " + str.tostring(entryPx, format.mintick),
+        lbEntry := label.new(bar_index + 4, entryPx, str.tostring(entryPx, format.mintick),
              xloc = xloc.bar_index, style = label.style_label_left,
-             color = color.new(#1E222D, 20), textcolor = cLine, size = size.small)
-        lbStop := label.new(bar_index + 3, stopPx,
-             "STOP  " + str.tostring(stopPx, format.mintick),
+             color = color.new(#1E222D, 15), textcolor = cLine, size = size.small)
+        lbTgt := label.new(bar_index + 4, tgtPx, "TP  " + str.tostring(tgtPx, format.mintick),
              xloc = xloc.bar_index, style = label.style_label_left,
-             color = color.new(cDn, 15), textcolor = color.white, size = size.small)
-        lbTgt := label.new(bar_index + 3, tgtPx,
-             "TARGET  " + str.tostring(tgtPx, format.mintick),
+             color = color.new(cUp, 10), textcolor = color.white, size = size.small)
+        lbStop := label.new(bar_index + 4, stopPx, "SL  " + str.tostring(stopPx, format.mintick),
              xloc = xloc.bar_index, style = label.style_label_left,
-             color = color.new(cUp, 15), textcolor = color.white, size = size.small)
+             color = color.new(cDn, 10), textcolor = color.white, size = size.small)
 
 // ────────────────────────── statistics panel ─────────────────────────
 // The chance threshold is the point of this panel. PF p95 ≈ 1 + 3.5/sqrt(n) was
