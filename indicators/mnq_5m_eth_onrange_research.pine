@@ -63,8 +63,8 @@ useWindow = input.bool(false, "Limit backtest to a date window", group=gRES,
      tooltip="Turn on to run a specific slice. Develop on one window, then test " +
              "an untouched later window ONCE. If you change anything after seeing " +
              "the untouched result, it is no longer out-of-sample.")
-startTime = input.time(timestamp(2024, 1, 1, 0, 0), "Window start", group=gRES)
-endTime   = input.time(timestamp(2030, 1, 1, 0, 0), "Window end",   group=gRES)
+startTime = input.time(timestamp("01 Jan 2024 00:00 -0500"), "Window start", group=gRES)
+endTime   = input.time(timestamp("01 Jan 2030 00:00 -0500"), "Window end",   group=gRES)
 
 gSES = "2 · ETH session (America/New_York)"
 onStartMin = input.int(1080, "Overnight range starts (min past ET midnight)", minval=0, maxval=1439,
@@ -154,10 +154,16 @@ shortSig = onValid and not na(atr) and close < onL - marginATR * atr
 // re-fire repeatedly into the same move.
 var float riskPts = na
 
-flat        = strategy.position_size == 0
-nClosed     = strategy.closedtrades
-lastExitBar = nClosed > 0 ? strategy.closedtrades.exit_bar_index(nClosed - 1) : -100000
-heldBars    = strategy.opentrades > 0 ? bar_index - strategy.opentrades.entry_bar_index(0) : 0
+flat    = strategy.position_size == 0
+nClosed = strategy.closedtrades
+
+// math.max keeps the index non-negative even when the ternary's false branch is
+// the live one, and nz() absorbs an na from an index the ledger does not hold.
+lastIdx     = math.max(nClosed - 1, 0)
+lastExitBar = nClosed > 0 ? nz(strategy.closedtrades.exit_bar_index(lastIdx), -100000) : -100000
+
+openEntry = strategy.opentrades > 0 ? strategy.opentrades.entry_bar_index(0) : na
+heldBars  = na(openEntry) ? 0 : bar_index - openEntry
 
 coolOK  = (bar_index - lastExitBar) > cooldownBars
 eodFlat = etm >= eodMin and etm < onStartMin
@@ -214,6 +220,10 @@ plotshape(shortSig and allowNew and enableShorts, "Short signal", shape.triangle
 bgcolor(onValid ? color.new(color.blue, 96) : na, title="Range active")
 
 // ────────────────────────── statistics panel ─────────────────────────
+var table t = table.new(position.top_right, 2, 11,
+     bgcolor = color.new(color.black, 15), border_width = 1,
+     border_color = color.new(color.gray, 60))
+
 // The null threshold is the point of this panel. PF p95 ≈ 1 + 3.5/sqrt(n) was
 // fitted to Monte-Carlo random-entry runs on the real MNQ series at this payoff
 // (measured: 1.45 @ n=70, 1.32 @ n=128, 1.26 @ n=200, 1.19 @ n=313, 1.14 @ n=514).
@@ -226,13 +236,9 @@ if showPanel and barstate.islast
     pf    = gl > 0 ? gp / gl : na
     wr    = n > 0 ? 100.0 * wins / n : na
     avgT  = n > 0 ? strategy.netprofit / n : na
-    tpd   = dayCount > 0 ? n / math.max(dayCount, 1) : na
+    tpd   = dayCount > 0 ? n * 1.0 / dayCount : na   // *1.0 forces float division
     p95   = n > 0 ? 1.0 + 3.5 / math.sqrt(n) : na
     beats = not na(pf) and not na(p95) and pf > p95
-
-    var table t = table.new(position.top_right, 2, 11,
-         bgcolor = color.new(color.black, 15), border_width = 1,
-         border_color = color.new(color.gray, 60))
 
     hdr = color.new(color.yellow, 0)
     txt = color.new(color.white, 0)

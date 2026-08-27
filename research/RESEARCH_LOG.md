@@ -150,3 +150,19 @@ Also: `timestamp()` switched to the numeric form; dead `lossTicks` removed.
 The stats panel computes the **chance threshold** live, PF p95 ≈ 1 + 3.5/√n
 (fitted to the measured null: 1.45@70, 1.32@128, 1.26@200, 1.19@313, 1.14@514),
 and labels the result INSIDE NOISE unless it clears that line.
+
+## P4-004 — Pine compile fix (CE10123) and a type sweep
+
+- **Reported:** `input.time` rejected `timestamp(2024, 1, 1, 0, 0)` — the numeric
+  overload returns `simple int`, but `input.time(defval)` requires `const int`.
+- **Cause:** self-inflicted. P4-003 "fixed" the working string form into the
+  numeric form. The string form `timestamp("01 Jan 2024 00:00 -0500")` yields a
+  const int and is the documented idiom. Reverted.
+- **Swept for the same class of defect while in there:**
+  - `strategy.closedtrades.exit_bar_index(nClosed - 1)` could be handed index −1
+    when the ledger is empty; now clamped with `math.max(..., 0)` and wrapped in
+    `nz()`. Same guard for `strategy.opentrades.entry_bar_index(0)`.
+  - `var table` moved from inside a conditional to global scope (documented form).
+  - **`tpd = n / dayCount` was int/int**, which truncates in Pine — trades/day
+    would have displayed `3` instead of `3.31`. Forced to float.
+- **Status:** `RETAINED`. Remaining divisions all carry a float operand; verified.
