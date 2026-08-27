@@ -300,18 +300,21 @@ bool environmentOk =
      isFiveMinute and isStandardChart and isFuturesInstrument and isMnqTicker and
      isIndividualContractChart and isMnqTick and isMnqPointValue
 
-if barstate.isfirst and not isFiveMinute
-    runtime.error("This scaffold requires a 5-minute chart.")
-if barstate.isfirst and not isStandardChart
-    runtime.error("This scaffold requires standard candles.")
-if barstate.isfirst and not isFuturesInstrument
-    runtime.error("This scaffold requires a futures instrument.")
-if barstate.isfirst and not isMnqTicker
-    runtime.error("This scaffold requires an individual MNQ contract chart.")
-if barstate.isfirst and not isIndividualContractChart
-    runtime.error("Continuous futures symbols are forbidden; use the frozen individual MNQ contract.")
-if barstate.isfirst and (not isMnqTick or not isMnqPointValue)
-    runtime.error("Unexpected MNQ metadata. Expected 0.25 tick and $2 point value.")
+// Report the first failing environment check instead of halting through
+// runtime.error(). Every condition above already feeds environmentOk, which
+// gates releaseGatesOpen and therefore every event and alert in this script,
+// so the fail-closed guarantee is unchanged. A halted script cannot draw the
+// status table, which is the only surface that explains why it is blocked.
+string environmentIssue =
+     not isFiveMinute ? "BLOCKED: requires a 5-minute chart" :
+     not isStandardChart ? "BLOCKED: requires standard candles" :
+     not isFuturesInstrument ? "BLOCKED: requires a futures instrument" :
+     not isMnqTicker ? "BLOCKED: requires an MNQ contract chart" :
+     not isIndividualContractChart ?
+         "BLOCKED: continuous symbol; load a dated MNQ contract" :
+     not isMnqTick or not isMnqPointValue ?
+         "BLOCKED: expected 0.25 tick and $2 point value" :
+     "OK"
 
 int chicagoMinuteOfDay =
      hour(time, EXCHANGE_TZ) * 60 + minute(time, EXCHANGE_TZ)
@@ -528,7 +531,7 @@ plot(
      color = color.new(color.green, 100),
      display = display.data_window)
 
-var table status = table.new(position.top_right, 2, 15, border_width = 1)
+var table status = table.new(position.top_right, 2, 16, border_width = 1)
 if barstate.islast
     color headerColor = color.rgb(112, 18, 18)
     string gateStatus =
@@ -563,6 +566,8 @@ if barstate.islast
     table.cell(status, 1, 13, setupTraceCode)
     table.cell(status, 0, 14, "Frozen symbol/input profile")
     table.cell(status, 1, 14, boolText(runtimeInputsMatchFrozenProfile))
+    table.cell(status, 0, 15, "Chart environment")
+    table.cell(status, 1, 15, environmentIssue)
 
 var string lastDispatchedSignalId = ""
 bool dispatchAlert =

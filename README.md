@@ -360,6 +360,28 @@ and new validators on every input the old code could evaluate without
 crashing. `isPhase9Contract("MNQU26")` is still `true`;
 `isPhase9Contract("UNASSIGNED")` is now `false` instead of a crash.
 
+### Environment halts converted to a reportable diagnostic
+
+`runtime.error()` fired on bar 0 for any chart failing an environment check --
+most commonly a continuous symbol like `MNQ1!`, which TradingView opens by
+default for MNQ. Halting on bar 0 stops the script before it can draw the
+status table, so the one surface that explains *why* it is blocked never
+renders. The six halts were also redundant: every condition they tested
+already feeds `environmentOk`, which gates `releaseGatesOpen` and therefore
+every event and alert.
+
+They are now a single `environmentIssue` string reporting the first failing
+check, surfaced as a "Chart environment" row in the status table. Verified
+that the fail-closed guarantee is unchanged: with every governance gate
+satisfied but a continuous chart loaded, `environmentOk` is false,
+`releaseGatesOpen` is false and the run produces 0 events and 0 alerts --
+without any halt.
+
+To pass the environment gate, load a dated contract (e.g.
+`CME_MINI:MNQU2026`) on a 5-minute standard-candle chart. Note the release
+gate stays BLOCKED regardless while `FROZEN_TICKER_ID` and the other identity
+constants are `UNASSIGNED`.
+
 ### Proof the reformat changed no logic
 
 Renaming and moving code is only safe if it provably preserves behaviour. The
