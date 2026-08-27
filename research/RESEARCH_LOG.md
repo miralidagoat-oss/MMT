@@ -101,3 +101,52 @@ Status key: `RETAINED` / `REJECTED` / `PROMOTED` / `PARKED`
 - **Fair caveat logged:** 5m and 1h breakouts are not identical trades, so the
   sign inversion alone would not be conclusive; the holdout and concentration
   results are what settle it.
+
+---
+
+## P4-001 — Causality fix to the engine's gap guard
+
+- **Defect:** `run()` suppressed a signal using `nxt.f["gap_atr"]` — the *entry*
+  bar's gap — while deciding at the signal bar's close. That consults the entry
+  bar's open, which is not in hand when a market-on-close order is placed.
+- **Fix:** the gap test now reads the signal bar's own gap. The session-boundary
+  test still reads `nxt.day`, which is legitimate: the calendar is known ahead.
+- **Effect:** null distribution unchanged (identical seeds, identical output);
+  candidate 1h result moved 0.84 → 0.85. Immaterial, but it was wrong.
+- **Status:** `RETAINED`.
+
+## P4-002 — Parameter sensitivity of the ON-range candidate
+
+- 45-cell grid over stop ∈ {0.75…2.0} ATR, rr ∈ {0.643, 1.0, 1.5}, margin ∈ {0, 0.25, 0.5}.
+- The PF 1.32 default is a **spike, not a plateau**: neighbours are 0.91
+  (stop 1.00) and 1.13 (stop 1.50); margin 0.25 drops it to 1.12. Only
+  **16 of 45 cells clear PF 1.2** — fails the Phase 1 promotion gate of ≥60%.
+- Highest cells cluster in a different corner (stop 2.0 / rr 1.5), i.e. the
+  surface wanders without structure.
+- **Status:** `REJECTED` — fourth independent failure for this candidate.
+
+## P4-003 — Pine v6 research instrument, with three defects found and fixed
+
+Published `indicators/mnq_5m_eth_onrange_research.pine` as a **research
+instrument**, not a trading recommendation. Bugs caught during the audit:
+
+1. **Entry-bar exposure.** Measured: **30.7% of trades resolve on the entry bar.**
+   A bracket built from `strategy.position_avg_price` can only be placed at the
+   close of the entry bar and cannot act during it, so ~a third of trades would
+   diverge from the Python model. Fixed by arming `strategy.exit` on the signal
+   bar with tick-relative `loss`/`profit`, which attach to the entry order and
+   go live the moment it fills.
+2. **End-of-day flatten filling after the break.** `strategy.close_all()` at a
+   bar's close fills at the *next* bar's open; triggering at 16:55 ET would fill
+   at the 18:00 ET reopen, carrying the position across the maintenance break.
+   Default moved to 16:45 ET so the fill lands inside the session.
+3. **Cooldown silently disabled.** `justShut` used a `position_size[1] != 0`
+   transition, which never fires for a trade that opens and closes within one
+   bar — i.e. for 30.7% of trades. Rebuilt from the trade ledger
+   (`strategy.closedtrades.exit_bar_index`).
+
+Also: `timestamp()` switched to the numeric form; dead `lossTicks` removed.
+
+The stats panel computes the **chance threshold** live, PF p95 ≈ 1 + 3.5/√n
+(fitted to the measured null: 1.45@70, 1.32@128, 1.26@200, 1.19@313, 1.14@514),
+and labels the result INSIDE NOISE unless it clears that line.

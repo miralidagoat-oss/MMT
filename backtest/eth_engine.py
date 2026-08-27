@@ -129,7 +129,11 @@ def run(bars, signal_fn, *, stop_atr=1.25, rr=0.643, cost="moderate",
 
         nxt = bars[i + 1]
         # Never trade across a session break or a splice discontinuity (§1.3).
-        if nxt.day != b.day or nxt.f.get("gap_atr", 0.0) > gap_guard:
+        # The gap test reads the SIGNAL bar's own gap, not the entry bar's.
+        # Reading nxt.gap_atr here would decide the trade using the entry bar's
+        # open - information not in hand when the order is placed at bar i's
+        # close. The session-boundary test is fine: the calendar is known ahead.
+        if nxt.day != b.day or b.f.get("gap_atr", 0.0) > gap_guard:
             res.suppressed_gap += 1
             i += 1
             continue
