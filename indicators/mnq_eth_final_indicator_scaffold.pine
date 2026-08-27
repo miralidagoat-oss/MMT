@@ -27,56 +27,56 @@ const string GROUP_DIRECTION = "Direction controls"
 const string GROUP_SESSION = "Session controls"
 const string GROUP_DISPLAY = "Display and diagnostics"
 
-bool armFrozenSignalDisplay = input.bool(
+bool armFrozenSignalDisplayInput = input.bool(
      false,
      "Arm frozen-rule signal display",
      tooltip = "Has no effect while this scaffold is UNVALIDATED and UNASSIGNED.",
      group = GROUP_GATES)
 
-bool calendarRollManifestConfirmed = input.bool(
+bool calendarRollManifestConfirmedInput = input.bool(
      false,
      "Confirm current CME calendar and roll gate",
      tooltip = "Fail-closed operator attestation. It does not replace the external calendar/roll manifest.",
      group = GROUP_GATES)
 
-bool enableAlerts = input.bool(
+bool enableAlertsInput = input.bool(
      false,
      "Enable deterministic alert() messages",
      tooltip = "Keep disabled until the frozen strategy/indicator parity test passes.",
      group = GROUP_GATES)
 
-bool allowLong = input.bool(true, "Enable long events", group = GROUP_DIRECTION)
-bool allowShort = input.bool(true, "Enable short events", group = GROUP_DIRECTION)
+bool allowLongInput = input.bool(true, "Enable long events", group = GROUP_DIRECTION)
+bool allowShortInput = input.bool(true, "Enable short events", group = GROUP_DIRECTION)
 
-string configuredSignalSession = input.session(
+string configuredSignalSessionInput = input.session(
      "1700-1600",
      "Allowed ETH signal session",
      tooltip = "Interpreted in America/Chicago. The explicit CME week clock also removes the daily break and weekend.",
      group = GROUP_SESSION)
 
-bool showEntryMarkers = input.bool(true, "Show entry markers", group = GROUP_DISPLAY)
-bool showExitMarkers = input.bool(true, "Show exit markers", group = GROUP_DISPLAY)
-bool showRiskLines = input.bool(true, "Show entry/stop/target plots", group = GROUP_DISPLAY)
-bool shadeBlockedBars = input.bool(true, "Shade blocked bars", group = GROUP_DISPLAY)
-bool debugMode = input.bool(false, "Debug values in Data Window", group = GROUP_DISPLAY)
+bool showEntryMarkersInput = input.bool(true, "Show entry markers", group = GROUP_DISPLAY)
+bool showExitMarkersInput = input.bool(true, "Show exit markers", group = GROUP_DISPLAY)
+bool showRiskLinesInput = input.bool(true, "Show entry/stop/target plots", group = GROUP_DISPLAY)
+bool shadeBlockedBarsInput = input.bool(true, "Shade blocked bars", group = GROUP_DISPLAY)
+bool debugModeInput = input.bool(false, "Debug values in Data Window", group = GROUP_DISPLAY)
 
 // =============================================================================
 // DETERMINISTIC, NON-ALPHA HELPERS
 // =============================================================================
 
-f_roundToTick(float value) =>
+roundToTick(float value) =>
     na(value) ? na : math.round(value / syminfo.mintick) * syminfo.mintick
 
-f_jsonNumber(float value) =>
+jsonNumber(float value) =>
     na(value) ? "null" : str.tostring(value, format.mintick)
 
-f_boolText(bool value) =>
+boolText(bool value) =>
     value ? "YES" : "NO"
 
-f_utcTimestamp(int timestamp) =>
+utcTimestamp(int timestamp) =>
     str.format_time(timestamp, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
 
-f_isCmeWeekClockOpen(int exchangeDay, int minuteOfDay) =>
+isCmeWeekClockOpen(int exchangeDay, int minuteOfDay) =>
     bool sundayOpen =
          exchangeDay == dayofweek.sunday and minuteOfDay >= 17 * 60
     bool mondayThroughThursdayOpen =
@@ -87,7 +87,7 @@ f_isCmeWeekClockOpen(int exchangeDay, int minuteOfDay) =>
          exchangeDay == dayofweek.friday and minuteOfDay < 16 * 60
     sundayOpen or mondayThroughThursdayOpen or fridayOpen
 
-f_validBracket(int direction, float entryPrice, float stopPrice, float targetPrice) =>
+validBracket(int direction, float entryPrice, float stopPrice, float targetPrice) =>
     bool complete =
          not na(entryPrice) and
          not na(stopPrice) and
@@ -98,7 +98,7 @@ f_validBracket(int direction, float entryPrice, float stopPrice, float targetPri
          direction == -1 and targetPrice < entryPrice and entryPrice < stopPrice
     complete and (longGeometry or shortGeometry)
 
-f_isLowerHexSha256(string value) =>
+isLowerHexSha256(string value) =>
     bool valid = str.length(value) == 64
     if valid
         for index = 0 to 63
@@ -106,7 +106,7 @@ f_isLowerHexSha256(string value) =>
             valid := valid and str.contains("0123456789abcdef", character)
     valid
 
-f_isPhase9Contract(string contractName) =>
+isPhase9Contract(string contractName) =>
     bool validLength = str.length(contractName) == 6
     string rootCode = validLength ? str.substring(contractName, 0, 3) : ""
     string monthCode = validLength ? str.substring(contractName, 3, 4) : ""
@@ -123,7 +123,7 @@ f_isPhase9Contract(string contractName) =>
              str.contains("0123456789", secondYearDigit)
     validLength and rootCode == "MNQ" and validMonth and validYear
 
-f_isAuthorizationId(string value) =>
+isAuthorizationId(string value) =>
     int valueLength = str.length(value)
     bool valid = valueLength >= 1 and valueLength <= 96
     if valid
@@ -134,7 +134,7 @@ f_isAuthorizationId(string value) =>
             valid := valid and str.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-", character)
     valid
 
-f_signalId(
+buildSignalId(
      string strategyVersion,
      string contractName,
      string commandName,
@@ -143,7 +143,7 @@ f_signalId(
     strategyVersion + ":" + contractName + ":" + commandName + ":" +
          str.tostring(eventTimestamp) + ":" + sideName
 
-f_buildEntryPayload(
+buildEntryPayload(
      string strategyVersion,
      string contractName,
      string authorizationId,
@@ -153,14 +153,14 @@ f_buildEntryPayload(
      float stopPrice,
      float targetPrice,
      int eventTimestamp) =>
-    string signalId = f_signalId(
+    string signalId = buildSignalId(
          strategyVersion,
          contractName,
          "ENTRY",
          sideName,
          eventTimestamp)
-    string signalTimestamp = f_utcTimestamp(eventTimestamp)
-    string expiresAt = f_utcTimestamp(eventTimestamp + ALERT_EXPIRY_MS)
+    string signalTimestamp = utcTimestamp(eventTimestamp)
+    string expiresAt = utcTimestamp(eventTimestamp + ALERT_EXPIRY_MS)
     "{" +
          "\"schema_version\":\"" + ENTRY_SCHEMA_VERSION + "\"," +
          "\"command\":\"ENTRY\"," +
@@ -171,9 +171,9 @@ f_buildEntryPayload(
          "\"side\":\"" + sideName + "\"," +
          "\"order_type\":\"MARKET\"," +
          "\"quantity\":" + str.tostring(CONTRACT_QUANTITY) + "," +
-         "\"stop_price\":" + f_jsonNumber(stopPrice) + "," +
-         "\"target_price\":" + f_jsonNumber(targetPrice) + "," +
-         "\"entry_price\":" + f_jsonNumber(expectedEntryPrice) + "," +
+         "\"stop_price\":" + jsonNumber(stopPrice) + "," +
+         "\"target_price\":" + jsonNumber(targetPrice) + "," +
+         "\"entry_price\":" + jsonNumber(expectedEntryPrice) + "," +
          "\"timestamp\":\"" + signalTimestamp + "\"," +
          "\"expires_at\":\"" + expiresAt + "\"," +
          "\"signal_id\":\"" + signalId + "\"," +
@@ -181,7 +181,7 @@ f_buildEntryPayload(
          "\"authorization_sha256\":\"" + authorizationSha256 + "\"" +
          "}"
 
-f_buildExitPayload(
+buildExitPayload(
      string strategyVersion,
      string contractName,
      string authorizationId,
@@ -189,14 +189,14 @@ f_buildExitPayload(
      string sideName,
      string exitReason,
      int eventTimestamp) =>
-    string signalId = f_signalId(
+    string signalId = buildSignalId(
          strategyVersion,
          contractName,
          "EXIT",
          sideName,
          eventTimestamp)
-    string signalTimestamp = f_utcTimestamp(eventTimestamp)
-    string expiresAt = f_utcTimestamp(eventTimestamp + ALERT_EXPIRY_MS)
+    string signalTimestamp = utcTimestamp(eventTimestamp)
+    string expiresAt = utcTimestamp(eventTimestamp + ALERT_EXPIRY_MS)
     "{" +
          "\"schema_version\":\"" + EXIT_SCHEMA_VERSION + "\"," +
          "\"command\":\"EXIT\"," +
@@ -240,37 +240,37 @@ const string FROZEN_SIGNAL_SESSION = "UNASSIGNED"
 const bool FROZEN_ALLOW_LONG = true
 const bool FROZEN_ALLOW_SHORT = true
 
-f_frozenLongEntryEvent() =>
+frozenLongEntryEvent() =>
     false
 
-f_frozenShortEntryEvent() =>
+frozenShortEntryEvent() =>
     false
 
-f_frozenLongExitEvent() =>
+frozenLongExitEvent() =>
     false
 
-f_frozenShortExitEvent() =>
+frozenShortExitEvent() =>
     false
 
-f_frozenLongEntryPrice() =>
+frozenLongEntryPrice() =>
     float(na)
 
-f_frozenLongStopPrice() =>
+frozenLongStopPrice() =>
     float(na)
 
-f_frozenLongTargetPrice() =>
+frozenLongTargetPrice() =>
     float(na)
 
-f_frozenShortEntryPrice() =>
+frozenShortEntryPrice() =>
     float(na)
 
-f_frozenShortStopPrice() =>
+frozenShortStopPrice() =>
     float(na)
 
-f_frozenShortTargetPrice() =>
+frozenShortTargetPrice() =>
     float(na)
 
-f_frozenSetupTraceCode() =>
+frozenSetupTraceCode() =>
     "UNASSIGNED"
 
 // =============================================================================
@@ -309,62 +309,62 @@ int chicagoMinuteOfDay =
      hour(time, EXCHANGE_TZ) * 60 + minute(time, EXCHANGE_TZ)
 int chicagoDayOfWeek = dayofweek(time, EXCHANGE_TZ)
 bool cmeWeekClockOpen =
-     f_isCmeWeekClockOpen(chicagoDayOfWeek, chicagoMinuteOfDay)
+     isCmeWeekClockOpen(chicagoDayOfWeek, chicagoMinuteOfDay)
 bool inConfiguredSignalSession =
-     not na(time(timeframe.period, configuredSignalSession, EXCHANGE_TZ))
+     not na(time(timeframe.period, configuredSignalSessionInput, EXCHANGE_TZ))
 bool inAllowedSignalSession = cmeWeekClockOpen and inConfiguredSignalSession
 
 bool ruleIdentityAssigned =
      FROZEN_RULE_ID != "UNASSIGNED" and
-     f_isLowerHexSha256(FROZEN_RULE_SHA256) and
+     isLowerHexSha256(FROZEN_RULE_SHA256) and
      FROZEN_VALIDATION_STATUS == "EMPIRICALLY_FROZEN" and
      FROZEN_TICKER_ID != "UNASSIGNED" and
      FROZEN_SIGNAL_SESSION != "UNASSIGNED"
 
 bool executionIdentityAssigned =
-     f_isPhase9Contract(FROZEN_EXECUTION_CONTRACT) and
-     f_isAuthorizationId(FROZEN_AUTHORIZATION_ID) and
-     f_isLowerHexSha256(FROZEN_AUTHORIZATION_SHA256)
+     isPhase9Contract(FROZEN_EXECUTION_CONTRACT) and
+     isAuthorizationId(FROZEN_AUTHORIZATION_ID) and
+     isLowerHexSha256(FROZEN_AUTHORIZATION_SHA256)
 
 bool runtimeInputsMatchFrozenProfile =
      standardTickerId == FROZEN_TICKER_ID and
      isIndividualContractChart and
-     configuredSignalSession == FROZEN_SIGNAL_SESSION and
-     allowLong == FROZEN_ALLOW_LONG and
-     allowShort == FROZEN_ALLOW_SHORT
+     configuredSignalSessionInput == FROZEN_SIGNAL_SESSION and
+     allowLongInput == FROZEN_ALLOW_LONG and
+     allowShortInput == FROZEN_ALLOW_SHORT
 
 bool releaseGatesOpen =
      ruleIdentityAssigned and
      executionIdentityAssigned and
      runtimeInputsMatchFrozenProfile and
-     armFrozenSignalDisplay and
-     calendarRollManifestConfirmed and
+     armFrozenSignalDisplayInput and
+     calendarRollManifestConfirmedInput and
      environmentOk
 
 // Read the frozen adapter exactly once per bar. No future-indexed data, HTF
 // requests, pivots, or intrabar-only information exist in this scaffold.
-bool rawLongEntry = f_frozenLongEntryEvent()
-bool rawShortEntry = f_frozenShortEntryEvent()
-bool rawLongExit = f_frozenLongExitEvent()
-bool rawShortExit = f_frozenShortExitEvent()
+bool rawLongEntry = frozenLongEntryEvent()
+bool rawShortEntry = frozenShortEntryEvent()
+bool rawLongExit = frozenLongExitEvent()
+bool rawShortExit = frozenShortExitEvent()
 
-float longEntryPrice = f_roundToTick(f_frozenLongEntryPrice())
-float longStopPrice = f_roundToTick(f_frozenLongStopPrice())
-float longTargetPrice = f_roundToTick(f_frozenLongTargetPrice())
-float shortEntryPrice = f_roundToTick(f_frozenShortEntryPrice())
-float shortStopPrice = f_roundToTick(f_frozenShortStopPrice())
-float shortTargetPrice = f_roundToTick(f_frozenShortTargetPrice())
-string setupTraceCode = f_frozenSetupTraceCode()
+float longEntryPrice = roundToTick(frozenLongEntryPrice())
+float longStopPrice = roundToTick(frozenLongStopPrice())
+float longTargetPrice = roundToTick(frozenLongTargetPrice())
+float shortEntryPrice = roundToTick(frozenShortEntryPrice())
+float shortStopPrice = roundToTick(frozenShortStopPrice())
+float shortTargetPrice = roundToTick(frozenShortTargetPrice())
+string setupTraceCode = frozenSetupTraceCode()
 
 bool confirmedClose = barstate.isconfirmed and not na(time_close)
 bool longEntryCandidate =
      releaseGatesOpen and confirmedClose and inAllowedSignalSession and
-     allowLong and rawLongEntry and
-     f_validBracket(1, longEntryPrice, longStopPrice, longTargetPrice)
+     allowLongInput and rawLongEntry and
+     validBracket(1, longEntryPrice, longStopPrice, longTargetPrice)
 bool shortEntryCandidate =
      releaseGatesOpen and confirmedClose and inAllowedSignalSession and
-     allowShort and rawShortEntry and
-     f_validBracket(-1, shortEntryPrice, shortStopPrice, shortTargetPrice)
+     allowShortInput and rawShortEntry and
+     validBracket(-1, shortEntryPrice, shortStopPrice, shortTargetPrice)
 
 // Exits are not restricted by the entry-session input. A production exit must not
 // be suppressed merely because its associated entry window has closed.
@@ -409,14 +409,14 @@ string payloadExitReason =
      acceptedShortExit ? "FROZEN_SHORT_EXIT" : ""
 
 string currentSignalId =
-     executionCommand != "" ? f_signalId(
+     executionCommand != "" ? buildSignalId(
           FROZEN_RULE_SHA256,
           FROZEN_EXECUTION_CONTRACT,
           executionCommand,
           executionSide,
           time_close) : ""
 string executionPayload =
-     executionCommand == "ENTRY" ? f_buildEntryPayload(
+     executionCommand == "ENTRY" ? buildEntryPayload(
           FROZEN_RULE_SHA256,
           FROZEN_EXECUTION_CONTRACT,
           FROZEN_AUTHORIZATION_ID,
@@ -426,7 +426,7 @@ string executionPayload =
           payloadStopPrice,
           payloadTargetPrice,
           time_close) :
-     executionCommand == "EXIT" ? f_buildExitPayload(
+     executionCommand == "EXIT" ? buildExitPayload(
           FROZEN_RULE_SHA256,
           FROZEN_EXECUTION_CONTRACT,
           FROZEN_AUTHORIZATION_ID,
@@ -434,35 +434,6 @@ string executionPayload =
           executionSide,
           payloadExitReason,
           time_close) : ""
-var string lastDispatchedSignalId = ""
-bool dispatchAlert =
-     releaseGatesOpen and enableAlerts and executionPayload != "" and
-     currentSignalId != "" and
-     currentSignalId != lastDispatchedSignalId
-
-if dispatchAlert
-    alert(executionPayload, alert.freq_once_per_bar_close)
-    lastDispatchedSignalId := currentSignalId
-
-// Static alert conditions are UI aids only. The dynamic alert() call above is the
-// sole source of Phase 9 execution JSON and emits both strict command schemas.
-alertcondition(
-     enableAlerts and acceptedLongEntry,
-     "MNQ frozen long entry event",
-     "MNQ long entry event. Use Any alert() function call for deterministic JSON.")
-alertcondition(
-     enableAlerts and acceptedShortEntry,
-     "MNQ frozen short entry event",
-     "MNQ short entry event. Use Any alert() function call for deterministic JSON.")
-alertcondition(
-     enableAlerts and acceptedLongExit,
-     "MNQ frozen long exit event",
-     "MNQ long exit event. Use Any alert() function call for deterministic JSON.")
-alertcondition(
-     enableAlerts and acceptedShortExit,
-     "MNQ frozen short exit event",
-     "MNQ short exit event. Use Any alert() function call for deterministic JSON.")
-
 float entryPlot =
      acceptedLongEntry ? longEntryPrice :
      acceptedShortEntry ? shortEntryPrice : na
@@ -474,26 +445,26 @@ float targetPlot =
      acceptedShortEntry ? shortTargetPrice : na
 
 plot(
-     showRiskLines ? entryPlot : na,
+     showRiskLinesInput ? entryPlot : na,
      "Frozen entry reference",
      color = color.blue,
      linewidth = 2,
      style = plot.style_circles)
 plot(
-     showRiskLines ? stopPlot : na,
+     showRiskLinesInput ? stopPlot : na,
      "Frozen stop",
      color = color.red,
      linewidth = 2,
      style = plot.style_circles)
 plot(
-     showRiskLines ? targetPlot : na,
+     showRiskLinesInput ? targetPlot : na,
      "Frozen target",
      color = color.lime,
      linewidth = 2,
      style = plot.style_circles)
 
 plotshape(
-     showEntryMarkers and acceptedLongEntry,
+     showEntryMarkersInput and acceptedLongEntry,
      title = "Accepted long entry",
      style = shape.triangleup,
      location = location.belowbar,
@@ -501,7 +472,7 @@ plotshape(
      size = size.small,
      text = "L")
 plotshape(
-     showEntryMarkers and acceptedShortEntry,
+     showEntryMarkersInput and acceptedShortEntry,
      title = "Accepted short entry",
      style = shape.triangledown,
      location = location.abovebar,
@@ -509,7 +480,7 @@ plotshape(
      size = size.small,
      text = "S")
 plotshape(
-     showExitMarkers and acceptedLongExit,
+     showExitMarkersInput and acceptedLongExit,
      title = "Accepted long exit",
      style = shape.xcross,
      location = location.abovebar,
@@ -517,7 +488,7 @@ plotshape(
      size = size.tiny,
      text = "XL")
 plotshape(
-     showExitMarkers and acceptedShortExit,
+     showExitMarkersInput and acceptedShortExit,
      title = "Accepted short exit",
      style = shape.xcross,
      location = location.belowbar,
@@ -526,25 +497,25 @@ plotshape(
      text = "XS")
 
 bgcolor(
-     shadeBlockedBars and not inAllowedSignalSession
+     shadeBlockedBarsInput and not inAllowedSignalSession
      ? color.new(color.gray, 94)
-     : shadeBlockedBars and not releaseGatesOpen
+     : shadeBlockedBarsInput and not releaseGatesOpen
      ? color.new(color.red, 96)
      : na,
      title = "Blocked by session or release gate")
 
 plot(
-     debugMode ? candidateEventCount : na,
+     debugModeInput ? candidateEventCount : na,
      "Debug: candidate event count",
      color = color.new(color.purple, 100),
      display = display.data_window)
 plot(
-     debugMode and eventConflict ? 1 : 0,
+     debugModeInput and eventConflict ? 1 : 0,
      "Debug: event conflict",
      color = color.new(color.red, 100),
      display = display.data_window)
 plot(
-     debugMode and releaseGatesOpen ? 1 : 0,
+     debugModeInput and releaseGatesOpen ? 1 : 0,
      "Debug: release gates open",
      color = color.new(color.green, 100),
      display = display.data_window)
@@ -565,7 +536,7 @@ if barstate.islast
     table.cell(status, 0, 4, "Symbol / chart")
     table.cell(status, 1, 4, standardTickerId + " / " + timeframe.period)
     table.cell(status, 0, 5, "Timezone / session")
-    table.cell(status, 1, 5, EXCHANGE_TZ + " / " + configuredSignalSession)
+    table.cell(status, 1, 5, EXCHANGE_TZ + " / " + configuredSignalSessionInput)
     table.cell(status, 0, 6, "Quantity")
     table.cell(status, 1, 6, "1 MNQ CONTRACT")
     table.cell(status, 0, 7, "Execution contract")
@@ -573,14 +544,43 @@ if barstate.islast
     table.cell(status, 0, 8, "Authorization")
     table.cell(status, 1, 8, FROZEN_AUTHORIZATION_ID)
     table.cell(status, 0, 9, "Calendar/roll gate")
-    table.cell(status, 1, 9, f_boolText(calendarRollManifestConfirmed))
+    table.cell(status, 1, 9, boolText(calendarRollManifestConfirmedInput))
     table.cell(status, 0, 10, "Execution identity")
-    table.cell(status, 1, 10, f_boolText(executionIdentityAssigned))
+    table.cell(status, 1, 10, boolText(executionIdentityAssigned))
     table.cell(status, 0, 11, "Release gate")
     table.cell(status, 1, 11, gateStatus)
     table.cell(status, 0, 12, "Alerts")
-    table.cell(status, 1, 12, enableAlerts ? "ENABLED" : "DISABLED")
+    table.cell(status, 1, 12, enableAlertsInput ? "ENABLED" : "DISABLED")
     table.cell(status, 0, 13, "Setup trace")
     table.cell(status, 1, 13, setupTraceCode)
     table.cell(status, 0, 14, "Frozen symbol/input profile")
-    table.cell(status, 1, 14, f_boolText(runtimeInputsMatchFrozenProfile))
+    table.cell(status, 1, 14, boolText(runtimeInputsMatchFrozenProfile))
+
+var string lastDispatchedSignalId = ""
+bool dispatchAlert =
+     releaseGatesOpen and enableAlertsInput and executionPayload != "" and
+     currentSignalId != "" and
+     currentSignalId != lastDispatchedSignalId
+
+if dispatchAlert
+    alert(executionPayload, alert.freq_once_per_bar_close)
+    lastDispatchedSignalId := currentSignalId
+
+// Static alert conditions are UI aids only. The dynamic alert() call above is the
+// sole source of Phase 9 execution JSON and emits both strict command schemas.
+alertcondition(
+     enableAlertsInput and acceptedLongEntry,
+     "MNQ frozen long entry event",
+     "MNQ long entry event. Use Any alert() function call for deterministic JSON.")
+alertcondition(
+     enableAlertsInput and acceptedShortEntry,
+     "MNQ frozen short entry event",
+     "MNQ short entry event. Use Any alert() function call for deterministic JSON.")
+alertcondition(
+     enableAlertsInput and acceptedLongExit,
+     "MNQ frozen long exit event",
+     "MNQ long exit event. Use Any alert() function call for deterministic JSON.")
+alertcondition(
+     enableAlertsInput and acceptedShortExit,
+     "MNQ frozen short exit event",
+     "MNQ short exit event. Use Any alert() function call for deterministic JSON.")

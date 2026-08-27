@@ -299,25 +299,56 @@ Running the port over real bars exercises the mechanics that are implemented:
 ## Formatting audit
 
 `backtest/pine_format_check.py` checks the mechanical rules that make a Pine v6
-file well-formed without needing TradingView's compiler: version directive
+file well-formed without needing TradingView's compiler: version-directive
 placement, tabs/CRLF/trailing whitespace, bracket balance, block-opener
-indentation, and the continuation-indent rule Pine actually enforces — a
-wrapped line must *not* sit at a multiple of four spaces, since those indents
-are reserved for local-block nesting.
+indentation, and the continuation-indent rule Pine enforces outside parentheses
+(a wrapped line must not sit at a multiple of four spaces, since those indents
+are reserved for local-block nesting; inside parentheses any indent is legal).
 
 ```
 python3 backtest/pine_format_check.py indicators/*.pine
 ```
 
-The scaffold comes back **clean — no formatting errors**. Its layout is already
-internally consistent: block indents at multiples of 4, continuations at
-block indent + 5 (5, 9, 13), nested call arguments at +5 again (10). Brackets
-balance, there are no tabs, no CRLF, no trailing whitespace, and the file ends
-with a newline. The file is committed byte-identical to the reviewed source.
+**Mechanical layout was clean and still is** — brackets balance, no tabs, no
+CRLF, no trailing whitespace, continuations correctly at 5/9/10/13. Spacing
+also already conformed: zero missing spaces after commas, zero missing spaces
+around binary operators, constants correctly `SNAKE_CASE`.
 
-The only findings are three advisory long lines (39, 54, 304), each a single
-string literal that cannot be wrapped without splitting the string — a code
-edit, not a formatting one. They were left alone.
+Three violations of the official
+[style guide](https://www.tradingview.com/pine-script-docs/writing/style-guide/)
+were found and fixed:
+
+1. **Function naming.** 23 of 28 functions carried an `f_` prefix
+   (`f_roundToTick`). The guide specifies plain `camelCase` (`roundedOHLC()`).
+   Prefixes stripped. `f_signalId` became `buildSignalId`, not `signalId`, to
+   avoid colliding with the local `signalId` variable inside both payload
+   builders.
+2. **Input suffix.** All 11 input-backed variables lacked the `Input` suffix
+   the guide requires (`enableAlerts` -> `enableAlertsInput`).
+3. **Section order.** The alerts block sat *before* the visuals. The guide's
+   order is `... calculations, visuals, alerts`. The 28-line alert block was
+   moved below the table.
+
+Two advisory long lines remain (39, 54) plus one at 304; each is a single
+string literal that cannot be wrapped without splitting the string, which would
+be a code edit rather than a formatting one. They were left alone.
+
+### Proof the reformat changed no logic
+
+Renaming and moving code is only safe if it provably preserves behaviour. The
+original was re-parsed, the same rename map applied to it, and the result
+compared against the committed file:
+
+- statement multiset identical (nothing added or removed)
+- token count identical: **2,626 before, 2,626 after**
+- token multiset identical
+- token *sequence* differs by exactly one `insert` + one `delete` opcode -- the
+  signature of a single contiguous block relocation, i.e. the alerts move and
+  nothing else
+
+Not verified: the file has not been through TradingView's compiler, which is
+the only authority on API-level validity. These checks cover layout, style and
+equivalence, not whether every builtin signature is correct.
 
 ## Reproduce
 
