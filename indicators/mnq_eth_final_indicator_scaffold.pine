@@ -1,0 +1,586 @@
+//@version=6
+indicator(
+     "MNQ 5m ETH Final Indicator Scaffold - UNVALIDATED",
+     shorttitle = "MNQ UNVALIDATED",
+     overlay = true,
+     max_labels_count = 500)
+
+// =============================================================================
+// UNVALIDATED SCAFFOLD - NOT A TRADING SYSTEM - NOT FOR LIVE AUTOMATION
+// =============================================================================
+// This file intentionally contains no alpha. Every entry and exit rule returns
+// false, every price adapter returns na, and the rule identity is UNASSIGNED.
+// It exists only to freeze production mechanics around a future empirically
+// selected rule set. Do not remove the fail-closed gates to manufacture signals.
+// Quantity is permanently one MNQ contract in this indicator contract.
+// =============================================================================
+
+const string EXCHANGE_TZ = "America/Chicago"
+const string INDICATOR_VERSION = "MNQ_FINAL_INDICATOR_V1_UNVALIDATED"
+const string ENTRY_SCHEMA_VERSION = "mnq.tv.entry.v2"
+const string EXIT_SCHEMA_VERSION = "mnq.tv.exit.v1"
+const int CONTRACT_QUANTITY = 1
+const int ALERT_EXPIRY_MS = 120 * 1000
+
+const string GROUP_GATES = "Fail-closed release gates"
+const string GROUP_DIRECTION = "Direction controls"
+const string GROUP_SESSION = "Session controls"
+const string GROUP_DISPLAY = "Display and diagnostics"
+
+bool armFrozenSignalDisplay = input.bool(
+     false,
+     "Arm frozen-rule signal display",
+     tooltip = "Has no effect while this scaffold is UNVALIDATED and UNASSIGNED.",
+     group = GROUP_GATES)
+
+bool calendarRollManifestConfirmed = input.bool(
+     false,
+     "Confirm current CME calendar and roll gate",
+     tooltip = "Fail-closed operator attestation. It does not replace the external calendar/roll manifest.",
+     group = GROUP_GATES)
+
+bool enableAlerts = input.bool(
+     false,
+     "Enable deterministic alert() messages",
+     tooltip = "Keep disabled until the frozen strategy/indicator parity test passes.",
+     group = GROUP_GATES)
+
+bool allowLong = input.bool(true, "Enable long events", group = GROUP_DIRECTION)
+bool allowShort = input.bool(true, "Enable short events", group = GROUP_DIRECTION)
+
+string configuredSignalSession = input.session(
+     "1700-1600",
+     "Allowed ETH signal session",
+     tooltip = "Interpreted in America/Chicago. The explicit CME week clock also removes the daily break and weekend.",
+     group = GROUP_SESSION)
+
+bool showEntryMarkers = input.bool(true, "Show entry markers", group = GROUP_DISPLAY)
+bool showExitMarkers = input.bool(true, "Show exit markers", group = GROUP_DISPLAY)
+bool showRiskLines = input.bool(true, "Show entry/stop/target plots", group = GROUP_DISPLAY)
+bool shadeBlockedBars = input.bool(true, "Shade blocked bars", group = GROUP_DISPLAY)
+bool debugMode = input.bool(false, "Debug values in Data Window", group = GROUP_DISPLAY)
+
+// =============================================================================
+// DETERMINISTIC, NON-ALPHA HELPERS
+// =============================================================================
+
+f_roundToTick(float value) =>
+    na(value) ? na : math.round(value / syminfo.mintick) * syminfo.mintick
+
+f_jsonNumber(float value) =>
+    na(value) ? "null" : str.tostring(value, format.mintick)
+
+f_boolText(bool value) =>
+    value ? "YES" : "NO"
+
+f_utcTimestamp(int timestamp) =>
+    str.format_time(timestamp, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+
+f_isCmeWeekClockOpen(int exchangeDay, int minuteOfDay) =>
+    bool sundayOpen =
+         exchangeDay == dayofweek.sunday and minuteOfDay >= 17 * 60
+    bool mondayThroughThursdayOpen =
+         exchangeDay >= dayofweek.monday and
+         exchangeDay <= dayofweek.thursday and
+         (minuteOfDay < 16 * 60 or minuteOfDay >= 17 * 60)
+    bool fridayOpen =
+         exchangeDay == dayofweek.friday and minuteOfDay < 16 * 60
+    sundayOpen or mondayThroughThursdayOpen or fridayOpen
+
+f_validBracket(int direction, float entryPrice, float stopPrice, float targetPrice) =>
+    bool complete =
+         not na(entryPrice) and
+         not na(stopPrice) and
+         not na(targetPrice)
+    bool longGeometry =
+         direction == 1 and stopPrice < entryPrice and entryPrice < targetPrice
+    bool shortGeometry =
+         direction == -1 and targetPrice < entryPrice and entryPrice < stopPrice
+    complete and (longGeometry or shortGeometry)
+
+f_isLowerHexSha256(string value) =>
+    bool valid = str.length(value) == 64
+    if valid
+        for index = 0 to 63
+            string character = str.substring(value, index, index + 1)
+            valid := valid and str.contains("0123456789abcdef", character)
+    valid
+
+f_isPhase9Contract(string contractName) =>
+    bool validLength = str.length(contractName) == 6
+    string rootCode = validLength ? str.substring(contractName, 0, 3) : ""
+    string monthCode = validLength ? str.substring(contractName, 3, 4) : ""
+    string yearCode = validLength ? str.substring(contractName, 4, 6) : ""
+    bool validMonth =
+         monthCode == "H" or monthCode == "M" or
+         monthCode == "U" or monthCode == "Z"
+    bool validYear = false
+    if validLength
+        string firstYearDigit = str.substring(yearCode, 0, 1)
+        string secondYearDigit = str.substring(yearCode, 1, 2)
+        validYear :=
+             str.contains("0123456789", firstYearDigit) and
+             str.contains("0123456789", secondYearDigit)
+    validLength and rootCode == "MNQ" and validMonth and validYear
+
+f_isAuthorizationId(string value) =>
+    int valueLength = str.length(value)
+    bool valid = valueLength >= 1 and valueLength <= 96
+    if valid
+        string firstCharacter = str.substring(value, 0, 1)
+        valid := str.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", firstCharacter)
+        for index = 0 to valueLength - 1
+            string character = str.substring(value, index, index + 1)
+            valid := valid and str.contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-", character)
+    valid
+
+f_signalId(
+     string strategyVersion,
+     string contractName,
+     string commandName,
+     string sideName,
+     int eventTimestamp) =>
+    strategyVersion + ":" + contractName + ":" + commandName + ":" +
+         str.tostring(eventTimestamp) + ":" + sideName
+
+f_buildEntryPayload(
+     string strategyVersion,
+     string contractName,
+     string authorizationId,
+     string authorizationSha256,
+     string sideName,
+     float expectedEntryPrice,
+     float stopPrice,
+     float targetPrice,
+     int eventTimestamp) =>
+    string signalId = f_signalId(
+         strategyVersion,
+         contractName,
+         "ENTRY",
+         sideName,
+         eventTimestamp)
+    string signalTimestamp = f_utcTimestamp(eventTimestamp)
+    string expiresAt = f_utcTimestamp(eventTimestamp + ALERT_EXPIRY_MS)
+    "{" +
+         "\"schema_version\":\"" + ENTRY_SCHEMA_VERSION + "\"," +
+         "\"command\":\"ENTRY\"," +
+         "\"strategy_version\":\"" + strategyVersion + "\"," +
+         "\"symbol\":\"MNQ\"," +
+         "\"contract\":\"" + contractName + "\"," +
+         "\"timeframe\":\"5\"," +
+         "\"side\":\"" + sideName + "\"," +
+         "\"order_type\":\"MARKET\"," +
+         "\"quantity\":" + str.tostring(CONTRACT_QUANTITY) + "," +
+         "\"stop_price\":" + f_jsonNumber(stopPrice) + "," +
+         "\"target_price\":" + f_jsonNumber(targetPrice) + "," +
+         "\"entry_price\":" + f_jsonNumber(expectedEntryPrice) + "," +
+         "\"timestamp\":\"" + signalTimestamp + "\"," +
+         "\"expires_at\":\"" + expiresAt + "\"," +
+         "\"signal_id\":\"" + signalId + "\"," +
+         "\"authorization_id\":\"" + authorizationId + "\"," +
+         "\"authorization_sha256\":\"" + authorizationSha256 + "\"" +
+         "}"
+
+f_buildExitPayload(
+     string strategyVersion,
+     string contractName,
+     string authorizationId,
+     string authorizationSha256,
+     string sideName,
+     string exitReason,
+     int eventTimestamp) =>
+    string signalId = f_signalId(
+         strategyVersion,
+         contractName,
+         "EXIT",
+         sideName,
+         eventTimestamp)
+    string signalTimestamp = f_utcTimestamp(eventTimestamp)
+    string expiresAt = f_utcTimestamp(eventTimestamp + ALERT_EXPIRY_MS)
+    "{" +
+         "\"schema_version\":\"" + EXIT_SCHEMA_VERSION + "\"," +
+         "\"command\":\"EXIT\"," +
+         "\"strategy_version\":\"" + strategyVersion + "\"," +
+         "\"symbol\":\"MNQ\"," +
+         "\"contract\":\"" + contractName + "\"," +
+         "\"timeframe\":\"5\"," +
+         "\"side\":\"" + sideName + "\"," +
+         "\"order_type\":\"MARKET\"," +
+         "\"quantity\":" + str.tostring(CONTRACT_QUANTITY) + "," +
+         "\"timestamp\":\"" + signalTimestamp + "\"," +
+         "\"expires_at\":\"" + expiresAt + "\"," +
+         "\"signal_id\":\"" + signalId + "\"," +
+         "\"authorization_id\":\"" + authorizationId + "\"," +
+         "\"authorization_sha256\":\"" + authorizationSha256 + "\"," +
+         "\"exit_reason\":\"" + exitReason + "\"" +
+         "}"
+
+// =============================================================================
+// BEGIN FROZEN RULE ADAPTER - THE ONLY FUTURE RULE-INSERTION REGION
+// =============================================================================
+// Release procedure:
+// 1. Set the identity, exact chart/execution contract, dated authorization,
+//    and session/direction constants from immutable signed manifests.
+// 2. Replace only the adapter function bodies with the frozen, parity-tested rules.
+// 3. Return one-bar events, never persistent conditions.
+// 4. Return causal prices known at the confirmed signal close. A market-next-bar
+//    entry price is a reference, not a promise of the eventual broker fill.
+// 5. Do not use request.security(), pivots, or intrabar state without a new audit.
+
+const string FROZEN_RULE_ID = "UNASSIGNED"
+// Lowercase SHA-256 of the governed frozen rule/candidate identity. This is the
+// Phase 9 strategy_version allowlist key, never this Pine source file's hash.
+const string FROZEN_RULE_SHA256 = "UNASSIGNED"
+const string FROZEN_VALIDATION_STATUS = "UNVALIDATED"
+const string FROZEN_TICKER_ID = "UNASSIGNED"
+const string FROZEN_EXECUTION_CONTRACT = "UNASSIGNED"
+const string FROZEN_AUTHORIZATION_ID = "UNASSIGNED"
+const string FROZEN_AUTHORIZATION_SHA256 = "UNASSIGNED"
+const string FROZEN_SIGNAL_SESSION = "UNASSIGNED"
+const bool FROZEN_ALLOW_LONG = true
+const bool FROZEN_ALLOW_SHORT = true
+
+f_frozenLongEntryEvent() =>
+    false
+
+f_frozenShortEntryEvent() =>
+    false
+
+f_frozenLongExitEvent() =>
+    false
+
+f_frozenShortExitEvent() =>
+    false
+
+f_frozenLongEntryPrice() =>
+    float(na)
+
+f_frozenLongStopPrice() =>
+    float(na)
+
+f_frozenLongTargetPrice() =>
+    float(na)
+
+f_frozenShortEntryPrice() =>
+    float(na)
+
+f_frozenShortStopPrice() =>
+    float(na)
+
+f_frozenShortTargetPrice() =>
+    float(na)
+
+f_frozenSetupTraceCode() =>
+    "UNASSIGNED"
+
+// =============================================================================
+// END FROZEN RULE ADAPTER
+// =============================================================================
+
+// Fail closed on the wrong instrument, bar type, timeframe, or MNQ metadata.
+// Continuous symbols are never executable: the frozen TradingView ticker ID
+// and the exact Phase 9 contract are separately manifest-bound below.
+bool isFiveMinute = timeframe.isminutes and timeframe.multiplier == 5
+bool isStandardChart = chart.is_standard
+bool isFuturesInstrument = syminfo.type == "futures"
+bool isMnqTicker = syminfo.root == "MNQ"
+string standardTickerId = ticker.standard(syminfo.tickerid)
+bool isIndividualContractChart = not str.contains(standardTickerId, "!")
+bool isMnqTick = math.abs(syminfo.mintick - 0.25) < 0.0000001
+bool isMnqPointValue = math.abs(syminfo.pointvalue - 2.0) < 0.0000001
+bool environmentOk =
+     isFiveMinute and isStandardChart and isFuturesInstrument and isMnqTicker and
+     isIndividualContractChart and isMnqTick and isMnqPointValue
+
+if barstate.isfirst and not isFiveMinute
+    runtime.error("This scaffold requires a 5-minute chart.")
+if barstate.isfirst and not isStandardChart
+    runtime.error("This scaffold requires standard candles.")
+if barstate.isfirst and not isFuturesInstrument
+    runtime.error("This scaffold requires a futures instrument.")
+if barstate.isfirst and not isMnqTicker
+    runtime.error("This scaffold requires an individual MNQ contract chart.")
+if barstate.isfirst and not isIndividualContractChart
+    runtime.error("Continuous futures symbols are forbidden; use the frozen individual MNQ contract.")
+if barstate.isfirst and (not isMnqTick or not isMnqPointValue)
+    runtime.error("Unexpected MNQ metadata. Expected 0.25 tick and $2 point value.")
+
+int chicagoMinuteOfDay =
+     hour(time, EXCHANGE_TZ) * 60 + minute(time, EXCHANGE_TZ)
+int chicagoDayOfWeek = dayofweek(time, EXCHANGE_TZ)
+bool cmeWeekClockOpen =
+     f_isCmeWeekClockOpen(chicagoDayOfWeek, chicagoMinuteOfDay)
+bool inConfiguredSignalSession =
+     not na(time(timeframe.period, configuredSignalSession, EXCHANGE_TZ))
+bool inAllowedSignalSession = cmeWeekClockOpen and inConfiguredSignalSession
+
+bool ruleIdentityAssigned =
+     FROZEN_RULE_ID != "UNASSIGNED" and
+     f_isLowerHexSha256(FROZEN_RULE_SHA256) and
+     FROZEN_VALIDATION_STATUS == "EMPIRICALLY_FROZEN" and
+     FROZEN_TICKER_ID != "UNASSIGNED" and
+     FROZEN_SIGNAL_SESSION != "UNASSIGNED"
+
+bool executionIdentityAssigned =
+     f_isPhase9Contract(FROZEN_EXECUTION_CONTRACT) and
+     f_isAuthorizationId(FROZEN_AUTHORIZATION_ID) and
+     f_isLowerHexSha256(FROZEN_AUTHORIZATION_SHA256)
+
+bool runtimeInputsMatchFrozenProfile =
+     standardTickerId == FROZEN_TICKER_ID and
+     isIndividualContractChart and
+     configuredSignalSession == FROZEN_SIGNAL_SESSION and
+     allowLong == FROZEN_ALLOW_LONG and
+     allowShort == FROZEN_ALLOW_SHORT
+
+bool releaseGatesOpen =
+     ruleIdentityAssigned and
+     executionIdentityAssigned and
+     runtimeInputsMatchFrozenProfile and
+     armFrozenSignalDisplay and
+     calendarRollManifestConfirmed and
+     environmentOk
+
+// Read the frozen adapter exactly once per bar. No future-indexed data, HTF
+// requests, pivots, or intrabar-only information exist in this scaffold.
+bool rawLongEntry = f_frozenLongEntryEvent()
+bool rawShortEntry = f_frozenShortEntryEvent()
+bool rawLongExit = f_frozenLongExitEvent()
+bool rawShortExit = f_frozenShortExitEvent()
+
+float longEntryPrice = f_roundToTick(f_frozenLongEntryPrice())
+float longStopPrice = f_roundToTick(f_frozenLongStopPrice())
+float longTargetPrice = f_roundToTick(f_frozenLongTargetPrice())
+float shortEntryPrice = f_roundToTick(f_frozenShortEntryPrice())
+float shortStopPrice = f_roundToTick(f_frozenShortStopPrice())
+float shortTargetPrice = f_roundToTick(f_frozenShortTargetPrice())
+string setupTraceCode = f_frozenSetupTraceCode()
+
+bool confirmedClose = barstate.isconfirmed and not na(time_close)
+bool longEntryCandidate =
+     releaseGatesOpen and confirmedClose and inAllowedSignalSession and
+     allowLong and rawLongEntry and
+     f_validBracket(1, longEntryPrice, longStopPrice, longTargetPrice)
+bool shortEntryCandidate =
+     releaseGatesOpen and confirmedClose and inAllowedSignalSession and
+     allowShort and rawShortEntry and
+     f_validBracket(-1, shortEntryPrice, shortStopPrice, shortTargetPrice)
+
+// Exits are not restricted by the entry-session input. A production exit must not
+// be suppressed merely because its associated entry window has closed.
+bool longExitCandidate =
+     releaseGatesOpen and confirmedClose and rawLongExit
+bool shortExitCandidate =
+     releaseGatesOpen and confirmedClose and rawShortExit
+
+int candidateEventCount =
+     (longEntryCandidate ? 1 : 0) +
+     (shortEntryCandidate ? 1 : 0) +
+     (longExitCandidate ? 1 : 0) +
+     (shortExitCandidate ? 1 : 0)
+bool eventConflict = candidateEventCount > 1
+
+// One and only one event is accepted per confirmed bar. A multi-event bar is
+// blocked for explicit review instead of guessing an execution sequence.
+bool acceptedLongEntry = longEntryCandidate and candidateEventCount == 1
+bool acceptedShortEntry = shortEntryCandidate and candidateEventCount == 1
+bool acceptedLongExit = longExitCandidate and candidateEventCount == 1
+bool acceptedShortExit = shortExitCandidate and candidateEventCount == 1
+
+// Map each accepted event to exactly one command and broker-side action. Entries
+// use mnq.tv.entry.v2; frozen dynamic exits use the disjoint mnq.tv.exit.v1.
+string executionCommand =
+     acceptedLongEntry or acceptedShortEntry ? "ENTRY" :
+     acceptedLongExit or acceptedShortExit ? "EXIT" : ""
+string executionSide =
+     acceptedLongEntry or acceptedShortExit ? "BUY" :
+     acceptedShortEntry or acceptedLongExit ? "SELL" : ""
+float payloadEntryPrice =
+     acceptedLongEntry ? longEntryPrice :
+     acceptedShortEntry ? shortEntryPrice : na
+float payloadStopPrice =
+     acceptedLongEntry ? longStopPrice :
+     acceptedShortEntry ? shortStopPrice : na
+float payloadTargetPrice =
+     acceptedLongEntry ? longTargetPrice :
+     acceptedShortEntry ? shortTargetPrice : na
+string payloadExitReason =
+     acceptedLongExit ? "FROZEN_LONG_EXIT" :
+     acceptedShortExit ? "FROZEN_SHORT_EXIT" : ""
+
+string currentSignalId =
+     executionCommand != "" ? f_signalId(
+          FROZEN_RULE_SHA256,
+          FROZEN_EXECUTION_CONTRACT,
+          executionCommand,
+          executionSide,
+          time_close) : ""
+string executionPayload =
+     executionCommand == "ENTRY" ? f_buildEntryPayload(
+          FROZEN_RULE_SHA256,
+          FROZEN_EXECUTION_CONTRACT,
+          FROZEN_AUTHORIZATION_ID,
+          FROZEN_AUTHORIZATION_SHA256,
+          executionSide,
+          payloadEntryPrice,
+          payloadStopPrice,
+          payloadTargetPrice,
+          time_close) :
+     executionCommand == "EXIT" ? f_buildExitPayload(
+          FROZEN_RULE_SHA256,
+          FROZEN_EXECUTION_CONTRACT,
+          FROZEN_AUTHORIZATION_ID,
+          FROZEN_AUTHORIZATION_SHA256,
+          executionSide,
+          payloadExitReason,
+          time_close) : ""
+var string lastDispatchedSignalId = ""
+bool dispatchAlert =
+     releaseGatesOpen and enableAlerts and executionPayload != "" and
+     currentSignalId != "" and
+     currentSignalId != lastDispatchedSignalId
+
+if dispatchAlert
+    alert(executionPayload, alert.freq_once_per_bar_close)
+    lastDispatchedSignalId := currentSignalId
+
+// Static alert conditions are UI aids only. The dynamic alert() call above is the
+// sole source of Phase 9 execution JSON and emits both strict command schemas.
+alertcondition(
+     enableAlerts and acceptedLongEntry,
+     "MNQ frozen long entry event",
+     "MNQ long entry event. Use Any alert() function call for deterministic JSON.")
+alertcondition(
+     enableAlerts and acceptedShortEntry,
+     "MNQ frozen short entry event",
+     "MNQ short entry event. Use Any alert() function call for deterministic JSON.")
+alertcondition(
+     enableAlerts and acceptedLongExit,
+     "MNQ frozen long exit event",
+     "MNQ long exit event. Use Any alert() function call for deterministic JSON.")
+alertcondition(
+     enableAlerts and acceptedShortExit,
+     "MNQ frozen short exit event",
+     "MNQ short exit event. Use Any alert() function call for deterministic JSON.")
+
+float entryPlot =
+     acceptedLongEntry ? longEntryPrice :
+     acceptedShortEntry ? shortEntryPrice : na
+float stopPlot =
+     acceptedLongEntry ? longStopPrice :
+     acceptedShortEntry ? shortStopPrice : na
+float targetPlot =
+     acceptedLongEntry ? longTargetPrice :
+     acceptedShortEntry ? shortTargetPrice : na
+
+plot(
+     showRiskLines ? entryPlot : na,
+     "Frozen entry reference",
+     color = color.blue,
+     linewidth = 2,
+     style = plot.style_circles)
+plot(
+     showRiskLines ? stopPlot : na,
+     "Frozen stop",
+     color = color.red,
+     linewidth = 2,
+     style = plot.style_circles)
+plot(
+     showRiskLines ? targetPlot : na,
+     "Frozen target",
+     color = color.lime,
+     linewidth = 2,
+     style = plot.style_circles)
+
+plotshape(
+     showEntryMarkers and acceptedLongEntry,
+     title = "Accepted long entry",
+     style = shape.triangleup,
+     location = location.belowbar,
+     color = color.aqua,
+     size = size.small,
+     text = "L")
+plotshape(
+     showEntryMarkers and acceptedShortEntry,
+     title = "Accepted short entry",
+     style = shape.triangledown,
+     location = location.abovebar,
+     color = color.orange,
+     size = size.small,
+     text = "S")
+plotshape(
+     showExitMarkers and acceptedLongExit,
+     title = "Accepted long exit",
+     style = shape.xcross,
+     location = location.abovebar,
+     color = color.yellow,
+     size = size.tiny,
+     text = "XL")
+plotshape(
+     showExitMarkers and acceptedShortExit,
+     title = "Accepted short exit",
+     style = shape.xcross,
+     location = location.belowbar,
+     color = color.yellow,
+     size = size.tiny,
+     text = "XS")
+
+bgcolor(
+     shadeBlockedBars and not inAllowedSignalSession
+     ? color.new(color.gray, 94)
+     : shadeBlockedBars and not releaseGatesOpen
+     ? color.new(color.red, 96)
+     : na,
+     title = "Blocked by session or release gate")
+
+plot(
+     debugMode ? candidateEventCount : na,
+     "Debug: candidate event count",
+     color = color.new(color.purple, 100),
+     display = display.data_window)
+plot(
+     debugMode and eventConflict ? 1 : 0,
+     "Debug: event conflict",
+     color = color.new(color.red, 100),
+     display = display.data_window)
+plot(
+     debugMode and releaseGatesOpen ? 1 : 0,
+     "Debug: release gates open",
+     color = color.new(color.green, 100),
+     display = display.data_window)
+
+var table status = table.new(position.top_right, 2, 15, border_width = 1)
+if barstate.islast
+    color headerColor = color.rgb(112, 18, 18)
+    string gateStatus =
+         releaseGatesOpen ? "ARMED" : "BLOCKED"
+    table.cell(status, 0, 0, "MNQ FINAL SCAFFOLD", bgcolor = headerColor, text_color = color.white)
+    table.cell(status, 1, 0, "UNVALIDATED", bgcolor = headerColor, text_color = color.white)
+    table.cell(status, 0, 1, "Version")
+    table.cell(status, 1, 1, INDICATOR_VERSION)
+    table.cell(status, 0, 2, "Frozen rule")
+    table.cell(status, 1, 2, FROZEN_RULE_ID)
+    table.cell(status, 0, 3, "Rule status")
+    table.cell(status, 1, 3, FROZEN_VALIDATION_STATUS)
+    table.cell(status, 0, 4, "Symbol / chart")
+    table.cell(status, 1, 4, standardTickerId + " / " + timeframe.period)
+    table.cell(status, 0, 5, "Timezone / session")
+    table.cell(status, 1, 5, EXCHANGE_TZ + " / " + configuredSignalSession)
+    table.cell(status, 0, 6, "Quantity")
+    table.cell(status, 1, 6, "1 MNQ CONTRACT")
+    table.cell(status, 0, 7, "Execution contract")
+    table.cell(status, 1, 7, FROZEN_EXECUTION_CONTRACT)
+    table.cell(status, 0, 8, "Authorization")
+    table.cell(status, 1, 8, FROZEN_AUTHORIZATION_ID)
+    table.cell(status, 0, 9, "Calendar/roll gate")
+    table.cell(status, 1, 9, f_boolText(calendarRollManifestConfirmed))
+    table.cell(status, 0, 10, "Execution identity")
+    table.cell(status, 1, 10, f_boolText(executionIdentityAssigned))
+    table.cell(status, 0, 11, "Release gate")
+    table.cell(status, 1, 11, gateStatus)
+    table.cell(status, 0, 12, "Alerts")
+    table.cell(status, 1, 12, enableAlerts ? "ENABLED" : "DISABLED")
+    table.cell(status, 0, 13, "Setup trace")
+    table.cell(status, 1, 13, setupTraceCode)
+    table.cell(status, 0, 14, "Frozen symbol/input profile")
+    table.cell(status, 1, 14, f_boolText(runtimeInputsMatchFrozenProfile))

@@ -231,3 +231,103 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+---
+
+# MNQ 5m ETH Final Indicator Scaffold
+
+**File:** `indicators/mnq_eth_final_indicator_scaffold.pine`
+**Status:** `UNVALIDATED` / rule identity `UNASSIGNED`
+
+A fail-closed production *harness* for a future MNQ 5m ETH rule set. It ships
+deliberately empty: the frozen-rule adapter returns `false` for every entry and
+exit event and `na` for every price. It exists to freeze alert schemas, session
+gating, event arbitration and release governance around a rule that has not
+been selected yet.
+
+## Backtest result
+
+There is no backtest, and the reason is structural rather than a tooling gap.
+
+1. **It is an `indicator()`, not a `strategy()`.** TradingView's Strategy
+   Tester only loads `strategy()` scripts, so the script has no Strategy Tester
+   tab, no equity curve and no trade list. Nothing to press.
+2. **It emits zero signals by construction.** Verified by measurement, not
+   assertion — `backtest/mnq_scaffold_backtest.py` is a faithful port of the
+   script's deterministic bar loop (CME week clock, session filter, all six
+   release gates, the adapter, `f_validBracket`, the single-event arbiter and
+   the alert de-duplicator), run against 13,788 real MNQ 5m bars:
+
+   | pass | release gates | accepted events | alerts | trades |
+   |------|---------------|-----------------|--------|--------|
+   | A. as shipped | closed | 0 | 0 | 0 |
+   | B. all governance gates forced open | open | 0 | 0 | 0 |
+
+   Pass B is the informative one: with every gate satisfied — operator toggles
+   on, identity constants populated with well-formed values, environment
+   correct — the count is still zero, because `f_frozenLongEntryEvent()` and
+   its three siblings return `false` on every bar. **The fail-closed gates are
+   not the binding constraint; the empty adapter is.**
+
+Win rate, expectancy, drawdown and profit factor are therefore *undefined*,
+not zero. There is no sample. Any backtest number attached to this file today
+would be describing the harness, not a strategy.
+
+To make it backtestable: port the frozen rules into a `strategy()` twin,
+validate there, then mirror the parity-tested logic back into the adapter
+region — which is what the file's own release procedure prescribes.
+
+## What the harness *did* verify
+
+Running the port over real bars exercises the mechanics that are implemented:
+
+- **Session gating is live and correct.** 13,786 of 13,788 bars fall inside the
+  allowed window; the two blocked bars are both 16:00 America/Chicago, the
+  start of the CME maintenance hour.
+- **The session input is redundant at its default.** Proved exhaustively over
+  all 7 x 1440 day/minute combinations: `f_isCmeWeekClockOpen()` AND the
+  `"1700-1600"` session equals `f_isCmeWeekClockOpen()` alone. The week clock
+  is strictly tighter — it blocks 2,760 additional minutes per week (all of
+  Saturday, Sunday before 17:00, Friday after 16:00) that the session string
+  would admit. The input only starts to matter once it is narrowed.
+- **Alert JSON is well-formed.** Both hand-built payloads parse as JSON, the
+  `mnq.tv.entry.v2` and `mnq.tv.exit.v1` key sets are disjoint as intended, and
+  the `na` price path emits a real JSON `null` rather than a bare `na` token.
+  (That path is unreachable in practice: `f_validBracket()` rejects incomplete
+  brackets before an entry can be accepted.)
+
+## Formatting audit
+
+`backtest/pine_format_check.py` checks the mechanical rules that make a Pine v6
+file well-formed without needing TradingView's compiler: version directive
+placement, tabs/CRLF/trailing whitespace, bracket balance, block-opener
+indentation, and the continuation-indent rule Pine actually enforces — a
+wrapped line must *not* sit at a multiple of four spaces, since those indents
+are reserved for local-block nesting.
+
+```
+python3 backtest/pine_format_check.py indicators/*.pine
+```
+
+The scaffold comes back **clean — no formatting errors**. Its layout is already
+internally consistent: block indents at multiples of 4, continuations at
+block indent + 5 (5, 9, 13), nested call arguments at +5 again (10). Brackets
+balance, there are no tabs, no CRLF, no trailing whitespace, and the file ends
+with a newline. The file is committed byte-identical to the reviewed source.
+
+The only findings are three advisory long lines (39, 54, 304), each a single
+string literal that cannot be wrapped without splitting the string — a code
+edit, not a formatting one. They were left alone.
+
+## Reproduce
+
+```
+python3 backtest/fetch_yahoo.py data MNQ=F        # cache MNQ bars
+python3 backtest/mnq_scaffold_backtest.py         # measured signal backtest
+python3 backtest/pine_format_check.py indicators/mnq_eth_final_indicator_scaffold.pine
+```
+
+Note: the cached `MNQ=F` feed is a continuous front-month series, the data
+equivalent of `MNQ1!`. The scaffold's `isIndividualContractChart` gate rejects
+exactly that symbol class, which is why the port models the chart environment
+explicitly rather than inferring it from the feed.
