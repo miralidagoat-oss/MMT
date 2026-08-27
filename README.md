@@ -382,6 +382,26 @@ To pass the environment gate, load a dated contract (e.g.
 gate stays BLOCKED regardless while `FROZEN_TICKER_ID` and the other identity
 constants are `UNASSIGNED`.
 
+### Authorization placeholder could pass its own validator
+
+Every identity constant is refused by its own check while unassigned -- except
+one. `"UNASSIGNED"` is all uppercase letters, which is a *well-formed*
+authorization id, so `isAuthorizationId("UNASSIGNED")` returned `true`.
+
+Harmless in the shipped state, since `isPhase9Contract` and `isLowerHexSha256`
+also gate `executionIdentityAssigned` and both correctly reject the
+placeholder. But it was a live trap: populate the execution contract and the
+authorization SHA, leave the authorization id untouched, and the gate would
+open with an unassigned authorization. `executionIdentityAssigned` now carries
+the same explicit `!= "UNASSIGNED"` test that `ruleIdentityAssigned` already
+used.
+
+| case | before | after |
+|------|--------|-------|
+| auth id left unassigned, contract + SHA set | opens | **blocked** |
+| fully populated | opens | opens |
+| shipped state | blocked | blocked |
+
 ### Proof the reformat changed no logic
 
 Renaming and moving code is only safe if it provably preserves behaviour. The

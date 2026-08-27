@@ -332,7 +332,13 @@ bool ruleIdentityAssigned =
      FROZEN_TICKER_ID != "UNASSIGNED" and
      FROZEN_SIGNAL_SESSION != "UNASSIGNED"
 
+// "UNASSIGNED" is a well-formed authorization id (all uppercase letters), so
+// isAuthorizationId() alone cannot reject the placeholder. Every other identity
+// constant is refused by its own check; this one needs the explicit test that
+// ruleIdentityAssigned already uses, or a populated contract and SHA could open
+// the gate while the authorization is still unassigned.
 bool executionIdentityAssigned =
+     FROZEN_AUTHORIZATION_ID != "UNASSIGNED" and
      isPhase9Contract(FROZEN_EXECUTION_CONTRACT) and
      isAuthorizationId(FROZEN_AUTHORIZATION_ID) and
      isLowerHexSha256(FROZEN_AUTHORIZATION_SHA256)
