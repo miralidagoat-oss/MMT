@@ -38,3 +38,20 @@ Status key: `RETAINED` / `REJECTED` / `PROMOTED` / `PARKED`
   The "NQ cross-validation" supporting the 1H claim is invalidated by ρ=0.9985.
 - **Status:** `PARKED` — Family A1 deprioritized to 4th in the Phase 3 order.
   Re-testing it on the same 60 days with new parameters would be overfitting.
+
+---
+
+## P1-002 — Scope decisions (user)
+
+- **9.1 Data:** proceed on the 51 available trading days. **Verdict for this
+  project is capped at `PROMISING` or `INSUFFICIENT EVIDENCE`.** A
+  `ROBUST CANDIDATE` verdict is not reachable from Track A alone and will not
+  be claimed.
+- **9.2 TradingView:** Premium+ with **Deep Backtesting**. Track B can therefore
+  carry genuine multi-year 5m out-of-sample validation, executed by the user.
+  The Phase 7 Pine script must expose in-sample/OOS date-window inputs so the
+  final untouched block is never seen by me.
+- **9.3/9.4:** default cost model ($0.85/side + 1 tick base) and the §3.4 risk
+  envelope ($60–120/trade) accepted.
+- **Consequence:** Track A output is *screening*. Any edge that survives it is
+  handed to the user for Track B validation, and only Track B can promote it.

@@ -488,6 +488,11 @@ Three of these change what Phase 2 onward can deliver. I can proceed without
 answers by taking the stated defaults, but 9.1 and 9.2 materially bound the honest
 ceiling of the whole project.
 
+> **ANSWERED 2026-08-23.** 9.1 → **(b)** proceed on 51 days, verdict capped at
+> *PROMISING* / *INSUFFICIENT EVIDENCE*, never *ROBUST CANDIDATE*.
+> 9.2 → **Premium+, Deep Backtesting available**, so Track B can carry the
+> multi-year 5m validation that Track A cannot. 9.3/9.4 → defaults adopted.
+
 **9.1 — Data.** Free sources cap at 51 trading days of 5m. Options:
    - **(a)** Provide better data: a TradingView 5m ETH CSV export, a Databento /
      FirstRate / Polygon key, or an IBKR/Rithmic dump. **This is the single
