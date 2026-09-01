@@ -231,3 +231,80 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+---
+
+# ICT MNQ Strategy — Sweep → MSS → Displacement
+
+`strategies/ict_mnq_sweep_mss.pine` is a Pine v6 **`strategy()`** (real orders,
+auditable Strategy Tester P&L — not an indicator). 5-minute execution on MNQ,
+filtered by 30m + 1H structure.
+
+- **How to trade it:** [`docs/ICT_MNQ_PLAYBOOK.md`](docs/ICT_MNQ_PLAYBOOK.md)
+- **Research code:** `backtest/ict_engine.py` (model + pessimistic fill model +
+  commission/slippage in R), `ict_edge.py` (does the event predict anything?),
+  `ict_conditions.py` (which confluence conditions it), `ict_combo.py`,
+  `ict_study.py` (walk-forward + pooled grid search), `ict_data.py` (fetch).
+
+```
+cd backtest
+python3 ict_data.py ../ictdata      # MNQ NQ ES MES QQQ SPY, 5m/15m/30m/1h/1d
+python3 ict_edge.py ../ictdata      # unconditional edge test
+python3 ict_conditions.py ../ictdata  # confluence attribution
+python3 ict_combo.py ../ictdata     # the combined filter, all six markets
+```
+
+## The trade
+
+1. **Sweep** — price raids a live pool (PDH/PDL, Asia or London range extreme,
+   untaken 5m swing) and **closes back inside** it.
+2. **MSS** — within ~6 bars a candle **closes** through the swing that stood
+   before the raid, with a body ≥ 0.25 ATR.
+3. **Filter** — 30m **and** 1H structure must already point that way; entries
+   only 09:30–13:30 ET; max 2/day.
+4. **Entry** — on the shift candle's close (see below).
+5. **Risk** — stop 1.0 ATR (~43 pts on MNQ), target 2R, breakeven at +1R, flat
+   15:55 ET.
+
+## What the testing found
+
+Six markets (MNQ, NQ, ES, MES, QQQ, SPY), ~71 days of 5m and ~875 days of 1h
+from Yahoo, commission and slippage charged in R throughout.
+
+**Held up:**
+
+- **HTF alignment is the edge.** Counter-trend shifts lost on 5 of 6 markets
+  (MNQ −0.76 ATR/event, t = −2.18); aligned-and-not-PM was positive on 5 of 6
+  (MNQ +1.26 ATR, t = +2.10).
+- **NY PM is the worst session** on every sample — hence the 13:30 cutoff.
+- **Entry timing was the biggest execution lever.** The textbook FVG-retracement
+  limit filled ~40% of setups and collected the ones that stalled; entering on
+  the shift close gave ~2.5× the trades and a better factor (pooled PF 1.29 vs
+  1.00). The script keeps both so you can check it.
+- **Stops under ~0.75 ATR destroy it.** Measured MAE after a valid setup averages
+  ~1.5 ATR.
+
+**Did not hold up — stated plainly:**
+
+- **The raw pattern has no edge.** Unfiltered on MNQ 5m: forward move −0.06 ATR,
+  43% right-side, MFE 0.93 vs MAE 1.05. Slightly worse than a coin flip. All of
+  the model's edge comes from the filters.
+- **4H/Daily gating made it worse** on all three 5m markets. Ships OFF.
+- **On the long sample it does not work.** 875 days of 1h, 390–970 trades:
+  PF **0.80–1.01**, and the HTF filter *hurt* there. The encouraging 5m numbers
+  come from 71 days.
+- **The 5m sample cannot prove anything.** MNQ and NQ — the same market on two
+  feeds, same 71 days — came out with opposite signs (+0.6R vs −4.3R). Yahoo
+  caps sub-hourly history at ~60 days, so a few hundred trades simply aren't
+  available here.
+
+**Bottom line:** a correctly specified model with defensible, consistent-direction
+filters. Not a validated edge, and not presented as one. Backtest it on your own
+data before risking size.
+
+## VWAP
+
+Right direction, weak, and mostly redundant with the HTF filter (on MNQ, 68 of
+89 events were already on the "correct" VWAP side). It ships **off** as a
+direction filter. Use VWAP as context — target/magnet, trend-vs-balance read —
+not as permission.
