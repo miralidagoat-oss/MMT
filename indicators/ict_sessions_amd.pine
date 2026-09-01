@@ -1,0 +1,323 @@
+//@version=6
+// ═════════════════════════════════════════════════════════════════════════════
+//  ICT SESSIONS — AMD        Accumulation · Manipulation · Distribution
+// ═════════════════════════════════════════════════════════════════════════════
+//  Draws the Asia / London / New York dealing ranges as boxes with an
+//  equilibrium (50%) line and a name chip, and reports the running AMD cycle
+//  in a table: session high, session low, session range, and which earlier
+//  session's liquidity this session ran.
+//
+//  Defaults reproduce the reference layout exactly (New York time):
+//      Asia      18:00 → 03:00     accumulation   (the range that gets raided)
+//      London    03:00 → 08:00     manipulation   (the Judas raid on Asia)
+//      New York  08:00 → 12:00     distribution   (the expansion leg)
+//  Those three are contiguous, so each box ends exactly where the next begins,
+//  and 12:00 → 18:00 ET is deliberately left unmarked (off session).
+//
+//  RANGE is quoted in "pips" = 10 ticks, which is what the reference table
+//  shows (MNQ tick 0.25 → 1 pip = 2.5 index points → a 135.25-point Asia range
+//  prints as "54p"). Points / Ticks / Price are selectable.
+//
+//  Nothing here repaints: a box only ever grows with the live bar and is
+//  frozen the moment its session closes.
+// ═════════════════════════════════════════════════════════════════════════════
+indicator("ICT Sessions — AMD", "AMD", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+G_GEN = "General"
+G_ASI = "① Asia · accumulation"
+G_LON = "② London · manipulation"
+G_NYK = "③ New York · distribution"
+G_TBL = "AMD table"
+G_STY = "Style"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────────────────────
+tzIn = input.string("America/New_York", "Session timezone", options = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Asia/Dubai", "Asia/Tokyo", "Asia/Hong_Kong", "Asia/Shanghai", "Australia/Sydney", "UTC", "Exchange timezone"], group = G_GEN, tooltip = "Sessions are anchored to this zone and follow its DST rules, so they stay aligned regardless of what your chart is displaying. ICT session times are quoted in New York time.")
+tz    = tzIn == "Exchange timezone" ? syminfo.timezone : tzIn
+
+daysIn = input.string("All days", "Session days", options = ["All days", "Mon–Fri"], group = G_GEN, tooltip = "Sunday-evening futures opens live in the Asia session, so 'All days' is correct for CME products. 'Mon–Fri' filters by the day the session STARTS.")
+days   = daysIn == "Mon–Fri" ? "23456" : "1234567"
+
+keepN = input.int(3, "AMD cycles kept on chart", minval = 1, maxval = 20, group = G_GEN, tooltip = "How many of each session box to keep drawn. 3 matches the reference.")
+
+asiaOn  = input.bool(true, "Show", group = G_ASI, inline = "a")
+asiaTxt = input.session("1800-0300", "", group = G_ASI, inline = "a")
+asiaCol = input.color(#8e44ad, "", group = G_ASI, inline = "a")
+asiaNm  = input.string("ASIA", "Chip text", group = G_ASI)
+
+lonOn   = input.bool(true, "Show", group = G_LON, inline = "l")
+lonTxt  = input.session("0300-0800", "", group = G_LON, inline = "l")
+lonCol  = input.color(#12928c, "", group = G_LON, inline = "l")
+lonNm   = input.string("LONDON", "Chip text", group = G_LON)
+
+nykOn   = input.bool(true, "Show", group = G_NYK, inline = "n")
+nykTxt  = input.session("0800-1200", "", group = G_NYK, inline = "n")
+nykCol  = input.color(#c26a1d, "", group = G_NYK, inline = "n")
+nykNm   = input.string("NEW YORK", "Chip text", group = G_NYK)
+
+showBox  = input.bool(true, "Session box", group = G_STY)
+fillTr   = input.int(88, "…fill transparency", minval = 0, maxval = 100, group = G_STY)
+bordTr   = input.int(45, "…border transparency", minval = 0, maxval = 100, group = G_STY)
+bordW    = input.int(1, "…border width", minval = 0, maxval = 4, group = G_STY)
+showMid  = input.bool(true, "Equilibrium (50%) line", group = G_STY)
+midTr    = input.int(25, "…transparency", minval = 0, maxval = 100, group = G_STY)
+showLbl  = input.bool(true, "Session name chip", group = G_STY)
+lblPos   = input.string("Right", "…position", options = ["Left", "Center", "Right"], group = G_STY)
+lblSzIn  = input.string("Small", "…size", options = ["Tiny", "Small", "Normal"], group = G_STY)
+chipTxt  = input.color(color.white, "…text colour", group = G_STY)
+showLvl  = input.bool(false, "Extend session high/low until swept", group = G_STY, tooltip = "After a session closes, project its high and low forward as liquidity. The ray stops the moment price trades through it.")
+lvlTr    = input.int(35, "…ray transparency", minval = 0, maxval = 100, group = G_STY)
+lvlTag   = input.bool(true, "…tag the rays", group = G_STY)
+
+showTable = input.bool(true, "Show AMD table", group = G_TBL)
+tblPosIn  = input.string("Top left", "Position", options = ["Top left", "Top right", "Bottom left", "Bottom right", "Middle left", "Middle right"], group = G_TBL)
+tblSzIn   = input.string("Small", "Text size", options = ["Tiny", "Small", "Normal"], group = G_TBL)
+rangeUnit = input.string("Pips (10 ticks)", "Range unit", options = ["Pips (10 ticks)", "Ticks", "Points", "Price"], group = G_TBL, tooltip = "The reference table quotes pips, where 1 pip = 10 ticks. On MNQ (tick 0.25) that makes 1 pip = 2.5 index points.")
+showStat  = input.bool(false, "Add a live status row", group = G_TBL)
+hdrBg     = input.color(#1c3d5a, "Header colour", group = G_TBL, inline = "t1")
+cellBg    = input.color(#0e141b, "Cell colour", group = G_TBL, inline = "t1")
+cellTxt   = input.color(#cfd8e3, "Cell text", group = G_TBL, inline = "t2")
+sweepBg   = input.color(#b9770e, "Sweep chip", group = G_TBL, inline = "t2")
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DERIVED CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+lblStyle = lblPos == "Left" ? label.style_label_lower_left : lblPos == "Center" ? label.style_label_down : label.style_label_lower_right
+lblSz    = lblSzIn == "Tiny" ? size.tiny : lblSzIn == "Normal" ? size.normal : size.small
+tblSz    = tblSzIn == "Tiny" ? size.tiny : tblSzIn == "Normal" ? size.normal : size.small
+tblPos   = tblPosIn == "Top right" ? position.top_right : tblPosIn == "Bottom left" ? position.bottom_left : tblPosIn == "Bottom right" ? position.bottom_right : tblPosIn == "Middle left" ? position.middle_left : tblPosIn == "Middle right" ? position.middle_right : position.top_left
+
+// Session boxes only mean something on an intraday chart.
+tfOk = not timeframe.isdwm and timeframe.in_seconds() <= 14400
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+type Sess
+    string        nm
+    color         col
+    bool          on
+    float         hi
+    float         lo
+    int           sTime
+    bool          live
+    box           bx
+    line          ml
+    label         lb
+    array<box>    bxs
+    array<line>   mls
+    array<label>  lbs
+    float         cHi
+    float         cLo
+
+type Ray
+    line   ln
+    label  lb
+    float  px
+    bool   up
+    bool   dead
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+mkSess(string nm, color col, bool on) =>
+    Sess.new(nm = nm, col = col, on = on, hi = na, lo = na, sTime = na, live = false, bx = na, ml = na, lb = na, bxs = array.new<box>(), mls = array.new<line>(), lbs = array.new<label>(), cHi = na, cLo = na)
+
+var array<Sess> S = array.from(mkSess(asiaNm, asiaCol, asiaOn), mkSess(lonNm, lonCol, lonOn), mkSess(nykNm, nykCol, nykOn))
+
+var array<Ray> rays = array.new<Ray>()
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION CLOCKS  —  time() needs a simple-string session, so these live at the
+// top level rather than inside the update loop.
+// ─────────────────────────────────────────────────────────────────────────────
+tA = time(timeframe.period, asiaTxt + ":" + days, tz)
+tL = time(timeframe.period, lonTxt  + ":" + days, tz)
+tN = time(timeframe.period, nykTxt  + ":" + days, tz)
+
+inA = asiaOn and tfOk and not na(tA)
+inL = lonOn  and tfOk and not na(tL)
+inN = nykOn  and tfOk and not na(tN)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+addRay(float px, bool up, color col, string tag) =>
+    if showLvl
+        line ln = line.new(time, px, time_close, px, xloc = xloc.bar_time, color = color.new(col, lvlTr), style = line.style_dotted, width = 1)
+        label lb = lvlTag ? label.new(time_close, px, tag, xloc = xloc.bar_time, style = label.style_none, textcolor = color.new(col, lvlTr), size = size.tiny, textalign = text.align_left) : na
+        rays.push(Ray.new(ln = ln, lb = lb, px = px, up = up, dead = false))
+        if rays.size() > keepN * 6
+            Ray old = rays.shift()
+            line.delete(old.ln)
+            label.delete(old.lb)
+    showLvl
+
+update(Sess s, bool inSess) =>
+    bool started = inSess and not s.live
+    if started
+        s.live  := true
+        s.hi    := high
+        s.lo    := low
+        s.sTime := time
+        float mid0 = math.avg(s.hi, s.lo)
+        if showBox
+            s.bx := box.new(time, s.hi, time_close, s.lo, xloc = xloc.bar_time, border_color = color.new(s.col, bordTr), border_width = bordW, bgcolor = color.new(s.col, fillTr))
+            s.bxs.push(s.bx)
+            if s.bxs.size() > keepN
+                box.delete(s.bxs.shift())
+        if showMid
+            s.ml := line.new(time, mid0, time_close, mid0, xloc = xloc.bar_time, color = color.new(s.col, midTr), style = line.style_dashed, width = 1)
+            s.mls.push(s.ml)
+            if s.mls.size() > keepN
+                line.delete(s.mls.shift())
+        if showLbl
+            s.lb := label.new(time_close, s.hi, s.nm, xloc = xloc.bar_time, style = lblStyle, color = s.col, textcolor = chipTxt, size = lblSz)
+            s.lbs.push(s.lb)
+            if s.lbs.size() > keepN
+                label.delete(s.lbs.shift())
+    else if inSess
+        s.hi := math.max(s.hi, high)
+        s.lo := math.min(s.lo, low)
+
+    if inSess
+        float midNow = math.avg(s.hi, s.lo)
+        if not na(s.bx)
+            box.set_top(s.bx, s.hi)
+            box.set_bottom(s.bx, s.lo)
+            box.set_right(s.bx, time_close)
+        if not na(s.ml)
+            line.set_xy1(s.ml, s.sTime, midNow)
+            line.set_xy2(s.ml, time_close, midNow)
+        if not na(s.lb)
+            label.set_x(s.lb, lblPos == "Left" ? s.sTime : lblPos == "Center" ? int(math.avg(s.sTime, time_close)) : time_close)
+            label.set_y(s.lb, s.hi)
+        s.cHi := s.hi
+        s.cLo := s.lo
+    else if s.live
+        // session just closed — freeze it and project its liquidity
+        s.live := false
+        bool _h = addRay(s.hi, true,  s.col, " " + s.nm + " H")
+        bool _l = addRay(s.lo, false, s.col, " " + s.nm + " L")
+    s.live
+
+// The cycle resets when the first enabled session opens, so the table always
+// describes one Asia → London → New York rotation.
+inArr    = array.from(inA, inL, inN)
+anchorIx = asiaOn ? 0 : lonOn ? 1 : 2
+anchorS  = S.get(anchorIx)
+newCycle = inArr.get(anchorIx) and not anchorS.live
+
+if newCycle
+    for s in S
+        s.cHi := na
+        s.cLo := na
+
+bool _u0 = update(S.get(0), inA)
+bool _u1 = update(S.get(1), inL)
+bool _u2 = update(S.get(2), inN)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION LIQUIDITY RAYS
+// ─────────────────────────────────────────────────────────────────────────────
+if rays.size() > 0
+    for i = rays.size() - 1 to 0
+        Ray r = rays.get(i)
+        if not r.dead
+            if (r.up and high > r.px) or (not r.up and low < r.px)
+                r.dead := true
+            else
+                line.set_x2(r.ln, time_close)
+                if not na(r.lb)
+                    label.set_x(r.lb, time_close)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AMD TABLE
+// ─────────────────────────────────────────────────────────────────────────────
+fmtPx(float p) =>
+    na(p) ? "  —  " : "  " + str.tostring(p, format.mintick) + "  "
+
+fmtRange(float hi, float lo) =>
+    string res = "  —  "
+    if not na(hi) and not na(lo)
+        float r = hi - lo
+        res := switch rangeUnit
+            "Pips (10 ticks)" => "  " + str.tostring(math.round(r / (syminfo.mintick * 10)), "#") + "p  "
+            "Ticks"           => "  " + str.tostring(math.round(r / syminfo.mintick), "#") + "t  "
+            "Points"          => "  " + str.tostring(r, format.mintick) + "  "
+            => "  " + str.tostring(r, format.mintick) + "  "
+    res
+
+// Which earlier session in this cycle did session `ix` raid? Search backwards so
+// the nearest raided session wins — that is what the reference table reports.
+sweepOf(int ix) =>
+    string res = "  —  "
+    if ix > 0
+        Sess s = S.get(ix)
+        if not na(s.cHi) and not na(s.cLo)
+            for j = ix - 1 to 0
+                Sess p = S.get(j)
+                if p.on and not na(p.cHi) and not na(p.cLo)
+                    bool tookHi = s.cHi > p.cHi
+                    bool tookLo = s.cLo < p.cLo
+                    if tookHi or tookLo
+                        res := "  " + p.nm + " " + (tookHi and tookLo ? "HL" : tookHi ? "H" : "L") + "  "
+                        break
+    res
+
+liveName() =>
+    string res = "Off session"
+    if inA
+        res := S.get(0).nm
+    if inL
+        res := S.get(1).nm
+    if inN
+        res := S.get(2).nm
+    res
+
+tblRows = showStat ? 5 : 4
+
+var table amd = na
+if barstate.islast
+    if showTable and tfOk
+        if na(amd)
+            amd := table.new(tblPos, 5, tblRows, border_color = #22323f, border_width = 1, frame_color = #2b4055, frame_width = 1)
+        table.cell(amd, 0, 0, "  SESSION  ", text_color = color.white, bgcolor = hdrBg, text_size = tblSz)
+        table.cell(amd, 1, 0, "  HIGH  ",    text_color = color.white, bgcolor = hdrBg, text_size = tblSz)
+        table.cell(amd, 2, 0, "  LOW  ",     text_color = color.white, bgcolor = hdrBg, text_size = tblSz)
+        table.cell(amd, 3, 0, "  RANGE  ",   text_color = color.white, bgcolor = hdrBg, text_size = tblSz)
+        table.cell(amd, 4, 0, "  SWEEP  ",   text_color = color.white, bgcolor = hdrBg, text_size = tblSz)
+        for i = 0 to 2
+            Sess s = S.get(i)
+            int  r = i + 1
+            string sw = sweepOf(i)
+            bool swept = sw != "  —  "
+            table.cell(amd, 0, r, "  " + s.nm + "  ", text_color = color.white, bgcolor = color.new(s.col, s.on ? 15 : 70), text_size = tblSz)
+            table.cell(amd, 1, r, s.on ? fmtPx(s.cHi) : "  —  ", text_color = cellTxt, bgcolor = cellBg, text_size = tblSz)
+            table.cell(amd, 2, r, s.on ? fmtPx(s.cLo) : "  —  ", text_color = cellTxt, bgcolor = cellBg, text_size = tblSz)
+            table.cell(amd, 3, r, s.on ? fmtRange(s.cHi, s.cLo) : "  —  ", text_color = cellTxt, bgcolor = cellBg, text_size = tblSz)
+            table.cell(amd, 4, r, s.on ? sw : "  —  ", text_color = swept ? color.white : color.new(cellTxt, 45), bgcolor = swept and s.on ? sweepBg : cellBg, text_size = tblSz)
+        if showStat
+            table.cell(amd, 0, 4, "  NOW  ", text_color = color.white, bgcolor = hdrBg, text_size = tblSz)
+            table.cell(amd, 1, 4, "  " + liveName() + "  ", text_color = cellTxt, bgcolor = cellBg, text_size = tblSz)
+            table.cell(amd, 2, 4, "", bgcolor = cellBg)
+            table.cell(amd, 3, 4, "", bgcolor = cellBg)
+            table.cell(amd, 4, 4, "", bgcolor = cellBg)
+    else if not na(amd)
+        table.delete(amd)
+        amd := na
+
+var label tfWarn = na
+if barstate.islast and not tfOk
+    if na(tfWarn)
+        tfWarn := label.new(bar_index, high, "AMD sessions need an intraday timeframe (≤ 4H)", style = label.style_label_left, color = color.new(color.orange, 20), textcolor = color.white, size = size.small)
+    else
+        label.set_xy(tfWarn, bar_index, high)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────────────────────
+alertcondition(inA and not inA[1], "Asia session open",     "Asia session opened")
+alertcondition(inL and not inL[1], "London session open",   "London session opened")
+alertcondition(inN and not inN[1], "New York session open", "New York session opened")

@@ -1,0 +1,891 @@
+//@version=6
+// ═════════════════════════════════════════════════════════════════════════════
+//  ICT LIQUIDITY & MARKET STRUCTURE                    marker-only, no signals
+// ═════════════════════════════════════════════════════════════════════════════
+//  Marks, on any timeframe:
+//    · liquidity pools  — swing highs/lows, equal highs/lows (EQH / EQL),
+//                         previous day / week highs and lows
+//    · GRADED liquidity sweeps — every raid is scored 0-100 on seven measured
+//                         factors and stamped A+ / A / B / C / D / F, with the
+//                         full breakdown in the label tooltip
+//    · BOS · CHoCH · MSS — structure breaks, separated by what caused them
+//    · CISD              — change in state of delivery
+//    · FVG · IFVG · CE   — imbalances, inversions, consequent encroachment
+//    · order blocks / breaker blocks
+//    · premium / discount / equilibrium and the OTE band
+//
+//  WHAT MAKES A SWEEP GOOD (this is the whole point of the grade):
+//    A raid is high quality when it takes liquidity that was genuinely worth
+//    taking and then refuses to stay there. Concretely —
+//      1  the level held real orders: multiple equal touches, an old level,
+//         a major swing, or a named level (PDH/PDL/PWH/PWL)
+//      2  the poke was deep enough to trigger stops but not so deep that it
+//         became an expansion — an ideal band measured in ATR, not ticks
+//      3  the bar rejected: a dominant wick on the raid side
+//      4  the reclaim was fast: same bar is best, N bars is decay
+//      5  the reclaim was violent: displacement away from the level in ATR
+//      6  participation: relative volume (range/ATR fallback where no volume)
+//      7  context: highs raided from PREMIUM, lows raided from DISCOUNT
+//    A raid that closes and stays beyond the level is not graded at all — it
+//    is a break, and the level is retired.
+//
+//  NON-REPAINTING: every event is evaluated on closed bars. Pivots are only
+//  known `length` bars after they print — that lag is inherent to a swing,
+//  and levels are never back-dated: a pool cannot be swept before it exists.
+// ═════════════════════════════════════════════════════════════════════════════
+indicator("ICT Liquidity & Market Structure", "ICT SMC", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 500)
+
+G_C  = "① Core"
+G_LQ = "② Liquidity pools"
+G_SW = "③ Sweeps"
+G_WT = "④ Sweep grade weights"
+G_GR = "⑤ Sweep grade cut-offs"
+G_MS = "⑥ Market structure — BOS / CHoCH / MSS"
+G_CI = "⑦ CISD"
+G_FV = "⑧ Fair value gaps"
+G_OB = "⑨ Order blocks"
+G_PD = "⑩ Premium / discount"
+G_SM = "⑪ SMT divergence"
+G_VI = "⑫ Volume imbalance"
+G_HT = "⑬ Higher-timeframe liquidity"
+G_DB = "⑭ Dashboard"
+G_ST = "⑮ Colours"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────────────────────
+confirmOnly = input.bool(true,  "Evaluate on closed bars only", group = G_C, tooltip = "Leave this on. Off, events are evaluated intrabar and can appear and disappear until the bar closes.")
+atrLen      = input.int(14,     "ATR length", minval = 2, maxval = 200, group = G_C)
+liqLen      = input.int(5,      "Liquidity pivot length", minval = 1, maxval = 40, group = G_C, tooltip = "Pivot lookback/forward that defines a liquidity pool. Smaller = more pools.")
+swingLen    = input.int(10,     "Structure swing length", minval = 2, maxval = 50, group = G_C, tooltip = "Pivot lookback/forward that defines the swings BOS / CHoCH / MSS are measured against.")
+eqTolAtr    = input.float(0.10, "Equal-level tolerance (× ATR)", minval = 0.0, maxval = 1.0, step = 0.01, group = G_C, tooltip = "Two pivots inside this distance are one pool, and the pool's touch count goes up. This is the EQH / EQL detector.")
+dispBodyAtr = input.float(0.50, "Displacement body (× ATR)", minval = 0.0, maxval = 5.0, step = 0.05, group = G_C, tooltip = "A candle body this large counts as displacement. Used by the FVG filter and by the MSS qualifier.")
+
+showPools    = input.bool(true, "Draw pools until they are taken", group = G_LQ)
+poolFilter   = input.string("All", "Draw which pools", options = ["All", "Equal + named only", "Major + named only"], group = G_LQ)
+maxPools     = input.int(8,     "Pools tracked per side", minval = 2, maxval = 25, group = G_LQ)
+poolAgeRef   = input.int(100,   "Age that counts as fully mature (bars)", minval = 5, maxval = 1000, group = G_LQ, tooltip = "A pool this old scores full marks on the age factor.")
+showPoolTags = input.bool(true, "Tag pools (EQH ×3, PDH …)", group = G_LQ)
+
+showSweeps  = input.bool(true,  "Mark graded sweeps", group = G_SW)
+minGradeIn  = input.string("D", "Minimum grade drawn", options = ["A+", "A", "B", "C", "D", "F"], group = G_SW)
+sweepDetail = input.string("Grade + score", "Label detail", options = ["Grade only", "Grade + score", "Side + grade + score"], group = G_SW)
+maxConfirm  = input.int(6,      "Bars allowed to reclaim the level", minval = 0, maxval = 50, group = G_SW, tooltip = "0 = only same-bar raids count. Beyond this the level is treated as broken, not swept.")
+maxRunAtr   = input.float(1.20, "Max excursion before it is a break (× ATR)", minval = 0.1, maxval = 10.0, step = 0.1, group = G_SW)
+idealLoAtr  = input.float(0.05, "Ideal penetration — floor (× ATR)", minval = 0.0, maxval = 2.0, step = 0.01, group = G_SW, tooltip = "Below this the poke may be too shallow to have triggered resting stops.")
+idealHiAtr  = input.float(0.50, "Ideal penetration — ceiling (× ATR)", minval = 0.05, maxval = 5.0, step = 0.05, group = G_SW, tooltip = "Above this the raid starts looking like expansion and the score decays to the break threshold.")
+dispRefAtr  = input.float(1.00, "Displacement that scores full marks (× ATR)", minval = 0.1, maxval = 5.0, step = 0.1, group = G_SW)
+volLen      = input.int(20,     "Relative-volume baseline", minval = 2, maxval = 200, group = G_SW)
+useFollow   = input.bool(true,  "Upgrade the grade on follow-through", group = G_SW, tooltip = "If a CISD or a structure break in the raid's direction lands inside the window, the sweep is re-graded upward and marked ▲. Purely additive — nothing is ever downgraded or erased.")
+followWin   = input.int(10,     "…window (bars)", minval = 1, maxval = 100, group = G_SW)
+followBonus = input.float(8.0,  "…bonus points", minval = 0.0, maxval = 30.0, step = 1.0, group = G_SW)
+showSwZone  = input.bool(true,  "Shade the raid excursion", group = G_SW)
+maxSweeps   = input.int(30,     "Sweep marks kept", minval = 5, maxval = 200, group = G_SW)
+
+wPool  = input.float(20, "Liquidity quality of the level", minval = 0, maxval = 100, step = 1, group = G_WT, tooltip = "Touches, age, swing degree, named-level status.")
+wDepth = input.float(15, "Penetration depth",              minval = 0, maxval = 100, step = 1, group = G_WT)
+wRej   = input.float(15, "Rejection wick",                 minval = 0, maxval = 100, step = 1, group = G_WT)
+wSpeed = input.float(15, "Reclaim speed",                  minval = 0, maxval = 100, step = 1, group = G_WT)
+wDisp  = input.float(15, "Displacement on the reclaim",    minval = 0, maxval = 100, step = 1, group = G_WT)
+wVol   = input.float(10, "Relative volume",                minval = 0, maxval = 100, step = 1, group = G_WT)
+wCtx   = input.float(10, "Premium / discount context",     minval = 0, maxval = 100, step = 1, group = G_WT)
+wSmt   = input.float(10, "SMT divergence",                  minval = 0, maxval = 100, step = 1, group = G_WT, tooltip = "Only counted when SMT is switched on, so leaving SMT off does not dilute every other factor.")
+
+cutAp = input.float(90, "A+ at or above", minval = 0, maxval = 100, step = 1, group = G_GR)
+cutA  = input.float(80, "A  at or above", minval = 0, maxval = 100, step = 1, group = G_GR)
+cutB  = input.float(70, "B  at or above", minval = 0, maxval = 100, step = 1, group = G_GR)
+cutC  = input.float(58, "C  at or above", minval = 0, maxval = 100, step = 1, group = G_GR)
+cutD  = input.float(45, "D  at or above", minval = 0, maxval = 100, step = 1, group = G_GR)
+
+showStruct = input.bool(true, "Mark BOS / CHoCH / MSS", group = G_MS)
+mssWin     = input.int(15,    "MSS: raid must be within N bars", minval = 1, maxval = 100, group = G_MS, tooltip = "A CHoCH is promoted to MSS only when a graded sweep of the opposite side happened inside this window AND the break carries displacement. Everything else stays a CHoCH.")
+maxStruct  = input.int(12,    "Structure marks kept", minval = 2, maxval = 60, group = G_MS)
+
+showCisd   = input.bool(true,   "Mark CISD", group = G_CI)
+cisdMinRun = input.int(2,       "Minimum candles in the delivery leg", minval = 1, maxval = 10, group = G_CI)
+cisdAnchor = input.string("Extreme open", "CISD level", options = ["Run-start open", "Extreme open"], group = G_CI, tooltip = "Run-start open: the open of the first candle of the delivery leg. Extreme open: the highest open of a down leg / lowest open of an up leg — the stricter of the two.")
+cisdReqSw  = input.bool(false,  "Only after a graded sweep", group = G_CI)
+cisdWin    = input.int(15,      "…sweep window (bars)", minval = 1, maxval = 100, group = G_CI)
+maxCisd    = input.int(8,       "CISD marks kept", minval = 2, maxval = 40, group = G_CI)
+
+showFvg    = input.bool(true,   "Show fair value gaps", group = G_FV)
+fvgMinAtr  = input.float(0.05,  "Minimum gap (× ATR)", minval = 0.0, maxval = 3.0, step = 0.01, group = G_FV)
+fvgReqDisp = input.bool(true,   "Require a displacement candle", group = G_FV)
+fvgMitig   = input.string("CE (50%)", "Mitigated when price reaches", options = ["Touch", "CE (50%)", "Full fill"], group = G_FV)
+fvgOnMit   = input.string("Stop extending", "On mitigation", options = ["Stop extending", "Fade", "Delete"], group = G_FV)
+showCe     = input.bool(false,  "Consequent-encroachment (50%) line", group = G_FV)
+showIfvg   = input.bool(false,  "Invert into an IFVG when traded through", group = G_FV)
+maxFvg     = input.int(12,      "FVGs kept per side", minval = 1, maxval = 40, group = G_FV)
+
+showOb    = input.bool(true,  "Show order blocks at structure breaks", group = G_OB)
+obUseBody = input.bool(false, "Use the candle body instead of its full range", group = G_OB)
+obLook    = input.int(20,     "Search window (bars)", minval = 3, maxval = 60, group = G_OB)
+maxOb     = input.int(5,      "Order blocks kept per side", minval = 1, maxval = 20, group = G_OB)
+showBrk   = input.bool(true,  "Flip violated blocks into breakers", group = G_OB)
+
+showPd  = input.bool(false, "Show premium / discount of the dealing range", group = G_PD)
+showOte = input.bool(false, "Show the OTE band", group = G_PD)
+oteLo   = input.float(0.62, "OTE from", minval = 0.5, maxval = 0.95, step = 0.01, group = G_PD)
+oteHi   = input.float(0.79, "OTE to",   minval = 0.5, maxval = 0.99, step = 0.01, group = G_PD)
+
+useSmt  = input.bool(false, "Grade with SMT divergence", group = G_SM, tooltip = "SMT: at the moment of a raid, a correlated instrument fails to make the matching new extreme. One market takes the liquidity, its partner refuses to follow — the classic ICT confirmation that the raid was engineered. Pick a genuinely correlated symbol (ES vs NQ, EURUSD vs DXY inverted, GC vs SI).")
+smtSym  = input.symbol("CME_MINI:ES1!", "Comparison symbol", group = G_SM)
+smtLook = input.int(20, "Divergence lookback (bars)", minval = 3, maxval = 200, group = G_SM, tooltip = "A new extreme means: beyond everything in the previous N bars.")
+
+showVi   = input.bool(false, "Show volume imbalances", group = G_VI, tooltip = "A body-to-body gap where the wicks still overlap — smaller than an FVG and often what price returns for first.")
+viMinAtr = input.float(0.05, "Minimum gap (× ATR)", minval = 0.0, maxval = 2.0, step = 0.01, group = G_VI)
+maxVi    = input.int(10, "Volume imbalances kept", minval = 1, maxval = 40, group = G_VI)
+
+showPdhl = input.bool(true,  "Previous day high / low", group = G_HT)
+showPwhl = input.bool(false, "Previous week high / low", group = G_HT)
+showMno  = input.bool(false, "Midnight open (00:00 New York)", group = G_HT)
+mnoTz    = input.string("America/New_York", "Midnight-open timezone", group = G_HT)
+
+showDash = input.bool(true, "Show dashboard", group = G_DB)
+dashPosIn= input.string("Top right", "Position", options = ["Top left", "Top right", "Bottom left", "Bottom right", "Middle right"], group = G_DB)
+dashSzIn = input.string("Small", "Text size", options = ["Tiny", "Small", "Normal"], group = G_DB)
+
+bullCol = input.color(#26a69a, "Bullish", group = G_ST, inline = "c1")
+bearCol = input.color(#e05a47, "Bearish", group = G_ST, inline = "c1")
+poolCol = input.color(#8a94a6, "Pools",   group = G_ST, inline = "c2")
+structCol=input.color(#d8dee9, "Structure", group = G_ST, inline = "c2")
+fvgTr    = input.int(82, "FVG fill transparency", minval = 0, maxval = 100, group = G_ST)
+obTr     = input.int(80, "Order-block fill transparency", minval = 0, maxval = 100, group = G_ST)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERIES  (every ta.* call is unconditional — required for correct history)
+// ─────────────────────────────────────────────────────────────────────────────
+atr    = ta.atr(atrLen)
+atrSafe= math.max(nz(atr), syminfo.mintick)
+eqTol  = eqTolAtr * atrSafe
+volSma = ta.sma(nz(volume), volLen)
+useVol = not na(volSma) and volSma > 0
+relVol = useVol ? nz(volume) / volSma : (high - low) / atrSafe
+
+rng     = math.max(high - low, syminfo.mintick)
+wickUp  = (high - math.max(open, close)) / rng
+wickDn  = (math.min(open, close) - low) / rng
+
+lph = ta.pivothigh(high, liqLen, liqLen)
+lpl = ta.pivotlow(low,  liqLen, liqLen)
+sph = ta.pivothigh(high, swingLen, swingLen)
+spl = ta.pivotlow(low,  swingLen, swingLen)
+
+gapUp    = low - high[2]      // bullish imbalance: bar[2] high  →  bar[0] low
+gapDn    = low[2] - high      // bearish imbalance: bar[0] high  →  bar[2] low
+midDisp  = math.abs(close[1] - open[1]) >= dispBodyAtr * atrSafe
+
+conf = confirmOnly ? barstate.isconfirmed : true
+
+[pdhV, pdlV] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+[pwhV, pwlV] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+newNyDay = not timeframe.isdwm and dayofmonth(time, mnoTz) != dayofmonth(time[1], mnoTz)
+
+// SMT: did WE make a new extreme that our correlated partner refused to make?
+[smtHigh, smtLow] = request.security(smtSym, timeframe.period, [high, low])
+ourHH   = high    > ta.highest(high, smtLook)[1]
+ourLL   = low     < ta.lowest(low, smtLook)[1]
+cmpHH   = smtHigh > ta.highest(smtHigh, smtLook)[1]
+cmpLL   = smtLow  < ta.lowest(smtLow, smtLook)[1]
+smtOk   = not na(smtHigh) and not na(smtLow)
+smtBear = useSmt and smtOk and ourHH and not cmpHH
+smtBull = useSmt and smtOk and ourLL and not cmpLL
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+type Pool
+    float  px
+    int    bar
+    int    touches
+    bool   up
+    bool   major
+    bool   named
+    string tag
+    line   ln
+    label  lb
+    bool   pierced
+    int    pBar
+    float  ext
+    float  wick
+    float  volR
+    bool   smt
+
+type Sweep
+    label  lb
+    box    bx
+    bool   up
+    int    bar
+    float  score
+    string side
+    string tip
+    bool   done
+    string mark
+
+type Zone
+    box    bx
+    line   ce
+    float  top
+    float  btm
+    bool   bull
+    bool   mitigated
+    bool   inverted
+    bool   frozen
+    bool   spent
+
+type Vi
+    box    bx
+    float  top
+    float  btm
+    bool   bull
+
+type Ob
+    box    bx
+    float  top
+    float  btm
+    bool   bull
+    bool   breaker
+    bool   dead
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────────────────
+var array<Pool>  pools   = array.new<Pool>()
+var array<Sweep> sweeps  = array.new<Sweep>()
+var array<Zone>  fvgs    = array.new<Zone>()
+var array<Ob>    obs     = array.new<Ob>()
+var array<Vi>    vis     = array.new<Vi>()
+var array<line>  stLines = array.new<line>()
+var array<label> stLabs  = array.new<label>()
+var array<line>  ciLines = array.new<line>()
+var array<label> ciLabs  = array.new<label>()
+
+var float topPx = na
+var int   topBar = na
+var bool  topBroken = true
+var float btmPx = na
+var int   btmBar = na
+var bool  btmBroken = true
+var int   bias = 0
+
+var float drHi = na
+var float drLo = na
+
+var int   lastRaidUpBar = na      // last graded buy-side raid (highs taken)
+var int   lastRaidDnBar = na      // last graded sell-side raid (lows taken)
+var int   lastBullFvgBar = na
+var int   lastBearFvgBar = na
+
+var int   runDir = 0
+var float runOpenFirst = na
+var float runOpenExt = na
+var int   runStart = na
+var int   runLen = 0
+var float bearLegPx = na
+var int   bearLegBar = na
+var bool  bullCisdArmed = false
+var float bullLegPx = na
+var int   bullLegBar = na
+var bool  bearCisdArmed = false
+
+var int   nGraded = 0
+var float sumScore = 0.0
+var int   nHighGrade = 0
+var string lastSweepTxt = "—"
+var color  lastSweepCol = color.gray
+
+var line  mnoLine = na
+var label mnoLab = na
+var float mnoPx = na
+
+// per-bar event flags (re-initialised every bar — never `var`)
+bool bullStructNow = false
+bool bearStructNow = false
+bool bullCisdNow = false
+bool bearCisdNow = false
+bool raidUpNow = false
+bool raidDnNow = false
+int  raidUpRank = -1
+int  raidDnRank = -1
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+clamp01(float x) => math.max(0.0, math.min(1.0, nz(x)))
+
+pct(float x) => str.tostring(math.round(clamp01(x) * 100), "#") + "%"
+
+gradeOf(float sc) => sc >= cutAp ? "A+" : sc >= cutA ? "A" : sc >= cutB ? "B" : sc >= cutC ? "C" : sc >= cutD ? "D" : "F"
+
+rankOf(string g) => g == "A+" ? 5 : g == "A" ? 4 : g == "B" ? 3 : g == "C" ? 2 : g == "D" ? 1 : 0
+
+trOf(string g) => g == "A+" ? 0 : g == "A" ? 12 : g == "B" ? 28 : g == "C" ? 45 : g == "D" ? 60 : 72
+
+poolName(Pool p) =>
+    p.named ? p.tag : p.touches > 1 ? (p.up ? "EQH ×" : "EQL ×") + str.tostring(p.touches) : p.up ? "swing high" : "swing low"
+
+poolDrawable(Pool p) =>
+    switch poolFilter
+        "Equal + named only" => p.touches > 1 or p.named
+        "Major + named only" => p.major or p.named
+        => true
+
+killPool(Pool p) =>
+    line.delete(p.ln)
+    label.delete(p.lb)
+    true
+
+// Merge into an existing pool when the new pivot is inside the equal tolerance —
+// that is what turns a second tap into EQH/EQL and raises the pool's quality.
+addPool(float px, int atBar, bool up, bool major, bool named, string tag) =>
+    // A level that this bar has already traded through is not resting liquidity:
+    // registering it would manufacture a sweep out of a move that already happened.
+    bool ok = not na(px) and (up ? high < px : low > px)
+    bool merged = false
+    if ok and pools.size() > 0
+        for i = 0 to pools.size() - 1
+            Pool p = pools.get(i)
+            if p.up == up and not p.pierced and math.abs(p.px - px) <= eqTol
+                p.touches := p.touches + 1
+                p.px      := up ? math.max(p.px, px) : math.min(p.px, px)
+                p.major   := p.major or major
+                p.named   := p.named or named
+                p.bar     := atBar < p.bar ? atBar : p.bar
+                if named
+                    p.tag := tag
+                if not na(p.ln)
+                    line.set_y1(p.ln, p.px)
+                    line.set_y2(p.ln, p.px)
+                if not na(p.lb)
+                    label.set_y(p.lb, p.px)
+                    label.set_text(p.lb, " " + poolName(p))
+                if na(p.ln) and showPools and poolDrawable(p)
+                    p.ln := line.new(p.bar, p.px, bar_index, p.px, color = color.new(poolCol, p.named ? 20 : p.major ? 40 : 60), style = p.named ? line.style_solid : line.style_dotted, width = 1)
+                if na(p.lb) and showPools and showPoolTags and (p.touches > 1 or p.named)
+                    p.lb := label.new(bar_index, p.px, " " + poolName(p), style = label.style_none, textcolor = color.new(poolCol, 20), size = size.tiny, textalign = text.align_left)
+                merged := true
+                break
+    if not merged and ok
+        Pool np = Pool.new(px = px, bar = atBar, touches = 1, up = up, major = major, named = named, tag = tag, ln = na, lb = na, pierced = false, pBar = na, ext = px, wick = 0.0, volR = 1.0, smt = false)
+        if showPools and poolDrawable(np)
+            np.ln := line.new(atBar, px, bar_index, px, color = color.new(poolCol, named ? 20 : major ? 40 : 60), style = named ? line.style_solid : line.style_dotted, width = 1)
+            if showPoolTags and (np.touches > 1 or named)
+                np.lb := label.new(bar_index, px, " " + poolName(np), style = label.style_none, textcolor = color.new(poolCol, 20), size = size.tiny, textalign = text.align_left)
+        pools.push(np)
+        // keep at most maxPools per side: drop the oldest on this side
+        int n = 0
+        for i = 0 to pools.size() - 1
+            if pools.get(i).up == up
+                n += 1
+        if n > maxPools
+            for i = 0 to pools.size() - 1
+                Pool old = pools.get(i)
+                if old.up == up
+                    bool _k = killPool(old)
+                    pools.remove(i)
+                    break
+    merged
+
+pruneSweeps() =>
+    while sweeps.size() > maxSweeps
+        Sweep s = sweeps.shift()
+        label.delete(s.lb)
+        box.delete(s.bx)
+    sweeps.size()
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1 · LIQUIDITY POOL REGISTRATION
+// ─────────────────────────────────────────────────────────────────────────────
+if conf
+    if not na(lph)
+        bool _a = addPool(lph, bar_index - liqLen, true, false, false, "swing high")
+    if not na(lpl)
+        bool _b = addPool(lpl, bar_index - liqLen, false, false, false, "swing low")
+    if not na(sph)
+        bool _c = addPool(sph, bar_index - swingLen, true, true, false, "swing high")
+        topPx := sph
+        topBar := bar_index - swingLen
+        topBroken := false
+        drHi := sph
+    if not na(spl)
+        bool _d = addPool(spl, bar_index - swingLen, false, true, false, "swing low")
+        btmPx := spl
+        btmBar := bar_index - swingLen
+        btmBroken := false
+        drLo := spl
+    if showPdhl and not na(pdhV) and pdhV != nz(pdhV[1], pdhV + 1)
+        bool _e = addPool(pdhV, bar_index, true, true, true, "PDH")
+        bool _f = addPool(pdlV, bar_index, false, true, true, "PDL")
+    if showPwhl and not na(pwhV) and pwhV != nz(pwhV[1], pwhV + 1)
+        bool _g = addPool(pwhV, bar_index, true, true, true, "PWH")
+        bool _h = addPool(pwlV, bar_index, false, true, true, "PWL")
+
+
+drValid = not na(drHi) and not na(drLo) and drHi > drLo
+drPos   = drValid ? (close - drLo) / (drHi - drLo) : na
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2 · SWEEP ENGINE + GRADING
+// ─────────────────────────────────────────────────────────────────────────────
+if conf and pools.size() > 0
+    for i = pools.size() - 1 to 0
+        Pool p = pools.get(i)
+        bool drop = false
+        bool breached = p.up ? high > p.px : low < p.px
+        bool reclaimed = p.up ? close < p.px : close > p.px
+
+        if not p.pierced and breached
+            p.pierced := true
+            p.pBar    := bar_index
+            p.ext     := p.up ? high : low
+            p.wick    := p.up ? wickUp : wickDn
+            p.volR    := relVol
+            p.smt     := p.up ? smtBear : smtBull
+        else if p.pierced
+            p.ext  := p.up ? math.max(p.ext, high) : math.min(p.ext, low)
+            p.wick := math.max(p.wick, p.up ? wickUp : wickDn)
+            p.volR := math.max(p.volR, relVol)
+            p.smt  := p.smt or (p.up ? smtBear : smtBull)
+
+        if p.pierced
+            float depth = math.abs(p.ext - p.px) / atrSafe
+            if reclaimed
+                // ── the raid is confirmed: grade it ────────────────────────
+                int   barsBack = bar_index - p.pBar
+                float sDepth = depth <= 0 ? 0.0 : depth < idealLoAtr ? depth / math.max(idealLoAtr, 0.001) : depth <= idealHiAtr ? 1.0 : math.max(0.0, 1.0 - (depth - idealHiAtr) / math.max(maxRunAtr - idealHiAtr, 0.01))
+                float sRej   = clamp01(p.wick / 0.6)
+                float sSpeed = maxConfirm <= 0 ? 1.0 : clamp01(1.0 - barsBack / math.max(maxConfirm, 1.0))
+                float sDisp  = clamp01(math.abs(p.ext - close) / atrSafe / math.max(dispRefAtr, 0.01))
+                float sVol   = clamp01((p.volR - 1.0) / 1.5)
+                float posLvl = drValid ? (p.px - drLo) / (drHi - drLo) : 0.5
+                float sCtx   = drValid ? clamp01((p.up ? posLvl - 0.5 : 0.5 - posLvl) / 0.3) : 0.5
+                int   ageBar = p.named ? poolAgeRef : bar_index - p.bar
+                float sPool  = 0.35 * clamp01((p.touches - 1) / 3.0) + 0.25 * clamp01(ageBar / math.max(poolAgeRef, 1.0)) + 0.25 * (p.major ? 1.0 : 0.45) + 0.15 * (p.named ? 1.0 : 0.30)
+                float sSmt   = p.smt ? 1.0 : 0.35
+                float wSmtEff = useSmt ? wSmt : 0.0
+                float wSum   = wPool + wDepth + wRej + wSpeed + wDisp + wVol + wCtx + wSmtEff
+                float score  = wSum <= 0 ? 0.0 : 100.0 * (wPool * sPool + wDepth * sDepth + wRej * sRej + wSpeed * sSpeed + wDisp * sDisp + wVol * sVol + wCtx * sCtx + wSmtEff * sSmt) / wSum
+                string g     = gradeOf(score)
+                string side  = p.up ? "BSL" : "SSL"
+
+                nGraded  += 1
+                sumScore += score
+                if rankOf(g) >= 4
+                    nHighGrade += 1
+                if p.up
+                    raidUpNow := true
+                    raidUpRank := rankOf(g)
+                    lastRaidUpBar := bar_index
+                else
+                    raidDnNow := true
+                    raidDnRank := rankOf(g)
+                    lastRaidDnBar := bar_index
+                lastSweepTxt := side + " " + g + " " + str.tostring(math.round(score), "#")
+                lastSweepCol := p.up ? bearCol : bullCol
+
+                if showSweeps and rankOf(g) >= rankOf(minGradeIn)
+                    string txt = switch sweepDetail
+                        "Grade only"            => g
+                        "Side + grade + score"  => side + " " + g + " " + str.tostring(math.round(score), "#")
+                        => g + " " + str.tostring(math.round(score), "#")
+                    string mark = p.smt ? " ◆" : ""
+                    string tip = (p.up ? "Buy-side liquidity taken" : "Sell-side liquidity taken") + "   " + g + "  ·  " + str.tostring(score, "#.#") + "/100"
+                    tip := tip + "\nlevel " + str.tostring(p.px, format.mintick) + "  ·  " + poolName(p) + (p.major ? "  ·  major" : "  ·  minor") + "  ·  age " + str.tostring(bar_index - p.bar) + " bars"
+                    tip := tip + "\n──────────────────────────────"
+                    tip := tip + "\npool quality                     " + pct(sPool)
+                    tip := tip + "\npenetration     " + str.tostring(depth, "#.##") + " ATR      " + pct(sDepth)
+                    tip := tip + "\nrejection wick  " + pct(p.wick) + "          " + pct(sRej)
+                    tip := tip + "\nreclaim         " + str.tostring(barsBack) + " bar(s)    " + pct(sSpeed)
+                    tip := tip + "\ndisplacement    " + str.tostring(math.abs(p.ext - close) / atrSafe, "#.##") + " ATR      " + pct(sDisp)
+                    tip := tip + "\nrelative volume " + str.tostring(p.volR, "#.##") + "×        " + pct(sVol) + (useVol ? "" : "  (range proxy)")
+                    tip := tip + "\n" + (p.up ? "premium ctx     " : "discount ctx    ") + (drValid ? str.tostring(posLvl, "#.##") : "n/a") + "         " + pct(sCtx)
+                    if useSmt
+                        tip := tip + "\nSMT divergence  " + (p.smt ? "yes" : "no ") + "            " + pct(sSmt)
+                    color  cc = color.new(p.up ? bearCol : bullCol, trOf(g))
+                    label lb = label.new(p.pBar, p.ext, txt + mark, style = p.up ? label.style_label_down : label.style_label_up, color = cc, textcolor = color.white, size = size.small, tooltip = tip)
+                    box bx = showSwZone ? box.new(p.pBar, math.max(p.ext, p.px), bar_index + 1, math.min(p.ext, p.px), border_color = color.new(p.up ? bearCol : bullCol, 55), border_width = 1, bgcolor = color.new(p.up ? bearCol : bullCol, 82)) : na
+                    sweeps.push(Sweep.new(lb = lb, bx = bx, up = p.up, bar = bar_index, score = score, side = side, tip = tip, done = not useFollow, mark = mark))
+                    int _p = pruneSweeps()
+
+                if rankOf(g) >= rankOf(minGradeIn)
+                    alert(side + " sweep graded " + g + " (" + str.tostring(math.round(score), "#") + ") at " + str.tostring(p.px, format.mintick) + " on " + syminfo.ticker + " " + timeframe.period, alert.freq_once_per_bar_close)
+                drop := true
+            else if bar_index - p.pBar >= maxConfirm or depth > maxRunAtr
+                // price stayed beyond the level: this was a break, not a raid
+                drop := true
+
+        if drop
+            bool _k = killPool(p)
+            pools.remove(i)
+
+// keep the surviving pool rays anchored to the right edge
+if conf and pools.size() > 0
+    for p in pools
+        if not na(p.ln)
+            line.set_x2(p.ln, bar_index)
+        if not na(p.lb)
+            label.set_x(p.lb, bar_index)
+            label.set_y(p.lb, p.px)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3 · MARKET STRUCTURE — BOS / CHoCH / MSS
+// ─────────────────────────────────────────────────────────────────────────────
+addStruct(string kind, float px, int fromBar, bool bull) =>
+    if showStruct
+        line ln = line.new(fromBar, px, bar_index, px, color = color.new(bull ? bullCol : bearCol, 25), style = kind == "BOS" ? line.style_solid : line.style_dashed, width = kind == "MSS" ? 2 : 1)
+        label lb = label.new(int(math.avg(fromBar, bar_index)), px, kind, style = bull ? label.style_label_up : label.style_label_down, color = color.new(bull ? bullCol : bearCol, kind == "MSS" ? 0 : 25), textcolor = color.white, size = size.tiny)
+        stLines.push(ln)
+        stLabs.push(lb)
+        while stLines.size() > maxStruct
+            line.delete(stLines.shift())
+        while stLabs.size() > maxStruct
+            label.delete(stLabs.shift())
+    showStruct
+
+addOb(bool bull) =>
+    if showOb
+        float obTop = na
+        float obBtm = na
+        int   obIdx = na
+        for k = 1 to obLook
+            bool opposite = bull ? close[k] < open[k] : close[k] > open[k]
+            if opposite
+                obTop := obUseBody ? math.max(open[k], close[k]) : high[k]
+                obBtm := obUseBody ? math.min(open[k], close[k]) : low[k]
+                obIdx := bar_index - k
+                break
+        if not na(obIdx) and obTop > obBtm
+            box bx = box.new(obIdx, obTop, bar_index, obBtm, border_color = color.new(bull ? bullCol : bearCol, 45), border_width = 1, bgcolor = color.new(bull ? bullCol : bearCol, obTr))
+            obs.push(Ob.new(bx = bx, top = obTop, btm = obBtm, bull = bull, breaker = false, dead = false))
+            int n = 0
+            for i = 0 to obs.size() - 1
+                if obs.get(i).bull == bull
+                    n += 1
+            if n > maxOb
+                for i = 0 to obs.size() - 1
+                    Ob o = obs.get(i)
+                    if o.bull == bull
+                        box.delete(o.bx)
+                        obs.remove(i)
+                        break
+    showOb
+
+if conf and not na(topPx) and not topBroken and close > topPx
+    bool raided = not na(lastRaidDnBar) and bar_index - lastRaidDnBar <= mssWin
+    bool disp   = (not na(lastBullFvgBar) and bar_index - lastBullFvgBar <= mssWin) or (close - open) >= dispBodyAtr * atrSafe
+    string kind = bias == 1 or bias == 0 ? "BOS" : raided and disp ? "MSS" : "CHoCH"
+    bool _s = addStruct(kind, topPx, topBar, true)
+    bool _o = addOb(true)
+    bias := 1
+    topBroken := true
+    bullStructNow := true
+
+if conf and not na(btmPx) and not btmBroken and close < btmPx
+    bool raided = not na(lastRaidUpBar) and bar_index - lastRaidUpBar <= mssWin
+    bool disp   = (not na(lastBearFvgBar) and bar_index - lastBearFvgBar <= mssWin) or (open - close) >= dispBodyAtr * atrSafe
+    string kind = bias == -1 or bias == 0 ? "BOS" : raided and disp ? "MSS" : "CHoCH"
+    bool _s = addStruct(kind, btmPx, btmBar, false)
+    bool _o = addOb(false)
+    bias := -1
+    btmBroken := true
+    bearStructNow := true
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4 · CISD — change in state of delivery
+// ─────────────────────────────────────────────────────────────────────────────
+addCisd(float px, int fromBar, bool bull) =>
+    if showCisd
+        line ln = line.new(fromBar, px, bar_index, px, color = color.new(bull ? bullCol : bearCol, 20), style = line.style_dotted, width = 2)
+        label lb = label.new(bar_index, px, "CISD", style = bull ? label.style_label_up : label.style_label_down, color = color.new(bull ? bullCol : bearCol, 10), textcolor = color.white, size = size.tiny)
+        ciLines.push(ln)
+        ciLabs.push(lb)
+        while ciLines.size() > maxCisd
+            line.delete(ciLines.shift())
+        while ciLabs.size() > maxCisd
+            label.delete(ciLabs.shift())
+    showCisd
+
+if conf
+    int d = close > open ? 1 : close < open ? -1 : 0
+    if d != 0
+        if d != runDir
+            if runDir == -1 and runLen >= cisdMinRun
+                bearLegPx  := cisdAnchor == "Run-start open" ? runOpenFirst : runOpenExt
+                bearLegBar := runStart
+                bullCisdArmed := true
+            if runDir == 1 and runLen >= cisdMinRun
+                bullLegPx  := cisdAnchor == "Run-start open" ? runOpenFirst : runOpenExt
+                bullLegBar := runStart
+                bearCisdArmed := true
+            runDir := d
+            runStart := bar_index
+            runOpenFirst := open
+            runOpenExt := open
+            runLen := 1
+        else
+            runLen := runLen + 1
+            runOpenExt := d == -1 ? math.max(runOpenExt, open) : math.min(runOpenExt, open)
+
+    if bullCisdArmed and not na(bearLegPx) and close > bearLegPx
+        bool okSw = not cisdReqSw or (not na(lastRaidDnBar) and bar_index - lastRaidDnBar <= cisdWin)
+        bullCisdArmed := false
+        if okSw
+            bool _c = addCisd(bearLegPx, bearLegBar, true)
+            bullCisdNow := true
+    if bearCisdArmed and not na(bullLegPx) and close < bullLegPx
+        bool okSw = not cisdReqSw or (not na(lastRaidUpBar) and bar_index - lastRaidUpBar <= cisdWin)
+        bearCisdArmed := false
+        if okSw
+            bool _c = addCisd(bullLegPx, bullLegBar, false)
+            bearCisdNow := true
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5 · FAIR VALUE GAPS  (mitigation first, then creation — a new gap can never
+//     be "mitigated" by the very bar that created it)
+// ─────────────────────────────────────────────────────────────────────────────
+if conf and fvgs.size() > 0
+    for i = fvgs.size() - 1 to 0
+        Zone z = fvgs.get(i)
+        bool kill = false
+        if not z.frozen
+            box.set_right(z.bx, bar_index)
+            if not na(z.ce)
+                line.set_x2(z.ce, bar_index)
+        float mid = math.avg(z.top, z.btm)
+        float trigger = fvgMitig == "Touch" ? (z.bull ? z.top : z.btm) : fvgMitig == "Full fill" ? (z.bull ? z.btm : z.top) : mid
+        bool hit = z.bull ? low <= trigger : high >= trigger
+        if not z.mitigated and hit
+            z.mitigated := true
+            if fvgOnMit == "Delete"
+                kill := true
+            else if fvgOnMit == "Fade"
+                box.set_bgcolor(z.bx, color.new(z.bull ? bullCol : bearCol, 94))
+                box.set_border_color(z.bx, color.new(z.bull ? bullCol : bearCol, 90))
+                z.frozen := true
+            else
+                z.frozen := true
+        // full trade-through: invert it into an IFVG, or retire it as spent
+        bool through = z.bull ? close < z.btm : close > z.top
+        if not kill and through and not z.spent
+            if showIfvg and not z.inverted
+                z.inverted := true
+                z.bull := not z.bull
+                z.mitigated := false
+                z.frozen := false
+                box.set_bgcolor(z.bx, color.new(z.bull ? bullCol : bearCol, fvgTr))
+                box.set_border_color(z.bx, color.new(z.bull ? bullCol : bearCol, 55))
+            else if fvgOnMit == "Delete"
+                kill := true
+            else
+                z.spent := true
+                z.frozen := true
+                box.set_bgcolor(z.bx, color.new(z.bull ? bullCol : bearCol, 94))
+                box.set_border_color(z.bx, color.new(z.bull ? bullCol : bearCol, 90))
+        if kill
+            box.delete(z.bx)
+            line.delete(z.ce)
+            fvgs.remove(i)
+
+addFvg(bool bull, float top, float btm) =>
+    box bx = box.new(bar_index - 2, top, bar_index, btm, border_color = color.new(bull ? bullCol : bearCol, 65), border_width = 1, bgcolor = color.new(bull ? bullCol : bearCol, fvgTr))
+    line ce = showCe ? line.new(bar_index - 2, math.avg(top, btm), bar_index, math.avg(top, btm), color = color.new(bull ? bullCol : bearCol, 45), style = line.style_dashed, width = 1) : na
+    fvgs.push(Zone.new(bx = bx, ce = ce, top = top, btm = btm, bull = bull, mitigated = false, inverted = false, frozen = false, spent = false))
+    int n = 0
+    for i = 0 to fvgs.size() - 1
+        if fvgs.get(i).bull == bull
+            n += 1
+    if n > maxFvg
+        for i = 0 to fvgs.size() - 1
+            Zone z = fvgs.get(i)
+            if z.bull == bull
+                box.delete(z.bx)
+                line.delete(z.ce)
+                fvgs.remove(i)
+                break
+    true
+
+if conf and showFvg and bar_index > 2
+    bool dispOk = not fvgReqDisp or midDisp
+    if gapUp > 0 and gapUp >= fvgMinAtr * atrSafe and dispOk
+        bool _f = addFvg(true, low, high[2])
+        lastBullFvgBar := bar_index
+    if gapDn > 0 and gapDn >= fvgMinAtr * atrSafe and dispOk
+        bool _f = addFvg(false, low[2], high)
+        lastBearFvgBar := bar_index
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5b · VOLUME IMBALANCE — body-to-body gap with the wicks still overlapping
+// ─────────────────────────────────────────────────────────────────────────────
+if conf and vis.size() > 0
+    for i = vis.size() - 1 to 0
+        Vi v = vis.get(i)
+        box.set_right(v.bx, bar_index)
+        bool filled = v.bull ? low <= v.btm : high >= v.top
+        if filled
+            box.delete(v.bx)
+            vis.remove(i)
+
+addVi(bool bull, float top, float btm) =>
+    box bx = box.new(bar_index - 1, top, bar_index, btm, border_color = color.new(bull ? bullCol : bearCol, 70), border_width = 1, bgcolor = color.new(bull ? bullCol : bearCol, 70))
+    vis.push(Vi.new(bx = bx, top = top, btm = btm, bull = bull))
+    while vis.size() > maxVi
+        Vi old = vis.shift()
+        box.delete(old.bx)
+    true
+
+if conf and showVi and bar_index > 1
+    if open > close[1] and low <= high[1] and open - close[1] >= viMinAtr * atrSafe
+        bool _v = addVi(true, open, close[1])
+    if open < close[1] and high >= low[1] and close[1] - open >= viMinAtr * atrSafe
+        bool _v = addVi(false, close[1], open)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6 · ORDER BLOCKS / BREAKERS
+// ─────────────────────────────────────────────────────────────────────────────
+if conf and obs.size() > 0
+    for i = obs.size() - 1 to 0
+        Ob o = obs.get(i)
+        if not o.dead
+            box.set_right(o.bx, bar_index)
+            bool violated = o.bull ? close < o.btm : close > o.top
+            if violated
+                if showBrk and not o.breaker
+                    o.breaker := true
+                    o.bull := not o.bull
+                    box.set_bgcolor(o.bx, color.new(o.bull ? bullCol : bearCol, obTr))
+                    box.set_border_color(o.bx, color.new(o.bull ? bullCol : bearCol, 30))
+                else
+                    o.dead := true
+                    box.delete(o.bx)
+                    obs.remove(i)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7 · FOLLOW-THROUGH RE-GRADE  (additive only)
+// ─────────────────────────────────────────────────────────────────────────────
+if conf and useFollow and sweeps.size() > 0
+    for s in sweeps
+        if not s.done
+            if bar_index - s.bar > followWin
+                s.done := true
+            else
+                bool ft = s.up ? (bearCisdNow or bearStructNow) : (bullCisdNow or bullStructNow)
+                if ft
+                    s.done := true
+                    s.score := math.min(100.0, s.score + followBonus)
+                    string g2 = gradeOf(s.score)
+                    if not na(s.lb)
+                        string t2 = switch sweepDetail
+                            "Grade only"           => g2 + " ▲"
+                            "Side + grade + score" => s.side + " " + g2 + " " + str.tostring(math.round(s.score), "#") + " ▲"
+                            => g2 + " " + str.tostring(math.round(s.score), "#") + " ▲"
+                        label.set_text(s.lb, t2 + s.mark)
+                        label.set_color(s.lb, color.new(s.up ? bearCol : bullCol, trOf(g2)))
+                        label.set_tooltip(s.lb, s.tip + "\n──────────────────────────────\n▲ follow-through confirmed (+" + str.tostring(followBonus, "#.#") + ")  →  " + g2)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8 · PREMIUM / DISCOUNT / EQUILIBRIUM / OTE
+// ─────────────────────────────────────────────────────────────────────────────
+var box  pdPrem = na
+var box  pdDisc = na
+var line pdEq   = na
+var box  pdOte  = na
+
+if barstate.islast
+    if showPd and drValid
+        float eq = math.avg(drHi, drLo)
+        int   x1 = nz(topBar, bar_index) < nz(btmBar, bar_index) ? nz(topBar, bar_index) : nz(btmBar, bar_index)
+        if na(pdPrem)
+            pdPrem := box.new(x1, drHi, bar_index, eq, border_color = color.new(bearCol, 70), bgcolor = color.new(bearCol, 93))
+            pdDisc := box.new(x1, eq, bar_index, drLo, border_color = color.new(bullCol, 70), bgcolor = color.new(bullCol, 93))
+            pdEq   := line.new(x1, eq, bar_index, eq, color = color.new(structCol, 40), style = line.style_dashed)
+        box.set_lefttop(pdPrem, x1, drHi)
+        box.set_rightbottom(pdPrem, bar_index, eq)
+        box.set_lefttop(pdDisc, x1, eq)
+        box.set_rightbottom(pdDisc, bar_index, drLo)
+        line.set_xy1(pdEq, x1, eq)
+        line.set_xy2(pdEq, bar_index, eq)
+        if showOte
+            // OTE is measured against the leg that made the range: retrace of the
+            // most recent extreme back into the opposite half.
+            bool legUp = nz(btmBar, 0) < nz(topBar, 0)
+            float o1 = legUp ? drHi - (drHi - drLo) * oteLo : drLo + (drHi - drLo) * oteLo
+            float o2 = legUp ? drHi - (drHi - drLo) * oteHi : drLo + (drHi - drLo) * oteHi
+            if na(pdOte)
+                pdOte := box.new(x1, math.max(o1, o2), bar_index, math.min(o1, o2), border_color = color.new(structCol, 60), bgcolor = color.new(legUp ? bullCol : bearCol, 85))
+            box.set_lefttop(pdOte, x1, math.max(o1, o2))
+            box.set_rightbottom(pdOte, bar_index, math.min(o1, o2))
+            box.set_bgcolor(pdOte, color.new(legUp ? bullCol : bearCol, 85))
+    else if not na(pdPrem) or not na(pdOte)
+        box.delete(pdPrem)
+        box.delete(pdDisc)
+        line.delete(pdEq)
+        box.delete(pdOte)
+        pdPrem := na
+        pdDisc := na
+        pdEq   := na
+        pdOte  := na
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9 · MIDNIGHT OPEN
+// ─────────────────────────────────────────────────────────────────────────────
+if showMno and newNyDay
+    mnoPx := open
+    line.delete(mnoLine)
+    label.delete(mnoLab)
+    mnoLine := line.new(bar_index, mnoPx, bar_index, mnoPx, color = color.new(structCol, 30), style = line.style_dashed, width = 1)
+    mnoLab  := label.new(bar_index, mnoPx, " midnight open", style = label.style_none, textcolor = color.new(structCol, 25), size = size.tiny, textalign = text.align_left)
+if showMno and not na(mnoLine)
+    line.set_x2(mnoLine, bar_index)
+    label.set_x(mnoLab, bar_index)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10 · DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+dashPos = dashPosIn == "Top left" ? position.top_left : dashPosIn == "Bottom left" ? position.bottom_left : dashPosIn == "Bottom right" ? position.bottom_right : dashPosIn == "Middle right" ? position.middle_right : position.top_right
+dashSz  = dashSzIn == "Tiny" ? size.tiny : dashSzIn == "Normal" ? size.normal : size.small
+
+var table dash = na
+if barstate.islast
+    if showDash
+        if na(dash)
+            dash := table.new(dashPos, 2, 7, border_color = #22323f, border_width = 1, frame_color = #2b4055, frame_width = 1)
+        int nUp = 0
+        int nDn = 0
+        for p in pools
+            if p.up
+                nUp += 1
+            else
+                nDn += 1
+        string biasTxt = bias == 1 ? "Bullish" : bias == -1 ? "Bearish" : "Undefined"
+        color  biasCol = bias == 1 ? bullCol : bias == -1 ? bearCol : color.gray
+        string zoneTxt = not drValid ? "—" : na(drPos) ? "—" : (drPos > 0.5 ? "Premium " : "Discount ") + str.tostring(drPos, "#.##")
+        table.cell(dash, 0, 0, "  ICT SMC  ", text_color = color.white, bgcolor = #1c3d5a, text_size = dashSz)
+        table.cell(dash, 1, 0, "  " + timeframe.period + "  ", text_color = color.white, bgcolor = #1c3d5a, text_size = dashSz)
+        table.cell(dash, 0, 1, "  Structure bias  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 1, 1, "  " + biasTxt + "  ", text_color = color.white, bgcolor = color.new(biasCol, 30), text_size = dashSz)
+        table.cell(dash, 0, 2, "  Dealing range  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 1, 2, "  " + zoneTxt + "  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 0, 3, "  Last raid  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 1, 3, "  " + lastSweepTxt + "  ", text_color = color.white, bgcolor = color.new(lastSweepCol, 30), text_size = dashSz)
+        table.cell(dash, 0, 4, "  Raids graded  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 1, 4, "  " + str.tostring(nGraded) + (nGraded > 0 ? "  avg " + str.tostring(sumScore / nGraded, "#") : "") + "  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 0, 5, "  A / A+ raids  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 1, 5, "  " + str.tostring(nHighGrade) + (nGraded > 0 ? "  (" + str.tostring(100.0 * nHighGrade / nGraded, "#") + "%)" : "") + "  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 0, 6, "  Pools live  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+        table.cell(dash, 1, 6, "  " + str.tostring(nUp) + " BSL / " + str.tostring(nDn) + " SSL  ", text_color = #cfd8e3, bgcolor = #0e141b, text_size = dashSz)
+    else if not na(dash)
+        table.delete(dash)
+        dash := na
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11 · ALERTS
+// ─────────────────────────────────────────────────────────────────────────────
+alertcondition(raidUpNow, "Buy-side sweep (any grade)",  "Buy-side liquidity swept")
+alertcondition(raidDnNow, "Sell-side sweep (any grade)", "Sell-side liquidity swept")
+alertcondition(raidUpNow and raidUpRank >= 4, "Buy-side sweep A or better",  "Grade-A buy-side liquidity sweep")
+alertcondition(raidDnNow and raidDnRank >= 4, "Sell-side sweep A or better", "Grade-A sell-side liquidity sweep")
+alertcondition(bullStructNow, "Bullish structure break", "Bullish BOS / CHoCH / MSS")
+alertcondition(bearStructNow, "Bearish structure break", "Bearish BOS / CHoCH / MSS")
+alertcondition(bullCisdNow,   "Bullish CISD", "Bullish change in state of delivery")
+alertcondition(bearCisdNow,   "Bearish CISD", "Bearish change in state of delivery")

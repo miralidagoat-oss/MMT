@@ -1,4 +1,178 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Pine Script indicators
+
+| script | what it does |
+|---|---|
+| `indicators/ict_sessions_amd.pine` | Asia / London / New York session ranges + the AMD table |
+| `indicators/ict_liquidity_structure.pine` | graded liquidity sweeps, BOS · CHoCH · MSS, CISD, FVG · IFVG, order blocks, PD arrays |
+| `indicators/alpha_predictive_limit_matrix.pine` | the self-grading limit-entry engine (see [below](#quant-engine--alpha-predictive-limit-matrix)) |
+
+---
+
+# ICT toolkit
+
+Two **marker-only** indicators. Neither produces buy/sell signals, neither
+takes a position on direction — they annotate the chart with what actually
+happened and, for liquidity sweeps, how good it was.
+
+## 1 · `ict_sessions_amd.pine` — sessions + AMD table
+
+Draws the three dealing sessions as boxes with an equilibrium (50%) line and a
+name chip, and reports the running AMD cycle in a table.
+
+### Session defaults
+
+Anchored to **New York time** and to that zone's DST rules, so they stay put no
+matter what the chart is displaying:
+
+| session | New York | role in the AMD model |
+|---|---|---|
+| Asia | 18:00 → 03:00 | **A**ccumulation — the range that gets raided |
+| London | 03:00 → 08:00 | **M**anipulation — the Judas raid on Asia |
+| New York | 08:00 → 12:00 | **D**istribution — the expansion leg |
+
+The three are contiguous, so each box ends exactly where the next begins
+(`xloc.bar_time` boxes are closed at `time_close`, not at bar index, which is
+what makes the edges meet). 12:00 → 18:00 ET is deliberately unmarked.
+
+### The table
+
+`SESSION · HIGH · LOW · RANGE · SWEEP`, one row per session, reset when Asia
+reopens — so it always describes exactly one Asia → London → New York rotation.
+
+**RANGE** defaults to **pips, where 1 pip = 10 ticks**. On MNQ (tick 0.25) that
+makes 1 pip = 2.5 index points, so a 135.25-point Asia range prints as `54p`.
+Ticks / points / raw price are selectable.
+
+**SWEEP** reports which *earlier* session in the same cycle this session ran.
+The search walks backwards and stops at the nearest one, so New York taking out
+a London low that had already taken out Asia's reads `London L`, not `Asia L`.
+`H` = its high was taken, `L` = its low, `HL` = both.
+
+### Options worth knowing
+
+- **Extend session high/low until swept** (off by default) — projects each
+  closed session's high and low forward as liquidity rays that stop dead the
+  moment price trades through them.
+- Session times, days (all days vs Mon–Fri — Sunday-evening futures opens live
+  in the Asia session, so all-days is correct for CME), colours, chip position,
+  box/fill/border transparency and the table position are all inputs.
+- Sessions are meaningless above 4H, so the script draws nothing on D/W/M and
+  says so on the chart instead of drawing something wrong.
+
+## 2 · `ict_liquidity_structure.pine` — graded sweeps + structure
+
+### What makes a liquidity sweep good
+
+This is the whole point of the grade. A raid is high quality when it takes
+liquidity that was *worth taking* and then refuses to stay there. Seven measured
+factors, each normalised to 0–1, combined with configurable weights into a
+0–100 score:
+
+| factor | default weight | what earns full marks | what scores zero |
+|---|---|---|---|
+| **Liquidity quality of the level** | 20 | multiple equal touches (EQH/EQL), an old level, a major swing, or a named level (PDH/PDL/PWH/PWL) | a single fresh minor pivot |
+| **Penetration depth** | 15 | inside the ideal band, 0.05–0.50 ATR beyond the level | a poke too shallow to trip stops, or one so deep it is an expansion |
+| **Rejection wick** | 15 | ≥ 60% of the raid bar's range is wick on the raid side | a bar that closes near its extreme |
+| **Reclaim speed** | 15 | back inside on the same bar | took the full window |
+| **Displacement on the reclaim** | 15 | ≥ 1 ATR from the raid extreme to the reclaim close | a limp drift back |
+| **Relative volume** | 10 | ≥ 2.5× the 20-bar average | average or below |
+| **Premium / discount context** | 10 | highs raided from deep premium, lows from deep discount | raided at equilibrium |
+| **SMT divergence** *(opt-in)* | 10 | the correlated symbol refused to make the matching extreme | it followed |
+
+Grades: **A+** ≥ 90 · **A** ≥ 80 · **B** ≥ 70 · **C** ≥ 58 · **D** ≥ 45 · **F**
+below. Every cut-off and every weight is an input; set a weight to 0 to remove
+that factor from the score entirely (the denominator shrinks with it, so the
+remaining factors are not diluted). The SMT weight is only counted when SMT is
+switched on, for the same reason.
+
+**Hover any sweep label for the full breakdown** — the measured value and the
+score it earned, factor by factor.
+
+Label reads `A+ 94`; `BSL` = buy-side liquidity (resting *above* highs), `SSL` =
+sell-side (*below* lows). `◆` = SMT divergence present. `▲` = the grade was
+revised up because follow-through arrived.
+
+### What is *not* graded
+
+A raid that closes and **stays** beyond the level is not a sweep — it is a
+break. The level is retired, silently, with no mark. Two things trigger that:
+the reclaim window expiring (6 bars by default), or the excursion exceeding
+1.2 ATR. Both are inputs. This is the single most important filter in the
+script: it is what stops a trend from generating a stream of fake "sweeps".
+
+Levels are also never registered if the current bar has already traded through
+them — otherwise the first bar of a new day would manufacture a sweep of a PDH
+that price left behind hours ago.
+
+### Structure: BOS vs CHoCH vs MSS
+
+All three are a *close* through the most recent unbroken swing. The difference
+is what caused it:
+
+- **BOS** — the break runs *with* the prevailing bias. Continuation.
+- **CHoCH** — the break runs *against* it. First sign of a shift.
+- **MSS** — a CHoCH that qualifies: a graded sweep of the opposite side landed
+  within the window (15 bars default) **and** the break carries displacement
+  (an FVG in the breaking leg, or a break-candle body ≥ 0.5 ATR). This is the
+  ICT-precise reading — liquidity taken, then structure shifted with energy.
+  Unqualified breaks stay labelled CHoCH rather than being flattered.
+
+### CISD
+
+The **change in state of delivery** level is the open of the delivery leg that
+is being reversed: for a bullish CISD, the run of consecutive down-close
+candles immediately before the up move. Two anchors are selectable — the open
+of the run's first candle, or the *highest* open in the run (stricter, the
+default). Minimum run length is an input (2 by default). Optionally gate CISD
+to only fire after a graded sweep.
+
+### Also marked
+
+- **FVG** — 3-candle imbalance, ATR-scaled minimum size, optional displacement
+  requirement on the middle candle. Mitigation at touch / CE (50%) / full fill.
+  Optional **CE** line. Optional **IFVG**: a gap traded fully through inverts
+  and keeps working as the opposite polarity. A spent gap is frozen and faded
+  rather than erased, so the history stays readable.
+- **Volume imbalance** (off by default) — body-to-body gap with the wicks still
+  overlapping. Smaller than an FVG and often what price returns for first.
+- **Order blocks and breakers** — the last opposing candle before a structure
+  break, full range or body. A block violated by a close flips to a breaker of
+  the opposite polarity; a breaker that fails is removed.
+- **Liquidity pools** — swing highs/lows, merged into **EQH / EQL** when a new
+  pivot lands inside the tolerance (which also raises the pool's touch count and
+  therefore its grade contribution). Drawn until taken, then deleted, because
+  consumed liquidity is not liquidity.
+- **PDH / PDL / PWH / PWL** — registered as named, gradeable pools rather than
+  as decoration, so a raid on yesterday's high is scored like any other.
+- **Premium / discount / equilibrium** and the **OTE** band (62–79%) on the
+  current dealing range, both off by default.
+- **Midnight open** (00:00 New York), off by default.
+- **Dashboard** — bias, where price sits in the dealing range, the last raid and
+  its grade, total raids graded with the running average score, the A/A+ count
+  and share, and how many pools are live per side.
+
+### Timeframes, repainting, honesty
+
+- Every threshold is **ATR-relative**, not tick-relative, so the script behaves
+  the same on 1m and on 1D.
+- Events are evaluated on **closed bars** (`confirmOnly`, on by default).
+- A pivot is only known `length` bars after it prints. That lag is inherent to
+  what a swing *is*, not a defect — and it is why pools can never be swept
+  before they exist. Nothing is back-dated.
+- The **follow-through re-grade** (`▲`) is the one thing that changes after the
+  fact, and it is strictly additive: a grade can go up when a CISD or structure
+  break lands in the window, never down, and the mark is never removed. Switch
+  it off if you want a grade frozen at the confirmation bar.
+- Dashboard counts include every graded raid, including ones filtered out of the
+  display by the minimum-grade setting.
+- The weights are a **reasoned prior, not a fitted model.** They encode what the
+  concepts say should matter; they have not been optimised against forward
+  returns on this repo's data, and the README will not pretend otherwise. Treat
+  the score as a consistent ranking of raid quality, not as an edge estimate.
+
+---
+
+# Quant Engine: Alpha Predictive Limit Matrix
 
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
