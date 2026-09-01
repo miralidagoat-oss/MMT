@@ -295,6 +295,19 @@ only closed HTF candles; swing pivots appear only once confirmed.
 **Long only ships ON** — short setups at this horizon lost on all six instruments
 tested (t = −3.7 to −5.2 over 875 days).
 
+**Verified before shipping.** `backtest/verify_indicator.py` is a faithful
+transcription of the Pine decision path — including the exact HTF request
+offsets and the pivot confirmation lag — run against real MNQ/NQ/ES 5m data. It
+asserts the invariants a syntax check cannot: stop and target on the correct
+side of entry, target exactly 2R, risk inside 0.5–1.0 ATR, every entry inside
+09:30–13:30, max 2 signals per session, no duplicates, and that the logic fires
+at all. All pass on all three instruments.
+
+Expect roughly **0.23 signals per session** on MNQ at defaults — about one every
+four days. Removing filters buys frequency and costs quality, in the order the
+research predicted: long-only + HTF 36% at 2R (breakeven 33%), +shorts 30%, HTF
+off 30%, both off 25%. Small samples, but the ordering is the point.
+
 The self-grading panel is a *pessimistic simulation*, not a backtest: the stop
 wins any same-bar tie, the target is never credited on the signal bar, and no
 commission or slippage is charged. The underlying model is still the unvalidated

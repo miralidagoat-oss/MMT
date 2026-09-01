@@ -326,13 +326,13 @@ allowShort = not longOnly
 riskLong() =>
     atrStop   = close - stopAtr * atr
     sweepStop = na(swLoPx) ? atrStop : swLoPx - 0.1 * atr
-    st = capBySweep ? math.max(atrStop, math.min(sweepStop, close - 0.5 * atr)) : atrStop
-    close - st
+    stopPx = capBySweep ? math.max(atrStop, math.min(sweepStop, close - 0.5 * atr)) : atrStop
+    close - stopPx
 riskShort() =>
     atrStop   = close + stopAtr * atr
     sweepStop = na(swHiPx) ? atrStop : swHiPx + 0.1 * atr
-    st = capBySweep ? math.min(atrStop, math.max(sweepStop, close + 0.5 * atr)) : atrStop
-    st - close
+    stopPx = capBySweep ? math.min(atrStop, math.max(sweepStop, close + 0.5 * atr)) : atrStop
+    stopPx - close
 
 var int   tDir   = 0
 var float tEntry = na

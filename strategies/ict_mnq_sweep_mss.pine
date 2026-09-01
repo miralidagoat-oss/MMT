@@ -365,13 +365,13 @@ takeShort = canArm and mssShort and htfAgrees(-1) and vwapOkS
 riskLong() =>
     atrStop   = close - stopAtr * atr
     sweepStop = na(swLoPx) ? atrStop : swLoPx - 0.1 * atr
-    st = capBySweep ? math.max(atrStop, math.min(sweepStop, close - 0.5 * atr)) : atrStop
-    close - st
+    stopPx = capBySweep ? math.max(atrStop, math.min(sweepStop, close - 0.5 * atr)) : atrStop
+    close - stopPx
 riskShort() =>
     atrStop   = close + stopAtr * atr
     sweepStop = na(swHiPx) ? atrStop : swHiPx + 0.1 * atr
-    st = capBySweep ? math.min(atrStop, math.max(sweepStop, close + 0.5 * atr)) : atrStop
-    st - close
+    stopPx = capBySweep ? math.min(atrStop, math.max(sweepStop, close + 0.5 * atr)) : atrStop
+    stopPx - close
 
 // target: fixed R, or the nearest opposing pool that is at least minRR away
 liqRR(int dir, float risk) =>
