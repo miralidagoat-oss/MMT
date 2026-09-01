@@ -1,0 +1,485 @@
+//@version=6
+// =============================================================================
+// ICT MNQ Model — Sweep → MSS → Displacement                        (indicator)
+//
+// Chart tool version of strategies/ict_mnq_sweep_mss.pine. It marks the setup,
+// draws the levels, grades its own signals and fires alerts. It places no
+// orders — use the strategy file if you want a Strategy Tester P&L.
+//
+// WHAT IT MARKS
+//   1. LIVE LIQUIDITY   prior-day H/L, Asia and London range extremes, untaken
+//                       swing points — drawn until price trades through them.
+//   2. SWEEP            a pool is raided and price CLOSES back inside it.
+//   3. MSS              within N bars a candle CLOSES through the swing that
+//                       stood before the raid, with a displacement body.
+//   4. LEVELS           entry, ATR stop and R-target, in points and dollars.
+//
+// NON-REPAINTING BY CONSTRUCTION
+//   - Every signal, label, zone and alert is gated on barstate.isconfirmed, so
+//     nothing appears or disappears inside a forming bar.
+//   - HTF structure uses request.security with lookahead_off and, by default,
+//     only CLOSED higher-timeframe candles.
+//   - Swing pivots are confirmed pivotLen bars after the fact, which is what a
+//     pivot means; they are never drawn earlier than they are known.
+//
+// HONEST STATUS — unchanged by making it prettier
+//   The raw pattern has no measured edge (MNQ 5m: −0.06 ATR forward move, 43%
+//   right-side). What repeated across markets was the HTF direction filter and
+//   the session filter. On 875 days of 1H data the full model ran PF 0.80–1.01.
+//   The self-grading panel below is a PESSIMISTIC SIMULATION, not a backtest:
+//   stop wins any same-bar tie, no commission, no slippage. Treat it as a
+//   sanity check, never as a P&L forecast.
+//
+//   Shorts lost systematically at this horizon (t = −3.7 to −5.2 across six
+//   instruments, 875 days), so "Long only" ships ON.
+// =============================================================================
+
+indicator("ICT MNQ Model — Sweep → MSS → Displacement", overlay = true,
+     max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_DIR   = "Direction"
+var string G_SESS  = "Session"
+var string G_HTF   = "Higher-Timeframe Filter"
+var string G_STRUC = "Structure & Sweep"
+var string G_RISK  = "Risk Levels"
+var string G_UI    = "Display"
+
+longOnly     = input.bool(true,  "Long only", group = G_DIR,
+     tooltip = "ON by default. Short setups at this holding horizon lost on all six instruments tested (t = -3.7 to -5.2 over 875 days).")
+shortOnly    = input.bool(false, "Short only", group = G_DIR)
+
+sessTz       = input.string("America/New_York", "Timezone", group = G_SESS)
+useSession   = input.bool(true, "Only mark setups inside the window", group = G_SESS)
+tradeSession = input.session("0930-1330", "Entry Window", group = G_SESS,
+     tooltip = "The NY PM block after 13:30 was the weakest slice on every market tested.")
+showFlat     = input.bool(true, "Mark the flatten time", group = G_SESS)
+flatTime     = input.session("1555-1600", "Flatten Window", group = G_SESS)
+
+useHTF       = input.bool(true, "Require higher-timeframe agreement", group = G_HTF,
+     tooltip = "The most consistent filter found: counter-trend setups lost on 5 of 6 markets.")
+htf1         = input.timeframe("30", "HTF #1", group = G_HTF)
+htf2         = input.timeframe("60", "HTF #2", group = G_HTF)
+htfLook      = input.int(3, "HTF candles compared for a break", minval = 1, group = G_HTF)
+htfConfirmed = input.bool(true, "Use only closed HTF candles", group = G_HTF,
+     tooltip = "Leave ON. Off reads the live HTF candle - no future data, but the state can flip mid-candle.")
+useHTF3      = input.bool(false, "Also require a third HTF", group = G_HTF,
+     tooltip = "OFF on purpose: 4H and Daily agreement made results WORSE on all three 5m markets tested.")
+htf3         = input.timeframe("240", "HTF #3", group = G_HTF)
+
+pivotLen     = input.int(1, "Swing Pivot Strength", minval = 1, maxval = 5, group = G_STRUC)
+poolBars     = input.int(120, "Liquidity Pool Memory (bars)", minval = 10, group = G_STRUC)
+usePD        = input.bool(true, "Prior-day high/low as pools", group = G_STRUC)
+useAsiaLon   = input.bool(true, "Asia / London range extremes as pools", group = G_STRUC)
+asiaSess     = input.session("1800-0200", "Asia Range", group = G_STRUC)
+lonSess      = input.session("0200-0800", "London Range", group = G_STRUC)
+minSweepAtr  = input.float(0.0, "Min Sweep Depth (x ATR)", minval = 0, step = 0.1, group = G_STRUC)
+maxSweepAtr  = input.float(3.0, "Max Sweep Depth (x ATR)", minval = 0.5, step = 0.5, group = G_STRUC)
+mssWindow    = input.int(6, "Max bars from sweep to MSS", minval = 1, group = G_STRUC)
+dispAtr      = input.float(0.25, "Min Displacement Body (x ATR)", minval = 0, step = 0.05, group = G_STRUC)
+maxPerDay    = input.int(2, "Max signals per day", minval = 1, group = G_STRUC)
+
+atrLen       = input.int(14, "ATR Length", minval = 2, group = G_RISK)
+stopAtr      = input.float(1.0, "Stop Distance (x ATR)", minval = 0.2, step = 0.05, group = G_RISK,
+     tooltip = "Measured adverse excursion after a valid setup averaged ~1.5 ATR, so under ~0.75 ATR sits inside the noise.")
+capBySweep   = input.bool(true, "Never place the stop beyond the sweep extreme", group = G_RISK)
+rrTarget     = input.float(2.0, "Target (R multiple)", minval = 0.5, step = 0.25, group = G_RISK)
+pointValue   = input.float(2.0, "Point value ($/pt)", minval = 0.01, group = G_RISK,
+     tooltip = "MNQ = 2, NQ = 20, MES = 5, ES = 50.")
+riskPerTrade = input.float(250, "Risk budget per trade ($)", minval = 1, group = G_RISK)
+
+showPools    = input.bool(true,  "Draw live liquidity pools", group = G_UI)
+showSweeps   = input.bool(true,  "Mark sweeps", group = G_UI)
+showFvg      = input.bool(true,  "Draw the displacement FVG", group = G_UI)
+showLevels   = input.bool(true,  "Draw entry / stop / target", group = G_UI)
+showPanel    = input.bool(true,  "Show dashboard", group = G_UI)
+bullCol      = input.color(#26A69A, "Bull", group = G_UI)
+bearCol      = input.color(#EF5350, "Bear", group = G_UI)
+poolCol      = input.color(#787B86, "Liquidity", group = G_UI)
+
+// ─────────────────────────────────────────────────────────────
+// HIGHER-TIMEFRAME STRUCTURE
+// Bullish once the HTF closes above the highest high of the previous htfLook
+// candles; bearish once it closes below their lowest low; holds until the
+// opposite break. lookahead_off throughout.
+// ─────────────────────────────────────────────────────────────
+[a1, b1, c1] = request.security(syminfo.tickerid, htf1,
+     [ta.highest(high, htfLook)[1], ta.lowest(low, htfLook)[1], close], lookahead = barmerge.lookahead_off)
+[d1, e1, f1] = request.security(syminfo.tickerid, htf1,
+     [ta.highest(high, htfLook)[2], ta.lowest(low, htfLook)[2], close[1]], lookahead = barmerge.lookahead_off)
+[a2, b2, c2] = request.security(syminfo.tickerid, htf2,
+     [ta.highest(high, htfLook)[1], ta.lowest(low, htfLook)[1], close], lookahead = barmerge.lookahead_off)
+[d2, e2, f2] = request.security(syminfo.tickerid, htf2,
+     [ta.highest(high, htfLook)[2], ta.lowest(low, htfLook)[2], close[1]], lookahead = barmerge.lookahead_off)
+[a3, b3, c3] = request.security(syminfo.tickerid, htf3,
+     [ta.highest(high, htfLook)[1], ta.lowest(low, htfLook)[1], close], lookahead = barmerge.lookahead_off)
+[d3, e3, f3] = request.security(syminfo.tickerid, htf3,
+     [ta.highest(high, htfLook)[2], ta.lowest(low, htfLook)[2], close[1]], lookahead = barmerge.lookahead_off)
+
+structState(float hh, float ll, float cl) =>
+    var int st = 0
+    if not (na(hh) or na(ll) or na(cl))
+        if cl > hh
+            st := 1
+        else if cl < ll
+            st := -1
+    st
+
+bias1 = structState(htfConfirmed ? d1 : a1, htfConfirmed ? e1 : b1, htfConfirmed ? f1 : c1)
+bias2 = structState(htfConfirmed ? d2 : a2, htfConfirmed ? e2 : b2, htfConfirmed ? f2 : c2)
+bias3 = structState(htfConfirmed ? d3 : a3, htfConfirmed ? e3 : b3, htfConfirmed ? f3 : c3)
+
+htfAgrees(int dir) =>
+    ok = not useHTF or (bias1 == dir and bias2 == dir)
+    ok and (not useHTF3 or bias3 == dir)
+
+// ─────────────────────────────────────────────────────────────
+// CONTEXT
+// ─────────────────────────────────────────────────────────────
+atr     = ta.atr(atrLen)
+inSess  = useSession ? not na(time(timeframe.period, tradeSession, sessTz)) : true
+inFlat  = not na(time(timeframe.period, flatTime, sessTz))
+newDay  = ta.change(time("D")) != 0
+
+var int sigsToday = 0
+if newDay
+    sigsToday := 0
+
+// ─────────────────────────────────────────────────────────────
+// LIQUIDITY POOLS
+// A pool stays live until price trades through it — that trade-through is the
+// sweep. Swing pools are only added once the pivot is CONFIRMED, pivotLen bars
+// after it printed, which is when a trader could actually have known about it.
+// ─────────────────────────────────────────────────────────────
+var array<float> sellPx = array.new<float>()
+var array<int>   sellBr = array.new<int>()
+var array<float> buyPx  = array.new<float>()
+var array<int>   buyBr  = array.new<int>()
+var array<float> pivHi  = array.new<float>()
+var array<float> pivLo  = array.new<float>()
+
+ph = ta.pivothigh(pivotLen, pivotLen)
+pl = ta.pivotlow(pivotLen, pivotLen)
+
+if not na(ph)
+    array.push(buyPx, ph)
+    array.push(buyBr, bar_index - pivotLen)
+    array.push(pivHi, ph)
+    if array.size(pivHi) > 60
+        array.shift(pivHi)
+if not na(pl)
+    array.push(sellPx, pl)
+    array.push(sellBr, bar_index - pivotLen)
+    array.push(pivLo, pl)
+    if array.size(pivLo) > 60
+        array.shift(pivLo)
+
+pdh = request.security(syminfo.tickerid, "D", high[1], lookahead = barmerge.lookahead_off)
+pdl = request.security(syminfo.tickerid, "D", low[1],  lookahead = barmerge.lookahead_off)
+if usePD and newDay and not na(pdh)
+    array.push(buyPx, pdh)
+    array.push(buyBr, bar_index)
+    array.push(sellPx, pdl)
+    array.push(sellBr, bar_index)
+
+inAsia = not na(time(timeframe.period, asiaSess, sessTz))
+inLon  = not na(time(timeframe.period, lonSess,  sessTz))
+var float asiaH = na
+var float asiaL = na
+var float lonH  = na
+var float lonL  = na
+if inAsia
+    asiaH := inAsia[1] ? math.max(nz(asiaH, high), high) : high
+    asiaL := inAsia[1] ? math.min(nz(asiaL, low),  low)  : low
+if inLon
+    lonH := inLon[1] ? math.max(nz(lonH, high), high) : high
+    lonL := inLon[1] ? math.min(nz(lonL, low),  low)  : low
+if useAsiaLon and inAsia[1] and not inAsia and not na(asiaH)
+    array.push(buyPx, asiaH)
+    array.push(buyBr, bar_index)
+    array.push(sellPx, asiaL)
+    array.push(sellBr, bar_index)
+if useAsiaLon and inLon[1] and not inLon and not na(lonH)
+    array.push(buyPx, lonH)
+    array.push(buyBr, bar_index)
+    array.push(sellPx, lonL)
+    array.push(sellBr, bar_index)
+
+// ─────────────────────────────────────────────────────────────
+// SWEEP — raid a live pool, close back inside it
+// ─────────────────────────────────────────────────────────────
+float sweptSell = na
+float sweptBuy  = na
+if array.size(sellPx) > 0
+    for i = array.size(sellPx) - 1 to 0
+        p = array.get(sellPx, i)
+        if low < p
+            if close > p and (na(sweptSell) or p > sweptSell)
+                sweptSell := p
+            array.remove(sellPx, i)
+            array.remove(sellBr, i)
+        else if bar_index - array.get(sellBr, i) > poolBars
+            array.remove(sellPx, i)
+            array.remove(sellBr, i)
+if array.size(buyPx) > 0
+    for i = array.size(buyPx) - 1 to 0
+        p = array.get(buyPx, i)
+        if high > p
+            if close < p and (na(sweptBuy) or p < sweptBuy)
+                sweptBuy := p
+            array.remove(buyPx, i)
+            array.remove(buyBr, i)
+        else if bar_index - array.get(buyBr, i) > poolBars
+            array.remove(buyPx, i)
+            array.remove(buyBr, i)
+
+depthL = not na(sweptSell) and (sweptSell - low) >= minSweepAtr * atr and (sweptSell - low) <= maxSweepAtr * atr
+depthS = not na(sweptBuy)  and (high - sweptBuy) >= minSweepAtr * atr and (high - sweptBuy) <= maxSweepAtr * atr
+
+trigAbove() =>
+    float t = na
+    if array.size(pivHi) > 0
+        for i = array.size(pivHi) - 1 to 0
+            if na(t) and array.get(pivHi, i) > close
+                t := array.get(pivHi, i)
+    t
+trigBelow() =>
+    float t = na
+    if array.size(pivLo) > 0
+        for i = array.size(pivLo) - 1 to 0
+            if na(t) and array.get(pivLo, i) < close
+                t := array.get(pivLo, i)
+    t
+
+var int   swLoBar  = na
+var float swLoPx   = na
+var float swLoTrig = na
+var int   swHiBar  = na
+var float swHiPx   = na
+var float swHiTrig = na
+
+if depthL
+    tg = trigAbove()
+    if not na(tg)
+        swLoBar  := bar_index
+        swLoPx   := low
+        swLoTrig := tg
+if depthS
+    tg = trigBelow()
+    if not na(tg)
+        swHiBar  := bar_index
+        swHiPx   := high
+        swHiTrig := tg
+
+if not na(swLoBar) and ((bar_index - swLoBar > mssWindow) or (low < swLoPx and bar_index > swLoBar))
+    swLoBar  := na
+    swLoPx   := na
+    swLoTrig := na
+if not na(swHiBar) and ((bar_index - swHiBar > mssWindow) or (high > swHiPx and bar_index > swHiBar))
+    swHiBar  := na
+    swHiPx   := na
+    swHiTrig := na
+
+// ─────────────────────────────────────────────────────────────
+// MSS + DISPLACEMENT
+// ─────────────────────────────────────────────────────────────
+dispOk   = math.abs(close - open) >= dispAtr * atr
+mssLong  = not na(swLoBar) and bar_index > swLoBar and close > swLoTrig and dispOk
+mssShort = not na(swHiBar) and bar_index > swHiBar and close < swHiTrig and dispOk
+
+// ─────────────────────────────────────────────────────────────
+// DISPLACEMENT FVG (drawn for context; entry is on the MSS close)
+// ─────────────────────────────────────────────────────────────
+legL = na(swLoBar) ? 0 : math.min(bar_index - swLoBar, 30)
+legS = na(swHiBar) ? 0 : math.min(bar_index - swHiBar, 30)
+
+findGapLong(int look) =>
+    float gb = na
+    float gt = na
+    for k = 0 to math.max(look, 0)
+        if na(gt) and low[k] > high[k + 2]
+            gb := high[k + 2]
+            gt := low[k]
+    [gb, gt]
+findGapShort(int look) =>
+    float gb = na
+    float gt = na
+    for k = 0 to math.max(look, 0)
+        if na(gt) and high[k] < low[k + 2]
+            gb := high[k]
+            gt := low[k + 2]
+    [gb, gt]
+
+[gapLB, gapLT] = findGapLong(legL)
+[gapSB, gapST] = findGapShort(legS)
+
+// ─────────────────────────────────────────────────────────────
+// SIGNAL
+// Everything below is gated on barstate.isconfirmed: a setup is only ever
+// published once its bar has closed, so nothing repaints.
+// ─────────────────────────────────────────────────────────────
+allowLong  = not shortOnly
+allowShort = not longOnly
+
+riskLong() =>
+    atrStop   = close - stopAtr * atr
+    sweepStop = na(swLoPx) ? atrStop : swLoPx - 0.1 * atr
+    st = capBySweep ? math.max(atrStop, math.min(sweepStop, close - 0.5 * atr)) : atrStop
+    close - st
+riskShort() =>
+    atrStop   = close + stopAtr * atr
+    sweepStop = na(swHiPx) ? atrStop : swHiPx + 0.1 * atr
+    st = capBySweep ? math.min(atrStop, math.max(sweepStop, close + 0.5 * atr)) : atrStop
+    st - close
+
+var int   tDir   = 0
+var float tEntry = na
+var float tStop  = na
+var float tTp    = na
+var float tRisk  = na
+var int   tBar   = na
+var int   nWin   = 0
+var int   nLoss  = 0
+var int   nFlat  = 0
+var float netR   = 0.0
+
+ready    = barstate.isconfirmed and not na(atr) and atr > 0
+canArm   = ready and inSess and not inFlat and sigsToday < maxPerDay and tDir == 0
+sigLong  = canArm and mssLong  and htfAgrees(1)  and allowLong
+sigShort = canArm and mssShort and htfAgrees(-1) and allowShort
+
+// ─────────────────────────────────────────────────────────────
+// DRAWING HELPERS — every object is tracked and pruned so the script cannot
+// silently hit Pine's object caps and stop drawing.
+// ─────────────────────────────────────────────────────────────
+var array<line>  drawnLines = array.new<line>()
+var array<box>   drawnBoxes = array.new<box>()
+
+addLine(float px, color col, string style) =>
+    ln = line.new(bar_index, px, bar_index + 24, px, color = col, width = 1, style = style)
+    array.push(drawnLines, ln)
+    if array.size(drawnLines) > 150
+        line.delete(array.shift(drawnLines))
+addBox(float top, float bot, color col) =>
+    bx = box.new(bar_index - 2, top, bar_index + 12, bot, border_color = col, bgcolor = color.new(col, 85))
+    array.push(drawnBoxes, bx)
+    if array.size(drawnBoxes) > 80
+        box.delete(array.shift(drawnBoxes))
+
+// ─────────────────────────────────────────────────────────────
+// ARM A SETUP
+// ─────────────────────────────────────────────────────────────
+if sigLong or sigShort
+    sigDir = sigLong ? 1 : -1
+    risk = sigLong ? riskLong() : riskShort()
+    if risk > 0
+        tDir   := sigDir
+        tEntry := close
+        tRisk  := risk
+        tStop  := close - sigDir * risk
+        tTp    := close + sigDir * rrTarget * risk
+        tBar   := bar_index
+        sigsToday += 1
+        col = sigDir > 0 ? bullCol : bearCol
+        if showLevels
+            addLine(tEntry, col, line.style_solid)
+            addLine(tStop, bearCol, line.style_dashed)
+            addLine(tTp, bullCol, line.style_dashed)
+        if showFvg
+            gt = sigDir > 0 ? gapLT : gapST
+            gb = sigDir > 0 ? gapLB : gapSB
+            if not na(gt) and not na(gb)
+                addBox(gt, gb, col)
+        label.new(bar_index, sigDir > 0 ? low : high,
+             (sigDir > 0 ? "▲ MSS long" : "▼ MSS short") + "\nstop " + str.tostring(risk, "#.##") + " pts",
+             style = sigDir > 0 ? label.style_label_up : label.style_label_down,
+             color = color.new(col, 20), textcolor = color.white, size = size.small)
+        alert((sigDir > 0 ? "ICT LONG " : "ICT SHORT ") + syminfo.ticker +
+             "  entry " + str.tostring(tEntry, format.mintick) +
+             "  stop " + str.tostring(tStop, format.mintick) +
+             "  target " + str.tostring(tTp, format.mintick) +
+             "  risk " + str.tostring(risk, "#.##") + " pts", alert.freq_once_per_bar_close)
+
+// ─────────────────────────────────────────────────────────────
+// SELF-GRADING — pessimistic: the stop wins any same-bar tie, the target is
+// never credited on the signal bar, no commission or slippage is charged.
+// This is a sanity check, NOT a backtest.
+// ─────────────────────────────────────────────────────────────
+if tDir != 0 and barstate.isconfirmed and bar_index > tBar
+    bull    = tDir > 0
+    stopHit = bull ? low <= tStop : high >= tStop
+    tpHit   = bull ? high >= tTp : low <= tTp
+    if stopHit
+        nLoss += 1
+        netR  -= 1.0
+        label.new(bar_index, tStop, "✕", style = label.style_label_left,
+             color = color.new(bearCol, 30), textcolor = color.white, size = size.tiny)
+        tDir := 0
+    else if tpHit
+        nWin += 1
+        netR += rrTarget
+        label.new(bar_index, tTp, "✓", style = label.style_label_left,
+             color = color.new(bullCol, 30), textcolor = color.white, size = size.tiny)
+        tDir := 0
+    else if inFlat
+        r = (bull ? close - tEntry : tEntry - close) / tRisk
+        nFlat += 1
+        netR  += r
+        tDir  := 0
+
+// ─────────────────────────────────────────────────────────────
+// PLOTS
+// ─────────────────────────────────────────────────────────────
+plot(showPools and not na(pdh) ? pdh : na, "PDH", color.new(poolCol, 30), 1, plot.style_linebr)
+plot(showPools and not na(pdl) ? pdl : na, "PDL", color.new(poolCol, 30), 1, plot.style_linebr)
+plot(showPools and useAsiaLon and not na(asiaH) ? asiaH : na, "Asia H", color.new(#FFB74D, 45), 1, plot.style_linebr)
+plot(showPools and useAsiaLon and not na(asiaL) ? asiaL : na, "Asia L", color.new(#FFB74D, 45), 1, plot.style_linebr)
+plot(showPools and useAsiaLon and not na(lonH) ? lonH : na, "London H", color.new(#4FC3F7, 45), 1, plot.style_linebr)
+plot(showPools and useAsiaLon and not na(lonL) ? lonL : na, "London L", color.new(#4FC3F7, 45), 1, plot.style_linebr)
+
+plotshape(showSweeps and depthL and barstate.isconfirmed, "Sweep low", shape.triangleup,
+     location.belowbar, color.new(bullCol, 45), size = size.tiny)
+plotshape(showSweeps and depthS and barstate.isconfirmed, "Sweep high", shape.triangledown,
+     location.abovebar, color.new(bearCol, 45), size = size.tiny)
+
+bgcolor(useSession and inSess ? color.new(color.blue, 95) : na, title = "Entry window")
+bgcolor(showFlat and inFlat ? color.new(color.orange, 90) : na, title = "Flatten")
+
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────────────────────
+biasTxt(int s) => s > 0 ? "bull" : s < 0 ? "bear" : "flat"
+biasCol(int s) => s > 0 ? bullCol : s < 0 ? bearCol : color.gray
+
+if showPanel and barstate.islast
+    var table t = table.new(position.top_right, 2, 9, border_width = 1,
+         frame_color = color.new(color.gray, 60), frame_width = 1)
+    stopPts = na(atr) ? 0.0 : (tDir != 0 ? tRisk : stopAtr * atr)
+    contracts = math.max(1, math.floor(riskPerTrade / math.max(stopPts * pointValue, 0.01)))
+    graded = nWin + nLoss
+    table.cell(t, 0, 0, "ICT MNQ Model", text_color = color.white, bgcolor = color.new(color.blue, 40), text_size = size.small)
+    table.cell(t, 1, 0, timeframe.period, text_color = color.white, bgcolor = color.new(color.blue, 40), text_size = size.small)
+    table.cell(t, 0, 1, htf1 + " bias", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 1, biasTxt(bias1), text_color = biasCol(bias1), text_size = size.small)
+    table.cell(t, 0, 2, htf2 + " bias", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 2, biasTxt(bias2), text_color = biasCol(bias2), text_size = size.small)
+    table.cell(t, 0, 3, useHTF3 ? htf3 + " bias" : "session", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 3, useHTF3 ? biasTxt(bias3) : (inSess ? "OPEN" : "closed"),
+         text_color = useHTF3 ? biasCol(bias3) : (inSess ? bullCol : color.gray), text_size = size.small)
+    table.cell(t, 0, 4, "stop / target", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 4, str.tostring(stopPts, "#.#") + " / " + str.tostring(stopPts * rrTarget, "#.#") + " pts", text_size = size.small)
+    table.cell(t, 0, 5, "risk / contract", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 5, "$" + str.tostring(stopPts * pointValue, "#"), text_size = size.small)
+    table.cell(t, 0, 6, "size for $" + str.tostring(riskPerTrade, "#"), text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 6, str.tostring(contracts, "#") + " contract(s)", text_size = size.small)
+    table.cell(t, 0, 7, "signals today", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 7, str.tostring(sigsToday) + " / " + str.tostring(maxPerDay), text_size = size.small)
+    table.cell(t, 0, 8, "sim W/L/flat", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 8, str.tostring(nWin) + "/" + str.tostring(nLoss) + "/" + str.tostring(nFlat) +
+         (graded > 0 ? "  " + str.tostring(100.0 * nWin / graded, "#") + "%" : "") +
+         "  " + (netR >= 0 ? "+" : "") + str.tostring(netR, "#.#") + "R", text_size = size.small)
+
+alertcondition(sigLong,  "ICT long",  "ICT sweep + MSS long")
+alertcondition(sigShort, "ICT short", "ICT sweep + MSS short")

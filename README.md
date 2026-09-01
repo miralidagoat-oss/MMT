@@ -275,6 +275,33 @@ python3 reversion_model.py ../ictdata  # daily mark-to-market, all instruments
 
 ---
 
+# ICT MNQ Model — indicator
+
+`indicators/ict_mnq_model.pine` — the chart-tool version of the ICT strategy.
+Marks the setup and levels, grades its own signals, fires alerts, places no
+orders. Use `strategies/ict_mnq_sweep_mss.pine` when you want a Strategy Tester
+P&L instead.
+
+Draws live liquidity (PDH/PDL, Asia and London extremes, untaken swings), sweep
+markers, the MSS label with the stop distance in points, the displacement FVG,
+and entry/stop/target lines. The dashboard shows both HTF biases, session state,
+stop and target in points and dollars, position size for your risk budget, and a
+running simulated record.
+
+**Non-repainting by construction:** every signal, label, zone and alert is gated
+on `barstate.isconfirmed`; HTF structure uses `lookahead_off` and, by default,
+only closed HTF candles; swing pivots appear only once confirmed.
+
+**Long only ships ON** — short setups at this horizon lost on all six instruments
+tested (t = −3.7 to −5.2 over 875 days).
+
+The self-grading panel is a *pessimistic simulation*, not a backtest: the stop
+wins any same-bar tie, the target is never credited on the signal bar, and no
+commission or slippage is charged. The underlying model is still the unvalidated
+one — see the ICT section below.
+
+---
+
 # ICT MNQ Strategy — Sweep → MSS → Displacement
 
 `strategies/ict_mnq_sweep_mss.pine` is a Pine v6 **`strategy()`** (real orders,
