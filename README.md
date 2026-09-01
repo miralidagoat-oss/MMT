@@ -234,6 +234,47 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
 
 ---
 
+# Nasdaq Short-Term Reversion — the model that actually validated
+
+`strategies/nq_reversion.pine` (DAILY chart, MNQ1! / NQ1!) —
+**[full write-up](docs/NQ_REVERSION_MODEL.md)**
+
+Buy the close when the session finishes weak (IBS < 0.30); exit at the close of
+the first session that closes higher. Long only. That's it.
+
+| | span | return | **Sharpe** | t | max DD | exposure | trades |
+|---|---|---|---|---|---|---|---|
+| **NQ** | 10.0 y | +17.5%/yr | **1.15** | 3.64 | 19.6% | 48% | 455 |
+| NQ buy & hold | | +20.8%/yr | 0.92 | 2.89 | 35.3% | 100% | — |
+| **MNQ** | 7.3 y | +18.3%/yr | **1.13** | 3.04 | 19.6% | 51% | 344 |
+| **QQQ** | 10.0 y | +19.2%/yr | **1.27** | 4.01 | 14.9% | 51% | 480 |
+| ES | 10.0 y | +10.2%/yr | 0.79 | 2.51 | 21.4% | 49% | 446 |
+| SPY | 10.0 y | +7.9%/yr | 0.63 | 1.99 | 23.2% | 50% | 462 |
+
+Not more return than buy & hold — better *risk*: higher Sharpe, half the
+drawdown, in the market half the time. First half of the sample Sharpe 1.18,
+second half 1.12. Positive in every calendar year, including 2022 (+4.7% while
+NQ fell 32.5%).
+
+**Why it is believable where the ICT model was not:** every parameter is flat
+across its whole range (IBS 0.15→0.50 all give Sharpe 1.01–1.20), it survives
+5× realistic costs, and it holds on five instruments and both halves of ten
+years. The failed candidates are kept in `backtest/edge_screen.py` in the form
+they were tested — gap fade, gap continuation, 200-MA filtering, shorting strong
+closes, overnight-only exits, all rejected.
+
+**Its real risks:** long-only across a mostly-bull decade, it holds overnight,
+and tight stops destroy it (a 1% stop cuts Sharpe 1.15 → 0.45 — you are
+deliberately buying weakness). Details in the write-up.
+
+```
+cd backtest
+python3 edge_screen.py ../ictdata      # the pre-registered screen, failures included
+python3 reversion_model.py ../ictdata  # daily mark-to-market, all instruments
+```
+
+---
+
 # ICT MNQ Strategy — Sweep → MSS → Displacement
 
 `strategies/ict_mnq_sweep_mss.pine` is a Pine v6 **`strategy()`** (real orders,

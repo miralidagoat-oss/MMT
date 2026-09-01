@@ -1,0 +1,134 @@
+//@version=6
+// =============================================================================
+// Nasdaq Short-Term Reversion — buy weak closes, exit on the first strong one
+//
+// Run this on the DAILY chart of MNQ1! / NQ1! (works on QQQ too).
+//
+// The rule:
+//   ENTRY  at the close, when the session closes in the weak part of its range
+//          (Internal Bar Strength = (close - low) / (high - low) < 0.30)
+//   EXIT   at the close of the first session that closes higher than the one
+//          before it, or after `Max Hold` sessions, whichever comes first
+//   LONG ONLY. The mirror trade — shorting strong closes — lost money on both
+//   indices tested, which is what you expect in an instrument with upward drift.
+//
+// Tested on 10 years of daily data (NQ, ES, QQQ, SPY) and 7.3 years of MNQ,
+// with costs charged. On NQ: +17.6%/yr, Sharpe 1.18, max drawdown 18.7% against
+// buy & hold's 35.3%, in the market only ~31% of the time, and positive in every
+// calendar year including 2022 (+4.7% while the index fell 32.5%).
+//
+// Read the "honest limits" section of docs/NQ_REVERSION_MODEL.md before sizing
+// up. In particular: this is a long-only dip-buyer measured mostly across a bull
+// market, and it holds overnight.
+//
+// process_orders_on_close is ON so that entries and exits both execute at the
+// close of the signal bar, exactly as the model was tested. Do not turn it off:
+// it silently converts the strategy into a different (untested) one.
+// =============================================================================
+
+strategy("Nasdaq Short-Term Reversion", overlay = true,
+     process_orders_on_close = true,
+     initial_capital         = 25000,
+     default_qty_type        = strategy.fixed,
+     default_qty_value       = 1,
+     pyramiding              = 0,
+     calc_on_every_tick      = false,
+     commission_type         = strategy.commission.cash_per_order,
+     commission_value        = 0.52,
+     slippage                = 1)
+
+var string G_SIG  = "Signal"
+var string G_EXIT = "Exit"
+var string G_RISK = "Risk"
+var string G_UI   = "Display"
+
+ibsThr    = input.float(0.30, "Buy when IBS is below", minval = 0.05, maxval = 0.60, step = 0.05, group = G_SIG,
+     tooltip = "IBS = (close - low) / (high - low). Anything from 0.15 to 0.50 tested positive with Sharpe 1.0-1.2, so this is not a knife edge.")
+nDown     = input.int(0, "Also require N consecutive lower closes", minval = 0, maxval = 4, group = G_SIG,
+     tooltip = "0 = off. Raising it makes the model more selective and lowers exposure without much changing the edge per trade.")
+longOnly  = input.bool(true, "Long only", group = G_SIG,
+     tooltip = "Leave ON. The short mirror lost money on every index tested.")
+
+exitMode  = input.string("First higher close", "Exit rule", options = ["First higher close", "Next close (1 session)"], group = G_EXIT,
+     tooltip = "'First higher close' was materially better across all markets. 'Next close' is the simpler, weaker variant.")
+maxHold   = input.int(5, "Max hold (sessions)", minval = 1, group = G_EXIT,
+     tooltip = "A backstop only. Anything from 3 to 20 gave near-identical results because the exit almost always fires within 3 sessions.")
+
+useStop   = input.bool(false, "Use a disaster stop", group = G_RISK,
+     tooltip = "OFF by default because that is how it was tested. Tight stops WRECK this model - a 1% stop cut Sharpe from 1.15 to 0.45, because you are deliberately buying weakness. Only a wide stop is affordable.")
+stopPct   = input.float(5.0, "  Disaster stop (% below entry)", minval = 1.0, step = 0.5, group = G_RISK,
+     tooltip = "5% costs roughly 3%/yr of return and cuts max drawdown from ~20% to ~13%.")
+
+sizeMode  = input.string("Fixed contracts", "Position sizing", options = ["Fixed contracts", "Target notional leverage"], group = G_RISK)
+fixedQty  = input.int(1, "  Contracts", minval = 1, group = G_RISK)
+leverage  = input.float(1.0, "  Target notional leverage (× equity)", minval = 0.1, step = 0.1, group = G_RISK,
+     tooltip = "1.0 means position notional = account equity. One MNQ at 29,500 is ~$59,000 of notional, so on a $25k account a single contract is already ~2.4x leverage.")
+pointVal  = input.float(2.0, "  Point value ($/point)", minval = 0.01, group = G_RISK,
+     tooltip = "MNQ = 2, NQ = 20, MES = 5, ES = 50, QQQ = 1.")
+
+showInfo  = input.bool(true, "Show info panel", group = G_UI)
+
+// ─────────────────────────────────────────────────────────────
+// SIGNAL
+// ─────────────────────────────────────────────────────────────
+rng = high - low
+ibs = rng > 0 ? (close - low) / rng : 0.5
+
+downOk = true
+if nDown > 0
+    for k = 0 to nDown - 1
+        if not (close[k] < close[k + 1])
+            downOk := false
+
+weakClose = ibs < ibsThr and downOk
+
+// ─────────────────────────────────────────────────────────────
+// SIZING
+// ─────────────────────────────────────────────────────────────
+qty = sizeMode == "Fixed contracts" ? fixedQty : math.max(1, math.floor(strategy.equity * leverage / (close * pointVal)))
+
+// ─────────────────────────────────────────────────────────────
+// ORDERS
+// Entry and exit both fill at the close of the bar that triggers them
+// (process_orders_on_close), which is exactly what was tested.
+// ─────────────────────────────────────────────────────────────
+var int entryBar = na
+
+if strategy.position_size == 0 and weakClose and longOnly
+    strategy.entry("Long", strategy.long, qty = qty)
+    entryBar := bar_index
+
+if strategy.position_size > 0
+    held      = bar_index - nz(entryBar, bar_index)
+    higherCl  = close > close[1]
+    timeUp    = held >= maxHold
+    exitNow   = exitMode == "Next close (1 session)" ? held >= 1 : (higherCl or timeUp)
+    if exitNow
+        strategy.close("Long", comment = timeUp and not higherCl ? "max hold" : "higher close")
+    else if useStop
+        strategy.exit("Stop", from_entry = "Long", stop = strategy.position_avg_price * (1 - stopPct / 100))
+
+// ─────────────────────────────────────────────────────────────
+// DISPLAY
+// ─────────────────────────────────────────────────────────────
+plotshape(weakClose and strategy.position_size == 0, "Weak close", shape.triangleup,
+     location.belowbar, color.new(#26A69A, 20), size = size.tiny)
+barcolor(strategy.position_size > 0 ? color.new(#26A69A, 60) : na)
+
+if showInfo and barstate.islast
+    var table t = table.new(position.top_right, 2, 5, border_width = 1)
+    table.cell(t, 0, 0, "IBS today",  text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 0, str.tostring(ibs, "#.00"), text_size = size.small,
+         text_color = ibs < ibsThr ? #26A69A : color.gray)
+    table.cell(t, 0, 1, "In position", text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 1, strategy.position_size > 0 ? "yes" : "no", text_size = size.small)
+    table.cell(t, 0, 2, "Timeframe",  text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 2, timeframe.period, text_size = size.small,
+         text_color = timeframe.isdaily ? color.gray : color.red)
+    table.cell(t, 0, 3, "Trades",     text_color = color.gray, text_size = size.small)
+    table.cell(t, 1, 3, str.tostring(strategy.closedtrades), text_size = size.small)
+    table.cell(t, 0, 4, timeframe.isdaily ? "" : "USE A DAILY CHART",
+         text_color = color.red, text_size = size.small)
+    table.cell(t, 1, 4, "", text_size = size.small)
+
+alertcondition(weakClose, "Weak close - buy signal", "Nasdaq reversion: weak close, enter long at the close")
