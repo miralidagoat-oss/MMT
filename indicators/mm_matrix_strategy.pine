@@ -1,0 +1,584 @@
+//@version=6
+strategy("MM MATRIX v2 Strategy — Sponsorship, POI, Inducement", "MM MATRIX v2 ST",
+     overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500,
+     initial_capital = 100000, currency = currency.NONE,
+     default_qty_type = strategy.fixed, default_qty_value = 1,
+     pyramiding = 0, calc_on_every_tick = false, process_orders_on_close = true,
+     commission_type = strategy.commission.cash_per_contract, commission_value = 0.0,
+     slippage = 0)
+
+// ============================================================================
+// MM MATRIX v2 — STRATEGY BUILD
+//
+// Identical detection engine to indicators/mm_matrix.pine; the self-grading
+// dashboard is replaced by real orders so TradingView's Strategy Tester does
+// the accounting instead of me. Use this build to validate, the indicator
+// build to trade from.
+//
+// Fill model, chosen to match the indicator's grading exactly:
+//   - process_orders_on_close = true, so entry fills at the signal bar's
+//     close, which is the price the R was computed against.
+//   - Stop and target are placed together via strategy.exit, so an OCO pair
+//     resolves them. Where a single bar touches both, TradingView's default
+//     is the pessimistic one (stop first) unless bar magnifier is on.
+//   - No commission or slippage is assumed by default. SET THEM for your
+//     instrument before you believe any number this produces.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// STRATEGY INPUTS
+// ─────────────────────────────────────────────────────────────
+G_RSK = "0 · Risk & execution"
+riskPct  = input.float(1.0, "Risk per trade (% of equity)", minval = 0.01, maxval = 100, step = 0.1, group = G_RSK)
+wholeQty = input.bool(true, "Round position size to whole units", group = G_RSK,
+     tooltip = "On for futures and stocks. Off for FX and crypto, where fractional size is allowed.")
+useBE    = input.bool(true, "Move stop to breakeven at +1R", group = G_RSK,
+     tooltip = "The management rule that tested best on MNQ 1H for the sibling script.")
+allowRev = input.bool(false, "Allow an opposite signal to close and reverse", group = G_RSK)
+useDates = input.bool(false, "Restrict backtest to a date window", group = G_RSK,
+     tooltip = "For walk-forward: tune on the first slice, verify on the untouched later slice.")
+dateFrom = input.time(timestamp("01 Jan 2018 00:00 +0000"), "From", group = G_RSK)
+dateTo   = input.time(timestamp("01 Jan 2030 00:00 +0000"), "To",   group = G_RSK)
+
+// ─────────────────────────────────────────────────────────
+// DETECTION INPUTS (shared with the indicator build)
+// ─────────────────────────────────────────────────────────────
+G_STR = "1 · Structure"
+sw       = input.int(5, "Swing length", minval = 2, maxval = 50, group = G_STR)
+bodyBOS  = input.bool(true, "BOS requires candle BODY break", group = G_STR,
+     tooltip = "Body break = a close beyond the level. Off = a wick beyond it.")
+showBOS  = input.bool(true, "Label BOS / CHoCH", group = G_STR)
+showCode = input.bool(false, "Label RBD / DBR / RBR / DBD", group = G_STR)
+baseMaxB = input.float(0.35, "Base candle max body / range", minval = 0.05, maxval = 0.9, step = 0.05,
+     group = G_STR, tooltip = "For the RBD/DBR labels: the middle 'base' candle must be this indecisive.")
+
+G_POI = "2 · Points of interest"
+poiDepth = input.int(25, "POI search depth (bars)", minval = 3, maxval = 100, group = G_POI)
+bodyPOI  = input.bool(false, "POI box from candle body only", group = G_POI)
+dispATR  = input.float(1.0, "Min displacement out of POI (ATR)", minval = 0.0, step = 0.1, group = G_POI,
+     tooltip = "The leg away from the zone must travel at least this much. This is the single highest-value SMC filter; 0 disables it.")
+reqFVG   = input.bool(false, "Require an FVG in the departure leg", group = G_POI,
+     tooltip = "Only accept a POI whose impulse left an unfilled imbalance.")
+reqInd   = input.bool(true,  "Require inducement to be swept first", group = G_POI)
+reqPD    = input.bool(true,  "Require premium (sell) / discount (buy)", group = G_POI)
+useBRK   = input.bool(true,  "Failed POI flips to breaker", group = G_POI)
+poiLife  = input.int(400, "Max POI age (bars)", minval = 20, group = G_POI)
+slTicks  = input.int(4, "Stop buffer (ticks beyond POI)", minval = 0, group = G_POI)
+dedup    = input.bool(true, "Skip zones overlapping a live zone", group = G_POI)
+
+G_FLT = "3 · Filters"
+minRR    = input.float(1.5, "Minimum R:R to signal", minval = 0.1, step = 0.1, group = G_FLT)
+coolBars = input.int(5, "Bars between signals", minval = 0, group = G_FLT)
+useHTF   = input.bool(false, "Require higher-timeframe alignment", group = G_FLT)
+htfTF    = input.timeframe("60", "Higher timeframe", group = G_FLT)
+htfFastL = input.int(20, "HTF fast EMA", minval = 2, group = G_FLT)
+htfSlowL = input.int(50, "HTF slow EMA", minval = 3, group = G_FLT)
+useSess  = input.bool(false, "Restrict signals to a session", group = G_FLT)
+sessStr  = input.session("0930-1600", "Session", group = G_FLT)
+sessTZ   = input.string("America/New_York", "Session timezone", group = G_FLT,
+     options = ["America/New_York", "America/Chicago", "Europe/London", "Europe/Berlin", "Asia/Tokyo", "Asia/Shanghai", "UTC"])
+
+G_LIQ = "4 · Liquidity"
+showEQ   = input.bool(true, "Equal highs / lows pools", group = G_LIQ)
+eqTol    = input.float(0.15, "Equal-level tolerance (ATR)", minval = 0.01, step = 0.05, group = G_LIQ)
+showPD   = input.bool(true, "Premium / discount", group = G_LIQ)
+showRR   = input.bool(true, "Draw stop / target on signal", group = G_LIQ)
+
+// Internal grading is disabled in the strategy build: the Strategy Tester
+// is the accountant here, so there is nothing for it to duplicate.
+grade   = false
+
+G_COL = "6 · Colours"
+cS = input.color(#ef5350, "Supply", group = G_COL)
+cD = input.color(#26a69a, "Demand", group = G_COL)
+cB = input.color(#ffb74d, "Breaker", group = G_COL)
+
+// ─────────────────────────────────────────────────────────────
+// TOP-LEVEL SERIES  (every ta.* call is unconditional — v1 defect #2)
+// ─────────────────────────────────────────────────────────────
+atr   = ta.atr(14)
+tick  = syminfo.mintick
+conf  = barstate.isconfirmed
+
+ph    = ta.pivothigh(high, sw, sw)
+pl    = ta.pivotlow(low,  sw, sw)
+
+// Extremes across the pivot confirmation lag, used to back-check whether an
+// inducement level was already swept while we were waiting for the pivot to
+// confirm (v1 defect #8).
+lagHi = ta.highest(high, sw + 1)
+lagLo = ta.lowest(low,   sw + 1)
+
+// Higher-timeframe bias. The [1] inside the request makes it non-repainting,
+// and an HTF lower than the chart timeframe is ignored rather than trusted.
+htfSafe  = timeframe.in_seconds(htfTF) >= timeframe.in_seconds(timeframe.period)
+htfFast  = request.security(syminfo.tickerid, htfTF, ta.ema(close, htfFastL)[1], lookahead = barmerge.lookahead_off)
+htfSlow  = request.security(syminfo.tickerid, htfTF, ta.ema(close, htfSlowL)[1], lookahead = barmerge.lookahead_off)
+htfBull  = not useHTF or not htfSafe or (not na(htfFast) and not na(htfSlow) and htfFast > htfSlow)
+htfBear  = not useHTF or not htfSafe or (not na(htfFast) and not na(htfSlow) and htfFast < htfSlow)
+
+inSess   = not useSess or not na(time(timeframe.period, sessStr, sessTZ))
+
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
+type Zone
+    box    bx
+    float  top
+    float  bot
+    float  sl
+    float  ind
+    int    dir
+    string kind
+    int    birth
+    bool   indTaken
+    bool   fired
+    bool   dead
+
+type Pool
+    line   ln
+    label  lb
+    float  px
+    int    dir       // 1 = buy-side liquidity above, -1 = sell-side below
+    bool   swept
+
+type Trade
+    int    dir
+    float  entry
+    float  sl
+    float  tp
+    int    code      // 0 Type1 · 1 Type3 · 2 BRK · 3 BRK+IDM
+    int    birth
+
+var array<Zone>  zones = array.new<Zone>()
+var array<Pool>  pools = array.new<Pool>()
+var array<Trade> openTr = array.new<Trade>()
+
+var array<int>   nWin  = array.new<int>(4, 0)
+var array<int>   nLos  = array.new<int>(4, 0)
+var array<float> sumR  = array.new<float>(4, 0.0)
+
+typeName(int c) => c == 0 ? "Type 1" : c == 1 ? "Type 3" : c == 2 ? "BRK" : "BRK+IDM"
+
+// ─────────────────────────────────────────────────────────────
+// STRUCTURE
+// ─────────────────────────────────────────────────────────────
+var float lastPH   = na, var float lastPL   = na    // armed, unbroken levels
+var float prevPH   = na, var float prevPL   = na    // for equal-high/low detection
+var int   anchorHi = 0,  var int   anchorLo = 0     // bar index of the leg origin
+var bool  phLive   = false, var bool plLive = false
+var int   trend    = 0
+var float rngHi    = na, var float rngLo    = na    // the live dealing range
+
+bool bosUp = false
+bool bosDn = false
+bool chUp  = false
+bool chDn  = false
+
+if conf
+    if not na(ph)
+        prevPH   := lastPH
+        anchorHi := bar_index - sw
+        // v1 defect #1: only arm a level price has not already traded through.
+        if ph > close
+            lastPH := ph
+            phLive := true
+    if not na(pl)
+        prevPL   := lastPL
+        anchorLo := bar_index - sw
+        if pl < close
+            lastPL := pl
+            plLive := true
+
+    brkUp = phLive and not na(lastPH) and (bodyBOS ? close > lastPH : high > lastPH)
+    brkDn = plLive and not na(lastPL) and (bodyBOS ? close < lastPL : low  < lastPL)
+
+    // A bar cannot break structure both ways. Whichever side the bar closed
+    // toward wins; v1 let both fire and silently left trend bearish.
+    if brkUp and brkDn
+        if close >= (high + low) / 2
+            brkDn := false
+        else
+            brkUp := false
+
+    if brkUp
+        bosUp  := true
+        chUp   := trend == -1
+        phLive := false
+        trend  := 1
+        rngLo  := na(lastPL) ? low : lastPL
+        rngHi  := high
+    if brkDn
+        bosDn  := true
+        chDn   := trend == 1
+        plLive := false
+        trend  := -1
+        rngHi  := na(lastPH) ? high : lastPH
+        rngLo  := low
+
+    // Extend the live range with the leg, keeping its origin pinned.
+    if not bosUp and not bosDn
+        if trend == 1
+            rngHi := math.max(nz(rngHi, high), high)
+        else if trend == -1
+            rngLo := math.min(nz(rngLo, low), low)
+
+eqLine   = na(rngHi) or na(rngLo) ? na : (rngHi + rngLo) / 2
+premium  = not na(eqLine) and close > eqLine
+discount = not na(eqLine) and close < eqLine
+
+if showBOS and bosUp
+    label.new(bar_index, low, chUp ? "CHoCH ▲" : "BOS ▲", style = label.style_label_up, yloc = yloc.belowbar,
+         color = color.new(color.black, 100), textcolor = cD, size = size.tiny)
+if showBOS and bosDn
+    label.new(bar_index, high, chDn ? "CHoCH ▼" : "BOS ▼", style = label.style_label_down, yloc = yloc.abovebar,
+         color = color.new(color.black, 100), textcolor = cS, size = size.tiny)
+
+// ── RBD / DBR / RBR / DBD ───────────────────────────────────
+// v1 never inspected bar [2] — the base — so this was really "two up bars
+// then two down bars" and it spammed. The base must now actually be a base,
+// and both legs must be real moves.
+up(int k) => close[k] > open[k]
+dn(int k) => close[k] < open[k]
+if showCode and conf and bar_index > 5 and not na(atr)
+    rng2   = math.max(high[2] - low[2], tick)
+    isBase = math.abs(close[2] - open[2]) / rng2 <= baseMaxB
+    legIn  = math.abs(close[3] - open[4]) >= atr
+    legOut = math.abs(close[0] - open[1]) >= atr
+    if isBase and legIn and legOut
+        string code = na
+        if up(4) and up(3) and dn(1) and dn(0)
+            code := "RBD"
+        else if dn(4) and dn(3) and up(1) and up(0)
+            code := "DBR"
+        else if up(4) and up(3) and up(1) and up(0)
+            code := "RBR"
+        else if dn(4) and dn(3) and dn(1) and dn(0)
+            code := "DBD"
+        if not na(code)
+            label.new(bar_index - 2, low[2], code, style = label.style_label_up, yloc = yloc.belowbar,
+                 color = color.new(color.black, 100), textcolor = color.new(color.gray, 20), size = size.tiny)
+
+// ─────────────────────────────────────────────────────────────
+// POI CONSTRUCTION
+// ─────────────────────────────────────────────────────────────
+// True if a live zone of the same direction already covers this price band.
+overlaps(float t, float b, int d) =>
+    bool hit = false
+    if array.size(zones) > 0
+        for i = 0 to array.size(zones) - 1
+            zz = array.get(zones, i)
+            if not zz.dead and zz.dir == d and t >= zz.bot and b <= zz.top
+                hit := true
+                break
+    hit
+
+mkPOI(float t, float b, float slp, int d, string k) =>
+    col = k == "BRK" ? cB : (d == -1 ? cS : cD)
+    bx  = box.new(bar_index, t, bar_index + 2, b, border_color = col, border_width = 1,
+         bgcolor = color.new(col, 86))
+    array.push(zones, Zone.new(bx, t, b, slp, na, d, k, bar_index, false, false, false))
+    if array.size(zones) > 70
+        z0 = array.shift(zones)
+        box.delete(z0.bx)
+
+if conf and (bosUp or bosDn) and bar_index > sw + 2 and not na(atr)
+    // v1 defect #7: anchor the search to the swing that started the leg
+    // instead of grabbing the first opposing candle, which lands mid-impulse.
+    anchor = bosDn ? anchorHi : anchorLo
+    w      = math.max(1, math.min(poiDepth, math.min(bar_index - anchor, bar_index - 1)))
+
+    int   bk  = na
+    float bex = na
+    for k = 1 to w
+        if bosDn and close[k] > open[k]
+            if na(bex) or high[k] > bex
+                bex := high[k]
+                bk  := k
+        if bosUp and close[k] < open[k]
+            if na(bex) or low[k] < bex
+                bex := low[k]
+                bk  := k
+
+    if not na(bk)
+        // Displacement: the leg away from the zone must be a real move.
+        moved = bosDn ? bex - close : close - bex
+        dispOK = dispATR <= 0 or moved >= dispATR * atr
+
+        // FVG confluence in the departure leg.
+        bool fvg = false
+        if bk >= 2
+            for j = 1 to bk - 1
+                if bosDn and low[j + 1] > high[j - 1]
+                    fvg := true
+                    break
+                if bosUp and high[j + 1] < low[j - 1]
+                    fvg := true
+                    break
+        fvgOK = not reqFVG or fvg
+
+        t = bodyPOI ? math.max(open[bk], close[bk]) : high[bk]
+        b = bodyPOI ? math.min(open[bk], close[bk]) : low[bk]
+
+        // v1 defect #3: the stop belongs to the POI candle, not to the
+        // extreme of the whole lookback window.
+        slp = bosDn ? high[bk] + slTicks * tick : low[bk] - slTicks * tick
+
+        if dispOK and fvgOK and t > b and (not dedup or not overlaps(t, b, bosDn ? -1 : 1))
+            mkPOI(t, b, slp, bosDn ? -1 : 1, "POI")
+
+// ─────────────────────────────────────────────────────────────
+// LIQUIDITY POOLS
+// ─────────────────────────────────────────────────────────────
+if conf and showEQ and not na(atr)
+    if not na(ph) and not na(prevPH) and math.abs(ph - prevPH) <= eqTol * atr
+        ln = line.new(bar_index - sw, ph, bar_index + 10, ph, color = color.new(cS, 30), style = line.style_dashed)
+        lb = label.new(bar_index + 10, ph, "$$$", style = label.style_label_left,
+             color = color.new(color.black, 100), textcolor = cS, size = size.tiny)
+        array.push(pools, Pool.new(ln, lb, ph, 1, false))
+    if not na(pl) and not na(prevPL) and math.abs(pl - prevPL) <= eqTol * atr
+        ln = line.new(bar_index - sw, pl, bar_index + 10, pl, color = color.new(cD, 30), style = line.style_dashed)
+        lb = label.new(bar_index + 10, pl, "$$$", style = label.style_label_left,
+             color = color.new(color.black, 100), textcolor = cD, size = size.tiny)
+        array.push(pools, Pool.new(ln, lb, pl, -1, false))
+    if array.size(pools) > 40
+        p0 = array.shift(pools)
+        line.delete(p0.ln)
+        label.delete(p0.lb)
+
+// v1 drew the pools and then never used or retired them. Now they are swept,
+// retired, and consulted as targets.
+if conf and array.size(pools) > 0
+    for i = 0 to array.size(pools) - 1
+        p = array.get(pools, i)
+        if not p.swept
+            if (p.dir == 1 and high > p.px) or (p.dir == -1 and low < p.px)
+                p.swept := true
+                line.set_color(p.ln, color.new(color.gray, 70))
+                label.set_text(p.lb, "swept")
+                label.set_textcolor(p.lb, color.new(color.gray, 40))
+            else
+                line.set_x2(p.ln, bar_index + 10)
+                label.set_x(p.lb, bar_index + 10)
+
+// Nearest unswept pool on the profit side of an entry at px.
+poolTarget(int d, float px) =>
+    float best = na
+    if array.size(pools) > 0
+        for i = 0 to array.size(pools) - 1
+            p = array.get(pools, i)
+            if not p.swept
+                if d == -1 and p.dir == -1 and p.px < px
+                    best := na(best) ? p.px : math.max(best, p.px)
+                if d == 1 and p.dir == 1 and p.px > px
+                    best := na(best) ? p.px : math.min(best, p.px)
+    best
+
+// ─────────────────────────────────────────────────────────────
+// ZONE ENGINE
+// ─────────────────────────────────────────────────────────────
+var int lastSigBar = -1000
+
+bool   sellSig = false
+bool   buySig  = false
+float  sigSL   = na
+float  sigTP   = na
+float  sigRR   = na
+int    sigCode = na
+
+if conf and array.size(zones) > 0
+    // Best candidate of the bar. v1 let both directions fire at once and
+    // paired the surviving stop with the wrong signal (defect #4).
+    int   bestI  = na
+    int   bestD  = na
+    float bestSL = na
+    float bestTP = na
+    float bestRR = na
+    int   bestC  = na
+
+    for i = array.size(zones) - 1 to 0
+        z = array.get(zones, i)
+        if not z.dead
+            box.set_right(z.bx, bar_index + 2)
+
+            // ── inducement ──────────────────────────────────
+            // Locked on first assignment (v1 defect #9) and back-checked
+            // across the pivot confirmation lag (v1 defect #8).
+            if z.dir == -1
+                if na(z.ind) and not na(ph) and ph < z.bot
+                    z.ind := ph
+                    if lagHi > ph
+                        z.indTaken := true
+                if not na(z.ind) and high > z.ind
+                    z.indTaken := true
+            else
+                if na(z.ind) and not na(pl) and pl > z.top
+                    z.ind := pl
+                    if lagLo < pl
+                        z.indTaken := true
+                if not na(z.ind) and low < z.ind
+                    z.indTaken := true
+
+            broke = (z.dir == -1 and close > z.top) or (z.dir == 1 and close < z.bot)
+            if broke
+                if useBRK and z.kind != "BRK"
+                    z.kind     := "BRK"
+                    z.dir      := z.dir * -1
+                    z.fired    := false
+                    z.indTaken := false
+                    z.ind      := na
+                    z.birth    := bar_index
+                    z.sl       := z.dir == -1 ? z.top + slTicks * tick : z.bot - slTicks * tick
+                    box.set_border_color(z.bx, cB)
+                    box.set_bgcolor(z.bx, color.new(cB, 86))
+                else
+                    z.dead := true
+                    box.set_right(z.bx, bar_index)
+                    box.set_bgcolor(z.bx, color.new(color.gray, 93))
+                    box.set_border_color(z.bx, color.new(color.gray, 60))
+            else if bar_index - z.birth > poiLife
+                z.dead := true
+                box.set_right(z.bx, bar_index)
+            else if not z.fired and bar_index > z.birth + 1 and bar_index - lastSigBar > coolBars
+                tapped = high >= z.bot and low <= z.top
+                indOK  = z.indTaken or not reqInd
+                pdOK   = not reqPD or (z.dir == -1 ? premium : discount)
+                dirOK  = z.dir == -1 ? (close < open and htfBear) : (close > open and htfBull)
+
+                if tapped and indOK and pdOK and dirOK and inSess
+                    risk = math.abs(close - z.sl)
+                    // Stop must be on the correct side and non-degenerate.
+                    slOK = risk > tick and (z.dir == -1 ? z.sl > close : z.sl < close)
+
+                    // Target selection. Resting liquidity is preferred, but a
+                    // pool sitting right under price would fail minRR on its
+                    // own, so the range extreme is tried as a fallback rather
+                    // than the setup being discarded.
+                    // v1 defect #5: math.abs() on the reward hid a target
+                    // sitting BEHIND price, so validate the side first.
+                    tgtP = poolTarget(z.dir, close)
+                    tgtR = z.dir == -1 ? rngLo : rngHi
+                    float tgt = na
+                    float rr  = na
+                    if slOK
+                        if not na(tgtP) and (z.dir == -1 ? tgtP < close : tgtP > close)
+                            rrP = math.abs(tgtP - close) / risk
+                            if rrP >= minRR
+                                tgt := tgtP
+                                rr  := rrP
+                        if na(tgt) and not na(tgtR) and (z.dir == -1 ? tgtR < close : tgtR > close)
+                            rrR = math.abs(tgtR - close) / risk
+                            if rrR >= minRR
+                                tgt := tgtR
+                                rr  := rrR
+
+                    if not na(tgt) and (na(bestRR) or rr > bestRR)
+                        bestI  := i
+                        bestD  := z.dir
+                        bestSL := z.sl
+                        bestTP := tgt
+                        bestRR := rr
+                        bestC  := (z.kind == "BRK" ? 2 : 0) + (z.indTaken ? 1 : 0)
+
+    if not na(bestI)
+        zw = array.get(zones, bestI)
+        zw.fired := true
+        lastSigBar := bar_index
+        sellSig := bestD == -1
+        buySig  := bestD == 1
+        sigSL   := bestSL
+        sigTP   := bestTP
+        sigRR   := bestRR
+        sigCode := bestC
+        if grade
+            array.push(openTr, Trade.new(bestD, close, bestSL, bestTP, bestC, bar_index))
+// ─────────────────────────────────────────────────────────────
+// SIGNAL RENDERING
+// ─────────────────────────────────────────────────────────────
+if showRR and (sellSig or buySig) and not na(sigSL) and not na(sigTP)
+    line.new(bar_index, sigSL, bar_index + 20, sigSL, color = color.new(color.red, 20), width = 1)
+    line.new(bar_index, sigTP, bar_index + 20, sigTP, color = color.new(color.green, 20), width = 1)
+    label.new(bar_index + 20, sigTP, str.tostring(sigRR, "#.#") + "R · " + typeName(sigCode),
+         style = label.style_label_left, color = color.new(color.black, 100),
+         textcolor = sellSig ? cS : cD, size = size.tiny)
+
+if sellSig
+    label.new(bar_index, high, "MM ▼", style = label.style_label_down, yloc = yloc.abovebar,
+         color = color.new(cS, 20), textcolor = color.white, size = size.tiny)
+if buySig
+    label.new(bar_index, low, "MM ▲", style = label.style_label_up, yloc = yloc.belowbar,
+         color = color.new(cD, 20), textcolor = color.white, size = size.tiny)
+
+plotshape(sellSig, "Sell", shape.triangledown, location.abovebar, cS, size = size.small)
+plotshape(buySig,  "Buy",  shape.triangleup,   location.belowbar, cD, size = size.small)
+
+// ── premium / discount ──────────────────────────────────────
+var line eqLn = na
+if showPD and not na(eqLine)
+    if na(eqLn)
+        eqLn := line.new(bar_index, eqLine, bar_index + 3, eqLine, color = color.new(color.gray, 40),
+             style = line.style_dashed)
+    line.set_xy1(eqLn, bar_index - 60, eqLine)
+    line.set_xy2(eqLn, bar_index + 3,  eqLine)
+
+
+// ─────────────────────────────────────────────────────────────
+// ORDER MANAGEMENT
+// ─────────────────────────────────────────────────────────────
+inWindow = not useDates or (time >= dateFrom and time <= dateTo)
+
+var float pEntry = na
+var float pStop  = na
+var float pTgt   = na
+var int   pDir   = 0
+var bool  beDone = false
+
+flat     = strategy.position_size == 0
+canEnter = inWindow and (flat or (allowRev and pDir != 0 and ((sellSig and pDir == 1) or (buySig and pDir == -1))))
+
+if (sellSig or buySig) and canEnter and not na(sigSL) and not na(sigTP)
+    dir  = sellSig ? -1 : 1
+    risk = math.abs(close - sigSL)
+    if risk > tick
+        raw = (strategy.equity * riskPct / 100.0) / risk
+        qty = wholeQty ? math.max(1.0, math.floor(raw)) : raw
+        if qty > 0
+            pEntry := close
+            pStop  := sigSL
+            pTgt   := sigTP
+            pDir   := dir
+            beDone := false
+            strategy.entry(dir == -1 ? "Short" : "Long", dir == -1 ? strategy.short : strategy.long,
+                 qty = qty, comment = typeName(sigCode) + " " + str.tostring(sigRR, "#.#") + "R")
+
+// Breakeven management. Evaluated on confirmed bars only so the stop cannot
+// be moved by an intrabar wick that later un-happens.
+if conf and strategy.position_size != 0 and useBE and not beDone and not na(pEntry) and not na(pStop)
+    risk = math.abs(pEntry - pStop)
+    if risk > 0
+        reached = pDir == -1 ? low <= pEntry - risk : high >= pEntry + risk
+        if reached
+            pStop  := pEntry
+            beDone := true
+
+// Re-issued every bar so the bracket stays live and picks up a moved stop.
+if strategy.position_size != 0 and not na(pStop) and not na(pTgt)
+    strategy.exit("X", from_entry = pDir == -1 ? "Short" : "Long", stop = pStop, limit = pTgt,
+         comment_loss = beDone ? "BE" : "SL", comment_profit = "TP")
+
+// Flatten anything still open when the date window closes, so trades are not
+// left hanging outside the tested period.
+if strategy.position_size != 0 and useDates and time > dateTo
+    strategy.close_all("window end")
+
+if strategy.position_size == 0
+    pDir := 0
+
+// ─────────────────────────────────────────────────────────────
+// STRATEGY OVERLAY
+// ─────────────────────────────────────────────────────────────
+plot(strategy.position_size != 0 and not na(pStop) ? pStop : na, "Active stop",
+     color = color.new(color.red, 0), style = plot.style_linebr, linewidth = 1)
+plot(strategy.position_size != 0 and not na(pTgt) ? pTgt : na, "Active target",
+     color = color.new(color.green, 0), style = plot.style_linebr, linewidth = 1)
+bgcolor(useDates and not inWindow ? color.new(color.gray, 92) : na, title = "Outside date window")

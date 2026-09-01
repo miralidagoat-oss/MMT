@@ -231,3 +231,115 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+---
+
+# MM MATRIX — Sponsorship, POI, Inducement
+
+A second, independent script in this repo: an SMC/ICT structure engine that
+marks break of structure, builds order-block points of interest from the leg
+that broke it, tracks inducement liquidity, flips failed zones to breakers,
+and signals on mitigation.
+
+- **Maintained script:** `indicators/mm_matrix.pine` (v2)
+- **Strategy build:** `indicators/mm_matrix_strategy.pine` — same detection
+  engine, real orders, so the Strategy Tester does the accounting
+- **Original submission:** `indicators/legacy/mm_matrix_v1.pine` — reference only
+
+## What the engine does
+
+1. **Structure.** Pivot highs/lows (`sw`) define swings. A close beyond an
+   unbroken swing is a **BOS**; the first break against the prevailing trend
+   is a **CHoCH**.
+2. **Dealing range.** Anchored to the leg origin, not to the two most recent
+   pivots. Above the midpoint is **premium** (sell side), below is
+   **discount** (buy side).
+3. **POI.** On a bearish BOS the engine looks back to the swing high that
+   started the leg and takes the *extreme* up candle in that window — the
+   origin of the move, not the first opposing candle it trips over. Mirrored
+   for demand. The candle must be followed by real **displacement**
+   (`dispATR`), and optionally by an unfilled **FVG**.
+4. **Inducement.** The minor swing between price and the POI, where breakout
+   stops rest. Locked on first assignment and back-checked across the pivot
+   confirmation lag. `reqInd` withholds the signal until it is swept.
+5. **Mitigation.** Price taps the zone, inducement is done, location and
+   higher-timeframe bias agree, the bar closes in the trade's direction, and
+   the R:R against the nearest unswept liquidity pool clears `minRR`.
+6. **Breaker.** A zone price closes through flips direction once; a broken
+   breaker dies.
+
+## Audit findings (why v1 could not be traded)
+
+1. **Instant false BOS in trends — the fatal one.** A pivot confirms `sw` bars
+   late, and in a trending leg it confirms *below* the current close. v1 set
+   `phLive := true` unconditionally, so `close > lastPH` was already true on
+   the confirmation bar: a BOS fired roughly every `sw` bars and the chart
+   filled with stacked POIs. v2 arms a level only if `ph > close` when it
+   registers.
+2. **`ta.highest` / `ta.lowest` called inside `if` blocks** — the same
+   conditional-series-function defect documented for `ta.variance` in the
+   Alpha Predictive v1 audit above. v2 needs neither call.
+3. **The stop was unrelated to the zone.** `sponsor` was the extreme of the
+   entire `poiDepth` window (25 bars by default), not the sponsoring candle,
+   so every printed R understated real risk by multiples. Stops are now
+   anchored to the POI candle.
+4. **Both directions could signal on one bar.** The zone loop could set
+   `sellSig` and `buySig` in the same pass, and `sigSL`/`sigType` were left
+   holding whichever zone the loop touched last — so the risk display could
+   pair a sell signal with a long's stop. v2 emits at most one signal per
+   bar, the highest-R candidate wins, and the record is a typed object.
+5. **`math.abs()` hid targets behind price.** `rew = math.abs(tgt - close)`
+   printed a healthy R for a target on the wrong side of entry. Targets are
+   now side-validated, and a setup that cannot clear `minRR` does not fire.
+6. **No `barstate.isconfirmed`.** `close < open` flips throughout a forming
+   bar, so signals, triangles and alerts flickered intrabar and repainted the
+   last bar — Alpha Predictive v1 defect #6, repeated. All state mutation is
+   now confirmed-bar only.
+7. **The POI was not an order block.** "First opposing candle scanning back
+   from the BOS bar" normally lands mid-impulse. v2 anchors the search to the
+   swing that started the leg and takes the extreme opposing candle in it.
+8. **Inducement swept during the confirmation lag could never register.**
+   `z.ind` was assigned when the pivot confirmed and only checked forward from
+   there, so the common case — price ran the level during those `sw` bars —
+   never counted. Now back-checked with `ta.highest(high, sw + 1)`.
+9. **`z.ind` was overwritten by every new qualifying pivot,** so the
+   requirement drifted bar to bar. Locked on first assignment.
+10. **Premium/discount used the two latest pivots,** possibly from different
+    legs, so the equilibrium line jittered and `reqPD` gated on noise.
+    Replaced with a real dealing range.
+
+Structural issues fixed alongside:
+
+- A bar could satisfy both `brkUp` and `brkDn`; v1 printed both labels and
+  silently left `trend` bearish. The close's position in the bar now decides.
+- The RBD/DBR/RBR/DBD detector never inspected bar `[2]` — the base — so it
+  was really "two up bars then two down bars" and it spammed. The base must
+  now be indecisive (`baseMaxB`) and both legs must be ≥ 1 ATR.
+- Equal-high/low pools were drawn and then never swept, retired, or consulted.
+  They are now retired on sweep and used as the primary take-profit target.
+- Consecutive BOSes stacked near-identical zones. `dedup` skips a zone
+  overlapping a live one of the same direction.
+- `alertcondition` takes a static string, so v1's webhooks carried no prices.
+  v2 adds `alert()` with symbol, timeframe, direction, entry, stop, target
+  and R.
+- No cooldown between signals; `coolBars` added.
+- Degenerate zero-risk setups (stop on the wrong side, or within one tick of
+  the close) are rejected rather than divided by.
+
+## Self-grading
+
+Like Alpha Predictive, the indicator build books every signal it prints to its
+stop or its target and reports **win rate and expectancy in R, split by setup
+type** (Type 1 / Type 3 / BRK / BRK+IDM). That split is the point: it is the
+only way to see whether `reqInd` actually earns its keep on your instrument.
+
+Accounting is deliberately pessimistic: a bar that touches both levels is
+booked a **loss**, no target credit is given on the signal bar, and unresolved
+trades are closed at market after `maxHold` bars and booked at their real R.
+
+**These are on-chart estimates, not a backtest.** For real numbers use
+`indicators/mm_matrix_strategy.pine`, set commission and slippage for your
+instrument, and walk it forward with the date-window inputs — tune on an early
+slice, verify on an untouched later one. The defaults here are *not* validated;
+unlike the Alpha Predictive presets, no walk-forward has been run on MM MATRIX
+yet.
