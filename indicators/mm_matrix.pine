@@ -46,7 +46,7 @@ indicator("MM MATRIX v2 — Sponsorship, POI, Inducement", "MM MATRIX v2", overl
 // INPUTS
 // ─────────────────────────────────────────────────────────────
 G_STR = "1 · Structure"
-sw       = input.int(5, "Swing length", minval = 2, maxval = 50, group = G_STR)
+sw       = input.int(4, "Swing length", minval = 2, maxval = 50, group = G_STR)
 bodyBOS  = input.bool(true, "BOS requires candle BODY break", group = G_STR,
      tooltip = "Body break = a close beyond the level. Off = a wick beyond it.")
 showBOS  = input.bool(true, "Label BOS / CHoCH", group = G_STR)
@@ -60,16 +60,18 @@ bodyPOI  = input.bool(false, "POI box from candle body only", group = G_POI)
 dispATR  = input.float(1.0, "Min displacement out of POI (ATR)", minval = 0.0, step = 0.1, group = G_POI,
      tooltip = "The leg away from the zone must travel at least this much. This is the single highest-value SMC filter; 0 disables it.")
 reqFVG   = input.bool(false, "Require an FVG in the departure leg", group = G_POI,
-     tooltip = "Only accept a POI whose impulse left an unfilled imbalance.")
+     tooltip = "Only accept a POI whose impulse left an unfilled imbalance. LEAVE THIS OFF: on MNQ 5m it cut out-of-sample PF from 1.27 to 0.81. It sounds like a quality filter and measured as a liability.")
 reqInd   = input.bool(true,  "Require inducement to be swept first", group = G_POI)
 reqPD    = input.bool(true,  "Require premium (sell) / discount (buy)", group = G_POI)
 useBRK   = input.bool(true,  "Failed POI flips to breaker", group = G_POI)
 poiLife  = input.int(400, "Max POI age (bars)", minval = 20, group = G_POI)
-slTicks  = input.int(4, "Stop buffer (ticks beyond POI)", minval = 0, group = G_POI)
+slATR    = input.float(0.10, "Stop buffer beyond POI (ATR)", minval = 0.0, step = 0.05, group = G_POI,
+     tooltip = "A buffer in TICKS is not portable — 100 ticks is 25 points on MNQ and 1 dollar on BTC. This is a fraction of ATR, so it means the same thing on every instrument. Walk-forward on MNQ 5m preferred 0.10; every value above 0.25 lost money out of sample.")
+slTicks  = input.int(0, "Stop buffer (ticks, used only if ATR buffer is 0)", minval = 0, group = G_POI)
 dedup    = input.bool(true, "Skip zones overlapping a live zone", group = G_POI)
 
 G_FLT = "3 · Filters"
-minRR    = input.float(1.5, "Minimum R:R to signal", minval = 0.1, step = 0.1, group = G_FLT)
+minRR    = input.float(3.0, "Minimum R:R to signal", minval = 0.1, step = 0.1, group = G_FLT)
 coolBars = input.int(5, "Bars between signals", minval = 0, group = G_FLT)
 useHTF   = input.bool(false, "Require higher-timeframe alignment", group = G_FLT)
 htfTF    = input.timeframe("60", "Higher timeframe", group = G_FLT)
@@ -77,18 +79,24 @@ htfFastL = input.int(20, "HTF fast EMA", minval = 2, group = G_FLT)
 htfSlowL = input.int(50, "HTF slow EMA", minval = 3, group = G_FLT)
 useSess  = input.bool(false, "Restrict signals to a session", group = G_FLT)
 sessStr  = input.session("0930-1600", "Session", group = G_FLT)
+useBlock = input.bool(false, "Blackout window (no signals)", group = G_FLT,
+     tooltip = "Suppresses signals inside the window below. Off by default because blocking the London cash session on MNQ 5m took out-of-sample PF from 1.27 to 0.71 — the London/NY overlap is where the tested edge lives. Turn it on only if you have your own reason to sit out that window.")
+blockStr = input.session("0800-1630", "Blackout session", group = G_FLT,
+     tooltip = "Defaults to the London cash session in London time. Signals inside this window are suppressed.")
+blockTZ  = input.string("Europe/London", "Blackout timezone", group = G_FLT,
+     options = ["America/New_York", "America/Chicago", "Europe/London", "Europe/Berlin", "Asia/Tokyo", "Asia/Shanghai", "UTC"])
 sessTZ   = input.string("America/New_York", "Session timezone", group = G_FLT,
      options = ["America/New_York", "America/Chicago", "Europe/London", "Europe/Berlin", "Asia/Tokyo", "Asia/Shanghai", "UTC"])
 
 G_LIQ = "4 · Liquidity"
 showEQ   = input.bool(true, "Equal highs / lows pools", group = G_LIQ)
-eqTol    = input.float(0.15, "Equal-level tolerance (ATR)", minval = 0.01, step = 0.05, group = G_LIQ)
+eqTol    = input.float(0.25, "Equal-level tolerance (ATR)", minval = 0.01, step = 0.05, group = G_LIQ)
 showPD   = input.bool(true, "Premium / discount", group = G_LIQ)
 showRR   = input.bool(true, "Draw stop / target on signal", group = G_LIQ)
 
 G_GRD = "5 · Self-grading"
 grade    = input.bool(true, "Grade signals and show statistics", group = G_GRD)
-maxHold  = input.int(150, "Abandon a trade after (bars)", minval = 10, group = G_GRD,
+maxHold  = input.int(100, "Abandon a trade after (bars)", minval = 10, group = G_GRD,
      tooltip = "Unresolved trades are closed at market and booked at their actual R.")
 showTbl  = input.bool(true, "Show dashboard", group = G_GRD)
 
@@ -121,7 +129,8 @@ htfSlow  = request.security(syminfo.tickerid, htfTF, ta.ema(close, htfSlowL)[1],
 htfBull  = not useHTF or not htfSafe or (not na(htfFast) and not na(htfSlow) and htfFast > htfSlow)
 htfBear  = not useHTF or not htfSafe or (not na(htfFast) and not na(htfSlow) and htfFast < htfSlow)
 
-inSess   = not useSess or not na(time(timeframe.period, sessStr, sessTZ))
+inSess   = (not useSess or not na(time(timeframe.period, sessStr, sessTZ))) and
+           (not useBlock or na(time(timeframe.period, blockStr, blockTZ)))
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -161,6 +170,8 @@ var array<Trade> openTr = array.new<Trade>()
 var array<int>   nWin  = array.new<int>(4, 0)
 var array<int>   nLos  = array.new<int>(4, 0)
 var array<float> sumR  = array.new<float>(4, 0.0)
+var array<float> gWin  = array.new<float>(4, 0.0)   // gross winning R, for PF
+var array<float> gLos  = array.new<float>(4, 0.0)   // gross losing R (positive)
 
 typeName(int c) => c == 0 ? "Type 1" : c == 1 ? "Type 3" : c == 2 ? "BRK" : "BRK+IDM"
 
@@ -326,7 +337,8 @@ if conf and (bosUp or bosDn) and bar_index > sw + 2 and not na(atr)
 
         // v1 defect #3: the stop belongs to the POI candle, not to the
         // extreme of the whole lookback window.
-        slp = bosDn ? high[bk] + slTicks * tick : low[bk] - slTicks * tick
+        buf = slATR > 0 ? slATR * atr : slTicks * tick
+        slp = bosDn ? high[bk] + buf : low[bk] - buf
 
         if dispOK and fvgOK and t > b and (not dedup or not overlaps(t, b, bosDn ? -1 : 1))
             mkPOI(t, b, slp, bosDn ? -1 : 1, "POI")
@@ -432,7 +444,8 @@ if conf and array.size(zones) > 0
                     z.indTaken := false
                     z.ind      := na
                     z.birth    := bar_index
-                    z.sl       := z.dir == -1 ? z.top + slTicks * tick : z.bot - slTicks * tick
+                    bufZ       = slATR > 0 and not na(atr) ? slATR * atr : slTicks * tick
+                    z.sl       := z.dir == -1 ? z.top + bufZ : z.bot - bufZ
                     box.set_border_color(z.bx, cB)
                     box.set_bgcolor(z.bx, color.new(cB, 86))
                 else
@@ -530,6 +543,10 @@ if conf and grade and array.size(openTr) > 0
                 else
                     array.set(nLos, tr.code, array.get(nLos, tr.code) + 1)
                 array.set(sumR, tr.code, array.get(sumR, tr.code) + r)
+                if r > 0
+                    array.set(gWin, tr.code, array.get(gWin, tr.code) + r)
+                else
+                    array.set(gLos, tr.code, array.get(gLos, tr.code) - r)
                 array.remove(openTr, i)
 
 // ─────────────────────────────────────────────────────────────
@@ -564,7 +581,7 @@ if showPD and not na(eqLine)
 // ─────────────────────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────
-var table tb = table.new(position.bottom_right, 3, 11, border_width = 1)
+var table tb = table.new(position.bottom_right, 4, 11, border_width = 1)
 if showTbl and barstate.islast
     hdBg = color.new(color.black, 20)
     table.cell(tb, 0, 0, "MM MATRIX v2", text_color = color.white, bgcolor = hdBg, text_size = size.tiny)
@@ -599,23 +616,35 @@ if showTbl and barstate.islast
     table.cell(tb, 0, 4, "Setup", text_size = size.tiny, text_color = color.white, bgcolor = hdBg)
     table.cell(tb, 1, 4, "W / L",  text_size = size.tiny, text_color = color.white, bgcolor = hdBg)
     table.cell(tb, 2, 4, "Exp R",  text_size = size.tiny, text_color = color.white, bgcolor = hdBg)
+    table.cell(tb, 3, 4, "PF",     text_size = size.tiny, text_color = color.white, bgcolor = hdBg)
 
     int   tw = 0
     int   tl = 0
     float ts = 0.0
+    float gw = 0.0
+    float gl = 0.0
     for c = 0 to 3
-        w = array.get(nWin, c)
-        l = array.get(nLos, c)
-        s = array.get(sumR, c)
+        w  = array.get(nWin, c)
+        l  = array.get(nLos, c)
+        s  = array.get(sumR, c)
+        cw = array.get(gWin, c)
+        cl = array.get(gLos, c)
         tw += w
         tl += l
         ts += s
-        n = w + l
+        gw += cw
+        gl += cl
+        n  = w + l
+        // Profit factor: gross winning R over gross losing R. Undefined until
+        // there is at least one loss, so it shows as — rather than as infinity.
+        pf = cl > 0 ? cw / cl : na
         table.cell(tb, 0, 5 + c, typeName(c), text_size = size.tiny, text_color = color.gray)
         table.cell(tb, 1, 5 + c, str.tostring(w) + " / " + str.tostring(l), text_size = size.tiny,
              text_color = color.white)
         table.cell(tb, 2, 5 + c, n > 0 ? str.tostring(s / n, "#.##") : "—", text_size = size.tiny,
              text_color = n == 0 ? color.gray : s > 0 ? cD : cS)
+        table.cell(tb, 3, 5 + c, na(pf) ? "—" : str.tostring(pf, "#.##"), text_size = size.tiny,
+             text_color = na(pf) ? color.gray : pf >= 1 ? cD : cS)
 
     tn = tw + tl
     table.cell(tb, 0, 9, "TOTAL", text_size = size.tiny, text_color = color.white, bgcolor = hdBg)
@@ -623,11 +652,16 @@ if showTbl and barstate.islast
          text_color = color.white, bgcolor = hdBg)
     table.cell(tb, 2, 9, tn > 0 ? str.tostring(ts / tn, "#.##") : "—", text_size = size.tiny,
          text_color = tn == 0 ? color.gray : ts > 0 ? cD : cS, bgcolor = hdBg)
+    tpf = gl > 0 ? gw / gl : na
+    table.cell(tb, 3, 9, na(tpf) ? "—" : str.tostring(tpf, "#.##"), text_size = size.tiny,
+         text_color = na(tpf) ? color.gray : tpf >= 1 ? cD : cS, bgcolor = hdBg)
 
     table.cell(tb, 0, 10, "Win rate", text_size = size.tiny, text_color = color.gray)
     table.cell(tb, 1, 10, tn > 0 ? str.tostring(100.0 * tw / tn, "#.#") + "%" : "—", text_size = size.tiny,
          text_color = color.white)
     table.cell(tb, 2, 10, "n=" + str.tostring(tn), text_size = size.tiny, text_color = color.gray)
+    table.cell(tb, 3, 10, "tot " + str.tostring(ts, "#.#") + "R", text_size = size.tiny,
+         text_color = ts > 0 ? cD : cS)
 
 // ─────────────────────────────────────────────────────────────
 // ALERTS

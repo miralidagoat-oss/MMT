@@ -343,3 +343,69 @@ instrument, and walk it forward with the date-window inputs — tune on an early
 slice, verify on an untouched later one. The defaults here are *not* validated;
 unlike the Alpha Predictive presets, no walk-forward has been run on MM MATRIX
 yet.
+
+## MM MATRIX walk-forward study (1m / 5m)
+
+Run with `backtest/mm_backtest.py` (a port of the v2 engine) and
+`backtest/mm_walkforward.py`. Tuned on the first 60% of each series,
+evaluated on the untouched last 40%. Costs are charged in R via `cost_r`
+(0.10R on MNQ, 0.05R on crypto) because a fixed tick cost is a different
+fraction of risk on every trade and omitting it flatters 1m enormously.
+
+Data: MNQ 1m (7d, Yahoo) and 5m (60d, Yahoo); BTC/ETH/SOL 1m and 5m
+(20k bars each, Coinbase).
+
+### The headline result is negative
+
+| Set | Configs | Best out-of-sample |
+|---|---|---|
+| Crypto **1m**, 3 markets | 1296 | **−0.017R** expectancy, PF 0.98, n=703 — every finalist negative |
+| Crypto **5m**, 3 markets | 1296 | **−0.111R** expectancy, PF 0.86, n=134 — every finalist negative |
+| MNQ **5m**, 1 market | 1296 | +0.228R expectancy, PF 1.27, n=63 |
+
+**There is no measured edge on 1-minute data.** Across 1296 configurations on
+three markets with 700+ out-of-sample trades, the best surviving configuration
+still loses. That is a large enough sample to take seriously.
+
+On 5m the picture is split: crypto negative, MNQ positive. One market with 63
+out-of-sample trades is not evidence of an edge — it is a single sample that
+happened to be positive. In-sample expectancy on MNQ was +0.45R and
+out-of-sample +0.23R; halving from IS to OOS is the standard overfitting
+signature even after walk-forward selection.
+
+### Defaults
+
+Set from the best MNQ 5m out-of-sample configuration: `sw = 4`,
+`dispATR = 1.0`, `minRR = 3.0`, `slATR = 0.10`, `eqTol = 0.25`,
+`maxHold = 100`, inducement and premium/discount both required.
+
+`slTicks` is deprecated in favour of `slATR`. A tick buffer is not portable:
+100 ticks is 25 points on MNQ and one dollar on BTC.
+
+### What measured differently than expected
+
+Three of these contradict reasoning that sounded right beforehand, which is
+the point of running the test:
+
+| Change | MNQ 5m out-of-sample PF |
+|---|---|
+| Baseline | 1.27 |
+| **Require FVG in departure leg** | **0.81** — a liability, not a filter |
+| **Blackout the London cash session** | **0.71** — it removes the London/NY overlap |
+| RTH only (13–20 UTC) | 1.79, but n=22 — too small to act on |
+| Inducement required OFF | 1.29 (n=91) vs 1.27 (n=63) — inconclusive, not the clear winner it looked |
+| Stop buffer 100 ticks | 1.76 (n=34) vs 1.27 — worse on the full sample, better OOS; sample too small to call |
+| `minRR` 1.5 instead of 3.0 | 1.10 |
+| `eqTol` 0.66 instead of 0.25 | 1.14 |
+
+`maxHold = 25` on 5m does not hurt returns, but it does inflate the reported
+win rate: most trades exit as small-positive timeouts, which the dashboard
+books as wins. Win rate on short holds is not comparable to win rate on long
+ones.
+
+### Overfitting risk
+
+The engine has roughly twelve interacting parameters that affect signals. Any
+setting chosen by watching the on-chart dashboard is overfitted by
+construction, because that dashboard is scored on the same bars used to pick
+it. Change parameters only against a held-out slice.
