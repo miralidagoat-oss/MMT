@@ -71,20 +71,22 @@ worth looking at twice.
 
 | concept | how it is marked |
 |---|---|
-| **Liquidity** | swing highs/lows as hairlines; two taps inside the tolerance merge into an **EQH/EQL** band labelled *Buyside / Sellside liquidity*. Deleted when taken — consumed liquidity is not liquidity. |
-| **Imbalance (FVG)** | 3-candle gap, ATR-scaled minimum, optional displacement filter, `CE` line, mitigation at touch / 50% / full fill, optional **IFVG** inversion. Spent gaps fade rather than vanish. |
-| **Displacement** | the qualifier behind FVGs and MSS; optionally marked with a tiny triangle on the displacement candle. |
+| **Liquidity** | swing highs/lows as hairlines; taps inside the tolerance merge into an **EQH/EQL** band labelled *Buyside / Sellside liquidity*. When it is taken the band stays, faded, spanning how long the level stood and how far it was run. |
+| **Imbalance (FVG)** | 3-candle gap, ATR-scaled minimum, directional displacement filter, `CE` line, mitigation at touch / 50% / full fill, optional **IFVG** (inversion — a gap traded through that keeps working as the opposite polarity; not ICT's *implied* FVG, which is a different pattern and is not marked). Spent gaps fade rather than vanish. |
+| **BPR** | where the newest bullish and bearish FVG overlap — a gap delivered in both directions, and a stronger reference than either alone. Off by default. |
+| **Displacement** | a body larger than the recent average **and** larger than an ATR floor **and** with wicks under 36% of the body. Size alone is not delivery: a big body with big wicks is a fight. Gates FVGs (a bullish gap needs a bullish delivery candle), qualifies MSS, and can be marked with a tiny triangle. |
+| **NWOG / NDOG** | new week and new day opening gaps — Friday's close to Monday's open, and yesterday's close to today's open — extended right with their consequent encroachment dotted through the middle. |
 | **MSS** | a CHoCH *qualified*: a graded raid of the opposite side inside the window **and** displacement in the break. Unqualified breaks stay CHoCH. |
 | **BOS** | a close through the last unbroken swing **with** the prevailing bias. |
 | **CHoCH** | a close through it **against** the bias. |
-| **Order Block** | last opposing candle before a structure break → `+OB` / `-OB`; violated by a close it flips to `+BRK` / `-BRK`. |
+| **Order Block** | `+OB` / `-OB` at a structure break, from either the last opposing candle or the candle the leg turned from (selectable — both are in common use). Violated by a close it flips to `+BRK` / `-BRK`. |
 | **Inducement (IDM)** | the last minor pullback *inside* the current leg — the bait that must be taken first. Located from the minor-pivot history between the leg's two majors, then registered as a **named, gradeable pool**, so an IDM raid is scored like any other. |
 | **Daily Bias** | four stated components, each ±1: previous daily close beyond the day-before's range · price in the previous day's discount or premium · chart structure · price vs the midnight open. Sum ≥ +2 or ≤ −2 commits, else neutral. The dashboard cell's tooltip shows every component. |
 | **Premium / Discount** | the dealing range split at equilibrium, labelled. |
 | **OTE** | the 62–79% retracement of the leg that built the range. |
 | **Power of 3 (AMD)** | per New York day: the opening range is *accumulation*, the first excursion out of it is *manipulation* (with the side raided), a close back through the far side is *distribution*. Phase always on the dashboard; the box is optional. |
 | **Silver Bullet** | 03:00–04:00, 10:00–11:00, 14:00–15:00 NY. |
-| **Killzones** | Asia 20:00–00:00 · London 02:00–05:00 · NY AM 07:00–10:00 · NY PM 13:30–16:00. |
+| **Killzones** | Asia 20:00–00:00 · London 02:00–05:00 · NY AM 07:00–10:00 · London close 10:00–12:00. |
 | **ICT Macros** | the twenty-minute windows: 02:33, 04:03, 08:50, 09:50, 10:50, 11:50, 13:10, 15:15 NY. |
 | **SMT divergence** | at the moment of a raid, a correlated symbol refuses to make the matching extreme. Feeds the grade and tags the mark `◆`. |
 | **Turtle Soup** | a raid on a level that was the extreme of the last N bars — a false break of the external range. Tagged `TS`. |
@@ -145,6 +147,15 @@ left behind hours ago.
   returns. Treat the score as a consistent ranking of raid quality, not an edge
   estimate.
 
+### On the reference script
+
+The second screenshot is LuxAlgo's *ICT Concepts*, and the source was shared
+with me. None of it is copied — it is published under CC BY-NC-SA, and this is
+a separate implementation. What it was used for is checking my reading of the
+picture, and it corrected three things I had guessed wrong (below) and named
+two concepts I had missed (NWOG/NDOG and BPR), both of which are implemented
+here from the definitions, not from that code.
+
 ### Fixed in this pass
 
 - **Liquidity hue was inverted.** Buy-side pools (above price) were drawn in the
@@ -159,6 +170,18 @@ left behind hours ago.
   the sign is built explicitly.
 - The SMT comparison request now sets `ignore_invalid_symbol`, so a user without
   CME data gets no SMT rather than a dead script.
+- **Deleting swept pools threw away the most legible thing on the chart.** In the
+  reference, taken liquidity is exactly what stays visible — a faded band with
+  its name still on it. It now survives the raid instead of vanishing.
+- **Displacement was measured by body size alone.** A 1-ATR body with 1-ATR
+  wicks is a fight, not a delivery. It now needs a body above the recent
+  average, above an ATR floor, *and* wicks under a fraction of the body.
+- **The FVG displacement gate was not directional** — a bullish gap could be
+  validated by a bearish displacement candle. It now requires the matching side.
+- **The equal-level tolerance was too tight to be useful.** At 0.10 ATR, two
+  pivots almost never merged, so EQH/EQL bands essentially never formed and the
+  touch-count factor of the grade sat at zero. Default raised to 0.20 ATR, with
+  a separate "touches that make it a band" input for how strict you want it.
 
 ---
 

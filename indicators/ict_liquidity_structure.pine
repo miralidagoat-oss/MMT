@@ -53,8 +53,12 @@ confirmOnly = input.bool(true,  "Evaluate on closed bars only", group = G_C, too
 atrLen      = input.int(14,     "ATR length", minval = 2, maxval = 200, group = G_C)
 liqLen      = input.int(5,      "Liquidity pivot length", minval = 1, maxval = 40, group = G_C, tooltip = "Pivot lookback/forward that defines a liquidity pool. Smaller = more pools.")
 swingLen    = input.int(10,     "Structure swing length", minval = 2, maxval = 50, group = G_C, tooltip = "Pivot lookback/forward for the swings BOS / CHoCH / MSS are measured against.")
-eqTolAtr    = input.float(0.10, "Equal-level tolerance (× ATR)", minval = 0.0, maxval = 1.0, step = 0.01, group = G_C, tooltip = "Two pivots inside this distance are one pool and the touch count goes up. This is the EQH / EQL detector.")
-dispBodyAtr = input.float(0.50, "Displacement body (× ATR)", minval = 0.0, maxval = 5.0, step = 0.05, group = G_C, tooltip = "A candle body this large counts as displacement. Used by the FVG filter, the MSS qualifier and the displacement marker.")
+eqTolAtr    = input.float(0.20, "Equal-level tolerance (× ATR)", minval = 0.0, maxval = 1.0, step = 0.01, group = G_C, tooltip = "Two pivots inside this distance are one pool and the touch count goes up. This is the EQH / EQL detector. Tighten it toward 0.05 for literally equal highs; widen it toward 0.4 to cluster a rounded top into one pool.")
+minTouches  = input.int(2,      "Touches that make it a liquidity band", minval = 2, maxval = 6, group = G_C, tooltip = "Below this a pool stays an unlabelled hairline. 2 = any double-tap is EQH/EQL; 3 is the stricter, more selective read.")
+
+dispLen     = input.int(5,      "Displacement body baseline (bars)", minval = 2, maxval = 100, group = G_C, tooltip = "A displacement candle has a body larger than the average of this many, wicks smaller than the fraction below, and a body of at least the ATR floor. Body size alone is not displacement — a big candle with big wicks is a fight, not a delivery.")
+dispWickMax = input.float(0.36, "…max wick as a fraction of the body", minval = 0.05, maxval = 2.0, step = 0.01, group = G_C)
+dispBodyAtr = input.float(0.25, "…minimum body (× ATR)", minval = 0.0, maxval = 5.0, step = 0.05, group = G_C)
 
 // ── liquidity ────────────────────────────────────────────────────────────────
 showPools    = input.bool(true, "Draw pools until they are taken", group = G_LQ)
@@ -78,7 +82,7 @@ judasBars   = input.int(12,     "Judas window after a killzone opens (bars)", mi
 useFollow   = input.bool(true,  "Upgrade the grade on follow-through", group = G_SW, tooltip = "If a CISD or a structure break in the raid's direction lands inside the window, the sweep is re-graded upward and marked ▲. Strictly additive — nothing is downgraded or erased.")
 followWin   = input.int(10,     "…window (bars)", minval = 1, maxval = 100, group = G_SW)
 followBonus = input.float(8.0,  "…bonus points", minval = 0.0, maxval = 30.0, step = 1.0, group = G_SW)
-showSwZone  = input.bool(true,  "Shade the raid excursion", group = G_SW)
+showSwZone  = input.bool(true,  "Leave the taken liquidity shaded", group = G_SW, tooltip = "After a raid, the pool is replaced by a faded band spanning how long the liquidity stood and how far it was run. Off, the level simply disappears.")
 maxSweeps   = input.int(30,     "Sweep marks kept", minval = 5, maxval = 200, group = G_SW)
 
 wPool  = input.float(20, "Liquidity quality of the level", minval = 0, maxval = 100, step = 1, group = G_WT, tooltip = "Touches, age, swing degree, named-level status.")
@@ -112,6 +116,8 @@ showDisp   = input.bool(false,  "Mark displacement candles", group = G_CI, toolt
 
 // ── fair value gaps ──────────────────────────────────────────────────────────
 showFvg    = input.bool(true,   "Show fair value gaps", group = G_FV)
+showBpr    = input.bool(false,  "Show balance price ranges (BPR)", group = G_FV, tooltip = "Where the newest bullish and bearish FVG overlap, that overlap is a BPR — a gap delivered in both directions, and a stronger reference than either gap alone.")
+maxBpr     = input.int(4,       "…kept", minval = 1, maxval = 20, group = G_FV)
 fvgMinAtr  = input.float(0.05,  "Minimum gap (× ATR)", minval = 0.0, maxval = 3.0, step = 0.01, group = G_FV)
 fvgReqDisp = input.bool(true,   "Require a displacement candle", group = G_FV)
 fvgMitig   = input.string("CE (50%)", "Mitigated when price reaches", options = ["Touch", "CE (50%)", "Full fill"], group = G_FV)
@@ -125,6 +131,7 @@ maxVi      = input.int(10,      "…kept", minval = 1, maxval = 40, group = G_FV
 
 // ── order blocks ─────────────────────────────────────────────────────────────
 showOb    = input.bool(true,  "Show order blocks at structure breaks", group = G_OB)
+obMethod  = input.string("Last opposing candle", "Which candle is the block", options = ["Last opposing candle", "Extreme of the leg"], group = G_OB, tooltip = "Last opposing candle: the final down-close before an up-break. Extreme of the leg: the candle that made the low the break rallied from. Both are in common use; the second is the more classical ICT origin.")
 obUseBody = input.bool(false, "Use the candle body instead of its full range", group = G_OB)
 obLook    = input.int(20,     "Search window (bars)", minval = 3, maxval = 60, group = G_OB)
 maxOb     = input.int(5,      "Order blocks kept per side", minval = 1, maxval = 20, group = G_OB)
@@ -140,13 +147,17 @@ oteHi   = input.float(0.79, "OTE to",   minval = 0.5, maxval = 0.99, step = 0.01
 showPdhl = input.bool(true,  "Previous day high / low", group = G_HT)
 showPwhl = input.bool(false, "Previous week high / low", group = G_HT)
 showMno  = input.bool(true,  "Midnight open (00:00 New York)", group = G_HT)
+showNwog = input.bool(true,  "New week opening gap (NWOG)", group = G_HT, tooltip = "Friday's last close to the new week's first open. ICT treats the untraded delivery between them as a standing reference; the dotted line is its consequent encroachment.")
+maxNwog  = input.int(3,      "…kept", minval = 1, maxval = 20, group = G_HT)
+showNdog = input.bool(false, "New day opening gap (NDOG)", group = G_HT, tooltip = "The same idea between yesterday's close and today's open.")
+maxNdog  = input.int(2,      "…kept", minval = 1, maxval = 20, group = G_HT)
 
 // ── power of 3 ───────────────────────────────────────────────────────────────
 showPo3  = input.bool(false, "Show the accumulation range", group = G_P3, tooltip = "The Power of 3 read for the current New York day: the opening range is accumulation, the first excursion out of it is manipulation, what follows is distribution. The phase is always reported on the dashboard; this switch only draws the box.")
 po3Min   = input.int(120,    "Accumulation window after midnight NY (minutes)", minval = 15, maxval = 600, step = 15, group = G_P3)
 
 // ── time windows ─────────────────────────────────────────────────────────────
-showKz  = input.bool(false, "Killzones", group = G_TW, tooltip = "Asia 20:00-00:00 · London 02:00-05:00 · New York AM 07:00-10:00 · New York PM 13:30-16:00, New York time. Off by default: the AMD sessions indicator already carries this, and stacking both is noise.")
+showKz  = input.bool(false, "Killzones", group = G_TW, tooltip = "Asia 20:00-00:00 · London 02:00-05:00 · New York AM 07:00-10:00 · London close 10:00-12:00, New York time. Off by default: the AMD sessions indicator already carries session context, and stacking both is noise.")
 showSb  = input.bool(false, "Silver Bullet windows", group = G_TW, tooltip = "03:00-04:00, 10:00-11:00 and 14:00-15:00 New York time.")
 showMac = input.bool(false, "ICT Macros", group = G_TW, tooltip = "The twenty-minute windows: 02:33-03:00, 04:03-04:30, 08:50-09:10, 09:50-10:10, 10:50-11:10, 11:50-12:10, 13:10-13:40, 15:15-15:45 New York time.")
 
@@ -167,6 +178,7 @@ zoneTr   = input.int(86, "Zone fill transparency",   minval = 50, maxval = 100, 
 borderTr = input.int(62, "Zone border transparency", minval = 0,  maxval = 100, group = G_ST)
 textTr   = input.int(25, "Zone label transparency",  minval = 0,  maxval = 100, group = G_ST)
 kzCol    = input.color(#5c6bc0, "Killzone tint", group = G_ST, inline = "c3")
+gapCol   = input.color(#b0863c, "Opening-gap tint", group = G_ST, inline = "c3")
 sbCol    = input.color(#c9a227, "Silver Bullet tint", group = G_ST, inline = "c3")
 macCol   = input.color(#7e57c2, "Macro tint", group = G_ST, inline = "c4")
 winTr    = input.int(92, "Time-window transparency", minval = 60, maxval = 100, group = G_ST)
@@ -194,7 +206,15 @@ spl = ta.pivotlow(low,  swingLen, swingLen)
 
 gapUp   = low - high[2]                                            // bullish imbalance
 gapDn   = low[2] - high                                            // bearish imbalance
-midDisp = math.abs(close[1] - open[1]) >= dispBodyAtr * atrSafe
+
+bodyLen  = math.abs(close - open)
+meanBody = ta.sma(bodyLen, dispLen)
+upWickAbs = high - math.max(close, open)
+dnWickAbs = math.min(close, open) - low
+tightWick = upWickAbs < bodyLen * dispWickMax and dnWickAbs < bodyLen * dispWickMax
+bigBody   = bodyLen > nz(meanBody) and bodyLen >= dispBodyAtr * atrSafe
+isDispUp  = close > open and bigBody and tightWick
+isDispDn  = close < open and bigBody and tightWick
 
 tsHi = ta.highest(high, tsLook)[1]                                 // external range extremes
 tsLo = ta.lowest(low, tsLook)[1]
@@ -219,12 +239,13 @@ smtBull = useSmt and smtOk and ourLL and not cmpLL
 intraday = not timeframe.isdwm
 nyMin    = intraday ? hour(time, TZ_NY) * 60 + minute(time, TZ_NY) : na
 newNyDay = intraday and dayofmonth(time, TZ_NY) != dayofmonth(time[1], TZ_NY)
+newNyWeek = intraday and weekofyear(time, TZ_NY) != weekofyear(time[1], TZ_NY)
 
 inKzLon = intraday and nyMin >= 120 and nyMin < 300                //  02:00-05:00
 inKzAm  = intraday and nyMin >= 420 and nyMin < 600                //  07:00-10:00
-inKzPm  = intraday and nyMin >= 810 and nyMin < 960                //  13:30-16:00
+inKzLc  = intraday and nyMin >= 600 and nyMin < 720                //  10:00-12:00 London close
 inKzAs  = intraday and nyMin >= 1200                               //  20:00-00:00
-inKz    = inKzLon or inKzAm or inKzPm or inKzAs
+inKz    = inKzLon or inKzAm or inKzLc or inKzAs
 
 inSb  = intraday and ((nyMin >= 180 and nyMin < 240) or (nyMin >= 600 and nyMin < 660) or (nyMin >= 840 and nyMin < 900))
 inMac = intraday and ((nyMin >= 153 and nyMin < 180) or (nyMin >= 243 and nyMin < 270) or (nyMin >= 530 and nyMin < 550) or (nyMin >= 590 and nyMin < 610) or (nyMin >= 650 and nyMin < 670) or (nyMin >= 710 and nyMin < 730) or (nyMin >= 790 and nyMin < 820) or (nyMin >= 915 and nyMin < 945))
@@ -286,6 +307,10 @@ type Vi
     float  btm
     bool   bull
 
+type Gap
+    box    bx
+    line   ce
+
 type Ob
     box    bx
     float  top
@@ -300,6 +325,9 @@ var array<Pool>  pools   = array.new<Pool>()
 var array<Sweep> sweeps  = array.new<Sweep>()
 var array<Zone>  fvgs    = array.new<Zone>()
 var array<Vi>    vis     = array.new<Vi>()
+var array<Zone>  bprs    = array.new<Zone>()
+var array<Gap>   nwogs   = array.new<Gap>()
+var array<Gap>   ndogs   = array.new<Gap>()
 var array<Ob>    obs     = array.new<Ob>()
 var array<line>  stLines = array.new<line>()
 var array<label> stLabs  = array.new<label>()
@@ -386,11 +414,11 @@ sideCol(bool bull) => bull ? bullCol : bearCol
 // A pool is a hairline until it earns a name: equal touches make it a labelled
 // liquidity band, a named level (PDH, IDM …) gets its name at the right edge.
 poolText(Pool p) =>
-    p.named ? p.tag : p.touches > 1 ? (p.up ? "Buyside liquidity" : "Sellside liquidity") : ""
+    p.named ? p.tag : p.touches >= minTouches ? (p.up ? "Buyside liquidity" : "Sellside liquidity") : ""
 
 poolDrawable(Pool p) =>
     switch poolFilter
-        "Equal + named only" => p.touches > 1 or p.named
+        "Equal + named only" => p.touches >= minTouches or p.named
         "Major + named only" => p.major or p.named
         => true
 
@@ -418,7 +446,7 @@ renderPool(Pool p) =>
     p.lb := na
     if showPools and poolDrawable(p)
         color c = sideCol(not p.up)
-        if p.touches > 1
+        if p.touches >= minTouches
             // equal highs / lows: draw the band the touches actually span
             float hiB = math.max(p.px, p.pxAlt)
             float loB = math.min(p.px, p.pxAlt)
@@ -594,7 +622,7 @@ if conf and pools.size() > 0
                     if p.judas
                         tip := tip + "\nJD · Judas swing — the raid landed inside the first " + str.tostring(judasBars) + " bars of a killzone open."
                     label lb = label.new(p.pBar, p.up ? p.ext + atrSafe * 0.4 : p.ext - atrSafe * 0.4, txt + mark, style = label.style_none, textcolor = color.new(sideCol(not p.up), trOf(g)), size = size.small, textalign = text.align_center, tooltip = tip)
-                    box bx = showSwZone ? box.new(p.pBar, math.max(p.ext, p.px), bar_index + 1, math.min(p.ext, p.px), border_color = color.new(sideCol(not p.up), 70), border_width = 1, bgcolor = color.new(sideCol(not p.up), 88)) : na
+                    box bx = showSwZone ? box.new(p.bar, math.max(p.ext, p.px), bar_index, math.min(p.ext, p.px), border_color = color.new(sideCol(not p.up), 82), border_width = 1, bgcolor = color.new(sideCol(not p.up), 90), text = p.named ? p.tag + " taken" : (p.up ? "Buyside liquidity" : "Sellside liquidity"), text_color = ink(40), text_size = size.tiny, text_halign = text.align_left, text_valign = p.up ? text.align_top : text.align_bottom) : na
                     sweeps.push(Sweep.new(lb = lb, bx = bx, up = p.up, bar = bar_index, score = score, side = side, tip = tip, mark = mark, done = not useFollow))
                     int _p = pruneSweeps()
 
@@ -639,13 +667,23 @@ addOb(bool bull) =>
         float obTop = na
         float obBtm = na
         int   obIdx = na
-        for k = 1 to obLook
-            bool opposite = bull ? close[k] < open[k] : close[k] > open[k]
-            if opposite
-                obTop := obUseBody ? math.max(open[k], close[k]) : high[k]
-                obBtm := obUseBody ? math.min(open[k], close[k]) : low[k]
-                obIdx := bar_index - k
-                break
+        if obMethod == "Extreme of the leg"
+            float ext = na
+            for k = 1 to obLook
+                float v = bull ? low[k] : high[k]
+                if na(ext) or (bull ? v < ext : v > ext)
+                    ext   := v
+                    obTop := obUseBody ? math.max(open[k], close[k]) : high[k]
+                    obBtm := obUseBody ? math.min(open[k], close[k]) : low[k]
+                    obIdx := bar_index - k
+        else
+            for k = 1 to obLook
+                bool opposite = bull ? close[k] < open[k] : close[k] > open[k]
+                if opposite
+                    obTop := obUseBody ? math.max(open[k], close[k]) : high[k]
+                    obBtm := obUseBody ? math.min(open[k], close[k]) : low[k]
+                    obIdx := bar_index - k
+                    break
         if not na(obIdx) and obTop > obBtm
             box bx = box.new(obIdx, obTop, bar_index, obBtm, border_color = color.new(sideCol(bull), borderTr), border_width = 1, bgcolor = color.new(sideCol(bull), zoneTr), text = bull ? "+OB" : "-OB", text_color = ink(textTr), text_size = size.tiny, text_halign = text.align_center, text_valign = bull ? text.align_bottom : text.align_top)
             obs.push(Ob.new(bx = bx, top = obTop, btm = obBtm, bull = bull, breaker = false))
@@ -664,7 +702,7 @@ addOb(bool bull) =>
 
 if conf and not na(topPx) and not topBroken and close > topPx
     bool raided = not na(lastRaidDnBar) and bar_index - lastRaidDnBar <= mssWin
-    bool disp   = (not na(lastBullFvgBar) and bar_index - lastBullFvgBar <= mssWin) or (close - open) >= dispBodyAtr * atrSafe
+    bool disp   = (not na(lastBullFvgBar) and bar_index - lastBullFvgBar <= mssWin) or isDispUp
     string kind = bias == 1 or bias == 0 ? "BOS" : raided and disp ? "MSS" : "CHoCH"
     bool _s = addStruct(kind, topPx, topBar, true)
     bool _o = addOb(true)
@@ -674,7 +712,7 @@ if conf and not na(topPx) and not topBroken and close > topPx
 
 if conf and not na(btmPx) and not btmBroken and close < btmPx
     bool raided = not na(lastRaidUpBar) and bar_index - lastRaidUpBar <= mssWin
-    bool disp   = (not na(lastBearFvgBar) and bar_index - lastBearFvgBar <= mssWin) or (open - close) >= dispBodyAtr * atrSafe
+    bool disp   = (not na(lastBearFvgBar) and bar_index - lastBearFvgBar <= mssWin) or isDispDn
     string kind = bias == -1 or bias == 0 ? "BOS" : raided and disp ? "MSS" : "CHoCH"
     bool _s = addStruct(kind, btmPx, btmBar, false)
     bool _o = addOb(false)
@@ -825,13 +863,50 @@ addFvg(bool bull, float top, float btm) =>
     true
 
 if conf and showFvg and bar_index > 2
-    bool dispOk = not fvgReqDisp or midDisp
-    if gapUp > 0 and gapUp >= fvgMinAtr * atrSafe and dispOk
+    bool madeUp = false
+    bool madeDn = false
+    if gapUp > 0 and gapUp >= fvgMinAtr * atrSafe and (not fvgReqDisp or isDispUp[1])
         bool _f = addFvg(true, low, high[2])
         lastBullFvgBar := bar_index
-    if gapDn > 0 and gapDn >= fvgMinAtr * atrSafe and dispOk
+        madeUp := true
+    if gapDn > 0 and gapDn >= fvgMinAtr * atrSafe and (not fvgReqDisp or isDispDn[1])
         bool _f = addFvg(false, low[2], high)
         lastBearFvgBar := bar_index
+        madeDn := true
+
+    // A gap delivered in both directions is a balance price range — the overlap
+    // of the newest bullish and bearish FVG, and a stronger reference than either.
+    if showBpr and (madeUp or madeDn) and fvgs.size() > 1
+        Zone lastBull = na
+        Zone lastBear = na
+        for i = fvgs.size() - 1 to 0
+            Zone z = fvgs.get(i)
+            if z.bull and na(lastBull)
+                lastBull := z
+            if not z.bull and na(lastBear)
+                lastBear := z
+        if not na(lastBull) and not na(lastBear)
+            float ovTop = math.min(lastBull.top, lastBear.top)
+            float ovBtm = math.max(lastBull.btm, lastBear.btm)
+            if ovTop > ovBtm
+                bool dup = false
+                for b in bprs
+                    if math.abs(b.top - ovTop) < syminfo.mintick and math.abs(b.btm - ovBtm) < syminfo.mintick
+                        dup := true
+                if not dup
+                    box bb = box.new(bar_index - 2, ovTop, bar_index, ovBtm, border_color = color.new(inkCol, 45), border_width = 1, bgcolor = color.new(inkCol, zoneTr), text = "BPR", text_color = ink(textTr), text_size = size.tiny, text_halign = text.align_center, text_valign = text.align_center)
+                    bprs.push(Zone.new(bx = bb, ce = na, top = ovTop, btm = ovBtm, bull = madeUp, mitigated = false, inverted = false, frozen = false, spent = false))
+                    while bprs.size() > maxBpr
+                        Zone old = bprs.shift()
+                        box.delete(old.bx)
+
+if conf and bprs.size() > 0
+    for i = bprs.size() - 1 to 0
+        Zone b = bprs.get(i)
+        if not b.frozen
+            box.set_right(b.bx, bar_index)
+        if close > b.top or close < b.btm
+            b.frozen := true
 
 // ── volume imbalance: body-to-body gap with the wicks still overlapping
 if conf and vis.size() > 0
@@ -978,6 +1053,22 @@ if conf and intraday
         else if po3Stage == 1 and ((po3Dir == 1 and close < orLo) or (po3Dir == -1 and close > orHi))
             po3Stage := 2
 
+addGap(array<Gap> arr, float a, float b, int cap, string txt) =>
+    box bx = box.new(bar_index - 1, math.max(a, b), bar_index, math.min(a, b), border_color = color.new(gapCol, 55), border_width = 1, bgcolor = color.new(gapCol, zoneTr), extend = extend.right, text = txt, text_color = ink(textTr), text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_center)
+    line ce = line.new(bar_index - 1, math.avg(a, b), bar_index, math.avg(a, b), color = color.new(gapCol, 35), style = line.style_dotted, width = 1, extend = extend.right)
+    arr.push(Gap.new(bx = bx, ce = ce))
+    while arr.size() > cap
+        Gap g = arr.shift()
+        box.delete(g.bx)
+        line.delete(g.ce)
+    true
+
+if conf and newNyDay and bar_index > 1
+    if showNwog and newNyWeek
+        bool _w = addGap(nwogs, close[1], open, maxNwog, "NWOG")
+    if showNdog and not newNyWeek
+        bool _d = addGap(ndogs, close[1], open, maxNdog, "NDOG")
+
 // ═════════════════════════════════════════════════════════════════════════════
 // 10 · TIME WINDOWS  ·  DISPLACEMENT
 // ═════════════════════════════════════════════════════════════════════════════
@@ -985,10 +1076,10 @@ bgcolor(showKz  and inKz  ? color.new(kzCol,  winTr) : na, title = "Killzones")
 bgcolor(showSb  and inSb  ? color.new(sbCol,  winTr) : na, title = "Silver Bullet")
 bgcolor(showMac and inMac ? color.new(macCol, winTr) : na, title = "ICT Macros")
 
-dispUp = showDisp and gapUp > 0 and (close[1] - open[1]) >= dispBodyAtr * atrSafe
-dispDn = showDisp and gapDn > 0 and (open[1] - close[1]) >= dispBodyAtr * atrSafe
-plotshape(dispUp, title = "Displacement up",   style = shape.triangleup,   location = location.belowbar, color = color.new(bullCol, 25), size = size.tiny, offset = -1)
-plotshape(dispDn, title = "Displacement down", style = shape.triangledown, location = location.abovebar, color = color.new(bearCol, 25), size = size.tiny, offset = -1)
+dispUp = showDisp and isDispUp
+dispDn = showDisp and isDispDn
+plotshape(dispUp, title = "Displacement up",   style = shape.triangleup,   location = location.belowbar, color = color.new(bullCol, 25), size = size.tiny)
+plotshape(dispDn, title = "Displacement down", style = shape.triangledown, location = location.abovebar, color = color.new(bearCol, 25), size = size.tiny)
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 11 · DAILY BIAS  ·  IRL / ERL DRAW  ·  DASHBOARD
