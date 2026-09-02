@@ -239,7 +239,8 @@ smtBull = useSmt and smtOk and ourLL and not cmpLL
 intraday = not timeframe.isdwm
 nyMin    = intraday ? hour(time, TZ_NY) * 60 + minute(time, TZ_NY) : na
 newNyDay = intraday and dayofmonth(time, TZ_NY) != dayofmonth(time[1], TZ_NY)
-newNyWeek = intraday and weekofyear(time, TZ_NY) != weekofyear(time[1], TZ_NY)
+nyDow     = intraday ? dayofweek(time, TZ_NY) : na
+newWeekBar = intraday and nyDow < nyDow[1]         // Friday → Sunday (or Monday)
 
 inKzLon = intraday and nyMin >= 120 and nyMin < 300                //  02:00-05:00
 inKzAm  = intraday and nyMin >= 420 and nyMin < 600                //  07:00-10:00
@@ -328,6 +329,7 @@ var array<Vi>    vis     = array.new<Vi>()
 var array<Zone>  bprs    = array.new<Zone>()
 var array<Gap>   nwogs   = array.new<Gap>()
 var array<Gap>   ndogs   = array.new<Gap>()
+var float        friClose = na
 var array<Ob>    obs     = array.new<Ob>()
 var array<line>  stLines = array.new<line>()
 var array<label> stLabs  = array.new<label>()
@@ -422,7 +424,7 @@ poolDrawable(Pool p) =>
         "Major + named only" => p.major or p.named
         => true
 
-pushPivot(array<int> bars, array<float> pxs, int b, float px) =>
+pushPivot(bars, pxs, b, px) =>
     bars.push(b)
     pxs.push(px)
     while bars.size() > 30
@@ -622,7 +624,7 @@ if conf and pools.size() > 0
                     if p.judas
                         tip := tip + "\nJD · Judas swing — the raid landed inside the first " + str.tostring(judasBars) + " bars of a killzone open."
                     label lb = label.new(p.pBar, p.up ? p.ext + atrSafe * 0.4 : p.ext - atrSafe * 0.4, txt + mark, style = label.style_none, textcolor = color.new(sideCol(not p.up), trOf(g)), size = size.small, textalign = text.align_center, tooltip = tip)
-                    box bx = showSwZone ? box.new(p.bar, math.max(p.ext, p.px), bar_index, math.min(p.ext, p.px), border_color = color.new(sideCol(not p.up), 82), border_width = 1, bgcolor = color.new(sideCol(not p.up), 90), text = p.named ? p.tag + " taken" : (p.up ? "Buyside liquidity" : "Sellside liquidity"), text_color = ink(40), text_size = size.tiny, text_halign = text.align_left, text_valign = p.up ? text.align_top : text.align_bottom) : na
+                    box bx = showSwZone ? box.new(math.min(p.bar, bar_index - 1), math.max(p.ext, p.px), bar_index, math.min(p.ext, p.px), border_color = color.new(sideCol(not p.up), 82), border_width = 1, bgcolor = color.new(sideCol(not p.up), 90), text = p.named ? p.tag + " taken" : (p.up ? "Buyside liquidity" : "Sellside liquidity"), text_color = ink(40), text_size = size.tiny, text_halign = text.align_left, text_valign = p.up ? text.align_top : text.align_bottom) : na
                     sweeps.push(Sweep.new(lb = lb, bx = bx, up = p.up, bar = bar_index, score = score, side = side, tip = tip, mark = mark, done = not useFollow))
                     int _p = pruneSweeps()
 
@@ -1053,7 +1055,7 @@ if conf and intraday
         else if po3Stage == 1 and ((po3Dir == 1 and close < orLo) or (po3Dir == -1 and close > orHi))
             po3Stage := 2
 
-addGap(array<Gap> arr, float a, float b, int cap, string txt) =>
+addGap(arr, a, b, cap, txt) =>
     box bx = box.new(bar_index - 1, math.max(a, b), bar_index, math.min(a, b), border_color = color.new(gapCol, 55), border_width = 1, bgcolor = color.new(gapCol, zoneTr), extend = extend.right, text = txt, text_color = ink(textTr), text_size = size.tiny, text_halign = text.align_left, text_valign = text.align_center)
     line ce = line.new(bar_index - 1, math.avg(a, b), bar_index, math.avg(a, b), color = color.new(gapCol, 35), style = line.style_dotted, width = 1, extend = extend.right)
     arr.push(Gap.new(bx = bx, ce = ce))
@@ -1063,10 +1065,18 @@ addGap(array<Gap> arr, float a, float b, int cap, string txt) =>
         line.delete(g.ce)
     true
 
-if conf and newNyDay and bar_index > 1
-    if showNwog and newNyWeek
-        bool _w = addGap(nwogs, close[1], open, maxNwog, "NWOG")
-    if showNdog and not newNyWeek
+if conf and intraday and nyDow == dayofweek.friday
+    friClose := close
+
+if conf and bar_index > 1
+    // NWOG: Friday's last close to the first open of the new week. On CME that
+    // is the Sunday 18:00 ET bell, on an RTH-only chart it is Monday's open.
+    if showNwog and newWeekBar and not na(friClose)
+        bool _w = addGap(nwogs, friClose, open, maxNwog, "NWOG")
+    // NDOG: yesterday's last close to today's first open, on the New York
+    // calendar day. On a 24-hour feed midnight is a quiet boundary and this gap
+    // is usually tiny — it is the real overnight gap only on a session chart.
+    if showNdog and newNyDay and not newWeekBar
         bool _d = addGap(ndogs, close[1], open, maxNdog, "NDOG")
 
 // ═════════════════════════════════════════════════════════════════════════════
