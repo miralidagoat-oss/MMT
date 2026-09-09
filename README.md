@@ -1,4 +1,295 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Quant Engine
+
+Two Pine Script v6 indicators for CME index futures, each shipped with the
+offline research that produced it and with its negative results written down
+next to its positive ones.
+
+| indicator | idea | verdict |
+|---|---|---|
+| [`indicators/po3_vwap_liquidity_sweep.pine`](indicators/po3_vwap_liquidity_sweep.pine) | PO3 (accumulation → manipulation → distribution) + session VWAP + liquidity-pool sweeps | small but real edge on index futures, **1H only**: pooled PF 1.22 over 1,997 trades after costs |
+| [`indicators/alpha_predictive_limit_matrix.pine`](indicators/alpha_predictive_limit_matrix.pine) | liquidity-sweep rejection blocks with limit entries | earlier work; MNQ 1H only, PF 1.35 |
+
+---
+
+# PO3 · VWAP · Liquidity Sweep Engine
+
+**File:** `indicators/po3_vwap_liquidity_sweep.pine` · **Instrument:** MNQ1!/NQ1!
+(validated on MNQ, NQ, ES, YM, RTY) · **Timeframe: 1H.**
+
+## The setup, in one paragraph
+
+Build a map of the liquidity pools price is actually hunting — previous day and
+week highs/lows, Asia and London session extremes, the initial balance, and
+unswept fractal pivots, with equal highs/lows flagged because clustered stops
+are the strongest magnet on the chart. Wait for price to **raid** one of them by
+at least 0.35 ATR and then **close back** on the origin side within two bars.
+Require that raid extreme to sit beyond the **weekly open**, so the leg reads as
+manipulation — the Judas swing — rather than trend. Enter at the close of the
+reclaim bar, stop 0.5 ATR beyond the raid extreme, target 3R, stop to breakeven
+at +1R. Session VWAP with volume-weighted bands is drawn as fair-value context.
+
+## What the research actually found
+
+Everything below comes from `backtest/`, on Yahoo CME data: 1H series ≈ 2.4
+years (13.7k bars) per instrument, shorter sub-hourly series, all with the
+trailing partial bar dropped and malformed OHLC rows discarded.
+
+### It works, modestly, on index futures at 1H
+
+Pooled MNQ + NQ + ES + YM + RTY, 1H, **4-tick round-trip costs charged on every
+trade**:
+
+| | value |
+|---|---|
+| closed trades | 1,997 |
+| wins / losses / breakeven scratches | 404 / 952 / 641 |
+| win rate | **29.8%**, 95% CI **[27.4%, 32.3%]** |
+| breakeven win rate at 1:3 | 25.0% |
+| profit factor | **1.22** |
+| net / expectancy | +217R, **+0.109R per trade** |
+| max drawdown | 35R |
+| raid extreme *was* the 20-bar extreme | 45% of signals |
+
+The confidence interval's lower bound sits above the breakeven rate, so the
+win-rate edge is significant at 95% on this sample. It is still a *small* edge:
+a tenth of an R per trade.
+
+### Per market and walk-forward, 1H, cost 4 ticks
+
+| panel | trades | WR% | CI | PF | net R |
+|---|---|---|---|---|---|
+| MNQ in-sample (first 60%) | 243 | 26.6 | [20.5, 33.8] | 1.07 | +9R |
+| **MNQ out-of-sample (last 40%)** | 174 | 35.1 | [26.9, 44.4] | **1.60** | +44R |
+| MNQ full | 417 | 30.0 | [24.9, 35.6] | 1.26 | +53R |
+| NQ full | 416 | 30.7 | [25.7, 36.3] | 1.31 | +61R |
+| ES full | 359 | 27.8 | [22.6, 33.7] | 1.07 | +13R |
+| YM full | 407 | 31.7 | [26.5, 37.3] | 1.33 | +64R |
+| RTY full | 398 | 28.5 | [23.4, 34.2] | 1.13 | +26R |
+
+Out-of-sample beat in-sample. That is the opposite of what overfitting looks
+like, but it also means the in-sample 1.07 and the out-of-sample 1.60 bracket a
+true value that this sample cannot pin down — treat ~1.2 as the estimate and the
+spread as the honest uncertainty.
+
+### Timeframe is not a free parameter
+
+One parameter set, no per-timeframe tuning, cost 4 ticks:
+
+| TF | MNQ PF | NQ PF | sample | verdict |
+|---|---|---|---|---|
+| 1m | 0.34 | 0.35 | 7 d | ❌ decisively bad |
+| 5m | 1.23 | 1.11 | 60 d | ~ small sample |
+| 15m | 0.87 | 0.85 | 60 d | ❌ |
+| 30m | 1.11 | 1.16 | 60 d | ~ tiny sample (n≈45) |
+| **1H** | **1.26** | **1.31** | 2.4 y | ✅ the only well-evidenced timeframe |
+| 4H | 0.98 | 0.90 | 2.4 y | ❌ |
+
+15m being negative between a positive 5m and 30m is the giveaway: below 1H the
+samples are 45–160 trades and the sign is noise. **Trade this on 1H.** The
+dashboard says so on every other timeframe.
+
+### Time stability — pooled index futures by quartile of each series
+
+| quartile | trades | WR% | PF | net R |
+|---|---|---|---|---|
+| Q1 | 490 | 28.3 | 1.13 | +32R |
+| Q2 | 484 | 26.4 | 1.03 | +8R |
+| Q3 | 491 | 34.9 | 1.53 | +120R |
+| Q4 | 532 | 29.5 | 1.22 | +56R |
+
+Positive in all four, but more than half the profit lands in Q3. Expect long
+flat stretches.
+
+### Cost sensitivity (profit factor, 1H)
+
+| round-trip cost | MNQ | NQ | ES | YM | RTY |
+|---|---|---|---|---|---|
+| 0 ticks | 1.29 | 1.33 | 1.16 | 1.39 | 1.19 |
+| 2 ticks | 1.27 | 1.32 | 1.11 | 1.36 | 1.16 |
+| **4 ticks (published)** | **1.26** | **1.31** | **1.07** | **1.33** | **1.13** |
+| 8 ticks | 1.24 | 1.29 | 0.99 | 1.27 | 1.07 |
+| 16 ticks | 1.20 | 1.25 | 0.85 | 1.16 | 0.97 |
+
+Costs are survivable because 1R is large: a median **385 ticks** on MNQ 1H, so
+4 ticks is ~1% of R. That also means the stop is wide — about 96 index points,
+$193 per MNQ contract. This is not a scalping model.
+
+## Why I believe the signal, and not just the backtest
+
+**The placebo test.** A stop/target scheme with a breakeven rule can look
+profitable on *any* entry in a drifting market. So every real signal was
+re-planted at random unrelated bars, keeping its direction, its risk distance in
+ATR and byte-identical exit logic (`backtest/control.py`):
+
+| market | real signals | matched random control |
+|---|---|---|
+| MNQ 1H | PF 1.22, +0.103R | PF 0.95, −0.026R |
+| NQ 1H | PF 1.23, +0.113R | PF 1.05, +0.026R |
+| ES 1H | PF 1.12, +0.060R | PF 1.04, +0.019R |
+| YM 1H | PF 1.27, +0.132R | PF 0.90, −0.051R |
+| RTY 1H | PF 1.24, +0.116R | PF 1.06, +0.030R |
+
+The signal beats its own control on all five. The entries are doing the work,
+not the management.
+
+## What did NOT work — the negative results
+
+These cost as much effort as the positive ones and matter more.
+
+**Catching the bottom tick with a limit does not work.** The intuitive version
+of this idea — rest a limit inside the sweep wick to get filled at the extreme —
+was the *worst* option tested, on every market (`entry_mode` in
+`backtest/cross_scan.py`): market-on-reclaim PF 1.19 pooled, limit-at-the-swept-
+level 1.01, limit-at-the-wick-midpoint 1.00, and on the first candidate the wick
+limit scored 0/4 markets positive. The reason is adverse selection: the limit
+only fills when price comes back, and price mostly comes back when the reversal
+is failing. Both wick modes still ship, clearly labelled, so the dashboard can
+be watched degrading.
+
+**Tight stops on the swept extreme do not work.** A dedicated test
+(`backtest/study_geometry.py`) put the model's own stop just beyond every raid
+extreme and compared it against a matched random stop at the same ATR distance:
+30.7% vs 30.6% at 1:2. **The swept extreme holds no better than an arbitrary
+level.** Stop buffers below 0.35 ATR degrade results monotonically.
+
+**All three VWAP filter roles failed.** Tested on four instruments that took no
+part in tuning: the stretch gate (raid must be N σ from VWAP) was neutral to
+harmful, VWAP-reclaim confirmation scored 1/4 markets positive, and targeting
+VWAP instead of a fixed R was the single worst change tested — 0/4 markets
+positive, pooled PF 0.75. The edge here is continuation after the reclaim, not
+reversion to fair value. VWAP is drawn because it is useful context; all three
+filters ship **off**, and the reason is in the script header.
+
+**A VWAP σ band is not a Gaussian σ.** 16.5% of MNQ 1H bars close beyond ±2σ of
+session VWAP where normal theory says 5%, and the median |z| is 1.24 against a
+Gaussian 0.67. "2σ" is not a rare event on a VWAP band. Any threshold picked
+from normal-distribution intuition will be far looser than intended.
+
+**It does not generalise beyond equity indices.** Same settings, cost 4 ticks,
+on markets that selected nothing:
+
+| CL | GC | SI | NG | 6E | ZN | BTC | ETH |
+|---|---|---|---|---|---|---|---|
+| 1.08 | 0.84 | 1.05 | 1.03 | 0.81 | 0.69 | 1.16 | 0.93 |
+
+Rates (ZN 0.69) and FX (6E 0.81) are notably bad. This is an equity-index-
+futures model; treat anything else as untested.
+
+**The PO3 open gate is worth about 0.05 PF.** With the weekly open it improves
+the held-out pool from 1.14 to 1.21 — real, but it is a refinement on top of
+"deep sweep, reclaimed", which is where the edge actually lives. Requiring the
+close to reclaim the open as well looked superb on the tuning market (PF 1.73)
+and evaporated on the holdout (1.03). It ships off.
+
+**A session filter looked like the best find of the study and was a mirage.**
+Restricting to the NY AM killzone scored PF 1.78 on MNQ and 0.99 with 1/4
+markets positive on the four held-back instruments. Sessions are off.
+
+## How the parameters were chosen (the anti-overfitting protocol)
+
+1. **Structural constants are conventional, not fitted**: pivot half-width 5,
+   ATR 14, initial balance 60 minutes, equal-level tolerance 0.10 ATR.
+2. **Every threshold is in ATR or VWAP-σ units**, so one parameter set is
+   meaningful across instruments and timeframes.
+3. **The raw effect was measured before anything was fitted**
+   (`backtest/study_po3.py`): a symmetric double-barrier test against the
+   instrument's own baseline drift, with Wilson intervals. The first, naive
+   formulation *failed* this test — 46.6% vs a 48.5% baseline — which is what
+   redirected the work toward sweep depth and away from wick limits.
+4. **One axis at a time from a baseline, never a global grid argmax**
+   (`backtest/scan.py`). A parameter is only adopted where its neighbours agree
+   — a plateau, not a spike.
+5. **Every choice is corroborated on four instruments that never selected it**
+   (`backtest/cross_scan.py`). Where MNQ and the holdout pool disagreed, the
+   holdout won. This is what caught the NY-AM session trap.
+6. **Values are taken from plateau middles**, not argmaxes: the stop buffer is
+   flat from 0.35 to 0.75 ATR on the holdout, so it ships at 0.50.
+7. **MNQ's out-of-sample window is scored only at the end.** After the first
+   corroboration round the scan was fixed to score MNQ on its in-sample 60%
+   only. *Disclosure:* the first round did read MNQ full-sample PF for a coarse
+   axis sweep, so that window is not perfectly virgin. The cross-asset holdout
+   and the placebo test are untouched by any selection.
+8. **Only two coordinate-ascent rounds were run**, then parameters were locked.
+
+## Verification: the indicator is the engine
+
+`backtest/verify_pine_parity.py` re-expresses the **Pine file's** control flow —
+read block by block out of the `.pine`, not copied from the engine — and diffs
+it against the research engine signal by signal.
+
+```
+MNQ_1h 418/418   NQ_1h 417/417   ES_1h 360/360   YM_1h 407/407  RTY_1h 402/402
+MNQ 1m 75  5m 159  15m 65  30m 45  4h 194   — all exact
+2,242 signals: 0 extra, 0 missing, 0 mismatched entry/stop/target
+```
+
+It also asserts that the constants the Pine ships in its validated preset are
+exactly the parameters that were tested, so the indicator cannot faithfully
+reproduce a configuration nobody validated.
+
+**Two real bugs were caught by this test rather than by review**, both fixed:
+
+- *Session ranges merged across holiday gaps.* The Pine seeded each session's
+  range off "was the previous bar in this window". On NQ, a Sunday-23:00 bar and
+  the Tuesday-00:00 bar after a holiday are both inside the 18:00–02:00 Asia
+  window but belong to different trade days, so two days' Asia ranges merged and
+  a signal was lost. The session block now keys off minutes-since-18:00-ET and
+  resets per trade day, exactly as the engine does.
+- *Pivot pruning evicted live levels.* When the pool cap was hit, swept pivots
+  held slots and pushed out older *unswept* ones, silently dropping the signals
+  those would have produced.
+
+## Reproducing
+
+```bash
+python3 backtest/fetch_yahoo.py data_po3 MNQ=F      # and NQ=F, ES=F, YM=F, RTY=F
+python3 backtest/study_po3.py       data_po3 MNQ    # is there a raw effect at all?
+python3 backtest/study_geometry.py  data_po3 MNQ_1h # does the swept extreme hold?
+python3 backtest/scan.py            data_po3 MNQ_1h # one axis at a time
+python3 backtest/cross_scan.py      data_po3 4 1h   # corroborate on held-out markets
+python3 backtest/evaluate.py        data_po3 4      # final panels
+python3 backtest/control.py         data_po3 MNQ_1h,NQ_1h,ES_1h,YM_1h,RTY_1h
+python3 backtest/verify_pine_parity.py data_po3 MNQ_1h,NQ_1h,ES_1h
+```
+
+## Using it on TradingView
+
+Load on **MNQ1! or NQ1!, 1-hour**, keep the `Index Futures 1H — validated`
+preset. The dashboard grades its own signals live, with the win rate always
+shown against the breakeven rate for the chosen R:R, and charges the round-trip
+cost you set (4 ticks by default) against every closed trade — so its net R is
+comparable with the tables above.
+
+A single chart shows one instrument on one timeframe, so its numbers will be
+noisier than the pooled figures here; a few dozen trades cannot distinguish PF
+1.2 from PF 0.9.
+
+**No repainting.** There is no `request.security()` call in the script; every
+level is built from closed chart bars, fractal pivots only become visible five
+bars after the fact, and session levels only become pools once the session has
+closed. Signals commit on bar close.
+
+## Honest limitations
+
+- The edge is ~0.11R per trade. Position sizing, discipline and cost control
+  matter more than the signal does.
+- It is an indicator-side simulation, not a `strategy()`: no position sizing, no
+  margin, no partial fills, one unit per trade.
+- Intrabar path is unknowable from OHLC, so every ambiguity is resolved against
+  the strategy: the stop wins same-bar ties, the target is never credited on the
+  entry bar, and breakeven is armed only after that bar's exit checks.
+- 2.4 years of 1H data per instrument, and the five index futures are highly
+  correlated — 1,997 pooled trades are fewer independent observations than they
+  look.
+- Sub-hourly conclusions rest on 7–60 day samples. "No evidence of an edge" is
+  not the same as "proof there is none", except at 1m where the result is
+  emphatic.
+- Yahoo continuous front-month data is not tick-accurate CME data and has no
+  roll adjustment.
+
+---
+
+# Alpha Predictive Limit Matrix (earlier work)
 
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a

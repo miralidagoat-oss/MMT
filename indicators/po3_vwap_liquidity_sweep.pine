@@ -1,0 +1,906 @@
+//@version=6
+indicator("PO3 · VWAP · Liquidity Sweep Engine", "PO3 Sweep", overlay = true,
+     max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PO3 · VWAP · LIQUIDITY SWEEP ENGINE
+//
+// Three ideas, one setup:
+//   LIQUIDITY  a map of the pools price is actually hunting - previous day and
+//              week highs/lows, Asia/London session extremes, the initial
+//              balance, and unswept fractal pivots (equal highs/lows flagged,
+//              because clustered stops are the strongest magnet there is).
+//   SWEEP      the raid: price trades through a live pool by at least a
+//              minimum depth in ATR, then CLOSES back on the original side
+//              within a few bars. That reclaim is the trigger.
+//   PO3        the raid extreme must sit beyond the period open, so the leg
+//              reads as manipulation (the Judas swing) rather than trend.
+//   VWAP       session-anchored fair value with volume-weighted bands, drawn
+//              for context and available as an optional filter.
+//
+// WHAT THE RESEARCH ACTUALLY FOUND (backtest/ has every script; README has the
+// tables). Read this before trusting a single number on the dashboard:
+//
+//   * The edge is REAL BUT MODEST and specific to equity index futures on 1H.
+//     Pooled MNQ+NQ+ES+YM+RTY 1H, 1,997 trades, 4-tick round-trip costs:
+//     PF 1.22, win rate 29.8% against a 25.0% breakeven, +0.109R per trade.
+//     The 95% CI on that win rate is [27.4%, 32.3%] - above breakeven.
+//   * A PLACEBO TEST passes: the same entries re-planted at random bars with
+//     identical direction, risk and exit rules score PF 0.90-1.06. The signal
+//     does the work, not the stop/target scheme.
+//   * TIMEFRAME MATTERS ENORMOUSLY. 1H is the only timeframe with both a
+//     positive result and a real sample. 1m is a disaster (PF 0.34). 15m and
+//     4H are negative. 5m and 30m are mildly positive on short samples.
+//   * ENTERING WITH A LIMIT INSIDE THE SWEEP WICK - the "catch the bottom
+//     tick" idea - is the WORST option tested, on every market. The limit only
+//     fills when the reversal is already failing. The engine enters at the
+//     close of the reclaim bar instead. Both wick modes ship, clearly labelled,
+//     so you can watch the dashboard degrade if you switch.
+//   * VWAP FILTERS DID NOT CORROBORATE. The stretch gate, the VWAP-reclaim
+//     confirmation and VWAP-as-target were each tested on four instruments
+//     that took no part in tuning; all three were neutral-to-harmful, and
+//     VWAP-targeting was the worst change tested (0/4 markets positive). They
+//     ship OFF. VWAP is drawn because it is genuinely useful context.
+//   * IT DOES NOT GENERALISE. On crude, gold, silver, gas, EUR, 10-year notes,
+//     BTC and ETH the same settings average around breakeven (ZN 0.69,
+//     6E 0.81). This is an equity-index-futures model.
+//
+// No repainting: every level is built from closed chart bars only. There is no
+// request.security() call anywhere, so nothing is borrowed from a higher
+// timeframe and nothing can arrive early. Signals commit on bar close.
+//
+// Accounting is deliberately pessimistic: a stop beats a target inside the
+// same bar, the target is never credited on the entry bar, and breakeven is
+// armed only after that bar's exit checks.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── structural constants: fixed by convention, never fitted ────────────────
+int   PIVOT_LEN = 5      // fractal half-width for short-term highs/lows
+int   ATR_LEN   = 14     // Wilder ATR, the unit for every threshold below
+float EQ_TOL    = 0.10   // pivots within 0.10 ATR count as "relatively equal"
+int   MAX_POOLS = 60     // tracked pivot pools before the oldest are pruned
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+string G_PRE   = "Preset"
+string G_LIQ   = "Liquidity Map"
+string G_SIG   = "Signal — Sweep & Reclaim"
+string G_PO3   = "PO3 Context"
+string G_VW    = "VWAP"
+string G_TR    = "Trade Construction"
+string G_UI    = "Display"
+
+string preset = input.string("Index Futures 1H — validated", "Preset",
+     options = ["Index Futures 1H — validated", "Custom"], group = G_PRE,
+     tooltip = "The validated preset locks the settings that survived " +
+     "walk-forward and cross-market corroboration. Custom exposes them all.")
+bool usePreset = preset == "Index Futures 1H — validated"
+
+string tz = input.string("America/New_York", "Exchange timezone", group = G_LIQ)
+bool usePDHL   = input.bool(true,  "Previous day high / low",      group = G_LIQ)
+bool usePWHL   = input.bool(true,  "Previous week high / low",     group = G_LIQ)
+bool useAsia   = input.bool(true,  "Asia session high / low (18:00–02:00)",   group = G_LIQ)
+bool useLondon = input.bool(true,  "London session high / low (02:00–08:00)", group = G_LIQ)
+bool useIB     = input.bool(true,  "Initial balance high / low (09:30–10:30)", group = G_LIQ)
+bool usePivots = input.bool(true,  "Unswept fractal pivots",       group = G_LIQ)
+bool inEqOnly  = input.bool(false, "Pivots must be equal highs / lows", group = G_LIQ,
+     tooltip = "Tested neutral. Reduces signal count without improving results.")
+
+float inMinSweep  = input.float(0.35, "Min sweep depth (× ATR)", minval = 0.0, maxval = 3.0, step = 0.05, group = G_SIG,
+     tooltip = "The single most important filter. Below ~0.25 ATR the raid is " +
+     "noise and results collapse; the surface is flat from 0.35 to 0.75.")
+float inMaxSweep  = input.float(0.0,  "Max sweep depth (× ATR, 0 = no cap)", minval = 0.0, maxval = 10.0, step = 0.25, group = G_SIG,
+     tooltip = "Tested: capping sweep depth never helped, so it is off.")
+int   inReclaim   = input.int(2,      "Reclaim window (bars)", minval = 0, maxval = 10, group = G_SIG,
+     tooltip = "0 = same-bar wick reclaim only, which tested clearly worse.")
+bool  inCloseDir  = input.bool(true,  "Reclaim bar must close in trade direction", group = G_SIG)
+int   inCooldown  = input.int(6,      "Cooldown between signals (bars, per side)", minval = 0, group = G_SIG)
+string inSessMode = input.string("All hours", "Signal session",
+     options = ["All hours", "RTH 09:30–16:00", "NY AM 08:30–11:00", "Globex only"], group = G_SIG,
+     tooltip = "Restricting to NY AM looked excellent on MNQ (PF 1.78) and " +
+     "fell apart on the four markets held back from tuning. Left off.")
+bool  inLongs     = input.bool(true, "Long setups",  group = G_SIG)
+bool  inShorts    = input.bool(true, "Short setups", group = G_SIG)
+
+string inPo3Mode   = input.string("Sweep beyond open", "PO3 manipulation gate",
+     options = ["Off", "Sweep beyond open", "Sweep beyond open + reclaim open"], group = G_PO3,
+     tooltip = "The raid extreme must sit beyond the period open for the leg " +
+     "to read as manipulation. Requiring the close to reclaim the open too " +
+     "looked great on the tuning market and did not corroborate.")
+string inPo3Period = input.string("Week", "PO3 period", options = ["Day", "Week"], group = G_PO3,
+     tooltip = "The weekly open corroborated slightly better than the daily open.")
+
+string inVwapAnchor = input.string("Trade day", "VWAP anchor",
+     options = ["Trade day", "RTH session", "Week"], group = G_VW)
+bool  inVwapGate    = input.bool(false, "Filter: raid must be stretched from VWAP", group = G_VW,
+     tooltip = "Did not corroborate on held-out markets. Off by default.")
+float inDevEntry    = input.float(2.0, "…by at least (× VWAP σ)", minval = 0.0, maxval = 6.0, step = 0.25, group = G_VW)
+bool  inVwapReclaim = input.bool(false, "Filter: reclaim bar must close across VWAP", group = G_VW,
+     tooltip = "Did not corroborate on held-out markets. Off by default.")
+float inDev1        = input.float(1.0, "Band 1 (σ)", minval = 0.0, step = 0.25, group = G_VW)
+float inDev2        = input.float(2.0, "Band 2 (σ)", minval = 0.0, step = 0.25, group = G_VW)
+
+string inEntryMode = input.string("Market on reclaim close", "Entry",
+     options = ["Market on reclaim close", "Limit at swept level", "Limit at wick midpoint"], group = G_TR,
+     tooltip = "Both limit modes tested WORSE on every market: the limit only " +
+     "fills when the reversal is already failing. Kept so you can verify it.")
+float inStopBuf   = input.float(0.50, "Stop buffer beyond sweep extreme (× ATR)", minval = 0.0, maxval = 3.0, step = 0.05, group = G_TR,
+     tooltip = "Flat from 0.35 to 0.75 on held-out markets. Tighter stops at " +
+     "the extreme itself tested strictly worse - the extreme does not hold.")
+float inRR        = input.float(3.0,  "Risk : reward target", minval = 0.5, maxval = 10.0, step = 0.5, group = G_TR)
+float inBeAt      = input.float(1.0,  "Move stop to breakeven at (R, 0 = off)", minval = 0.0, step = 0.25, group = G_TR)
+int   inValidity  = input.int(12,     "Limit order expiry (bars)", minval = 1, group = G_TR)
+int   inMaxHold   = input.int(0,      "Time stop after fill (bars, 0 = off)", minval = 0, group = G_TR)
+int   inMaxOpen   = input.int(20,     "Max concurrently tracked setups", minval = 1, maxval = 60, group = G_TR)
+float costTicks   = input.float(4.0,  "Round-trip cost (ticks)", minval = 0.0, step = 0.5, group = G_TR,
+     tooltip = "Commission plus slippage, charged against every closed trade " +
+     "so the dashboard shows net R. The published results use 4 ticks; on MNQ " +
+     "1H that is about 1% of a typical 1R, because 1R is a median 385 ticks.")
+
+bool  showPools    = input.bool(true, "Draw liquidity map",      group = G_UI)
+bool  showSwept    = input.bool(true, "Keep swept levels (greyed)", group = G_UI)
+bool  showVwap     = input.bool(true, "Draw VWAP and bands",     group = G_UI)
+bool  showPeriodOp = input.bool(true, "Draw PO3 period open",    group = G_UI)
+bool  showTrades   = input.bool(true, "Draw entry / stop / target", group = G_UI)
+bool  showLabels   = input.bool(true, "Signal labels",           group = G_UI)
+bool  showOutcomes = input.bool(true, "Outcome markers",         group = G_UI)
+bool  showDash     = input.bool(true, "Self-audit dashboard",    group = G_UI)
+color bullCol      = input.color(#26A69A, "Long / sell-side",    group = G_UI)
+color bearCol      = input.color(#EF5350, "Short / buy-side",    group = G_UI)
+color vwapCol      = input.color(#FFB300, "VWAP",                group = G_UI)
+
+// ── resolve the preset ─────────────────────────────────────────────────────
+float minSweepAtr = usePreset ? 0.35  : inMinSweep
+float maxSweepAtr = usePreset ? 0.0   : inMaxSweep
+int   reclaimBars = usePreset ? 2     : inReclaim
+bool  needCloseDir= usePreset ? true  : inCloseDir
+int   cooldown    = usePreset ? 6     : inCooldown
+string sessMode   = usePreset ? "All hours" : inSessMode
+string po3Mode    = usePreset ? "Sweep beyond open" : inPo3Mode
+string po3Period  = usePreset ? "Week" : inPo3Period
+bool  vwapGate    = usePreset ? false : inVwapGate
+bool  vwapReclaim = usePreset ? false : inVwapReclaim
+float devEntry    = usePreset ? 2.0   : inDevEntry
+string entryMode  = usePreset ? "Market on reclaim close" : inEntryMode
+float stopBufAtr  = usePreset ? 0.50  : inStopBuf
+float rrTarget    = usePreset ? 3.0   : inRR
+float beAtR       = usePreset ? 1.0   : inBeAt
+int   validity    = usePreset ? 12    : inValidity
+bool  eqOnly      = usePreset ? false : inEqOnly
+
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
+type Pool
+    float  price
+    int    side      // +1 buy-side (above price), -1 sell-side (below)
+    string kind
+    int    born
+    bool   swept
+    bool   eq
+    line   ln
+
+type Setup
+    int   dir
+    float entry
+    float stop
+    float tp
+    float risk
+    int   created
+    int   fillBar
+    bool  filled
+    bool  be
+    float mae
+    line  lnE
+    line  lnS
+    line  lnT
+    box   zone
+
+type Probe        // measures how often the raid extreme was the real extreme
+    int   bar
+    int   dir
+    float extreme
+
+// ─────────────────────────────────────────────────────────────
+// CONTEXT: ATR, SESSIONS, PERIODS, VWAP
+// ─────────────────────────────────────────────────────────────
+float atrVal = ta.atr(ATR_LEN)
+
+// Minutes since the 18:00 ET trade-day open. Every session window below is a
+// plain interval in [0,1440), which makes the midnight crossing disappear and
+// keeps the exchange clock DST-correct via hour()/minute() with a timezone.
+int etMin = hour(time, tz) * 60 + minute(time, tz)
+int mspo  = (etMin + 360) % 1440
+
+bool inAsia   = mspo < 480                       // 18:00 – 02:00
+bool inLondon = mspo >= 480 and mspo < 840       // 02:00 – 08:00
+bool inIB     = mspo >= 930 and mspo < 990       // 09:30 – 10:30
+bool inRTH    = mspo >= 930 and mspo < 1320      // 09:30 – 16:00
+bool inNYAM   = mspo >= 870 and mspo < 1020      // 08:30 – 11:00
+bool rthPrev  = bar_index > 0 ? inRTH[1] : false
+
+// Period boundaries come from the exchange's own session definition, so on
+// CME futures the day rolls at 18:00 ET and the week at Sunday 18:00 ET -
+// which is what the daily and weekly candles on the chart already show, and
+// what the research engine's trade-day calendar reproduces.
+bool newDay  = timeframe.change("1D")
+bool newWeek = timeframe.change("1W")
+
+bool signalSessionOk = switch sessMode
+    "RTH 09:30–16:00"   => inRTH
+    "NY AM 08:30–11:00" => inNYAM
+    "Globex only"       => not inRTH
+    => true
+
+
+// PO3 period open — the reference the manipulation leg is measured against
+var float periodOpen = na
+bool newPeriod = po3Period == "Week" ? newWeek : newDay
+if newPeriod
+    periodOpen := open
+
+// ── session-anchored VWAP with volume-weighted deviation bands ─────────────
+// vwap = Σ(v·p)/Σv ;  σ² = Σ(v·p²)/Σv − vwap² .  Bars with no reported volume
+// (thin Globex prints) contribute nothing; if a whole anchor has no volume the
+// series falls back to hlc3 so it never goes na mid-chart.
+bool newAnchor = inVwapAnchor == "Week" ? newWeek
+     : inVwapAnchor == "RTH session" ? (inRTH and not rthPrev) : newDay
+
+var float sumPV  = 0.0
+var float sumV   = 0.0
+var float sumP2V = 0.0
+var int   anchorBars = 0
+var int   anchorTime = 0
+if newAnchor or bar_index == 0
+    sumPV  := 0.0
+    sumV   := 0.0
+    sumP2V := 0.0
+    anchorBars := 0
+    anchorTime := time
+
+float typical = hlc3
+float barVol  = nz(volume)
+sumPV      := sumPV + barVol * typical
+sumV       := sumV + barVol
+sumP2V     := sumP2V + barVol * typical * typical
+anchorBars := anchorBars + 1
+
+float vwapVal = sumV > 0 ? sumPV / sumV : typical
+float vwapSd  = sumV > 0 ? math.sqrt(math.max(sumP2V / sumV - vwapVal * vwapVal, 0.0)) : 0.0
+// The band is meaningless in the first minutes after a reset: with two or
+// three prints the volume-weighted variance is near zero and any deviation
+// scores as a huge sigma. Both a bar count and an elapsed-time floor are
+// required, so the rule behaves the same on a 5-minute chart as on an hourly.
+bool vwapOk = anchorBars >= 2 and (time - anchorTime) >= 3600000 and vwapSd > 0
+
+plot(showVwap ? vwapVal : na, "VWAP", color = vwapCol, linewidth = 2)
+p_u1 = plot(showVwap and vwapOk ? vwapVal + inDev1 * vwapSd : na, "VWAP +1σ", color = color.new(vwapCol, 55))
+p_l1 = plot(showVwap and vwapOk ? vwapVal - inDev1 * vwapSd : na, "VWAP −1σ", color = color.new(vwapCol, 55))
+p_u2 = plot(showVwap and vwapOk ? vwapVal + inDev2 * vwapSd : na, "VWAP +2σ", color = color.new(vwapCol, 75))
+p_l2 = plot(showVwap and vwapOk ? vwapVal - inDev2 * vwapSd : na, "VWAP −2σ", color = color.new(vwapCol, 75))
+fill(p_u1, p_l1, color = color.new(vwapCol, 94), title = "VWAP 1σ zone")
+fill(p_u2, p_u1, color = color.new(vwapCol, 96), title = "VWAP upper 2σ")
+fill(p_l1, p_l2, color = color.new(vwapCol, 96), title = "VWAP lower 2σ")
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+var array<Pool>  pools  = array.new<Pool>()
+var array<Setup> setups = array.new<Setup>()
+var array<Probe> probes = array.new<Probe>()
+
+var int   cntSignals  = 0
+var int   cntFills    = 0
+var int   cntWins     = 0
+var int   cntLosses   = 0
+var int   cntScratch  = 0
+var int   cntTimeExit = 0
+var int   cntExpired  = 0
+var float netR        = 0.0
+var float grossWin    = 0.0
+var float grossLoss   = 0.0
+var float sumMae      = 0.0
+var int   cntMae      = 0
+var int   probeHits   = 0
+var int   probeTotal  = 0
+var int   lastLongBar  = na
+var int   lastShortBar = na
+
+// one live raid per side; a raid that keeps taking out pools is extended
+// rather than duplicated, so a single sweep leg cannot spawn a cluster of
+// near-identical setups
+var bool   raidLongOn   = false     // sell-side raid  -> long setup
+var float  raidLongLvl  = na
+var float  raidLongExt  = na
+var int    raidLongBar  = na
+var int    raidLongFirst= na
+var string raidLongKind = ""
+var bool   raidShortOn  = false     // buy-side raid   -> short setup
+var float  raidShortLvl = na
+var float  raidShortExt = na
+var int    raidShortBar = na
+var int    raidShortFirst = na
+var string raidShortKind = ""
+
+// running period extremes
+var float dayH  = na
+var float dayL  = na
+var float pdH   = na
+var float pdL   = na
+var float wkH   = na
+var float wkL   = na
+var float pwH   = na
+var float pwL   = na
+var float asiaH = na
+var float asiaL = na
+var float lonH  = na
+var float lonL  = na
+var float ibH   = na
+var float ibL   = na
+var bool  asiaDone = false
+var bool  lonDone  = false
+var bool  ibDone   = false
+
+// v6 evaluates and/or lazily, so a ta.* call reached only inside a conditional
+// can miss bars and corrupt its own history. Every one is hoisted here.
+float pivHigh  = high[PIVOT_LEN]
+float pivLow   = low[PIVOT_LEN]
+float hiWin    = ta.highest(high, 2 * PIVOT_LEN + 1)
+float loWin    = ta.lowest(low,  2 * PIVOT_LEN + 1)
+float hiAfter  = ta.highest(high, PIVOT_LEN)
+float loAfter  = ta.lowest(low,  PIVOT_LEN)
+float low20    = ta.lowest(low,  20)
+float high20   = ta.highest(high, 20)
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+f_poolColor(int side) =>
+    side > 0 ? bearCol : bullCol
+
+f_allowed(Pool p) =>
+    p.kind == "Pivot" ? (usePivots and (not eqOnly or p.eq)) : true
+
+f_dropKind(string k) =>
+    int i = array.size(pools) - 1
+    while i >= 0
+        Pool p = array.get(pools, i)
+        if p.kind == k
+            if not na(p.ln)
+                line.delete(p.ln)
+            array.remove(pools, i)
+        i -= 1
+
+f_addPool(float price, int side, string k, bool eqFlag) =>
+    line ln = na
+    if showPools
+        ln := line.new(bar_index, price, bar_index + 1, price,
+             color = color.new(f_poolColor(side), 40), width = 1,
+             style = line.style_dotted, extend = extend.right)
+    array.push(pools, Pool.new(price, side, k, bar_index, false, eqFlag, ln))
+
+// a named level is replaced outright when its period rolls: yesterday's high
+// stops being a pool the moment there is a new yesterday
+f_setNamed(float price, int side, string k, bool enabled) =>
+    if enabled and not na(price)
+        f_dropKind(k)
+        f_addPool(price, side, k, false)
+
+f_prunePivots() =>
+    int nPiv = 0
+    int i = 0
+    while i < array.size(pools)
+        if array.get(pools, i).kind == "Pivot"
+            nPiv += 1
+        i += 1
+    if nPiv > MAX_POOLS
+        // Mirror the reference engine exactly: once the cap is hit EVERY
+        // swept pivot is discarded, then the oldest survivors, until
+        // MAX_POOLS remain. Letting swept pivots hold slots would evict
+        // still-live levels and silently drop the signals they would have
+        // produced - which is precisely what parity testing caught.
+        int j = array.size(pools) - 1
+        while j >= 0
+            Pool p = array.get(pools, j)
+            if p.kind == "Pivot" and p.swept
+                if not na(p.ln)
+                    line.delete(p.ln)
+                array.remove(pools, j)
+                nPiv -= 1
+            j -= 1
+        int k = 0
+        while k < array.size(pools) and nPiv > MAX_POOLS
+            Pool p2 = array.get(pools, k)
+            if p2.kind == "Pivot"
+                if not na(p2.ln)
+                    line.delete(p2.ln)
+                array.remove(pools, k)
+                nPiv -= 1
+            else
+                k += 1
+
+f_closeDraw(Setup s) =>
+    if not na(s.lnE)
+        line.delete(s.lnE)
+    if not na(s.lnS)
+        line.delete(s.lnS)
+    if not na(s.lnT)
+        line.delete(s.lnT)
+    if not na(s.zone)
+        box.delete(s.zone)
+
+// Builds the setup, its drawings and its diagnostic probe. Counters stay in
+// the main scope because Pine functions cannot write to global scalars.
+f_spawn(int dir, float entryPx, float stopPx, float tpPx, float riskPx,
+     int firstBar, float lvl, float ext, string kind) =>
+    color c = dir == 1 ? bullCol : bearCol
+    bool market = entryMode == "Market on reclaim close"
+    line lnE = na
+    line lnS = na
+    line lnT = na
+    box zone = na
+    if showTrades
+        lnE := line.new(bar_index, entryPx, bar_index + 1, entryPx, color = c,
+             width = 2, style = market ? line.style_solid : line.style_dashed)
+        lnS := line.new(bar_index, stopPx, bar_index + 1, stopPx,
+             color = color.new(color.red, 15), width = 1, style = line.style_dotted)
+        lnT := line.new(bar_index, tpPx, bar_index + 1, tpPx,
+             color = color.new(color.blue, 15), width = 1, style = line.style_dotted)
+        // the manipulation leg: from the bar that started the raid to the
+        // reclaim, spanning the swept level down to the sweep extreme
+        zone := box.new(firstBar, math.max(lvl, ext), bar_index, math.min(lvl, ext),
+             bgcolor = color.new(c, 88), border_color = color.new(c, 55))
+    array.push(setups, Setup.new(dir, entryPx, stopPx, tpPx, riskPx, bar_index,
+         market ? bar_index : -1, market, false, 0.0, lnE, lnS, lnT, zone))
+    array.push(probes, Probe.new(bar_index, dir, ext))
+    if showLabels
+        label.new(bar_index, dir == 1 ? low : high,
+             (dir == 1 ? "▲ PO3 LONG" : "▼ PO3 SHORT") + "  " + kind +
+             "\nswept " + str.tostring(lvl, format.mintick) +
+             "\nE " + str.tostring(entryPx, format.mintick) +
+             "  S " + str.tostring(stopPx, format.mintick) +
+             "  T " + str.tostring(tpPx, format.mintick),
+             style = dir == 1 ? label.style_label_up : label.style_label_down,
+             color = color.new(c, 15), textcolor = color.white, size = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE MACHINE — runs once per bar, on close. Nothing below repaints.
+// The order of the five blocks matches the reference engine in
+// backtest/po3_engine.py exactly; changing it changes the results.
+// ═══════════════════════════════════════════════════════════════════════════
+bool sigLong  = false
+bool sigShort = false
+float sigEntry = na
+float sigStop  = na
+float sigTp    = na
+
+if barstate.isconfirmed
+
+    // ── 1. manage setups opened on an earlier bar ──────────────────────────
+    int si = array.size(setups) - 1
+    while si >= 0
+        Setup s = array.get(setups, si)
+        if s.created < bar_index
+            bool bull = s.dir == 1
+            int outcome = 0     // 1 win  -1 loss  2 expired  3 time stop  4 scratch
+
+            if showTrades
+                if not na(s.lnE)
+                    line.set_x2(s.lnE, bar_index)
+                if not na(s.lnS)
+                    line.set_x2(s.lnS, bar_index)
+                if not na(s.lnT)
+                    line.set_x2(s.lnT, bar_index)
+
+            if not s.filled
+                bool fillNow = bull ? low <= s.entry : high >= s.entry
+                if fillNow
+                    s.filled  := true
+                    s.fillBar := bar_index
+                    cntFills += 1
+                    if not na(s.lnE)
+                        line.set_style(s.lnE, line.style_solid)
+                        line.set_width(s.lnE, 2)
+                    // pessimistic: a fill bar that also trades the stop books
+                    // the loss now, and the target is never credited on it
+                    if bull ? low <= s.stop : high >= s.stop
+                        outcome := -1
+                else if bar_index - s.created >= validity
+                    outcome := 2
+            else
+                float adverse = bull ? s.entry - low : high - s.entry
+                s.mae := math.max(s.mae, adverse / s.risk)
+                bool stopHit = bull ? low <= s.stop : high >= s.stop
+                bool tpHit   = bull ? high >= s.tp  : low <= s.tp
+                outcome := stopHit ? (s.be ? 4 : -1) : tpHit ? 1 : 0
+                // breakeven is armed only after the exit checks, so it can
+                // never take effect on the bar that triggered it
+                if outcome == 0 and beAtR > 0 and not s.be
+                    float beLvl = bull ? s.entry + beAtR * s.risk : s.entry - beAtR * s.risk
+                    if bull ? high >= beLvl : low <= beLvl
+                        s.be   := true
+                        s.stop := s.entry
+                        if not na(s.lnS)
+                            line.set_y1(s.lnS, s.entry)
+                            line.set_y2(s.lnS, s.entry)
+                            line.set_color(s.lnS, color.orange)
+                if outcome == 0 and inMaxHold > 0 and bar_index - s.fillBar >= inMaxHold
+                    outcome := 3
+
+            if outcome != 0
+                // An unfilled setup never traded, so it costs nothing; every
+                // other exit is booked once, here, net of costs.
+                if outcome == 2
+                    cntExpired += 1
+                else
+                    sumMae += s.mae
+                    cntMae += 1
+                    float costR = costTicks * syminfo.mintick / s.risk
+                    float gross = outcome == 1 ? rrTarget
+                         : outcome == -1 ? -1.0
+                         : outcome == 4 ? 0.0
+                         : (bull ? close - s.entry : s.entry - close) / s.risk
+                    float booked = gross - costR
+                    netR += booked
+                    if booked > 0
+                        grossWin += booked
+                    else
+                        grossLoss -= booked
+                    if outcome == 1
+                        cntWins += 1
+                    else if outcome == -1
+                        cntLosses += 1
+                    else if outcome == 4
+                        cntScratch += 1
+                    else
+                        cntTimeExit += 1
+                    if showOutcomes
+                        float lblY = outcome == 1 ? s.tp : outcome == -1 ? s.stop
+                             : outcome == 4 ? s.entry : close
+                        color lblC = outcome == 1 ? bullCol : outcome == -1 ? bearCol
+                             : outcome == 4 ? color.orange : color.gray
+                        string lblT = outcome == 1 ? "✔ " : outcome == -1 ? "✘ "
+                             : outcome == 4 ? "▬ " : "⏱ "
+                        label.new(bar_index, lblY,
+                             lblT + (booked >= 0 ? "+" : "") + str.tostring(booked, "#.##") + "R",
+                             style = label.style_label_left, color = color.new(lblC, 25),
+                             textcolor = color.white, size = size.small)
+                f_closeDraw(s)
+                array.remove(setups, si)
+        si -= 1
+
+    // ── 2. roll periods and sessions, publishing completed levels as pools ──
+    if newDay
+        pdH := dayH
+        pdL := dayL
+        dayH := high
+        dayL := low
+        asiaH := na
+        asiaL := na
+        lonH := na
+        lonL := na
+        ibH := na
+        ibL := na
+        asiaDone := false
+        lonDone := false
+        ibDone := false
+        f_setNamed(pdH, 1,  "PDH", usePDHL)
+        f_setNamed(pdL, -1, "PDL", usePDHL)
+    else
+        dayH := na(dayH) ? high : math.max(dayH, high)
+        dayL := na(dayL) ? low  : math.min(dayL, low)
+
+    if newWeek
+        pwH := wkH
+        pwL := wkL
+        wkH := high
+        wkL := low
+        f_setNamed(pwH, 1,  "PWH", usePWHL)
+        f_setNamed(pwL, -1, "PWL", usePWHL)
+    else
+        wkH := na(wkH) ? high : math.max(wkH, high)
+        wkL := na(wkL) ? low  : math.min(wkL, low)
+
+    // Each session range belongs to one trade day and is published exactly
+    // once, on the first bar past its close. Seeding off "was the previous bar
+    // in this window" instead would merge two days across a holiday gap - a
+    // Sunday-evening bar and the Tuesday bar after it are both inside the Asia
+    // window but belong to different trade days.
+    if inAsia
+        asiaH := na(asiaH) ? high : math.max(asiaH, high)
+        asiaL := na(asiaL) ? low  : math.min(asiaL, low)
+    else if not asiaDone
+        asiaDone := true
+        f_setNamed(asiaH, 1,  "AsiaH", useAsia)
+        f_setNamed(asiaL, -1, "AsiaL", useAsia)
+
+    if inLondon
+        lonH := na(lonH) ? high : math.max(lonH, high)
+        lonL := na(lonL) ? low  : math.min(lonL, low)
+    else if mspo >= 840 and not lonDone
+        lonDone := true
+        f_setNamed(lonH, 1,  "LonH", useLondon)
+        f_setNamed(lonL, -1, "LonL", useLondon)
+
+    if inIB
+        ibH := na(ibH) ? high : math.max(ibH, high)
+        ibL := na(ibL) ? low  : math.min(ibL, low)
+    else if mspo >= 990 and not ibDone
+        ibDone := true
+        f_setNamed(ibH, 1,  "IBH", useIB)
+        f_setNamed(ibL, -1, "IBL", useIB)
+
+    // ── 3. fractal pivots — visible only PIVOT_LEN bars after the fact, and
+    //       only while still untouched, so nothing is known early ───────────
+    if usePivots and bar_index >= 2 * PIVOT_LEN and not na(atrVal)
+        if pivHigh == hiWin and hiAfter < pivHigh
+            bool eqH = false
+            int i = 0
+            while i < array.size(pools)
+                Pool p = array.get(pools, i)
+                if p.kind == "Pivot" and p.side > 0 and not p.swept and math.abs(p.price - pivHigh) <= EQ_TOL * atrVal
+                    p.eq := true
+                    eqH := true
+                i += 1
+            f_addPool(pivHigh, 1, "Pivot", eqH)
+        if pivLow == loWin and loAfter > pivLow
+            bool eqL = false
+            int i2 = 0
+            while i2 < array.size(pools)
+                Pool p = array.get(pools, i2)
+                if p.kind == "Pivot" and p.side < 0 and not p.swept and math.abs(p.price - pivLow) <= EQ_TOL * atrVal
+                    p.eq := true
+                    eqL := true
+                i2 += 1
+            f_addPool(pivLow, -1, "Pivot", eqL)
+        f_prunePivots()
+
+    // ── 4. mark swept pools and open / extend the raid on each side ────────
+    float sslLvl = na       // nearest (highest) sell-side level taken out
+    float bslLvl = na       // nearest (lowest)  buy-side level taken out
+    string sslKind = ""
+    string bslKind = ""
+    int pi = array.size(pools) - 1
+    while pi >= 0
+        Pool p = array.get(pools, pi)
+        if not p.swept and (p.side > 0 ? high > p.price : low < p.price)
+            p.swept := true
+            if not na(p.ln)
+                if showSwept
+                    line.set_extend(p.ln, extend.none)
+                    line.set_x2(p.ln, bar_index)
+                    line.set_color(p.ln, color.new(color.gray, 65))
+                else
+                    line.delete(p.ln)
+                    p.ln := na
+            if f_allowed(p)
+                if p.side > 0
+                    if na(bslLvl) or p.price < bslLvl
+                        bslLvl  := p.price
+                        bslKind := p.kind
+                else
+                    if na(sslLvl) or p.price > sslLvl
+                        sslLvl  := p.price
+                        sslKind := p.kind
+        pi -= 1
+
+    if not na(sslLvl)
+        if raidLongOn
+            raidLongLvl  := math.max(raidLongLvl, sslLvl)
+            raidLongBar  := bar_index
+            raidLongKind := sslKind
+        else
+            raidLongOn    := true
+            raidLongLvl   := sslLvl
+            raidLongExt   := low
+            raidLongBar   := bar_index
+            raidLongFirst := bar_index
+            raidLongKind  := sslKind
+    if not na(bslLvl)
+        if raidShortOn
+            raidShortLvl  := math.min(raidShortLvl, bslLvl)
+            raidShortBar  := bar_index
+            raidShortKind := bslKind
+        else
+            raidShortOn    := true
+            raidShortLvl   := bslLvl
+            raidShortExt   := high
+            raidShortBar   := bar_index
+            raidShortFirst := bar_index
+            raidShortKind  := bslKind
+
+    // ── 5. the reclaim: price closes back on the origin side of the pool ────
+    if raidLongOn and not na(atrVal)
+        raidLongExt := math.min(raidLongExt, low)
+        float depth = raidLongLvl - raidLongExt
+        if maxSweepAtr > 0 and depth > maxSweepAtr * atrVal
+            raidLongOn := false                       // ran on: breakout, not a raid
+        else if bar_index - raidLongBar > reclaimBars
+            raidLongOn := false                       // never reclaimed in time
+        else if close > raidLongLvl
+            bool ok = depth >= minSweepAtr * atrVal
+            ok := ok and inLongs and signalSessionOk
+            ok := ok and (na(lastLongBar) or bar_index - lastLongBar >= cooldown)
+            if ok and needCloseDir
+                ok := close > open
+            if ok and vwapGate
+                ok := vwapOk and raidLongExt <= vwapVal - devEntry * vwapSd
+            if ok and vwapReclaim
+                ok := vwapOk and close > vwapVal
+            if ok and po3Mode != "Off" and not na(periodOpen)
+                ok := raidLongExt < periodOpen
+                if ok and po3Mode == "Sweep beyond open + reclaim open"
+                    ok := close > periodOpen
+            if ok
+                float entryPx = switch entryMode
+                    "Limit at swept level"   => raidLongLvl
+                    "Limit at wick midpoint" => (raidLongLvl + raidLongExt) / 2.0
+                    => close
+                float stopPx = raidLongExt - stopBufAtr * atrVal
+                float riskPx = entryPx - stopPx
+                if riskPx >= 2 * syminfo.mintick
+                    sigLong  := true
+                    sigEntry := entryPx
+                    sigStop  := stopPx
+                    sigTp    := entryPx + rrTarget * riskPx
+                    f_spawn(1, entryPx, stopPx, sigTp, riskPx, raidLongFirst,
+                         raidLongLvl, raidLongExt, raidLongKind)
+                    cntSignals += 1
+                    if entryMode == "Market on reclaim close"
+                        cntFills += 1
+                    lastLongBar := bar_index
+            raidLongOn := false
+
+    if raidShortOn and not na(atrVal)
+        raidShortExt := math.max(raidShortExt, high)
+        float depthS = raidShortExt - raidShortLvl
+        if maxSweepAtr > 0 and depthS > maxSweepAtr * atrVal
+            raidShortOn := false
+        else if bar_index - raidShortBar > reclaimBars
+            raidShortOn := false
+        else if close < raidShortLvl
+            bool okS = depthS >= minSweepAtr * atrVal
+            okS := okS and inShorts and signalSessionOk
+            okS := okS and (na(lastShortBar) or bar_index - lastShortBar >= cooldown)
+            if okS and needCloseDir
+                okS := close < open
+            if okS and vwapGate
+                okS := vwapOk and raidShortExt >= vwapVal + devEntry * vwapSd
+            if okS and vwapReclaim
+                okS := vwapOk and close < vwapVal
+            if okS and po3Mode != "Off" and not na(periodOpen)
+                okS := raidShortExt > periodOpen
+                if okS and po3Mode == "Sweep beyond open + reclaim open"
+                    okS := close < periodOpen
+            if okS
+                float entryPxS = switch entryMode
+                    "Limit at swept level"   => raidShortLvl
+                    "Limit at wick midpoint" => (raidShortLvl + raidShortExt) / 2.0
+                    => close
+                float stopPxS = raidShortExt + stopBufAtr * atrVal
+                float riskPxS = stopPxS - entryPxS
+                if riskPxS >= 2 * syminfo.mintick
+                    sigShort := true
+                    sigEntry := entryPxS
+                    sigStop  := stopPxS
+                    sigTp    := entryPxS - rrTarget * riskPxS
+                    f_spawn(-1, entryPxS, stopPxS, sigTp, riskPxS, raidShortFirst,
+                         raidShortLvl, raidShortExt, raidShortKind)
+                    cntSignals += 1
+                    if entryMode == "Market on reclaim close"
+                        cntFills += 1
+                    lastShortBar := bar_index
+            raidShortOn := false
+
+    // ── 6. diagnostic: was the raid extreme the real extreme? ──────────────
+    // Resolved 20 bars later, so it costs nothing and cannot leak forward.
+    int qi = array.size(probes) - 1
+    while qi >= 0
+        Probe q = array.get(probes, qi)
+        if bar_index - q.bar >= 20
+            probeTotal += 1
+            if q.dir == 1 ? q.extreme <= low20 : q.extreme >= high20
+                probeHits += 1
+            array.remove(probes, qi)
+        qi -= 1
+
+    // ── 7. cap the tracked set; evicted setups are still accounted for ─────
+    while array.size(setups) > inMaxOpen
+        Setup old = array.shift(setups)
+        if not old.filled
+            cntExpired += 1
+        else
+            float evR = (old.dir == 1 ? close - old.entry : old.entry - close) / old.risk
+                 - costTicks * syminfo.mintick / old.risk
+            netR += evR
+            if evR > 0
+                grossWin += evR
+            else
+                grossLoss -= evR
+            cntTimeExit += 1
+        f_closeDraw(old)
+
+// PO3 period open, drawn as the reference the manipulation leg is measured
+// against. plot() with a conditional colour keeps it to one series.
+plot(showPeriodOp ? periodOpen : na, "PO3 period open",
+     color = color.new(color.silver, 30), style = plot.style_stepline)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELF-AUDIT DASHBOARD
+// The win rate is always shown against the breakeven rate for the chosen R:R,
+// because 30% is excellent at 1:3 and ruinous at 1:1. Scratches are excluded
+// from the win rate and included in expectancy.
+// ═══════════════════════════════════════════════════════════════════════════
+f_row(table t, int r, string k, string v, color vc) =>
+    table.cell(t, 0, r, k, text_color = color.new(color.silver, 0),
+         text_halign = text.align_left,  text_size = size.small)
+    table.cell(t, 1, r, v, text_color = vc,
+         text_halign = text.align_right, text_size = size.small)
+
+if showDash and barstate.islast
+    var table dash = table.new(position.top_right, 2, 15,
+         bgcolor = color.new(#0E1116, 12), border_width = 1,
+         border_color = color.new(color.gray, 70),
+         frame_width = 1, frame_color = color.new(color.gray, 50))
+
+    int decisive = cntWins + cntLosses
+    int closed   = decisive + cntScratch + cntTimeExit
+    float winRate = decisive > 0 ? 100.0 * cntWins / decisive : na
+    float beRate  = 100.0 / (1.0 + rrTarget)
+    float expR    = closed > 0 ? netR / closed : na
+    float pf      = grossLoss > 0 ? grossWin / grossLoss : na
+    float tickPct = probeTotal > 0 ? 100.0 * probeHits / probeTotal : na
+
+    // PO3 phase, read off the live state rather than asserted
+    string phase = raidLongOn or raidShortOn ? "MANIPULATION (raid live)"
+         : na(periodOpen) ? "—"
+         : close > periodOpen ? "DISTRIBUTION above open" : "DISTRIBUTION below open"
+
+    int tfSec = timeframe.in_seconds()
+    bool tfOk = tfSec >= 2700 and tfSec <= 3900          // 45m–65m
+    bool tfMaybe = (tfSec >= 300 and tfSec < 2700) or (tfSec > 3900 and tfSec <= 7200)
+
+    table.cell(dash, 0, 0, "PO3 · VWAP · SWEEP", text_color = color.white, text_size = size.normal)
+    table.merge_cells(dash, 0, 0, 1, 0)
+    f_row(dash, 1, "Signals",         str.tostring(cntSignals), color.white)
+    f_row(dash, 2, "Filled",          str.tostring(cntFills) +
+         (cntSignals > 0 ? "  (" + str.tostring(100.0 * cntFills / cntSignals, "#") + "%)" : ""), color.white)
+    f_row(dash, 3, "Wins",            str.tostring(cntWins),    bullCol)
+    f_row(dash, 4, "Losses",          str.tostring(cntLosses),  bearCol)
+    f_row(dash, 5, "Breakeven scratches", str.tostring(cntScratch), color.orange)
+    f_row(dash, 6, "Expired / evicted",   str.tostring(cntExpired) + " / " + str.tostring(cntTimeExit), color.gray)
+    f_row(dash, 7, "Win rate (need " + str.tostring(beRate, "#.#") + "%)",
+         na(winRate) ? "—" : str.tostring(winRate, "#.#") + "%",
+         na(winRate) ? color.white : winRate > beRate ? bullCol : bearCol)
+    f_row(dash, 8, "Profit factor", na(pf) ? "—" : str.tostring(pf, "#.##"),
+         na(pf) ? color.white : pf >= 1.0 ? bullCol : bearCol)
+    f_row(dash, 9, "Net R", (netR >= 0 ? "+" : "") + str.tostring(netR, "#.#") + "R",
+         netR >= 0 ? bullCol : bearCol)
+    f_row(dash, 10, "Expectancy / trade", na(expR) ? "—" : str.tostring(expR, "#.###") + "R",
+         na(expR) ? color.white : expR >= 0 ? bullCol : bearCol)
+    f_row(dash, 11, "Raid = true extreme", na(tickPct) ? "—" : str.tostring(tickPct, "#") + "%",
+         color.aqua)
+    float avgMae = cntMae > 0 ? sumMae / cntMae : na
+    f_row(dash, 12, "Avg heat before exit", na(avgMae) ? "—" : str.tostring(avgMae, "#.##") + "R", color.aqua)
+    f_row(dash, 13, "PO3 phase", phase, color.aqua)
+    f_row(dash, 14, "Timeframe",
+         tfOk ? "✓ 1H — validated" : tfMaybe ? "⚠ weak/untested here" : "✗ no evidence of edge",
+         tfOk ? bullCol : tfMaybe ? color.orange : bearCol)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════════════════════════════
+alertcondition(sigLong,  "PO3 long setup",  "PO3 sweep reclaimed — long setup")
+alertcondition(sigShort, "PO3 short setup", "PO3 sweep reclaimed — short setup")
+
+if sigLong or sigShort
+    alert("PO3 " + (sigLong ? "LONG" : "SHORT") + " on " + syminfo.ticker +
+         " " + timeframe.period +
+         " | entry " + str.tostring(sigEntry, format.mintick) +
+         " | stop " + str.tostring(sigStop, format.mintick) +
+         " | target " + str.tostring(sigTp, format.mintick),
+         alert.freq_once_per_bar_close)
+
+plotshape(sigLong,  "Long marker",  shape.triangleup,   location.belowbar, bullCol, size = size.tiny)
+plotshape(sigShort, "Short marker", shape.triangledown, location.abovebar, bearCol, size = size.tiny)
