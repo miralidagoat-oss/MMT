@@ -280,8 +280,20 @@ def build_context(bars, anchor="day"):
     days, mspos, weeks = calendar(bars)
     atr = wilder_atr(bars)
     vwap, vsd, vok = session_vwap(bars, days, mspos, anchor)
-    return {"days": days, "mspos": mspos, "weeks": weeks,
-            "atr": atr, "vwap": vwap, "vsd": vsd, "vok": vok}
+    # 20-bar simple average of volume, for the participation filter. Symbols
+    # with no volume feed leave this None and the filter becomes a no-op.
+    v = bars["v"]
+    n = len(v)
+    vsma = [None] * n
+    run = 0.0
+    for i in range(n):
+        run += v[i]
+        if i >= 20:
+            run -= v[i - 20]
+        if i >= 19:
+            vsma[i] = run / 20.0
+    return {"days": days, "mspos": mspos, "weeks": weeks, "atr": atr,
+            "vwap": vwap, "vsd": vsd, "vok": vok, "vsma": vsma}
 
 
 # ── parameters ───────────────────────────────────────────────────────────────
@@ -295,6 +307,7 @@ class Params:
     # --- pool selection ---
     pools: tuple = ("pdh", "pdl", "pwh", "pwl", "asiah", "asial",
                     "lonh", "lonl", "ibh", "ibl", "pivot")
+    pivot_len: int = PIVOT_LEN    # fractal half-width, in bars
     eq_only: bool = False         # pivots must be equal-highs/lows clusters
     # --- VWAP context ---
     use_vwap: bool = True         # apply the stretch gate below
@@ -305,9 +318,12 @@ class Params:
     po3_period: str = "day"       # day | week
     # --- confirmation quality ---
     require_close_dir: bool = True   # reclaim bar must close in the trade's direction
+    vol_mult: float = 0.0            # reclaim bar volume vs its 20-bar average (0 = off)
     # --- trade construction ---
     entry_mode: str = "wick_mid"  # reclaim_close | wick_mid | level_retest
     stop_buf_atr: float = 0.25
+    max_risk_atr: float = 0.0     # skip setups whose stop is further than this (0 = off)
+    min_target_pts: float = 0.0   # skip setups whose target is worth less than this (0 = off)
     tp_mode: str = "rr"           # rr | vwap
     rr: float = 2.0
     be_at_r: float = 0.0          # move stop to entry at this R (0 = off)
@@ -409,15 +425,17 @@ class Raid:
 
 def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
         collector=None, trade_log=None):
+    PL = p.pivot_len
     """Walk the series once, bar by bar, exactly as the Pine script does.
 
     `lo_i`/`hi_i` restrict which bars may *originate* a signal (used for
     walk-forward splits); context and liquidity state are still built from the
     whole series so the split does not hand the engine a cold start.
     """
-    o, h, l, c = bars["o"], bars["h"], bars["l"], bars["c"]
+    o, h, l, c, v = (bars["o"], bars["h"], bars["l"], bars["c"], bars["v"])
     days, mspos = ctx["days"], ctx["mspos"]
     atr, vwap, vsd, vok = ctx["atr"], ctx["vwap"], ctx["vsd"], ctx["vok"]
+    vsma = ctx["vsma"]
     n = len(c)
     hi_i = n if hi_i is None else hi_i
     res = Result()
@@ -565,10 +583,10 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                 lm.set_named("ibl", ib_l, -1, i)
 
         # ── 3. fractal pivots (visible only PIVOT_LEN bars late) ────────────
-        k = i - PIVOT_LEN
-        if k - PIVOT_LEN >= 0 and a:
-            win_h = h[k - PIVOT_LEN:i + 1]
-            win_l = l[k - PIVOT_LEN:i + 1]
+        k = i - PL
+        if k - PL >= 0 and a:
+            win_h = h[k - PL:i + 1]
+            win_l = l[k - PL:i + 1]
             if h[k] == max(win_h) and max(h[k + 1:i + 1]) < h[k]:
                 lm.add_pivot(h[k], 1, k, a)
             if l[k] == min(win_l) and min(l[k + 1:i + 1]) > l[k]:
@@ -638,6 +656,7 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                     "reclaim_atr": (c[i] - r.level) / a if bull else (r.level - c[i]) / a,
                     "range_atr": (h[i] - l[i]) / a,
                     "vwap_ok": vok[i],
+                    "vol_rel": (v[i] / vsma[i]) if (vsma[i] and vsma[i] > 0) else None,
                     "extreme": r.extreme, "level": r.level, "close": c[i], "atr": a,
                     "vwap": vwap[i], "vsd": sd, "period_open": period_open,
                 })
@@ -650,6 +669,10 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             ok = ok and i - last_sig[r.side] >= p.cooldown
             if ok and p.require_close_dir:
                 ok = c[i] > o[i] if bull else c[i] < o[i]
+            if ok and p.vol_mult > 0:
+                # a reclaim nobody participated in is drift, not a decision
+                ok = (vsma[i] is not None and vsma[i] > 0
+                      and v[i] >= p.vol_mult * vsma[i])
             if ok and p.use_vwap:
                 if not vok[i]:
                     ok = False            # band not seeded yet - do not guess
@@ -681,6 +704,14 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             stop = (r.extreme - p.stop_buf_atr * a) if bull else (r.extreme + p.stop_buf_atr * a)
             risk = (entry - stop) if bull else (stop - entry)
             if risk < min_risk:
+                continue
+            # A reclaim that closed a long way from the raid extreme leaves a
+            # stop so wide the target stops being reachable; cap it rather than
+            # take the trade at any size.
+            if p.max_risk_atr > 0 and risk > p.max_risk_atr * a:
+                continue
+            # Minimum worthwhile target, in price points.
+            if p.min_target_pts > 0 and p.rr * risk < p.min_target_pts:
                 continue
             tp = (entry + p.rr * risk) if bull else (entry - p.rr * risk)
             market = p.entry_mode == "reclaim_close"

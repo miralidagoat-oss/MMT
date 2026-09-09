@@ -100,6 +100,9 @@ string inSessMode = input.string("All hours", "Signal session",
      options = ["All hours", "RTH 09:30–16:00", "NY AM 08:30–11:00", "Globex only"], group = G_SIG,
      tooltip = "Restricting to NY AM looked excellent on MNQ (PF 1.78) and " +
      "fell apart on the four markets held back from tuning. Left off.")
+float inVolMult   = input.float(0.0,  "Min reclaim volume (× 20-bar avg, 0 = off)", minval = 0.0, maxval = 5.0, step = 0.1, group = G_SIG,
+     tooltip = "A reclaim nobody participated in is drift, not a decision. " +
+     "Ignored on symbols with no volume feed.")
 bool  inLongs     = input.bool(true, "Long setups",  group = G_SIG)
 bool  inShorts    = input.bool(true, "Short setups", group = G_SIG)
 
@@ -125,6 +128,13 @@ string inEntryMode = input.string("Market on reclaim close", "Entry",
      options = ["Market on reclaim close", "Limit at swept level", "Limit at wick midpoint"], group = G_TR,
      tooltip = "Both limit modes tested WORSE on every market: the limit only " +
      "fills when the reversal is already failing. Kept so you can verify it.")
+float inMaxRisk   = input.float(0.0,  "Max risk (× ATR, 0 = off)", minval = 0.0, maxval = 10.0, step = 0.25, group = G_TR,
+     tooltip = "Skip setups whose reclaim closed so far from the raid extreme " +
+     "that the stop, and therefore the target, becomes unreachable.")
+float inMinTarget = input.float(0.0,  "Min target size (price points, 0 = off)", minval = 0.0, step = 1.0, group = G_TR,
+     tooltip = "Skip setups whose reward would be smaller than this. On MNQ " +
+     "the target is a median ~98 points on 5m and ~290 on 1H, so this is a " +
+     "floor for the rare micro-setup, not a typical constraint.")
 float inStopBuf   = input.float(0.50, "Stop buffer beyond sweep extreme (× ATR)", minval = 0.0, maxval = 3.0, step = 0.05, group = G_TR,
      tooltip = "Flat from 0.35 to 0.75 on held-out markets. Tighter stops at " +
      "the extreme itself tested strictly worse - the extreme does not hold.")
@@ -132,20 +142,38 @@ float inRR        = input.float(3.0,  "Risk : reward target", minval = 0.5, maxv
 float inBeAt      = input.float(1.0,  "Move stop to breakeven at (R, 0 = off)", minval = 0.0, step = 0.25, group = G_TR)
 int   inValidity  = input.int(12,     "Limit order expiry (bars)", minval = 1, group = G_TR)
 int   inMaxHold   = input.int(0,      "Time stop after fill (bars, 0 = off)", minval = 0, group = G_TR)
-int   inMaxOpen   = input.int(20,     "Max concurrently tracked setups", minval = 1, maxval = 60, group = G_TR)
+int   inMaxOpen   = input.int(20,     "Max concurrently tracked setups", minval = 1, maxval = 60, group = G_TR,
+     tooltip = "A safety valve, not a constraint: the measured peak across " +
+     "every market and timeframe tested is 5 open setups. If it ever binds, " +
+     "the oldest is evicted and still booked, so the R tally stays honest.")
 float costTicks   = input.float(4.0,  "Round-trip cost (ticks)", minval = 0.0, step = 0.5, group = G_TR,
      tooltip = "Commission plus slippage, charged against every closed trade " +
      "so the dashboard shows net R. The published results use 4 ticks; on MNQ " +
      "1H that is about 1% of a typical 1R, because 1R is a median 385 ticks.")
 
+// Chart style only affects what is drawn. The liquidity map, the signals and
+// the statistics are identical in both modes - decluttering the chart must
+// never quietly change the model.
+string chartStyle  = input.string("Clean", "Chart style", options = ["Clean", "Detailed"], group = G_UI,
+     tooltip = "Clean draws only the named institutional levels and the live " +
+     "trade. Detailed adds every tracked pivot, swept levels and the 2σ VWAP band.")
 bool  showPools    = input.bool(true, "Draw liquidity map",      group = G_UI)
-bool  showSwept    = input.bool(true, "Keep swept levels (greyed)", group = G_UI)
-bool  showVwap     = input.bool(true, "Draw VWAP and bands",     group = G_UI)
+bool  inDrawPivots = input.bool(false, "…including fractal pivots", group = G_UI,
+     tooltip = "Pivots are always used for signals; this only draws them.")
+bool  inShowSwept  = input.bool(false, "…keep swept levels (greyed)", group = G_UI)
+bool  showVwap     = input.bool(true, "Draw VWAP",               group = G_UI)
+bool  inShowBand2  = input.bool(false, "…and the 2σ band",       group = G_UI)
 bool  showPeriodOp = input.bool(true, "Draw PO3 period open",    group = G_UI)
 bool  showTrades   = input.bool(true, "Draw entry / stop / target", group = G_UI)
-bool  showLabels   = input.bool(true, "Signal labels",           group = G_UI)
+bool  showZone     = input.bool(true, "Shade the manipulation leg", group = G_UI)
+bool  showLabels   = input.bool(true, "Signal labels (details in tooltip)", group = G_UI)
 bool  showOutcomes = input.bool(true, "Outcome markers",         group = G_UI)
 bool  showDash     = input.bool(true, "Self-audit dashboard",    group = G_UI)
+
+bool  detailed   = chartStyle == "Detailed"
+bool  drawPivots = detailed or inDrawPivots
+bool  showSwept  = detailed or inShowSwept
+bool  showBand2  = detailed or inShowBand2
 color bullCol      = input.color(#26A69A, "Long / sell-side",    group = G_UI)
 color bearCol      = input.color(#EF5350, "Short / buy-side",    group = G_UI)
 color vwapCol      = input.color(#FFB300, "VWAP",                group = G_UI)
@@ -168,6 +196,9 @@ float rrTarget    = usePreset ? 3.0   : inRR
 float beAtR       = usePreset ? 1.0   : inBeAt
 int   validity    = usePreset ? 12    : inValidity
 bool  eqOnly      = usePreset ? false : inEqOnly
+float volMult     = usePreset ? 0.0   : inVolMult
+float maxRiskAtr  = usePreset ? 0.0   : inMaxRisk
+float minTargetPts= usePreset ? 0.0   : inMinTarget
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -180,6 +211,7 @@ type Pool
     bool   swept
     bool   eq
     line   ln
+    label  tag
 
 type Setup
     int   dir
@@ -277,11 +309,9 @@ bool vwapOk = anchorBars >= 2 and (time - anchorTime) >= 3600000 and vwapSd > 0
 plot(showVwap ? vwapVal : na, "VWAP", color = vwapCol, linewidth = 2)
 p_u1 = plot(showVwap and vwapOk ? vwapVal + inDev1 * vwapSd : na, "VWAP +1σ", color = color.new(vwapCol, 55))
 p_l1 = plot(showVwap and vwapOk ? vwapVal - inDev1 * vwapSd : na, "VWAP −1σ", color = color.new(vwapCol, 55))
-p_u2 = plot(showVwap and vwapOk ? vwapVal + inDev2 * vwapSd : na, "VWAP +2σ", color = color.new(vwapCol, 75))
-p_l2 = plot(showVwap and vwapOk ? vwapVal - inDev2 * vwapSd : na, "VWAP −2σ", color = color.new(vwapCol, 75))
-fill(p_u1, p_l1, color = color.new(vwapCol, 94), title = "VWAP 1σ zone")
-fill(p_u2, p_u1, color = color.new(vwapCol, 96), title = "VWAP upper 2σ")
-fill(p_l1, p_l2, color = color.new(vwapCol, 96), title = "VWAP lower 2σ")
+p_u2 = plot(showVwap and showBand2 and vwapOk ? vwapVal + inDev2 * vwapSd : na, "VWAP +2σ", color = color.new(vwapCol, 80))
+p_l2 = plot(showVwap and showBand2 and vwapOk ? vwapVal - inDev2 * vwapSd : na, "VWAP −2σ", color = color.new(vwapCol, 80))
+fill(p_u1, p_l1, color = color.new(vwapCol, 95), title = "VWAP 1σ zone")
 
 // ─────────────────────────────────────────────────────────────
 // STATE
@@ -350,6 +380,7 @@ float hiWin    = ta.highest(high, 2 * PIVOT_LEN + 1)
 float loWin    = ta.lowest(low,  2 * PIVOT_LEN + 1)
 float hiAfter  = ta.highest(high, PIVOT_LEN)
 float loAfter  = ta.lowest(low,  PIVOT_LEN)
+float volSma   = ta.sma(nz(volume), 20)
 float low20    = ta.lowest(low,  20)
 float high20   = ta.highest(high, 20)
 
@@ -362,23 +393,37 @@ f_poolColor(int side) =>
 f_allowed(Pool p) =>
     p.kind == "Pivot" ? (usePivots and (not eqOnly or p.eq)) : true
 
+f_erase(Pool p) =>
+    if not na(p.ln)
+        line.delete(p.ln)
+    if not na(p.tag)
+        label.delete(p.tag)
+
 f_dropKind(string k) =>
     int i = array.size(pools) - 1
     while i >= 0
         Pool p = array.get(pools, i)
         if p.kind == k
-            if not na(p.ln)
-                line.delete(p.ln)
+            f_erase(p)
             array.remove(pools, i)
         i -= 1
 
 f_addPool(float price, int side, string k, bool eqFlag) =>
+    // A level is drawn from where it was created to the current bar and no
+    // further. extend.right on sixty pools is what turns this kind of chart
+    // into a cobweb.
+    bool draw = showPools and (k != "Pivot" or drawPivots)
     line ln = na
-    if showPools
+    label tag = na
+    if draw
         ln := line.new(bar_index, price, bar_index + 1, price,
-             color = color.new(f_poolColor(side), 40), width = 1,
-             style = line.style_dotted, extend = extend.right)
-    array.push(pools, Pool.new(price, side, k, bar_index, false, eqFlag, ln))
+             color = color.new(f_poolColor(side), k == "Pivot" ? 65 : 30), width = 1,
+             style = k == "Pivot" ? line.style_dotted : line.style_dashed)
+        if k != "Pivot"
+            tag := label.new(bar_index + 1, price, k, style = label.style_label_left,
+                 color = color.new(color.black, 100), size = size.tiny,
+                 textcolor = color.new(f_poolColor(side), 20))
+    array.push(pools, Pool.new(price, side, k, bar_index, false, eqFlag, ln, tag))
 
 // a named level is replaced outright when its period rolls: yesterday's high
 // stops being a pool the moment there is a new yesterday
@@ -404,8 +449,7 @@ f_prunePivots() =>
         while j >= 0
             Pool p = array.get(pools, j)
             if p.kind == "Pivot" and p.swept
-                if not na(p.ln)
-                    line.delete(p.ln)
+                f_erase(p)
                 array.remove(pools, j)
                 nPiv -= 1
             j -= 1
@@ -413,8 +457,7 @@ f_prunePivots() =>
         while k < array.size(pools) and nPiv > MAX_POOLS
             Pool p2 = array.get(pools, k)
             if p2.kind == "Pivot"
-                if not na(p2.ln)
-                    line.delete(p2.ln)
+                f_erase(p2)
                 array.remove(pools, k)
                 nPiv -= 1
             else
@@ -447,22 +490,31 @@ f_spawn(int dir, float entryPx, float stopPx, float tpPx, float riskPx,
              color = color.new(color.red, 15), width = 1, style = line.style_dotted)
         lnT := line.new(bar_index, tpPx, bar_index + 1, tpPx,
              color = color.new(color.blue, 15), width = 1, style = line.style_dotted)
+    if showTrades and showZone
         // the manipulation leg: from the bar that started the raid to the
         // reclaim, spanning the swept level down to the sweep extreme
         zone := box.new(firstBar, math.max(lvl, ext), bar_index, math.min(lvl, ext),
-             bgcolor = color.new(c, 88), border_color = color.new(c, 55))
+             bgcolor = color.new(c, 90), border_color = color.new(c, 65),
+             border_style = line.style_dotted)
     array.push(setups, Setup.new(dir, entryPx, stopPx, tpPx, riskPx, bar_index,
          market ? bar_index : -1, market, false, 0.0, lnE, lnS, lnT, zone))
     array.push(probes, Probe.new(bar_index, dir, ext))
     if showLabels
+        // one glyph on the chart, the whole setup in the tooltip - a five-line
+        // label on every signal is what makes these charts unreadable
+        string detail = (dir == 1 ? "PO3 LONG" : "PO3 SHORT") + "   swept: " + kind +
+             "\nlevel   " + str.tostring(lvl, format.mintick) +
+             "\nentry   " + str.tostring(entryPx, format.mintick) +
+             "\nstop    " + str.tostring(stopPx, format.mintick) +
+             "\ntarget  " + str.tostring(tpPx, format.mintick) +
+             "\nrisk    " + str.tostring(riskPx, format.mintick) + " pts" +
+             "\nreward  " + str.tostring(rrTarget * riskPx, format.mintick) +
+             " pts  (" + str.tostring(rrTarget, "#.#") + "R)"
         label.new(bar_index, dir == 1 ? low : high,
-             (dir == 1 ? "▲ PO3 LONG" : "▼ PO3 SHORT") + "  " + kind +
-             "\nswept " + str.tostring(lvl, format.mintick) +
-             "\nE " + str.tostring(entryPx, format.mintick) +
-             "  S " + str.tostring(stopPx, format.mintick) +
-             "  T " + str.tostring(tpPx, format.mintick),
+             detailed ? detail : (dir == 1 ? "▲" : "▼"),
              style = dir == 1 ? label.style_label_up : label.style_label_down,
-             color = color.new(c, 15), textcolor = color.white, size = size.small)
+             color = color.new(c, detailed ? 15 : 30), textcolor = color.white,
+             size = size.small, tooltip = detail)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STATE MACHINE — runs once per bar, on close. Nothing below repaints.
@@ -666,14 +718,17 @@ if barstate.isconfirmed
         Pool p = array.get(pools, pi)
         if not p.swept and (p.side > 0 ? high > p.price : low < p.price)
             p.swept := true
-            if not na(p.ln)
-                if showSwept
-                    line.set_extend(p.ln, extend.none)
+            if showSwept
+                if not na(p.ln)
                     line.set_x2(p.ln, bar_index)
-                    line.set_color(p.ln, color.new(color.gray, 65))
-                else
-                    line.delete(p.ln)
-                    p.ln := na
+                    line.set_color(p.ln, color.new(color.gray, 75))
+                if not na(p.tag)
+                    label.delete(p.tag)
+                    p.tag := na
+            else
+                f_erase(p)
+                p.ln := na
+                p.tag := na
             if f_allowed(p)
                 if p.side > 0
                     if na(bslLvl) or p.price < bslLvl
@@ -724,6 +779,8 @@ if barstate.isconfirmed
             ok := ok and (na(lastLongBar) or bar_index - lastLongBar >= cooldown)
             if ok and needCloseDir
                 ok := close > open
+            if ok and volMult > 0
+                ok := not na(volSma) and volSma > 0 and nz(volume) >= volMult * volSma
             if ok and vwapGate
                 ok := vwapOk and raidLongExt <= vwapVal - devEntry * vwapSd
             if ok and vwapReclaim
@@ -739,7 +796,9 @@ if barstate.isconfirmed
                     => close
                 float stopPx = raidLongExt - stopBufAtr * atrVal
                 float riskPx = entryPx - stopPx
-                if riskPx >= 2 * syminfo.mintick
+                bool wideL  = maxRiskAtr > 0 and riskPx > maxRiskAtr * atrVal
+                bool smallL = minTargetPts > 0 and rrTarget * riskPx < minTargetPts
+                if riskPx >= 2 * syminfo.mintick and not wideL and not smallL
                     sigLong  := true
                     sigEntry := entryPx
                     sigStop  := stopPx
@@ -765,6 +824,8 @@ if barstate.isconfirmed
             okS := okS and (na(lastShortBar) or bar_index - lastShortBar >= cooldown)
             if okS and needCloseDir
                 okS := close < open
+            if okS and volMult > 0
+                okS := not na(volSma) and volSma > 0 and nz(volume) >= volMult * volSma
             if okS and vwapGate
                 okS := vwapOk and raidShortExt >= vwapVal + devEntry * vwapSd
             if okS and vwapReclaim
@@ -780,7 +841,9 @@ if barstate.isconfirmed
                     => close
                 float stopPxS = raidShortExt + stopBufAtr * atrVal
                 float riskPxS = stopPxS - entryPxS
-                if riskPxS >= 2 * syminfo.mintick
+                bool wideS  = maxRiskAtr > 0 and riskPxS > maxRiskAtr * atrVal
+                bool smallS = minTargetPts > 0 and rrTarget * riskPxS < minTargetPts
+                if riskPxS >= 2 * syminfo.mintick and not wideS and not smallS
                     sigShort := true
                     sigEntry := entryPxS
                     sigStop  := stopPxS
@@ -820,6 +883,20 @@ if barstate.isconfirmed
                 grossLoss -= evR
             cntTimeExit += 1
         f_closeDraw(old)
+
+// ── cosmetic only: keep live levels reaching the right edge ────────────────
+// Purely a drawing refresh - it touches no state the model reads, so it is
+// safe to run on the live bar as well as on closed ones.
+if showPools and array.size(pools) > 0
+    int di = 0
+    while di < array.size(pools)
+        Pool pd = array.get(pools, di)
+        if not pd.swept
+            if not na(pd.ln)
+                line.set_x2(pd.ln, bar_index + 1)
+            if not na(pd.tag)
+                label.set_x(pd.tag, bar_index + 1)
+        di += 1
 
 // PO3 period open, drawn as the reference the manipulation leg is measured
 // against. plot() with a conditional colour keeps it to one series.

@@ -18,7 +18,11 @@ from study_po3 import wilson  # noqa: E402
 TICK = {"MNQ": 0.25, "NQ": 0.25, "ES": 0.25, "YM": 1.0, "RTY": 0.1,
         # cross-asset holdout: never used to select anything
         "CL": 0.01, "GC": 0.10, "6E": 0.00005, "ZN": 0.015625,
-        "SI": 0.005, "NG": 0.001, "BTC": 1.0, "ETH": 0.1}
+        "SI": 0.005, "NG": 0.001, "BTC": 1.0, "ETH": 0.1,
+        # Dukascopy index CFDs, priced to match their futures cousins so that
+        # "4 ticks" means the same money: 4 ticks = 1 index point on NDX/SPX
+        # (as on MNQ/ES) and 4 points on DJI (as on YM).
+        "NDX": 0.25, "SPX": 0.25, "DJI": 1.0}
 
 # chosen on MNQ 1h in-sample (first 60%) from plateau midpoints
 CANDIDATE = E.Params(

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import po3_engine as E  # noqa: E402
+from dataclasses import replace  # noqa: E402
 from evaluate import CANDIDATE  # noqa: E402
 
 PIVOT_LEN, ATR_LEN, EQ_TOL, MAX_POOLS = 5, 14, 0.10, 60
@@ -167,9 +168,10 @@ def pine(bars, p):
             set_named(ib_l, -1, "IBL")
 
         # --- 3. fractal pivots ---------------------------------------------
-        if i >= 2 * PIVOT_LEN and a:
-            k = i - PIVOT_LEN
-            if h[k] == max(h[i - 2 * PIVOT_LEN:i + 1]) and max(h[k + 1:i + 1]) < h[k]:
+        PL = p.pivot_len
+        if i >= 2 * PL and a:
+            k = i - PL
+            if h[k] == max(h[i - 2 * PL:i + 1]) and max(h[k + 1:i + 1]) < h[k]:
                 eq = False
                 for q in pools:
                     if q["kind"] == "Pivot" and q["side"] > 0 and not q["swept"] \
@@ -178,7 +180,7 @@ def pine(bars, p):
                         eq = True
                 pools.append({"price": h[k], "side": 1, "kind": "Pivot",
                               "swept": False, "eq": eq})
-            if l[k] == min(l[i - 2 * PIVOT_LEN:i + 1]) and min(l[k + 1:i + 1]) > l[k]:
+            if l[k] == min(l[i - 2 * PL:i + 1]) and min(l[k + 1:i + 1]) > l[k]:
                 eq = False
                 for q in pools:
                     if q["kind"] == "Pivot" and q["side"] < 0 and not q["swept"] \
@@ -251,6 +253,9 @@ def pine(bars, p):
             ok = ok and (last_sig[d] is None or i - last_sig[d] >= p.cooldown)
             if ok and p.require_close_dir:
                 ok = c[i] > o[i] if bull else c[i] < o[i]
+            if ok and p.vol_mult > 0:
+                vs = sum(v[max(0, i - 19):i + 1]) / 20.0 if i >= 19 else None
+                ok = bool(vs and vs > 0 and v[i] >= p.vol_mult * vs)
             if ok and p.use_vwap:
                 ok = vok[i] and ((r["ext"] <= vwap[i] - p.dev_entry * vsd[i]) if bull
                                  else (r["ext"] >= vwap[i] + p.dev_entry * vsd[i]))
@@ -269,7 +274,9 @@ def pine(bars, p):
                     entry = c[i]
                 stop = r["ext"] - p.stop_buf_atr * a if bull else r["ext"] + p.stop_buf_atr * a
                 risk = (entry - stop) if bull else (stop - entry)
-                if risk >= 2 * p.tick:
+                too_wide = p.max_risk_atr > 0 and risk > p.max_risk_atr * a
+                too_small = p.min_target_pts > 0 and p.rr * risk < p.min_target_pts
+                if risk >= 2 * p.tick and not too_wide and not too_small:
                     tp = entry + p.rr * risk if bull else entry - p.rr * risk
                     market = p.entry_mode == "reclaim_close"
                     setups.append({"dir": d, "entry": entry, "stop": stop,
@@ -282,6 +289,35 @@ def pine(bars, p):
             raid[d] = None
         setups = [s for s in setups if not s["done"]] + [s for s in setups if s["done"]]
     return signals
+
+
+CONFIGS = {
+    # the shipped configuration, plus one per optional gate, so the paths that
+    # a user can switch on are covered too and not only the defaults
+    "preset (as shipped)": {},
+    "vol_mult=1.3": {"vol_mult": 1.3},
+    "max_risk_atr=2.0": {"max_risk_atr": 2.0},
+    "min_target_pts=80": {"min_target_pts": 80.0},
+    "all three gates": {"vol_mult": 1.2, "max_risk_atr": 2.5, "min_target_pts": 60.0},
+    "wick_mid + vwap stretch": {"entry_mode": "wick_mid", "use_vwap": True,
+                                "dev_entry": 1.5},
+    "vwap reclaim + eq + rth": {"vwap_reclaim": True, "eq_only": True,
+                                "session": "rth"},
+    "level retest + no po3": {"entry_mode": "level_retest", "po3_mode": "off"},
+}
+
+
+def compare(bars, ctx, p):
+    got = pine(bars, p)
+    ref = []
+    E.run(bars, ctx, p, 0, len(bars["c"]), trade_log=ref)
+    gs = {(b, d) for b, d, *_ in got}
+    rs = {(b, d) for b, d, *_ in ref}
+    gm = {(b, d): (e, s, t) for b, d, e, s, t in got}
+    rm = {(b, d): (e, s, t) for b, d, e, s, t in ref}
+    diffs = [k for k in gs & rs
+             if any(abs(x - y) > 1e-6 for x, y in zip(gm[k], rm[k]))]
+    return len(got), len(ref), sorted(gs - rs), sorted(rs - gs), diffs
 
 
 def check_preset(pine_path):
@@ -340,25 +376,22 @@ def check_preset(pine_path):
 
 if __name__ == "__main__":
     data = sys.argv[1] if len(sys.argv) > 1 else "data_po3"
+    specs = sys.argv[2].split(",") if len(sys.argv) > 2 else ["MNQ_1h"]
     check_preset(os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "indicators", "po3_vwap_liquidity_sweep.pine"))
-    for spec in (sys.argv[2].split(",") if len(sys.argv) > 2 else ["MNQ_1h"]):
+    print("\nSignal-by-signal parity, Pine transliteration vs research engine:")
+    failures = 0
+    for spec in specs:
         bars = E.load_csv(os.path.join(data, f"{spec}.csv"))
         ctx = E.build_context(bars)
-        got = pine(bars, CANDIDATE)
-        # reference: the engine's own trades, recorded straight out of run()
-        ref = []
-        E.run(bars, ctx, CANDIDATE, 0, len(bars["c"]), trade_log=ref)
-        gs = set((b, d) for b, d, *_ in got)
-        rs = set((b, d) for b, d, *_ in ref)
-        print(f"\n{spec}: pine-transliteration {len(got)} signals, "
-              f"engine {len(ref)} signals")
-        only_p = sorted(gs - rs)
-        only_e = sorted(rs - gs)
-        print(f"  only in Pine transliteration: {len(only_p)}  {only_p[:8]}")
-        print(f"  only in engine:               {len(only_e)}  {only_e[:8]}")
-        gm = {(b, d): (e, s, tp) for b, d, e, s, tp in got}
-        diffs = [k for k in gs & rs
-                 if any(abs(x - y) > 1e-6 for x, y in
-                        zip(gm[k], next((e, s, tp) for b, d, e, s, tp in ref if (b, d) == k)))]
-        print(f"  price mismatches on shared signals: {len(diffs)} {diffs[:5]}")
+        for name, kw in CONFIGS.items():
+            p = replace(CANDIDATE, **kw)
+            ng, nr, extra, missing, diffs = compare(bars, ctx, p)
+            ok = not extra and not missing and not diffs
+            failures += 0 if ok else 1
+            print(f"  {'OK ' if ok else 'FAIL'} {spec:<9} {name:<26} "
+                  f"pine={ng:<5} engine={nr:<5} extra={len(extra)} "
+                  f"missing={len(missing)} price-diff={len(diffs)}"
+                  + ("" if ok else f"  {(extra + missing)[:4]}"))
+    print(f"\n{'ALL CONFIGURATIONS MATCH' if not failures else str(failures) + ' MISMATCHING CONFIGURATIONS'}")
+    sys.exit(1 if failures else 0)
