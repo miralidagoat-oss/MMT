@@ -1,9 +1,9 @@
 //@version=6
-indicator("PO3 · VWAP · Liquidity Sweep Engine", "PO3 Sweep", overlay = true,
+indicator("Arashi framework", "Arashi", overlay = true,
      max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PO3 · VWAP · LIQUIDITY SWEEP ENGINE
+// ARASHI FRAMEWORK
 //
 // Three ideas, one setup:
 //   LIQUIDITY  a map of the pools price is actually hunting - previous day and
@@ -961,7 +961,7 @@ if showDash and barstate.islast
     bool tfOk    = tfSec > 1800 and tfSec <= 5400
     bool tfMaybe = tfSec > 5400 and tfSec <= 14400
 
-    table.cell(dash, 0, 0, "PO3 · VWAP · SWEEP", text_color = color.white, text_size = size.normal)
+    table.cell(dash, 0, 0, "ARASHI FRAMEWORK", text_color = color.white, text_size = size.normal)
     table.merge_cells(dash, 0, 0, 1, 0)
     f_row(dash, 1, "Signals",         str.tostring(cntSignals), color.white)
     f_row(dash, 2, "Filled",          str.tostring(cntFills) +
