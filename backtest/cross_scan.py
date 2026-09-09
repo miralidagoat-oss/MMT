@@ -41,26 +41,34 @@ AXES = {
 
 
 def load(data, tf="1h"):
+    """Symbols may carry their own directory as "dir/SYM", so a scan can tune
+    on one dataset and corroborate on another."""
     cache = {}
     for sym in [SELECT] + HOLDOUT:
-        path = os.path.join(data, f"{sym}_{tf}.csv")
-        bars = E.load_csv(path)
+        d, name = sym.rsplit("/", 1) if "/" in sym else (data, sym)
+        bars = E.load_csv(os.path.join(d, f"{name}_{tf}.csv"))
         cache[sym] = (bars, E.build_context(bars))
     return cache
 
 
 def evaluate(cache, p, syms, cost, split=None):
-    """`split` restricts which bars may originate a signal. MNQ is always
-    scored on its in-sample window so that the MNQ out-of-sample window stays
-    genuinely untouched by parameter selection."""
+    """Run each symbol once and return (pooled result, per-symbol results).
+
+    `split` restricts which bars may originate a signal. The selection market
+    is always scored on its in-sample window so its out-of-sample window stays
+    genuinely untouched by parameter selection.
+    """
     pooled = E.Result()
+    each = {}
     for sym in syms:
         bars, ctx = cache[sym]
         n = len(bars["c"])
-        pp = replace(p, tick=TICK[sym], cost_ticks=cost)
+        pp = replace(p, tick=TICK[sym.rsplit("/", 1)[-1]], cost_ticks=cost)
         lo, hi = (0, n) if split is None else (int(n * split[0]), int(n * split[1]))
-        pooled.merge(E.run(bars, ctx, pp, lo, hi))
-    return pooled
+        r = E.run(bars, ctx, pp, lo, hi)
+        each[sym] = r
+        pooled.merge(r)
+    return pooled, each
 
 
 def main(data, cost=4.0, tf="1h"):
@@ -74,14 +82,13 @@ def main(data, cost=4.0, tf="1h"):
         print(f"-- {axis}")
         for v in vals:
             p = replace(CANDIDATE, **{axis: v})
-            m = evaluate(cache, p, [SELECT], cost, split=(0.0, 0.6))
-            pool = evaluate(cache, p, HOLDOUT, cost)
-            pos = sum(1 for s in HOLDOUT
-                      if evaluate(cache, p, [s], cost).expectancy > 0)
+            m, _ = evaluate(cache, p, [SELECT], cost, split=(0.0, 0.6))
+            pool, each = evaluate(cache, p, HOLDOUT, cost)
+            pos = sum(1 for r in each.values() if r.expectancy > 0)
             star = " *" if v == getattr(CANDIDATE, axis) else "  "
             print(f"  {axis}={v!s:<22}{star}{len(m.exits):>6} {m.pf:>6.2f} "
                   f"{m.expectancy:>+7.3f}   {len(pool.exits):>6} {pool.pf:>6.2f} "
-                  f"{pool.expectancy:>+7.3f}  {pos:>3}/4")
+                  f"{pool.expectancy:>+7.3f}  {pos:>3}/{len(HOLDOUT)}")
 
 
 if __name__ == "__main__":

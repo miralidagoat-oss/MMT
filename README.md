@@ -6,7 +6,7 @@ next to its positive ones.
 
 | indicator | idea | verdict |
 |---|---|---|
-| [`indicators/po3_vwap_liquidity_sweep.pine`](indicators/po3_vwap_liquidity_sweep.pine) | PO3 (accumulation → manipulation → distribution) + session VWAP + liquidity-pool sweeps | small but real edge on index futures, **1H only**: pooled PF 1.22 over 1,997 trades after costs |
+| [`indicators/po3_vwap_liquidity_sweep.pine`](indicators/po3_vwap_liquidity_sweep.pine) | PO3 (accumulation → manipulation → distribution) + session VWAP + liquidity-pool sweeps | small but real edge, **1H only**: PF 1.22 on 1,997 CME futures trades, independently reproduced at PF 1.13 on 1,184 trades of index-CFD data from a different vendor. 5m, 15m, 30m tested and negative. |
 | [`indicators/alpha_predictive_limit_matrix.pine`](indicators/alpha_predictive_limit_matrix.pine) | liquidity-sweep rejection blocks with limit entries | earlier work; MNQ 1H only, PF 1.35 |
 
 ---
@@ -71,22 +71,92 @@ like, but it also means the in-sample 1.07 and the out-of-sample 1.60 bracket a
 true value that this sample cannot pin down — treat ~1.2 as the estimate and the
 spread as the honest uncertainty.
 
-### Timeframe is not a free parameter
+### Timeframe is not a free parameter — and 5 minutes does not work
 
-One parameter set, no per-timeframe tuning, cost 4 ticks:
+This was tested properly rather than inferred. Yahoo caps 5-minute history at
+60 days, which is one market regime and far too short to tune on, so 4 years of
+1-minute Nasdaq-100 and 2 years of S&P-500 and Dow index CFD data were pulled
+from Dukascopy (`backtest/fetch_dukascopy.py`) and **one 5-minute source was
+resampled into six timeframes**, so bar size is the only variable that changes:
 
-| TF | MNQ PF | NQ PF | sample | verdict |
-|---|---|---|---|---|
-| 1m | 0.34 | 0.35 | 7 d | ❌ decisively bad |
-| 5m | 1.23 | 1.11 | 60 d | ~ small sample |
-| 15m | 0.87 | 0.85 | 60 d | ❌ |
-| 30m | 1.11 | 1.16 | 60 d | ~ tiny sample (n≈45) |
-| **1H** | **1.26** | **1.31** | 2.4 y | ✅ the only well-evidenced timeframe |
-| 4H | 0.98 | 0.90 | 2.4 y | ❌ |
+| TF | trades | WR% | 95% CI | PF | per-index PF (NDX / SPX / DJI) | all 3 positive |
+|---|---|---|---|---|---|---|
+| 5m | 4,964 | 26.0 | [24.5, 27.5] | 0.86 | 1.02 / 0.68 / 0.83 | 1 of 3 |
+| 15m | 2,125 | 24.9 | [22.7, 27.1] | 0.90 | 1.03 / 0.76 / 0.84 | 1 of 3 |
+| 30m | 1,478 | 24.9 | [22.3, 27.6] | 0.93 | 1.01 / 0.86 / 0.88 | 1 of 3 |
+| **1H** | **1,184** | **28.3** | **[25.3, 31.5]** | **1.13** | **1.15 / 1.07 / 1.16** | **3 of 3** |
+| 2H | 922 | 25.3 | [22.1, 28.8] | 0.99 | 1.10 / 0.87 / 0.91 | 1 of 3 |
+| 4H | 618 | 26.4 | [22.5, 30.7] | 1.05 | 0.99 / 1.09 / 1.12 | 2 of 3 |
 
-15m being negative between a positive 5m and 30m is the giveaway: below 1H the
-samples are 45–160 trades and the sign is noise. **Trade this on 1H.** The
-dashboard says so on every other timeframe.
+1H is the only row that is positive on every index *and* whose win-rate interval
+clears the 25.0% breakeven. It is a genuine peak, not an artefact of which
+dataset happened to be used — and it independently reproduces the futures
+result on a different data vendor and different instruments.
+
+**Why 1H and not 5m.** The pools this model hunts — previous day and week
+extremes, Asia and London session ranges, the initial balance — are *day-scale*
+structures. An hourly bar is the resolution at which raiding one and closing
+back is a single decisive event. On 5m the same event fragments across many
+bars, and the reclaim trigger fires on noise inside the leg.
+
+### The 5-minute investigation, in full
+
+The question was asked directly, so here is everything that was tried.
+
+**The MNQ / NQ 5-minute backtest** (Yahoo continuous front-month, 2026-06-29 to
+2026-09-09, 60 days, 4-tick round-trip costs, shipped parameters unchanged):
+
+| | signals | W | L | BE | WR% | 95% CI | PF | net R | exp R | trades/day | median 3R target |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| MNQ 5m | 159 | 33 | 77 | 48 | 30.0 | [22.2, 39.1] | 1.23 | +18R | +0.114 | 3.1 | 131 pts |
+| NQ 5m | 160 | 31 | 80 | 48 | 27.9 | [20.4, 36.9] | 1.11 | +9R | +0.056 | 3.1 | 128 pts |
+| **pooled** | | 64 | 157 | 96 | **29.0** | **[23.4, 35.3]** | **1.17** | +27R | +0.085 | | |
+
+That looks tradeable, and it is the number to be most careful with. The
+confidence interval includes the 25.0% breakeven rate, so it is **not
+significant**, and over the same 60 days the same settings return ES 0.71,
+YM 0.89 and RTY 1.01 — the edge does not exist on the sibling markets. Over
+years, S&P 5m is 0.68 and Dow 5m is 0.83.
+
+**What was tried to rescue it, and failed.** Each was corroborated on markets
+held back from the choice:
+
+- *Deeper sweeps.* On Nasdaq this is monotone and strong — 5m PF rises 1.02 →
+  1.06 → 1.13 → 1.26 → 1.45 as the minimum sweep depth goes 0.35 → 1.5 ATR, and
+  the **gross** profit factor rises too (1.125 → 1.54), so it is signal quality
+  and not just a wider stop diluting costs. But S&P stays at 0.90 and the rule
+  is unusable on the real contract: at 1.5 ATR, MNQ 5m produces **9 signals in
+  60 days** and loses (PF 0.59).
+- *A participation filter* (reclaim volume vs its 20-bar average) looked like
+  the find of the study on 60 days of futures — monotone 0.92 → 0.97 → 1.07 →
+  1.24 on the held-back markets — and did not survive 4 years of Nasdaq (0.81).
+- *Twelve combinations* of deeper sweeps with volume, VWAP stretch, breakeven
+  off, RR 4, wider stops, daily PO3, Globex-only. **Not one was positive on all
+  three indices**; S&P 5m was negative in every single one (0.57–0.90).
+- *Scaling the fractal pivot window* so a 5m pivot spans the same wall-clock
+  time as a 1H pivot (5 → 96 bars). Worse at every step.
+- *Capping risk* so targets stay reachable. Below 1 ATR it produces **zero**
+  signals — a market entry at the reclaim close cannot produce tight risk.
+
+**Why costs bite harder at 5m.** The gross edge at 5m is real but smaller, and
+the stop is much closer, so a fixed per-trade cost is a far larger share of R:
+
+| TF | trades | gross expR | net expR (4 ticks) | cost drag | median 1R |
+|---|---|---|---|---|---|
+| 5m | 2,267 | +0.062 | +0.012 | 0.050R | 17.7 pts |
+| 15m | 974 | +0.039 | +0.015 | 0.024R | 33.5 pts |
+| 1h | 567 | +0.088 | +0.078 | 0.010R | 73.0 pts |
+
+At 5m, costs eat **80%** of the gross edge. At 1H they eat 12%.
+
+**On "3R trades targeting at least 30 points".** That constraint is already
+satisfied and then some — it is not the binding problem. With RR 3, the median
+target is **131 points on MNQ 5m** and about **290 points on MNQ 1H**; only
+0.8% of 5m setups would have a target under 30 points. A `Min target size`
+input enforces a floor anyway. Note the flip side: a 3R target of 131 points
+implies a **44-point stop**, roughly $88 per MNQ contract. Getting a 30-point
+target at 3R would need a 10-point stop, and the matched-control test in
+`study_geometry.py` shows stops that tight simply get run.
 
 ### Time stability — pooled index futures by quartile of each series
 
@@ -131,6 +201,22 @@ ATR and byte-identical exit logic (`backtest/control.py`):
 
 The signal beats its own control on all five. The entries are doing the work,
 not the management.
+
+**Independent replication on a second data vendor.** The whole result was
+re-run on Dukascopy index-CFD series — a different vendor, different
+instruments (cash indices, not futures), and a different four-year window:
+
+| series | trades | WR% | 95% CI | PF | exp R |
+|---|---|---|---|---|---|
+| Nasdaq-100 1H | 567 | 28.2 | [24.0, 32.8] | 1.15 | +0.078 |
+| S&P-500 1H | 296 | 28.1 | [22.2, 34.7] | 1.07 | +0.037 |
+| Dow-30 1H | 321 | 28.8 | [23.2, 35.1] | 1.16 | +0.080 |
+| **pooled** | **1,184** | **28.3** | **[25.3, 31.5]** | **1.13** | **+0.068** |
+
+Positive on all three, and the pooled interval clears the 25.0% breakeven. The
+1H result therefore stands on eight instruments across two independent data
+sources. It is also weaker here (1.13 vs 1.22), which is the honest direction
+for a second look to move.
 
 ## What did NOT work — the negative results
 
@@ -242,15 +328,30 @@ reproduce a configuration nobody validated.
 ## Reproducing
 
 ```bash
+# CME futures (Yahoo continuous front-month: 1H ~2.4y, 5m/15m/30m 60d, 1m 7d)
 python3 backtest/fetch_yahoo.py data_po3 MNQ=F      # and NQ=F, ES=F, YM=F, RTY=F
+
+# multi-year 1-minute index data, because Yahoo caps 5m history at 60 days
+python3 backtest/fetch_dukascopy.py data_long USATECHIDXUSD NDX 4
+python3 backtest/fetch_dukascopy.py data_long USA500IDXUSD  SPX 2
+python3 backtest/fetch_dukascopy.py data_long USA30IDXUSD   DJI 2
+
 python3 backtest/study_po3.py       data_po3 MNQ    # is there a raw effect at all?
 python3 backtest/study_geometry.py  data_po3 MNQ_1h # does the swept extreme hold?
 python3 backtest/scan.py            data_po3 MNQ_1h # one axis at a time
 python3 backtest/cross_scan.py      data_po3 4 1h   # corroborate on held-out markets
+python3 backtest/cross_scan.py      data_po3 4 5m data_long/NDX MNQ,NQ,ES,YM,RTY
+python3 backtest/report.py          1h 4 '{}' data_po3:MNQ,NQ,ES,YM,RTY
 python3 backtest/evaluate.py        data_po3 4      # final panels
 python3 backtest/control.py         data_po3 MNQ_1h,NQ_1h,ES_1h,YM_1h,RTY_1h
 python3 backtest/verify_pine_parity.py data_po3 MNQ_1h,NQ_1h,ES_1h
 ```
+
+The CFD series are cash-index contracts, not futures: no roll, no basis, and
+broker tick volume rather than exchange volume. They are used to test whether a
+rule survives across regimes and instruments, never to quote a futures P&L —
+and the shipped configuration uses no volume-dependent filter, so the volume
+difference cannot flatter it.
 
 ## Using it on TradingView
 
@@ -258,7 +359,17 @@ Load on **MNQ1! or NQ1!, 1-hour**, keep the `Index Futures 1H — validated`
 preset. The dashboard grades its own signals live, with the win rate always
 shown against the breakeven rate for the chosen R:R, and charges the round-trip
 cost you set (4 ticks by default) against every closed trade — so its net R is
-comparable with the tables above.
+comparable with the tables above. Its last row reports the **measured** result
+for whatever timeframe the chart is on, so the evidence sits next to the live
+statistics rather than in this file.
+
+The chart defaults to a **Clean** style: only the named institutional levels are
+drawn, each from where it formed to the current bar with a small right-edge tag,
+and each signal is a single glyph whose full setup — swept level, entry, stop,
+target, risk and reward in points — lives in its tooltip. `Detailed` adds every
+tracked fractal pivot, keeps swept levels greyed, and prints the setup inline.
+Drawing is completely decoupled from the model: changing the style cannot change
+a single signal.
 
 A single chart shows one instrument on one timeframe, so its numbers will be
 noisier than the pooled figures here; a few dozen trades cannot distinguish PF
