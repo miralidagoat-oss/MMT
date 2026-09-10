@@ -1,0 +1,486 @@
+//@version=6
+indicator("Quant Engine: Liquidity Matrix", "LIQ MATRIX", overlay = true,
+     max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500,
+     max_bars_back = 5000)
+
+// ============================================================================
+// One indicator, buy and sell signals, built on Obizhaeva & Wang (2005).
+//
+// THE IDEA.  A liquidity sweep is an order-flow impulse that eats through the
+// book. O-W says that impulse splits into a permanent part (lambda*x, which
+// never comes back) and a transient part (kappa*x) that decays at resilience
+// rate rho as fresh limit orders refill the gap. So the trade is: after a raid
+// that runs a prior extreme and is rejected, fade it -- and let the measured
+// book state decide whether the setup is clean.
+//
+// TWO ENGINES, MERGED
+//   1. SIGNAL — liquidity-sweep rejection. Price runs a prior extreme, is
+//      rejected by a dominant wick, and closes back inside. Limit entry at the
+//      rejection-wick midpoint, EWMA-sigma stop beyond the sweep, fixed RR
+//      target, stop to breakeven at +1R, RTH session gate, per-side cooldown.
+//   2. LIQUIDITY — the O-W book model. Estimates instantaneous impact 1/q,
+//      permanent lambda, transient kappa and resilience rho from the tape,
+//      tracks the transient deviation D_t = kappa * EWMA_rho(signed flow), and
+//      draws the steady-state value line V_t = P_t - D_t.
+//
+// WHERE EACH ONE WORKS — and they do not overlap. Read this before trading it.
+//
+//   1H  the signal engine is validated here. MNQ walk-forward, 2 years, with
+//       the RTH gate and breakeven at +1R: PF 1.33 in-sample (n=49), PF 1.54
+//       out-of-sample (n=28), PF 1.09 cross-validated on full-size NQ (n=78).
+//       Positive on all three panels, but small samples — treat as modest.
+//       The O-W layer is NOT measurable at 1H: the book fully recovers inside
+//       one hourly bar, so the decay fit degenerates (rho pinned at the grid
+//       floor, negative lambda). The liquidity panel therefore reports
+//       "not identifiable" and the deviation gate switches itself off.
+//
+//   15m the O-W layer IS measurable here (half-life ~2.5 bars = 37 min,
+//       transient share ~22%), but the SIGNAL engine loses: pooled across
+//       MNQ/NQ/ES/YM/RTY at 15m and 5m, 1,042 signals, PF 0.93, -0.04R per
+//       trade after 2 ticks of cost. The deviation gate improves 7 of 9
+//       series but only from PF 0.93 to 0.96 — it makes a losing system less
+//       losing, not profitable.
+//
+// So: trade the 1H preset. The 15m preset is shipped because the liquidity
+// measurements are real and useful for reading the book, not because the
+// signals make money there. The dashboard says which mode you are in and
+// will not let you forget it.
+//
+// Full method and numbers: README.md, backtest/ow_impact.py, backtest/study_mnq.py
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_PRESET = "Preset"
+var string G_STRUCT = "Sweep Detection"
+var string G_VOL    = "Volatility"
+var string G_TRADE  = "Trade Construction"
+var string G_LIQ    = "Liquidity Model (Obizhaeva–Wang)"
+var string G_UI     = "Display"
+
+preset = input.string("Index Futures 1H — validated", "Preset",
+     options = ["Index Futures 1H — validated", "15m — liquidity layer (signals unvalidated)", "Custom"],
+     group = G_PRESET)
+
+rbLookback   = input.int(12,     "Sweep Lookback",                     minval = 2,                                group = G_STRUCT)
+rbBodyThresh = input.float(0.33, "Max Body / Range",                   minval = 0.05, maxval = 0.95, step = 0.01, group = G_STRUCT)
+minWickFrac  = input.float(0.35, "Min Rejection Wick / Range",         minval = 0.05, maxval = 0.9,  step = 0.05, group = G_STRUCT)
+minClosePos  = input.float(0.7,  "Min Close Position / Range",         minval = 0.5,  maxval = 0.95, step = 0.05, group = G_STRUCT)
+sweepSigmaIn = input.float(0.75, "Min Sweep Depth (σ past extreme)",   minval = 0.0,  maxval = 2.0,  step = 0.25, group = G_STRUCT)
+rangeExpIn   = input.float(1.0,  "Min Range Expansion (× 20-bar avg)", minval = 0.0,  maxval = 3.0,  step = 0.1,  group = G_STRUCT)
+cooldownBars = input.int(10,     "Cooldown (bars, per side)",          minval = 0,                                group = G_STRUCT)
+useVolFilter = input.bool(true,  "Require Order-Flow Confirmation",                                               group = G_STRUCT)
+volLen       = input.int(20,     "Volume Baseline",                    minval = 1,                                group = G_STRUCT)
+volMultIn    = input.float(0.8,  "Volume Imbalance Multiplier",        minval = 0.1,  step = 0.1,                 group = G_STRUCT)
+useSessionIn = input.bool(true,  "Restrict Signals to Session",                                                   group = G_STRUCT)
+sessionStr   = input.session("0930-1600", "Signal Session",                                                       group = G_STRUCT)
+sessionTz    = input.string("America/New_York", "Session Timezone",                                               group = G_STRUCT)
+
+lambdaEwma   = input.float(0.94, "EWMA Decay (RiskMetrics λ)", minval = 0.85, maxval = 0.99, step = 0.01, group = G_VOL)
+seedLen      = input.int(20,     "Variance Seed Length",       minval = 5,                                group = G_VOL)
+stopSigmaIn  = input.float(1.5,  "Stop Distance (σ past wick)", minval = 0.0, step = 0.1,                 group = G_VOL)
+
+rrTarget     = input.float(4.0,  "Risk : Reward Target",       minval = 0.5, step = 0.5,                  group = G_TRADE)
+beTriggerIn  = input.float(1.0,  "Breakeven Trigger (R, 0 = off)", minval = 0.0, step = 0.5,              group = G_TRADE)
+validityBars = input.int(24,     "Unfilled Setup Expiry (bars)", minval = 1,                              group = G_TRADE)
+maxHoldBars  = input.int(0,      "Time Stop After Fill (bars, 0 = off)", minval = 0,                      group = G_TRADE)
+maxTracked   = input.int(40,     "Max Tracked Setups",         minval = 1, maxval = 100,                  group = G_TRADE)
+
+owSource     = input.string("Auto (preset by timeframe)", "Book Parameters",
+     options = ["Auto (preset by timeframe)", "Live estimate", "Off"], group = G_LIQ)
+estWin       = input.int(2000, "Estimation Window (bars)", minval = 200, maxval = 4000, step = 100, group = G_LIQ)
+advLen       = input.int(100,  "Volume Baseline for Flow",  minval = 20,                             group = G_LIQ)
+useDevGate   = input.bool(true, "Deviation Quality Gate",                                            group = G_LIQ,
+     tooltip = "Skip setups taken while the book is already far from its steady state. Weak evidence: " +
+               "it improved 7 of 9 test series but only from PF 0.93 to 0.96 — it does not make the " +
+               "15m system profitable. Auto-disables at timeframes where the model is not identifiable.")
+devMax       = input.float(0.75, "Max |D| at Entry (σ)", minval = 0.1, maxval = 3.0, step = 0.25, group = G_LIQ)
+
+showZones    = input.bool(true,  "Show Setups",          group = G_UI)
+showOutcomes = input.bool(true,  "Show Outcome Markers", group = G_UI)
+showSteady   = input.bool(true,  "Show Steady-State Line", group = G_UI)
+showStats    = input.bool(true,  "Show Dashboard",       group = G_UI)
+bullBase     = input.color(#00E676, "Bull Color",        group = G_UI)
+bearBase     = input.color(#FF5252, "Bear Color",        group = G_UI)
+
+// ─────────────────────────────────────────────────────────────
+// PRESET RESOLUTION
+// ─────────────────────────────────────────────────────────────
+int  tfSec  = timeframe.in_seconds()
+bool is1h   = tfSec == 3600
+bool is15m  = tfSec == 900
+bool is5m   = tfSec == 300
+string sym  = str.upper(syminfo.ticker)
+bool isMNQ  = str.contains(sym, "MNQ")
+bool isNQ   = not isMNQ and str.contains(sym, "NQ")
+
+bool p1H  = preset == "Index Futures 1H — validated"
+bool p15  = preset == "15m — liquidity layer (signals unvalidated)"
+
+float effSweepSigma = p1H ? 0.75 : p15 ? 0.75 : sweepSigmaIn
+float effStopSigma  = p1H ? 1.5  : p15 ? 1.5  : stopSigmaIn
+float effVolMult    = p1H ? 0.8  : p15 ? 0.8  : volMultIn
+float effRangeExp   = p1H ? 1.0  : p15 ? 1.0  : rangeExpIn
+bool  effUseSession = p1H ? true : p15 ? true : useSessionIn
+float effBeTrigger  = p1H ? 1.0  : p15 ? 1.0  : beTriggerIn
+
+// ─────────────────────────────────────────────────────────────
+// EWMA VOLATILITY
+// ─────────────────────────────────────────────────────────────
+float logReturn    = na(close[1]) ? 0.0 : math.log(close / close[1])
+float seedVariance = ta.variance(logReturn, seedLen)
+var float ewmaVariance = na
+ewmaVariance := na(ewmaVariance) ? seedVariance : lambdaEwma * ewmaVariance + (1.0 - lambdaEwma) * logReturn * logReturn
+float sigmaPx     = math.sqrt(math.max(nz(ewmaVariance), 0.0)) * close
+bool  volReady    = not na(ewmaVariance)
+
+// ─────────────────────────────────────────────────────────────
+// OBIZHAEVA–WANG BOOK MODEL
+// ─────────────────────────────────────────────────────────────
+// Signed flow proxy: close-location value x volume, normalised by trailing
+// average volume, so impact coefficients read as points per 1 ADV of flow.
+float clv    = high > low ? (2.0 * close - high - low) / (high - low) : 0.0
+float advCon = ta.sma(volume, advLen)
+float flowX  = advCon > 0 ? clv * volume / advCon : 0.0
+
+// beta_k = share of a flow impulse still in the price k bars later. Regressor
+// and both window endpoints share no price observation, so bid-ask bounce
+// cannot manufacture the decay.
+f_beta(float xs, float ys, int len) =>
+    float mx  = ta.sma(xs, len)
+    float my  = ta.sma(ys, len)
+    float cov = ta.sma(xs * ys, len) - mx * my
+    float vr  = ta.sma(xs * xs, len) - mx * mx
+    vr > 0 ? cov / vr : na
+
+float b0  = f_beta(flowX[1],  close - close[2],  estWin)
+float b2  = f_beta(flowX[3],  close - close[4],  estWin)
+float b4  = f_beta(flowX[5],  close - close[6],  estWin)
+float b8  = f_beta(flowX[9],  close - close[10], estWin)
+float b24 = f_beta(flowX[25], close - close[26], estWin)
+
+f_rho_at(float bm, float lam, float kap, int m) =>
+    float frac = kap > 0 ? (bm - lam) / kap : na
+    na(frac) or frac <= 0.02 or frac >= 0.999 ? na : -math.log(frac) / m
+
+float lamRaw = b24
+float kapRaw = b0 - lamRaw
+float r2 = f_rho_at(b2, lamRaw, kapRaw, 2)
+float r4 = f_rho_at(b4, lamRaw, kapRaw, 4)
+float r8 = f_rho_at(b8, lamRaw, kapRaw, 8)
+int   nR = (na(r2) ? 0 : 1) + (na(r4) ? 0 : 1) + (na(r8) ? 0 : 1)
+float rhoRaw = nR > 0 ? (nz(r2) + nz(r4) + nz(r8)) / nR : na
+bool  liveFit = kapRaw > 0 and b0 > 0 and nR > 0 and not na(rhoRaw)
+
+var float rhoLive = na
+var float kapLive = na
+var float lamLive = na
+// single-window fits are noisy, so the live estimate is clamped to a sane band
+// and smoothed with a 100-bar EMA (alpha = 2/101)
+float owAlpha = 2.0 / 101.0
+if liveFit
+    float rc = math.min(math.max(rhoRaw, 0.01), 3.0)
+    rhoLive := na(rhoLive) ? rc     : rhoLive + owAlpha * (rc - rhoLive)
+    kapLive := na(kapLive) ? kapRaw : kapLive + owAlpha * (kapRaw - kapLive)
+    lamLive := na(lamLive) ? lamRaw : lamLive + owAlpha * (lamRaw - lamLive)
+
+// Full-sample fits (backtest/ow_impact.py). Only 15m and 5m are identifiable;
+// at 1H and above the decay fit degenerates because the book fully recovers
+// inside one bar, so the model is declared unavailable rather than guessed.
+float pRho = is15m ? (isMNQ ? 0.2832 : 0.3182) : is5m ? (isMNQ ? 0.1407 : 0.1492) : na
+float pKap = is15m ? (isMNQ ? 7.091  : 5.957)  : is5m ? (isMNQ ? 1.465  : 1.256)  : na
+float pLam = is15m ? (isMNQ ? 24.994 : 23.065) : is5m ? (isMNQ ? 10.192 : 8.502)  : na
+
+float rhoEff = owSource == "Off" ? na : owSource == "Live estimate" ? rhoLive : pRho
+float kapEff = owSource == "Off" ? na : owSource == "Live estimate" ? kapLive : pKap
+float lamEff = owSource == "Off" ? na : owSource == "Live estimate" ? lamLive : pLam
+bool  owOk   = not na(rhoEff) and not na(kapEff) and rhoEff > 0 and kapEff > 0
+
+// D_t = kappa * sum_i x_i e^{-rho(t-t_i)} — the paper's eq. (10) in bar form
+float phi = owOk ? math.exp(-rhoEff) : 0.0
+var float flowState = 0.0
+flowState := phi * flowState + nz(flowX)
+float devD    = owOk ? kapEff * flowState : na
+float steadyV = owOk ? close - devD : na
+
+plot(showSteady and owOk ? steadyV : na, "Steady-State Value",
+     color = color.new(color.aqua, 30), linewidth = 2)
+
+// ─────────────────────────────────────────────────────────────
+// SWEEP DETECTION
+// ─────────────────────────────────────────────────────────────
+float candleRange = high - low
+float candleBody  = math.abs(close - open)
+float topWick     = high - math.max(close, open)
+float botWick     = math.min(close, open) - low
+float maxBody     = math.max(open, close)
+float minBody     = math.min(open, close)
+float safeRange   = math.max(candleRange, syminfo.mintick)
+float bullWickDom = botWick / safeRange
+float bearWickDom = topWick / safeRange
+float volSMA      = ta.sma(nz(volume), volLen)
+float rangeSMA    = ta.sma(candleRange, 20)
+float bullClosePos = (close - low) / safeRange
+float bearClosePos = (high - close) / safeRange
+
+bool bullFlowOk = not useVolFilter or (na(volume) ? bullWickDom >= 0.5 : volSMA > 0 and nz(volume) * bullWickDom >= volSMA * effVolMult)
+bool bearFlowOk = not useVolFilter or (na(volume) ? bearWickDom >= 0.5 : volSMA > 0 and nz(volume) * bearWickDom >= volSMA * effVolMult)
+
+var int lastBullBar = na
+var int lastBearBar = na
+bool bullCool = cooldownBars == 0 or na(lastBullBar) or bar_index - lastBullBar >= cooldownBars
+bool bearCool = cooldownBars == 0 or na(lastBearBar) or bar_index - lastBearBar >= cooldownBars
+
+float prevHH = ta.highest(high, rbLookback)[1]
+float prevLL = ta.lowest(low, rbLookback)[1]
+bool smallBody = candleBody <= candleRange * rbBodyThresh
+bool rangeOk   = candleRange >= rangeSMA * effRangeExp
+bool inSession = not effUseSession or not na(time(timeframe.period, sessionStr, sessionTz))
+
+// O-W quality gate: skip setups taken while the book is already displaced far
+// from its steady state. Passes automatically when the model is unavailable —
+// an unmeasurable filter must never silently block every signal.
+bool devOk = not useDevGate or not owOk or math.abs(devD) <= devMax * sigmaPx
+
+bool isBullSweep = barstate.isconfirmed and volReady and inSession and devOk and
+     low < prevLL and close > prevLL and smallBody and rangeOk and
+     bullWickDom >= minWickFrac and bullClosePos >= minClosePos and
+     prevLL - low >= effSweepSigma * sigmaPx and bullFlowOk and bullCool
+bool isBearSweep = barstate.isconfirmed and volReady and inSession and devOk and
+     high > prevHH and close < prevHH and smallBody and rangeOk and
+     bearWickDom >= minWickFrac and bearClosePos >= minClosePos and
+     high - prevHH >= effSweepSigma * sigmaPx and bearFlowOk and bearCool
+
+// ─────────────────────────────────────────────────────────────
+// SETUP TRACKING
+// ─────────────────────────────────────────────────────────────
+enum SetupState
+    pending
+    filled
+
+type Setup
+    box        zone
+    line       entryLn
+    line       stopLn
+    line       tpLn
+    float      entry
+    float      stop
+    float      tp
+    bool       isBull
+    int        created
+    int        filled
+    SetupState state
+    float      risk
+    bool       beArmed
+
+var array<Setup> book = array.new<Setup>()
+var int   cSignals = 0
+var int   cFilled  = 0
+var int   cWins    = 0
+var int   cLosses  = 0
+var int   cScratch = 0
+var int   cTimeout = 0
+var int   cExpired = 0
+var float netR     = 0.0
+
+f_spawn(bool isBull) =>
+    float entry = isBull ? low + (minBody - low) / 2.0 : high - (high - maxBody) / 2.0
+    float stop  = isBull ? low - sigmaPx * effStopSigma : high + sigmaPx * effStopSigma
+    float risk  = math.abs(entry - stop)
+    float tp    = isBull ? entry + risk * rrTarget : entry - risk * rrTarget
+    color col   = isBull ? bullBase : bearBase
+    // built in a branch, not a ternary: a drawing constructor inside a ternary
+    // is not reliably lazy in Pine and would create objects even when hidden
+    box  zb = na
+    line el = na
+    line sl = na
+    line tl = na
+    if showZones
+        zb := box.new(bar_index, isBull ? minBody : high, bar_index + 1, isBull ? low : maxBody,
+             bgcolor = color.new(col, 85), border_color = col)
+        el := line.new(bar_index, entry, bar_index + 1, entry, color = col, width = 2)
+        sl := line.new(bar_index, stop,  bar_index + 1, stop,  color = color.red,  style = line.style_dotted)
+        tl := line.new(bar_index, tp,    bar_index + 1, tp,    color = color.blue, width = 2)
+    array.push(book, Setup.new(zb, el, sl, tl, entry, stop, tp, isBull, bar_index, -1, SetupState.pending, risk, false))
+    alert("Liquidity Matrix: " + (isBull ? "LONG" : "SHORT") + " limit @ " + str.tostring(entry, format.mintick) +
+         " | stop " + str.tostring(stop, format.mintick) + " | target " + str.tostring(tp, format.mintick),
+         alert.freq_once_per_bar_close)
+
+if isBullSweep
+    f_spawn(true)
+    cSignals += 1
+    lastBullBar := bar_index
+if isBearSweep
+    f_spawn(false)
+    cSignals += 1
+    lastBearBar := bar_index
+
+while array.size(book) > maxTracked
+    Setup old = array.shift(book)
+    if old.state == SetupState.pending
+        cExpired += 1
+    else
+        float r = old.risk > 0 ? (old.isBull ? close - old.entry : old.entry - close) / old.risk : 0.0
+        netR += r
+        cTimeout += 1
+
+// ─────────────────────────────────────────────────────────────
+// EXECUTION STATE MACHINE
+// ─────────────────────────────────────────────────────────────
+// Pessimistic throughout: a limit fills only on a bar AFTER the signal bar; a
+// fill bar that also trades the stop books the loss now; the target is never
+// credited on the fill bar; if stop and target both print inside one bar the
+// stop wins; breakeven arms only from the next bar.
+if barstate.isconfirmed and array.size(book) > 0
+    for i = array.size(book) - 1 to 0 by 1
+        Setup s = array.get(book, i)
+        if bar_index <= s.created
+            continue
+        if showZones and not na(s.zone)
+            box.set_right(s.zone, bar_index)
+            line.set_x2(s.entryLn, bar_index)
+            line.set_x2(s.stopLn, bar_index)
+            line.set_x2(s.tpLn, bar_index)
+
+        int outcome = 0   // 1 win, -1 loss, 2 expired, 3 time stop, 4 breakeven scratch
+        if s.state == SetupState.pending
+            if s.isBull ? low <= s.entry : high >= s.entry
+                s.state  := SetupState.filled
+                s.filled := bar_index
+                cFilled  += 1
+                if showZones and not na(s.entryLn)
+                    line.set_color(s.entryLn, color.yellow)
+                    line.set_width(s.entryLn, 3)
+                if s.isBull ? low <= s.stop : high >= s.stop
+                    outcome := -1
+            else if bar_index - s.created >= validityBars
+                outcome := 2
+        else
+            bool stopHit = s.isBull ? low <= s.stop : high >= s.stop
+            bool tpHit   = s.isBull ? high >= s.tp  : low <= s.tp
+            outcome := stopHit ? (s.beArmed ? 4 : -1) : tpHit ? 1 : 0
+            if outcome == 0 and effBeTrigger > 0 and not s.beArmed
+                float beLvl = s.isBull ? s.entry + effBeTrigger * s.risk : s.entry - effBeTrigger * s.risk
+                if s.isBull ? high >= beLvl : low <= beLvl
+                    s.beArmed := true
+                    s.stop    := s.entry
+                    if showZones and not na(s.stopLn)
+                        line.set_y1(s.stopLn, s.entry)
+                        line.set_y2(s.stopLn, s.entry)
+                        line.set_color(s.stopLn, color.orange)
+            if outcome == 0 and maxHoldBars > 0 and s.filled >= 0 and bar_index - s.filled >= maxHoldBars
+                outcome := 3
+
+        if outcome != 0
+            if outcome == 2
+                cExpired += 1
+            else if outcome == 4
+                cScratch += 1
+                if showOutcomes
+                    label.new(bar_index, s.entry, text = "▬ BE", style = label.style_label_left,
+                         color = color.new(color.orange, 40), textcolor = color.white, size = size.tiny)
+            else if outcome == 3
+                float r = s.risk > 0 ? (s.isBull ? close - s.entry : s.entry - close) / s.risk : 0.0
+                netR += r
+                cTimeout += 1
+                if showOutcomes
+                    label.new(bar_index, close, text = "⏱ " + str.tostring(r, "#.##") + "R",
+                         style = label.style_label_left, color = color.new(color.gray, 30),
+                         textcolor = color.white, size = size.tiny)
+            else
+                bool win = outcome == 1
+                netR    += win ? rrTarget : -1.0
+                cWins   += win ? 1 : 0
+                cLosses += win ? 0 : 1
+                if showOutcomes
+                    label.new(bar_index, win ? s.tp : s.stop,
+                         text = win ? "✔ +" + str.tostring(rrTarget, "#.#") + "R" : "✘ −1R",
+                         style = label.style_label_left,
+                         color = color.new(win ? color.teal : color.maroon, 30),
+                         textcolor = color.white, size = size.tiny)
+                alert("Liquidity Matrix: " + (s.isBull ? "long" : "short") + (win ? " target hit" : " stopped out"),
+                     alert.freq_once_per_bar_close)
+            if showZones and not na(s.zone) and outcome != 1
+                box.set_bgcolor(s.zone, color.new(color.gray, 92))
+                box.set_border_color(s.zone, color.new(color.gray, 60))
+            array.remove(book, i)
+
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────────────────────
+f_row(table t, int r, string k, string v, color vc) =>
+    table.cell(t, 0, r, k, text_color = color.new(color.silver, 0), text_halign = text.align_left,  text_size = size.small)
+    table.cell(t, 1, r, v, text_color = vc,                         text_halign = text.align_right, text_size = size.small)
+
+if showStats and barstate.islast
+    var table dash = table.new(position.top_right, 2, 16,
+         bgcolor = color.new(#101418, 12), border_width = 1,
+         border_color = color.new(color.gray, 70), frame_width = 1,
+         frame_color = color.new(color.gray, 55))
+
+    int pend = 0
+    int live = 0
+    if array.size(book) > 0
+        for i = 0 to array.size(book) - 1
+            if array.get(book, i).state == SetupState.pending
+                pend += 1
+            else
+                live += 1
+
+    int   decisive = cWins + cLosses
+    int   closed   = decisive + cTimeout + cScratch
+    float wr       = decisive > 0 ? 100.0 * cWins / decisive : na
+    float fillRate = cSignals > 0 ? 100.0 * cFilled / cSignals : na
+    float expR     = closed > 0 ? netR / closed : na
+    float beWR     = 100.0 / (1.0 + rrTarget)
+
+    table.cell(dash, 0, 0, "LIQUIDITY MATRIX", text_color = color.white, text_size = size.small)
+    table.merge_cells(dash, 0, 0, 1, 0)
+
+    // Verdict first: this is the single most important line in the table.
+    string verdict = p1H and is1h ? "✓ 1H — validated config" :
+         p1H and not is1h ? "⚠ 1H preset on a " + timeframe.period + " chart" :
+         p15 and (is15m or is5m) ? "✗ signals NOT validated here (PF 0.93)" :
+         p15 ? "✗ 15m preset off its timeframe" : "⚠ Custom — unvalidated"
+    color vcol = str.startswith(verdict, "✓") ? color.new(color.teal, 0) :
+         str.startswith(verdict, "✗") ? color.new(color.red, 0) : color.orange
+    f_row(dash, 1, "Status", verdict, vcol)
+    if not (isMNQ or isNQ)
+        f_row(dash, 2, "Symbol", "⚠ tuned on NQ/MNQ", color.orange)
+    else
+        f_row(dash, 2, "Symbol", isMNQ ? "MNQ ✓" : "NQ ✓", color.new(color.teal, 0))
+
+    f_row(dash, 3,  "Signals",       str.tostring(cSignals), color.white)
+    f_row(dash, 4,  "Filled",        str.tostring(cFilled) + (na(fillRate) ? "" : "  (" + str.tostring(fillRate, "#.#") + "%)"), color.white)
+    f_row(dash, 5,  "Wins",          str.tostring(cWins),    color.new(color.teal, 0))
+    f_row(dash, 6,  "Losses",        str.tostring(cLosses),  color.new(color.red, 0))
+    f_row(dash, 7,  "Breakeven",     str.tostring(cScratch), color.orange)
+    f_row(dash, 8,  "Expired",       str.tostring(cExpired), color.gray)
+    f_row(dash, 9,  "Open now",      str.tostring(pend) + " pend / " + str.tostring(live) + " live", color.aqua)
+    f_row(dash, 10, "Win rate (BE " + str.tostring(beWR, "#.#") + "%)",
+         na(wr) ? "—" : str.tostring(wr, "#.#") + "%",
+         na(wr) ? color.white : wr > beWR ? color.new(color.teal, 0) : color.new(color.red, 0))
+    f_row(dash, 11, "Net R", (netR >= 0 ? "+" : "") + str.tostring(netR, "#.##") + "R",
+         netR >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+    f_row(dash, 12, "Expectancy", na(expR) ? "—" : str.tostring(expR, "#.##") + "R",
+         na(expR) ? color.white : expR >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+
+    table.cell(dash, 0, 13, "BOOK (Obizhaeva–Wang)", text_color = color.aqua, text_size = size.small)
+    table.merge_cells(dash, 0, 13, 1, 13)
+    if owOk
+        float hl = math.log(2) / rhoEff
+        f_row(dash, 14, "Impact half-life", str.tostring(hl, "#.##") + " bars (" +
+             str.tostring(hl * tfSec / 60.0, "#.#") + " min)", color.white)
+        f_row(dash, 15, "Deviation D", (devD >= 0 ? "+" : "") + str.tostring(devD, format.mintick) +
+             "  (" + str.tostring(sigmaPx > 0 ? math.abs(devD) / sigmaPx : na, "#.##") + "σ)",
+             sigmaPx > 0 and math.abs(devD) <= devMax * sigmaPx ? color.new(color.teal, 0) : color.orange)
+    else
+        f_row(dash, 14, "Model", owSource == "Off" ? "disabled" : "not identifiable at " + timeframe.period, color.gray)
+        f_row(dash, 15, "Deviation gate", "inactive — cannot measure", color.gray)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(isBullSweep, "Long sweep signal",  "Liquidity Matrix: bullish sweep — long limit posted")
+alertcondition(isBearSweep, "Short sweep signal", "Liquidity Matrix: bearish sweep — short limit posted")

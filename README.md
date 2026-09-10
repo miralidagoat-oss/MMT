@@ -515,3 +515,109 @@ python3 backtest/overnight_study.py data futures d15 # NQ/MNQ/ES/RTY confirmatio
 
 `data` holds daily ETF CSVs (QQQ/SPY/DIA/IWM), `d15` holds intraday futures
 CSVs; both come from `backtest/fetch_yahoo.py` style requests.
+
+---
+
+# Liquidity Matrix — both engines in one indicator
+
+`indicators/liquidity_matrix.pine`
+
+One indicator, buy and sell signals, built on the Obizhaeva–Wang paper. It
+merges the two engines in this repo:
+
+1. **Signal** — liquidity-sweep rejection. Price runs a prior extreme, is
+   rejected by a dominant wick and closes back inside. Limit entry at the
+   rejection-wick midpoint, EWMA-σ stop beyond the sweep, fixed RR target,
+   stop to breakeven at +1R, RTH session gate, per-side cooldown.
+2. **Liquidity** — the O-W book model. Estimates instantaneous impact `1/q`,
+   permanent `λ`, transient `κ` and resilience `ρ` from the tape, tracks the
+   transient deviation `D_t = κ·EWMA_ρ(signed flow)`, draws the steady-state
+   line `V_t = P_t − D_t`, and gates setups on the book's state.
+
+## The finding you need before you trade it: the engines don't overlap
+
+They live at different timescales, and this is not a tuning problem.
+
+| | signal engine | O-W liquidity model |
+|---|---|---|
+| **1H** | **works** — MNQ walk-forward PF 1.33 IS / **1.54 OOS** / 1.09 NQ cross-val | **not identifiable** — ρ pins to the grid floor, λ goes negative |
+| **15m / 5m** | **loses** — pooled PF 0.93, −0.04R over 1,042 setups | **identifiable** — half-life 2.5 bars (37 min), transient share 22% |
+
+At 1H the book fully refills inside a single bar, so there is no transient
+state left to measure — the decay fit degenerates. At 15m the model measures
+cleanly but the signal it would filter doesn't make money in the first place.
+
+So the indicator ships with **the 1H signal config as the default**, and at 1H
+it reports the liquidity model as "not identifiable" rather than printing a
+number it cannot support. The 15m preset exists because the liquidity
+measurements are real and useful for reading the book — not because the
+signals are profitable there. The dashboard's top line is the verdict, in red
+when you are outside the validated configuration.
+
+## What the O-W state actually contributes
+
+Six book-state variables were tested against trade outcome on 1,042 pooled
+setups (MNQ/NQ/ES/YM/RTY at 15m and 5m). Five are noise. One has a monotone
+gradient — `|D|/σ`, the *size* of the deviation regardless of direction:
+
+| `|D|/σ` quartile | Q1 (smallest) | Q2 | Q3 | Q4 (largest) |
+|---|---|---|---|---|
+| mean outcome | **+0.09R** | −0.04R | −0.07R | **−0.15R** |
+| profit factor | **1.16** | 0.93 | 0.89 | **0.74** |
+
+Correlation t = −1.6, and it is one of six features tested, so it does not
+clear a multiple-testing bar. It reads sensibly — fading a sweep works when
+the book is near its steady state and fails when a large impact process is
+already running — which is why it ships as an optional gate. But be clear on
+the size of it: as a filter it improves 7 of 9 test series and moves the pooled
+result from **PF 0.93 to PF 0.96**. It makes a losing system less losing. It
+does not make it profitable.
+
+The other five features — signed deviation, signal-bar flow, prior-bar flow,
+sweep depth in σ, and depth consumed — all came in at |t| < 1 with
+non-monotone quartiles.
+
+## Per-series detail, 15m and 5m
+
+| series | setups | PF | expR | gated PF |
+|---|---|---|---|---|
+| MNQ 15m | 63 | 0.84 | −0.09R | 0.86 |
+| NQ 15m | 65 | 0.87 | −0.07R | 0.91 |
+| ES 15m | 72 | 0.47 | −0.37R | 0.48 |
+| YM 15m | 66 | 0.55 | −0.30R | 0.55 |
+| RTY 15m | 66 | 1.13 | +0.08R | 1.12 |
+| MNQ 5m | 180 | 1.08 | +0.05R | 1.10 |
+| NQ 5m | 180 | 1.04 | +0.02R | 1.08 |
+| ES 5m | 172 | 1.28 | +0.15R | 1.30 |
+| RTY 5m | 178 | 0.73 | −0.17R | 0.75 |
+| **pooled** | **1,042** | **0.93** | **−0.04R** | **0.96** |
+
+Costs are 2 ticks all-in per round trip. Fills are pessimistic: a limit fills
+only on a bar after the signal bar, a fill bar that also trades the stop books
+the loss immediately, the target is never credited on the fill bar, and if stop
+and target both print inside one bar the stop wins.
+
+## The validated 1H configuration
+
+Re-verified on current data (`backtest/study_mnq.py`), RTH session gate plus
+breakeven at +1R, RR 4:
+
+| panel | n | W/L/BE | WR | PF | net R |
+|---|---|---|---|---|---|
+| MNQ 1h in-sample (first 60%) | 49 | 9/21/21 | 25.0% | **1.33** | +7R |
+| MNQ 1h out-of-sample (last 40%) | 28 | 5/13/10 | 27.8% | **1.54** | +7R |
+| NQ 1h full (cross-validation) | 78 | 9/33/36 | 21.4% | **1.09** | +3R |
+
+Positive on all three panels, but these are small samples (n = 28 out of
+sample) and weaker than the numbers recorded earlier in this README from a
+different data window — the NQ cross-validation in particular has drifted from
+1.26 to 1.09. Treat it as a modest edge, not a machine.
+
+Reproduce:
+
+```
+python3 backtest/liquidity_gate_study.py d15 features   # book state vs outcome
+python3 backtest/liquidity_gate_study.py d15 gate       # the |D| gate, per series
+python3 backtest/study_mnq.py d1h d1h                   # the 1H signal validation
+python3 backtest/ow_impact.py d15 decay                 # the book parameters
+```
