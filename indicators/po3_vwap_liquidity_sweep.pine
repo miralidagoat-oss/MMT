@@ -22,9 +22,23 @@ indicator("Arashi framework", "Arashi", overlay = true,
 // tables). Read this before trusting a single number on the dashboard:
 //
 //   * The edge is REAL BUT MODEST and specific to equity index futures on 1H.
-//     Pooled MNQ+NQ+ES+YM+RTY 1H, 1,997 trades, 4-tick round-trip costs:
-//     PF 1.22, win rate 29.8% against a 25.0% breakeven, +0.109R per trade.
-//     The 95% CI on that win rate is [27.4%, 32.3%] - above breakeven.
+//     Pooled MNQ+NQ+ES+YM+RTY 1H, 2,004 trades, 4-tick round-trip costs:
+//     PF 1.47, +220R, +0.110R per closed trade, and the 95% band on that
+//     expectancy is [+0.060, +0.159], which clears zero. Reproduced on an
+//     independent vendor (Nasdaq/S&P/Dow CFDs, 1,544 trades): PF 1.28,
+//     +0.070R. Positive on all five futures and all three CFDs.
+//   * READ PROFIT FACTOR AND WIN RATE WITH CARE HERE. The breakeven rule
+//     turns most trades into 0R scratches (67% at the shipped 0.25R trigger).
+//     A scratch is excluded from the win rate and contributes almost nothing
+//     to gross loss, so BOTH statistics inflate as the trigger tightens while
+//     the money made barely moves. Measured on the same 2,000 trades:
+//         BE off  : win rate 27.9%, PF 1.13, expectancy +0.094R
+//         BE 0.25R: win rate 35.0%, PF 1.47, expectancy +0.110R
+//         BE 0.15R: win rate 39.5%, PF 1.72, expectancy +0.122R
+//     Expectancy across that whole range spans about one standard error, so
+//     it is flat. What the tight trigger really buys is VARIANCE: average
+//     drawdown falls from 29R (no breakeven) to 12R, and R-volatility by a
+//     third. Judge a change by expectancy per closed trade, never by PF.
 //   * A PLACEBO TEST passes: the same entries re-planted at random bars with
 //     identical direction, risk and exit rules score PF 0.90-1.06. The signal
 //     does the work, not the stop/target scheme.
@@ -150,7 +164,13 @@ float inStopBuf   = input.float(0.50, "Stop buffer beyond sweep extreme (× ATR)
      tooltip = "Flat from 0.35 to 0.75 on held-out markets. Tighter stops at " +
      "the extreme itself tested strictly worse - the extreme does not hold.")
 float inRR        = input.float(3.0,  "Risk : reward target", minval = 0.5, maxval = 10.0, step = 0.5, group = G_TR)
-float inBeAt      = input.float(1.0,  "Move stop to breakeven at (R, 0 = off)", minval = 0.0, step = 0.25, group = G_TR)
+float inBeAt      = input.float(0.25, "Move stop to breakeven at (R, 0 = off)", minval = 0.0, step = 0.05, group = G_TR,
+     tooltip = "Expectancy is FLAT from 0 to 1.5R (all within ~1 standard " +
+     "error), so this does not change how much the system earns. What it " +
+     "changes is variance: at 0.25R average drawdown falls from 18R to 12R " +
+     "and R-volatility by 27%. It also inflates the win rate and profit " +
+     "factor, because a scratch books ~0R and so leaves both the win-rate " +
+     "denominator and the gross loss smaller. Judge by expectancy, not by PF.")
 int   inValidity  = input.int(12,     "Limit order expiry (bars)", minval = 1, group = G_TR)
 int   inMaxHold   = input.int(0,      "Time stop after fill (bars, 0 = off)", minval = 0, group = G_TR)
 int   inMaxOpen   = input.int(20,     "Max concurrently tracked setups", minval = 1, maxval = 60, group = G_TR,
@@ -204,7 +224,7 @@ float devEntry    = usePreset ? 2.0   : inDevEntry
 string entryMode  = usePreset ? "Market on reclaim close" : inEntryMode
 float stopBufAtr  = usePreset ? 0.50  : inStopBuf
 float rrTarget    = usePreset ? 3.0   : inRR
-float beAtR       = usePreset ? 1.0   : inBeAt
+float beAtR       = usePreset ? 0.25  : inBeAt
 int   validity    = usePreset ? 12    : inValidity
 bool  eqOnly      = usePreset ? false : inEqOnly
 float volMult     = usePreset ? 0.0   : inVolMult
@@ -968,9 +988,14 @@ if showDash and barstate.islast
          (cntSignals > 0 ? "  (" + str.tostring(100.0 * cntFills / cntSignals, "#") + "%)" : ""), color.white)
     f_row(dash, 3, "Wins",            str.tostring(cntWins),    bullCol)
     f_row(dash, 4, "Losses",          str.tostring(cntLosses),  bearCol)
-    f_row(dash, 5, "Breakeven scratches", str.tostring(cntScratch), color.orange)
+    f_row(dash, 5, "Breakeven scratches", str.tostring(cntScratch) +
+         (closed > 0 ? "  (" + str.tostring(100.0 * cntScratch / closed, "#") + "%)" : ""),
+         color.orange)
     f_row(dash, 6, "Expired / evicted",   str.tostring(cntExpired) + " / " + str.tostring(cntTimeExit), color.gray)
-    f_row(dash, 7, "Win rate (need " + str.tostring(beRate, "#.#") + "%)",
+    // Win rate deliberately excludes scratches: a scratch is neither a win nor
+    // a loss. With a tight breakeven most trades scratch, so this number sits
+    // on a small subset - the expectancy row below is the one that compounds.
+    f_row(dash, 7, "Win rate of W+L only",
          na(winRate) ? "—" : str.tostring(winRate, "#.#") + "%",
          na(winRate) ? color.white : winRate > beRate ? bullCol : bearCol)
     f_row(dash, 8, "Profit factor", na(pf) ? "—" : str.tostring(pf, "#.##"),

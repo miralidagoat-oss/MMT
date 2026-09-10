@@ -29,7 +29,7 @@ CANDIDATE = E.Params(
     # every value below is corroborated on NQ/ES/YM/RTY, which took no part in
     # selecting it; see cross_scan.py output in the README
     min_sweep_atr=0.35,      # holdout pool argmax and 4/4 symbols positive
-    max_sweep_atr=99.0,      # no evidence for a cap - parameter dropped
+    max_sweep_atr=0.0,       # no evidence for a cap - 0 = off, as in the Pine
     reclaim_bars=2,          # pool peak; 0 (same-bar spike) clearly worse
     use_vwap=False,          # the VWAP stretch gate did NOT corroborate
     dev_entry=2.0,
@@ -40,7 +40,10 @@ CANDIDATE = E.Params(
     entry_mode="reclaim_close",   # limit-into-the-wick is worse on 4/4 markets
     stop_buf_atr=0.50,       # flat 0.35-0.75 on the holdout; take the middle
     tp_mode="rr",            # targeting VWAP destroyed the edge (0/4)
-    rr=3.0, be_at_r=1.0,
+    rr=3.0,
+    be_at_r=0.25,            # same expectancy as 1.0R, ~1/3 less drawdown and
+                             # 27% less R-volatility; better on the CFD holdout
+
     validity=12, session="all", cooldown=6,
 )
 

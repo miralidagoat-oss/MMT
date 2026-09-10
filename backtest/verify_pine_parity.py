@@ -239,7 +239,7 @@ def pine(bars, p):
             bull = d == 1
             r["ext"] = min(r["ext"], l[i]) if bull else max(r["ext"], h[i])
             depth = (r["lvl"] - r["ext"]) if bull else (r["ext"] - r["lvl"])
-            if p.max_sweep_atr and 0 < p.max_sweep_atr < 90 and depth > p.max_sweep_atr * a:
+            if p.max_sweep_atr > 0 and depth > p.max_sweep_atr * a:
                 raid[d] = None
                 continue
             if i - r["bar"] > p.reclaim_bars:
@@ -297,6 +297,8 @@ CONFIGS = {
     "preset (as shipped)": {},
     "vol_mult=1.3": {"vol_mult": 1.3},
     "max_risk_atr=2.0": {"max_risk_atr": 2.0},
+    "max_sweep_atr=1.5 (cap on)": {"max_sweep_atr": 1.5},
+    "max_sweep_atr=0 (cap off)": {"max_sweep_atr": 0.0},
     "min_target_pts=80": {"min_target_pts": 80.0},
     "all three gates": {"vol_mult": 1.2, "max_risk_atr": 2.5, "min_target_pts": 60.0},
     "wick_mid + vwap stretch": {"entry_mode": "wick_mid", "use_vwap": True,
@@ -331,7 +333,7 @@ def check_preset(pine_path):
         "reclaimBars": ("2", CANDIDATE.reclaim_bars, 2),
         "stopBufAtr": ("0.50", CANDIDATE.stop_buf_atr, 0.50),
         "rrTarget": ("3.0", CANDIDATE.rr, 3.0),
-        "beAtR": ("1.0", CANDIDATE.be_at_r, 1.0),
+        "beAtR": ("0.25", CANDIDATE.be_at_r, 0.25),
         "validity": ("12", CANDIDATE.validity, 12),
         "cooldown": ("6", CANDIDATE.cooldown, 6),
     }

@@ -6,7 +6,7 @@ next to its positive ones.
 
 | indicator | idea | verdict |
 |---|---|---|
-| [`indicators/po3_vwap_liquidity_sweep.pine`](indicators/po3_vwap_liquidity_sweep.pine) | PO3 (accumulation → manipulation → distribution) + session VWAP + liquidity-pool sweeps | small but real edge, **1H only**: PF 1.22 on 1,997 CME futures trades, independently reproduced at PF 1.13 on 1,184 trades of index-CFD data from a different vendor. 5m, 15m, 30m tested and negative. |
+| [`indicators/po3_vwap_liquidity_sweep.pine`](indicators/po3_vwap_liquidity_sweep.pine) | PO3 (accumulation → manipulation → distribution) + session VWAP + liquidity-pool sweeps | small but real edge, **1H only**: +0.110R per trade over 2,004 CME futures trades (PF 1.47), independently reproduced at +0.070R over 1,544 trades of index-CFD data from a different vendor. 5m, 15m, 30m tested and negative. |
 | [`indicators/alpha_predictive_limit_matrix.pine`](indicators/alpha_predictive_limit_matrix.pine) | liquidity-sweep rejection blocks with limit entries | earlier work; MNQ 1H only, PF 1.35 |
 
 ---
@@ -41,30 +41,59 @@ trade**:
 
 | | value |
 |---|---|
-| closed trades | 1,997 |
-| wins / losses / breakeven scratches | 404 / 952 / 641 |
-| win rate | **29.8%**, 95% CI **[27.4%, 32.3%]** |
+| closed trades | 2,004 |
+| wins / losses / breakeven scratches | 230 / 427 / 1,347 |
+| **expectancy per closed trade** | **+0.110R**, 95% band **[+0.060, +0.159]** |
+| net | +220R |
+| win rate of the decisive (W+L) trades | 35.0%, CI [31.5%, 38.7%] |
 | breakeven win rate at 1:3 | 25.0% |
-| profit factor | **1.22** |
-| net / expectancy | +217R, **+0.109R per trade** |
-| max drawdown | 35R |
+| profit factor | 1.47 |
+| average max drawdown per market | 12R |
 | raid extreme *was* the 20-bar extreme | 45% of signals |
 
-The confidence interval's lower bound sits above the breakeven rate, so the
-win-rate edge is significant at 95% on this sample. It is still a *small* edge:
-a tenth of an R per trade.
+The expectancy band clears zero, which is the claim that matters. It is still a
+*small* edge: about a tenth of an R per trade.
+
+### How to read the profit factor and win rate — they can lie here
+
+The breakeven rule turns most trades into 0R scratches. A scratch is excluded
+from the win rate and contributes almost nothing to gross loss, so **both
+headline statistics inflate as the breakeven trigger tightens, while the money
+made barely moves.** Measured on the same ~2,000 trades, changing nothing but
+the trigger:
+
+| breakeven at | scratches | win rate (W+L only) | profit factor | **expectancy** | avg max DD |
+|---|---|---|---|---|---|
+| off | 0% | 27.9% | 1.13 | +0.094R | 29R |
+| 0.15R | 75% | 39.5% | **1.72** | +0.122R | 9R |
+| 0.25R (shipped) | 67% | 35.0% | 1.47 | +0.110R | 12R |
+| 0.5R | 51% | 31.1% | 1.28 | +0.099R | 14R |
+| 1.0R | 32% | 29.8% | 1.22 | +0.109R | 18R |
+| 1.5R | 19% | 29.3% | 1.20 | +0.118R | 20R |
+
+Profit factor moves 1.13 → 1.72 and the win rate 27.9% → 39.5%, while
+expectancy spans +0.094R to +0.122R — a range of about **one standard error**,
+i.e. flat. A tight breakeven does not earn more money. What it genuinely buys
+is **variance**: average drawdown falls from 29R to 12R and R-volatility by a
+third, which roughly doubles return per unit of risk. That is a real and
+worthwhile improvement — it is just not the improvement the headline numbers
+appear to show. **Judge any change by expectancy per closed trade.**
+
+The 0.25R trigger ships because of that variance benefit; it was found by a
+user running their own configuration, and the original parameter sweep had
+tested {0, 0.5, 1.0, 1.5} and skipped 0.25 entirely.
 
 ### Per market and walk-forward, 1H, cost 4 ticks
 
 | panel | trades | WR% | CI | PF | net R |
 |---|---|---|---|---|---|
-| MNQ in-sample (first 60%) | 243 | 26.6 | [20.5, 33.8] | 1.07 | +9R |
-| **MNQ out-of-sample (last 40%)** | 174 | 35.1 | [26.9, 44.4] | **1.60** | +44R |
-| MNQ full | 417 | 30.0 | [24.9, 35.6] | 1.26 | +53R |
-| NQ full | 416 | 30.7 | [25.7, 36.3] | 1.31 | +61R |
-| ES full | 359 | 27.8 | [22.6, 33.7] | 1.07 | +13R |
-| YM full | 407 | 31.7 | [26.5, 37.3] | 1.33 | +64R |
-| RTY full | 398 | 28.5 | [23.4, 34.2] | 1.13 | +26R |
+| MNQ in-sample (first 60%) | 243 | 30.0 | — | 1.24 | +16R |
+| **MNQ out-of-sample (last 40%)** | 175 | 41.0 | — | **2.03** | +38R |
+| MNQ full | 418 | 34.4 | [27.3, 42.3] | 1.52 | +54R |
+| NQ full | 417 | 37.2 | [29.8, 45.2] | 1.71 | +68R |
+| ES full | 360 | 36.0 | [27.7, 45.3] | 1.39 | +34R |
+| YM full | 407 | 34.6 | [26.9, 43.3] | 1.43 | +39R |
+| RTY full | 402 | 32.5 | [24.8, 41.3] | 1.28 | +25R |
 
 Out-of-sample beat in-sample. That is the opposite of what overfitting looks
 like, but it also means the in-sample 1.07 and the out-of-sample 1.60 bracket a

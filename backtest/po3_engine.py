@@ -302,7 +302,7 @@ def build_context(bars, anchor="day"):
 class Params:
     # --- sweep geometry (ATR-normalised, so it travels across TFs/symbols) ---
     min_sweep_atr: float = 0.05   # min depth beyond the level to count as a raid
-    max_sweep_atr: float = 1.50   # deeper than this is a breakout, not a sweep
+    max_sweep_atr: float = 0.0    # deeper than this is a breakout (0 = no cap)
     reclaim_bars: int = 2         # bars allowed between the raid and the reclaim
     # --- pool selection ---
     pools: tuple = ("pdh", "pdl", "pwh", "pwl", "asiah", "asial",
@@ -630,8 +630,11 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             bull = r.side == -1
             r.extreme = min(r.extreme, l[i]) if bull else max(r.extreme, h[i])
             depth = (r.level - r.extreme) if bull else (r.extreme - r.level)
-            if depth > p.max_sweep_atr * a:          # ran too far: breakout
-                continue
+            # 0 means "no cap", exactly as the indicator's input reads. Before
+            # this guard, a literal 0 here silently rejected every signal
+            # instead of disabling the filter.
+            if p.max_sweep_atr > 0 and depth > p.max_sweep_atr * a:
+                continue                                # ran too far: breakout
             if i - r.bar > p.reclaim_bars:           # never reclaimed in time
                 continue
             reclaimed = c[i] > r.level if bull else c[i] < r.level
