@@ -385,3 +385,133 @@ python3 backtest/ow_impact.py data rolling        # live-estimator stability
 python3 backtest/ow_execution.py verify           # solver vs the paper
 python3 backtest/ow_execution.py plan 500 8 MNQ_15m 0
 ```
+
+---
+
+# Overnight Drift Matrix — the 15m directional edge that survives testing
+
+`indicators/overnight_drift_matrix.pine`
+
+**The rule:** go long at the 16:00 ET cash close, exit at the 09:30 ET open,
+and only take it when price is above its 200-day average. One filter, one
+parameter.
+
+## Why this and not an intraday signal
+
+The honest answer to "make a directional 15m indicator" is that the
+directional edge in index futures is **not intraday**. Over 27–33 years of the
+index ETFs, essentially the entire index return has accrued between the close
+and the next open. The 09:30–16:00 session is a coin flip that loses to fees.
+
+Everything below was tested and **rejected** — all negative on all four of
+QQQ/SPY/DIA/IWM after 1bp round-trip costs:
+
+| tested intraday | QQQ | SPY | DIA | IWM |
+|---|---|---|---|---|
+| gap continuation | −2.61bp | −1.75bp | −1.90bp | −1.97bp |
+| gap fade | +0.61bp | −0.25bp | −0.10bp | −0.03bp |
+| short RTH below 200d SMA | −2.67bp | −4.67bp | −6.56bp | −2.95bp |
+| long RTH above 200d SMA | −1.75bp | −1.32bp | −1.74bp | −3.35bp |
+
+Opening-range breakout was tested separately on 59 days of 15m NQ/ES/YM/RTY at
+15/30/60-minute ranges: **negative on every instrument at every range**, −3.5
+to −17.2bp per trade, win rates 23–46%. And 15m bar autocorrelation *flips
+sign* between sample halves (IS −0.017 to −0.070, OOS +0.054 to +0.087, all
+four instruments), so bar-scale momentum and mean reversion are both out —
+whichever you fit on one half reverses on the other.
+
+## Why the long-history work uses ETFs
+
+Yahoo caps 15m history at 60 days, which cannot validate a once-a-day
+strategy — you get ~20 out-of-sample trades. But this rule only needs the RTH
+open and close, and index ETFs give those *exactly*: their daily open is the
+09:30 print and their close is the 16:00 print. Futures daily bars cannot be
+used this way because the futures "open" is the prior evening's Globex open.
+So the statistics come from QQQ (the NQ/MNQ underlying), SPY, DIA and IWM, and
+are then confirmed on real futures.
+
+## Results, net of 1bp round trip
+
+1bp ≈ 2.4 ticks on MNQ at NQ=24,000 — deliberately conservative for a contract
+that is usually one tick wide.
+
+| | n | mean/trade | t | Sharpe | cum | maxDD | WR |
+|---|---|---|---|---|---|---|---|
+| **QQQ 1999–2026** | 4,916 | **+4.66bp** | 4.8 | **0.92** | +229% | 27.2% | 56.0% |
+| in-sample <2015 | 2,512 | +4.33bp | 3.3 | 0.83 | +109% | 27.2% | 55.2% |
+| **out-of-sample ≥2015** | 2,404 | +5.01bp | 3.5 | **1.04** | +120% | 21.1% | 56.9% |
+| 2023–2026 (post-publication) | 846 | +6.76bp | 2.8 | **1.44** | +57% | 9.7% | 56.7% |
+| SPY 1993–2026 | 6,188 | +3.11bp | 5.1 | 0.89 | +192% | 17.0% | 55.4% |
+| IWM 2000–2026 | 4,316 | +4.31bp | 4.5 | 0.88 | +186% | 21.8% | 55.3% |
+| DIA 1998–2026 | 5,118 | +1.65bp | 2.6 | 0.48 | +84% | 25.1% | 53.1% |
+| *QQQ buy & hold 24h (reference)* | 6,916 | +4.28bp | 2.1 | *0.40* | +296% | *147.1%* | 54.3% |
+
+The comparison that matters is the last row: the rule captures most of
+buy-and-hold's return on **a fifth of the drawdown**, more than doubling
+Sharpe. It is still working post-publication — 2023–2026 is the best era in
+the sample.
+
+Confirmed on real futures (2 years of 1h bars, the same 09:30/16:00
+boundaries): overnight Sharpe **1.11 NQ, 1.10 MNQ, 1.07 ES, 0.94 RTY**.
+
+## What the trend filter is for
+
+Drawdown, not return. On QQQ it lifts Sharpe 0.76 → 0.92 and cuts the worst
+drawdown 41% → 27%; it improves out-of-sample Sharpe on all four instruments
+(worst case 0.37 → 0.59). In a window with no bear market it does nothing,
+which is exactly what it is for — on the 2-year futures sample it slightly
+*reduces* return, because there was no bear market to sit out.
+
+## Filters that did not survive
+
+The bar was: a filter is kept only if it improves out-of-sample Sharpe on
+**every** instrument. Worst-instrument OOS Sharpe:
+
+| | QQQ | SPY | DIA | IWM | worst |
+|---|---|---|---|---|---|
+| always long | +0.71 | +0.48 | +0.37 | +0.85 | +0.37 |
+| **+ trend filter** | +1.04 | +0.80 | +0.59 | +0.99 | **+0.59** |
+| + skip Friday entry | +1.16 | +0.75 | +0.50 | +0.85 | +0.50 ✗ |
+| + skip Thursday entry | +1.10 | +0.87 | +0.69 | +0.89 | +0.69 ✗ |
+| + skip Monday entry | +0.95 | +0.78 | +0.54 | +1.17 | +0.54 ✗ |
+| + prior intraday < 0 | +0.70 | +0.17 | +0.06 | +0.79 | +0.06 ✗ |
+
+Skipping the Friday entry is the intuitive one — it avoids the weekend hold —
+and it is *worse* on three of four. Skipping Thursday has the best worst-case
+but fails on IWM, and it is one of a five-way carve, so it is not used.
+
+**A trap worth naming:** a position entered Friday exits *Monday*. An earlier
+version of this study keyed the weekday off the exit day, which silently
+tested Thursday entries and produced a confident, wrong conclusion that
+"skip Friday" improved all four instruments. The corrected test reverses it.
+If you filter by weekday, be explicit about which end of the trade you mean.
+
+## Caveats
+
+- **This is a session strategy, not an intraday signal.** It takes one trade
+  per day and holds through the Globex session. A 15m chart is the right venue
+  because it resolves the 16:00 and 09:30 prints exactly — not because there
+  is a 15m pattern.
+- Overnight means overnight risk. Gaps are the whole point of the trade, and
+  they cut both ways; the rule has no stop. The drawdowns above are real.
+- The mechanism (overnight risk premium / flow imbalance) is documented in the
+  academic literature, so this is a replication, not a discovery — which is
+  the reason to trust it rather than a reason to discount it.
+- QQQ and NQ/MNQ share an underlying but are not identical instruments:
+  futures carry financing in the basis, and the futures overnight session
+  trades continuously rather than gapping. The 2-year futures check is
+  reassuring but short.
+- Costs are modelled as a flat 1bp of notional. If you trade size that moves
+  the 16:00 or 09:30 print, use the OW Execution Matrix above to price it.
+
+Reproduce:
+
+```
+python3 backtest/overnight_study.py data rule        # headline + eras
+python3 backtest/overnight_study.py data filters     # what survives, and what doesn't
+python3 backtest/overnight_study.py data intraday    # the negative intraday results
+python3 backtest/overnight_study.py data futures d15 # NQ/MNQ/ES/RTY confirmation
+```
+
+`data` holds daily ETF CSVs (QQQ/SPY/DIA/IWM), `d15` holds intraday futures
+CSVs; both come from `backtest/fetch_yahoo.py` style requests.

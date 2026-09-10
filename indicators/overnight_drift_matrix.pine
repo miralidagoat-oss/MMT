@@ -1,0 +1,219 @@
+//@version=6
+indicator("Quant Engine: Overnight Drift Matrix", "OVN DRIFT", overlay = true,
+     max_labels_count = 500, max_boxes_count = 500, max_lines_count = 100)
+
+// ============================================================================
+// The directional edge in index futures is the OVERNIGHT session.
+//
+// THE RULE.  Go long at the 16:00 ET cash close, exit at the 09:30 ET open,
+// and take it only when price is above its 200-day average. That is the whole
+// rule -- one filter, one parameter.
+//
+// WHY THIS AND NOT AN INTRADAY SIGNAL.  Over 27-33 years of the index ETFs
+// (QQQ is the NQ/MNQ underlying), essentially the entire index return has
+// accrued between the close and the next open. The 09:30-16:00 session is a
+// coin flip that loses to fees. Tested and rejected, all negative on all four
+// of QQQ/SPY/DIA/IWM after 1bp round-trip costs: opening-range breakout at
+// 15/30/60 minutes, gap continuation, gap fade, and directional RTH in either
+// trend regime. 15m bar autocorrelation flips sign between sample halves, so
+// bar-scale momentum and mean reversion are both out. See README.md and
+// backtest/overnight_study.py for the numbers.
+//
+// RESULTS, net of 1bp round trip (roughly 2.4 MNQ ticks at NQ=24,000):
+//   QQQ 1999-2026   n=4916  +4.66bp/trade  t=4.8  Sharpe 0.92  maxDD 27.2%
+//     out-of-sample 2015+   n=2404  +5.01bp  t=3.5  Sharpe 1.04  maxDD 21.1%
+//     2023-2026             n=846   +6.76bp  t=2.8  Sharpe 1.44  maxDD  9.7%
+//   SPY Sharpe 0.89  |  IWM 0.88  |  DIA 0.48   (all t >= 2.6, 27-33 years)
+//   for reference, buy & hold 24h on QQQ: Sharpe 0.40, maxDD 147%
+//   real futures, 2y of NQ/MNQ/ES/RTY 1h: overnight Sharpe 0.94 to 1.11
+//
+// The trend filter's job is drawdown, not return: on QQQ it cuts the worst
+// drawdown from 41% to 27% and lifts Sharpe from 0.76 to 0.92. In a window
+// with no bear market it does nothing, which is exactly what it is for.
+//
+// WEEKDAY FILTERS WERE TESTED AND REJECTED. Skipping the Friday entry (the
+// weekend hold) is intuitive and is WORSE on three of the four instruments.
+// No weekday exclusion improved all four, so none is used. The input below
+// is left off by default for anyone who avoids weekend risk for reasons
+// other than expectancy. Note that a Friday entry exits Monday -- keying a
+// weekday off the exit instead of the entry silently tests a different rule.
+//
+// WHY A 15m CHART.  The rule needs the 16:00 and 09:30 prints exactly, and a
+// 15m chart resolves both. It is not an intraday-signal indicator.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_RULE = "Rule"
+var string G_COST = "Costs & Sizing"
+var string G_UI   = "Display"
+
+sessStr    = input.session("0930-1600", "Cash Session",                       group = G_RULE)
+sessTz     = input.string("America/New_York", "Session Timezone",             group = G_RULE)
+useTrend   = input.bool(true,  "Trend Filter (price > 200d SMA)",             group = G_RULE,
+     tooltip = "The one filter that survived: it improves out-of-sample Sharpe on every one of " +
+               "QQQ/SPY/DIA/IWM (worst-case 0.37 -> 0.59). Its real job is drawdown control — " +
+               "on QQQ it cuts the worst drawdown from 41% to 27%.")
+smaLen     = input.int(200, "Trend SMA Length (daily bars)", minval = 20, maxval = 400, group = G_RULE)
+skipFriday = input.bool(false, "Skip Friday Entry (weekend hold)",            group = G_RULE,
+     tooltip = "TESTED AND REJECTED as an edge: skipping the weekend hold lowers out-of-sample " +
+               "Sharpe on SPY, DIA and IWM. Left here only for traders who decline weekend " +
+               "exposure as a risk policy rather than for expectancy.")
+
+costBp     = input.float(1.0, "Round-Trip Cost (bp of notional)", minval = 0.0, step = 0.25,
+     tooltip = "1.0bp is about 2.4 ticks on MNQ at NQ=24,000 — deliberately conservative for a " +
+               "contract that is usually one tick wide.", group = G_COST)
+contracts  = input.float(1, "Contracts (for $ display)", minval = 0, step = 1, group = G_COST)
+
+showTrades = input.bool(true,  "Mark Entries / Exits",  group = G_UI)
+showShade  = input.bool(true,  "Shade Held Sessions",   group = G_UI)
+showSMA    = input.bool(true,  "Plot Trend SMA",        group = G_UI)
+showDash   = input.bool(true,  "Show Dashboard",        group = G_UI)
+longCol    = input.color(#00E676, "Long Color",         group = G_UI)
+flatCol    = input.color(#FF9800, "Skipped Color",      group = G_UI)
+
+// ─────────────────────────────────────────────────────────────
+// SESSION GEOMETRY
+// ─────────────────────────────────────────────────────────────
+bool inRTH = not na(time(timeframe.period, sessStr, sessTz))
+// prevRTH is read before it is reassigned, so it always holds the PREVIOUS
+// bar's state; a var avoids the `na` that inRTH[1] returns on the first bar
+var bool prevRTH = false
+bool rthOpenBar  = inRTH and not prevRTH       // the 09:30 bar
+bool rthCloseBar = not inRTH and prevRTH       // first bar after 16:00
+prevRTH := inRTH
+
+// Daily trend reference. `[1]` takes the last COMPLETED daily bar, so this
+// never repaints; a one-day lag on a 200-day average is immaterial, and it
+// also avoids scoring a close against an average that contains it.
+float dSMA = request.security(syminfo.tickerid, "D", ta.sma(close, smaLen)[1],
+     lookahead = barmerge.lookahead_off)
+
+plot(showSMA ? dSMA : na, "Trend SMA", color = color.new(color.aqua, 30), linewidth = 2)
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+var bool  inPos      = false
+var float entryPx    = na
+var int   nTrades    = 0
+var int   nWins      = 0
+var int   nSessions  = 0
+var int   nSkipTrend = 0
+var int   nSkipFri   = 0
+var float sumBp      = 0.0
+var float sumBp2     = 0.0
+var float equityBp   = 0.0
+var float peakBp     = 0.0
+var float maxDDBp    = 0.0
+
+// ─────────────────────────────────────────────────────────────
+// TRADE ENGINE  (confirmed bars only — the rule is defined on bar prints)
+// ─────────────────────────────────────────────────────────────
+// entry price is the 16:00 print, which is the close of the final RTH bar and
+// therefore `close[1]` on the first bar after the session; the exit price is
+// the open of the 09:30 bar. Both are known when they are used.
+bool trendOk = not useTrend or (not na(dSMA) and close[1] > dSMA)
+bool friOk   = not skipFriday or dayofweek(time, sessTz) != dayofweek.friday
+bool takeIt  = trendOk and friOk
+
+// hold off until the trend reference exists, otherwise warm-up bars would be
+// tallied as trend skips
+bool engineReady = not useTrend or not na(dSMA)
+
+if barstate.isconfirmed and engineReady
+    if rthOpenBar
+        nSessions += 1
+        if inPos
+            float bp = 1e4 * (open / entryPx - 1.0) - costBp
+            nTrades  += 1
+            nWins    += bp > 0 ? 1 : 0
+            sumBp    += bp
+            sumBp2   += bp * bp
+            equityBp += bp
+            peakBp   := math.max(peakBp, equityBp)
+            maxDDBp  := math.max(maxDDBp, peakBp - equityBp)
+            inPos    := false
+            if showTrades
+                label.new(bar_index, open,
+                     text = "exit " + (bp >= 0 ? "+" : "") + str.tostring(bp, "#.#") + "bp",
+                     style = label.style_label_down, size = size.tiny,
+                     color = color.new(bp >= 0 ? longCol : color.red, 25),
+                     textcolor = color.white)
+            alert("Overnight Drift: exit long at " + str.tostring(open, format.mintick) +
+                 "  (" + (bp >= 0 ? "+" : "") + str.tostring(bp, "#.#") + "bp)",
+                 alert.freq_once_per_bar_close)
+
+    if rthCloseBar and not inPos
+        if takeIt
+            inPos    := true
+            entryPx  := close[1]
+            if showTrades
+                label.new(bar_index, close[1], text = "LONG overnight",
+                     style = label.style_label_up, size = size.tiny,
+                     color = color.new(longCol, 20), textcolor = color.white)
+            alert("Overnight Drift: go long at " + str.tostring(close[1], format.mintick) +
+                 " — exit at the cash open", alert.freq_once_per_bar_close)
+        else
+            nSkipTrend += trendOk ? 0 : 1
+            nSkipFri   += (trendOk and not friOk) ? 1 : 0
+            if showTrades
+                label.new(bar_index, close[1],
+                     text = not trendOk ? "skip: below SMA" : "skip: Friday",
+                     style = label.style_label_up, size = size.tiny,
+                     color = color.new(flatCol, 45), textcolor = color.white)
+
+bgcolor(showShade and inPos ? color.new(longCol, 92) : na, title = "Held Overnight")
+
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────────────────────
+f_row(table t, int r, string k, string v, color vc) =>
+    table.cell(t, 0, r, k, text_color = color.new(color.silver, 0), text_halign = text.align_left,  text_size = size.small)
+    table.cell(t, 1, r, v, text_color = vc,                         text_halign = text.align_right, text_size = size.small)
+
+if showDash and barstate.islast
+    var table dash = table.new(position.top_right, 2, 13,
+         bgcolor = color.new(#101418, 12), border_width = 1,
+         border_color = color.new(color.gray, 70), frame_width = 1,
+         frame_color = color.new(color.gray, 55))
+
+    float meanBp = nTrades > 0 ? sumBp / nTrades : na
+    float varBp  = nTrades > 1 ? (sumBp2 - nTrades * meanBp * meanBp) / (nTrades - 1) : na
+    float sdBp   = na(varBp) ? na : math.sqrt(math.max(varBp, 0.0))
+    // annualise with the strategy's own trade frequency over the sessions seen
+    float freq   = nSessions > 0 ? 252.0 * nTrades / nSessions : na
+    float sharpe = (na(sdBp) or sdBp <= 0 or na(freq)) ? na : (meanBp / sdBp) * math.sqrt(freq)
+    float ptv    = syminfo.pointvalue > 0 ? syminfo.pointvalue : 1.0
+    float usdPer = na(meanBp) ? na : meanBp * 1e-4 * close * ptv * contracts
+
+    table.cell(dash, 0, 0, "OVERNIGHT DRIFT — SELF-AUDIT", text_color = color.white, text_size = size.small)
+    table.merge_cells(dash, 0, 0, 1, 0)
+    f_row(dash, 1, "Position", inPos ? "LONG overnight" : "flat",
+         inPos ? color.new(longCol, 0) : color.silver)
+    f_row(dash, 2, "Trend", na(dSMA) ? "—" : close > dSMA ? "above SMA ✓" : "below SMA ✗",
+         na(dSMA) ? color.silver : close > dSMA ? color.new(color.teal, 0) : color.new(color.red, 0))
+    f_row(dash, 3, "Sessions seen", str.tostring(nSessions), color.white)
+    f_row(dash, 4, "Trades taken", str.tostring(nTrades), color.white)
+    f_row(dash, 5, "Skipped (trend)", str.tostring(nSkipTrend), color.silver)
+    f_row(dash, 6, "Skipped (Friday)", str.tostring(nSkipFri), color.silver)
+    f_row(dash, 7, "Win rate", nTrades > 0 ? str.tostring(100.0 * nWins / nTrades, "#.#") + "%" : "—",
+         nTrades > 0 and nWins * 2 > nTrades ? color.new(color.teal, 0) : color.white)
+    f_row(dash, 8, "Mean / trade", na(meanBp) ? "—" :
+         (meanBp >= 0 ? "+" : "") + str.tostring(meanBp, "#.##") + " bp",
+         na(meanBp) ? color.white : meanBp >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+    f_row(dash, 9, "Cumulative", (equityBp >= 0 ? "+" : "") + str.tostring(equityBp / 100.0, "#.#") + "%",
+         equityBp >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+    f_row(dash, 10, "Max drawdown", str.tostring(maxDDBp / 100.0, "#.#") + "%", color.orange)
+    f_row(dash, 11, "Sharpe (ann.)", na(sharpe) ? "—" : str.tostring(sharpe, "#.##"),
+         na(sharpe) ? color.white : sharpe >= 0.5 ? color.new(color.teal, 0) : color.orange)
+    f_row(dash, 12, "≈ $ / trade", na(usdPer) ? "—" :
+         (usdPer >= 0 ? "+$" : "-$") + str.tostring(math.abs(usdPer), "#,###.##"),
+         na(usdPer) ? color.white : usdPer >= 0 ? color.new(color.teal, 0) : color.new(color.red, 0))
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(rthCloseBar, "Overnight entry window", "Overnight Drift: cash close — entry window")
+alertcondition(rthOpenBar,  "Overnight exit window",  "Overnight Drift: cash open — exit window")
