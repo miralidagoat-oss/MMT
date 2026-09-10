@@ -231,3 +231,157 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+---
+
+# OW Execution Matrix — Obizhaeva & Wang (2005) on NQ/MNQ
+
+A second, independent indicator: `indicators/ow_execution_matrix.pine`.
+
+Where the Alpha Matrix asks *when to enter*, this one asks *how to get a large
+order filled cheaply*. It implements Obizhaeva & Wang, "Optimal Trading
+Strategy and Supply/Demand Dynamics" — the paper that replaces the static
+price-impact function with a limit order book that gets eaten by a trade and
+then **refills at a finite speed ρ**.
+
+The paper's central results, both implemented:
+
+- **Proposition 3 (risk-neutral).** The optimal way to buy `X0` over `[0,T]` is
+  a discrete clip of `X0/(ρT+2)` now, a constant continuous flow of
+  `ρX0/(ρT+2)`, and a second clip of `X0/(ρT+2)` at `T`. The first clip knocks
+  the book off its steady state so fresh orders are drawn in; the flow eats
+  them at the rate they arrive; the last clip cleans up because the state of
+  the book after `T` no longer matters.
+- **The shape depends only on ρ and T.** Not on the permanent-impact
+  coefficient λ, not on the depth `q` — those set only the *cost*. Most prior
+  work tuned λ and got the schedule from it; the paper shows that is the wrong
+  parameter to care about.
+- **Proposition 4 (risk-averse)** front-loads the schedule, and is exposed as a
+  dimensionless "urgency" `u = aσ²/(κρ)`.
+
+## The directional result is negative, and that matters
+
+The obvious trade idea from this paper is to fade the transient deviation
+`D_t` — price is temporarily displaced by order flow, so short it when it is
+high. **It does not work on NQ/MNQ, and the indicator does not pretend it
+does.**
+
+The naive test looks fantastic and is wrong. Regressing the bar return on
+signed flow and its own lagged EWMA gives the transient term `t = −7.8` on MNQ
+1h. That significance is almost entirely mechanical: `c_{t−1}` appears in both
+the regressor (through the close-location value) and the regressand (through
+the return), so bounce and close-position alone manufacture it.
+
+Testing it honestly — forward returns measured from `c_{t+1}`, so no price
+observation is shared with the state, and Newey-West errors because the
+windows overlap (`ow_impact.py horserace`):
+
+| MNQ 15m, horizon | flow state alone | past returns alone | both together |
+|---|---|---|---|
+| 4 bars | −5.85 (t −2.6) | −5.41 (t −2.2) | −3.99 (t −1.2) / −2.64 (t −0.7) |
+| 10 bars | −7.68 (t −1.7) | −6.54 (t −1.3) | −6.02 (t −1.0) / −2.36 (t −0.3) |
+| 20 bars | −5.93 (t −1.0) | −3.78 (t −0.5) | −6.40 (t −0.7) / +0.67 (t +0.1) |
+
+Two conclusions. The effect is marginal at best (`t = −2.6` at one horizon,
+before any penalty for having looked at four horizons on four series). And the
+order-flow machinery **adds nothing** over a plain EWMA of past returns — the
+two are near-collinear and neither survives when both are included. On 5m the
+return control is strictly the stronger of the two. So the steady-state line
+the script draws is a liquidity read, not an entry signal.
+
+## What *is* solid: the impact decay
+
+The same data identifies the cost model cleanly. The trick is that the signed
+flow `x_t` is built only from `(h_t, l_t, c_t, v_t)`, so regressing
+`c_{t+1+k} − c_{t−1}` on `x_t` shares **no** price observation with the
+regressor at any `k` — bounce cannot manufacture the level or the decay.
+Fitting `β_k = λ + κe^{−ρk}` (`ow_impact.py decay`):
+
+| series | 1/q (pts/ADV) | λ (permanent) | κ (transient) | ρ /bar | half-life | t(β₀) |
+|---|---|---|---|---|---|---|
+| **MNQ 15m** | 32.09 | 24.99 (77.9%) | 7.09 (22.1%) | 0.2832 | 2.45 bars ≈ 37 min | 20.4 |
+| **NQ 15m** | 29.02 | 23.07 (79.5%) | 5.96 (20.5%) | 0.3182 | 2.18 bars ≈ 33 min | 19.7 |
+| MNQ 5m | 11.66 | 10.19 (87.4%) | 1.47 (12.6%) | 0.1407 | 4.93 bars ≈ 25 min | 21.6 |
+| NQ 5m | 9.76 | 8.50 (87.1%) | 1.26 (12.9%) | 0.1492 | 4.65 bars ≈ 23 min | 19.4 |
+
+Two contracts, two timeframes, all agreeing: **impact half-life 23–37 minutes,
+transient share 13–22%**. Index futures are efficient — roughly 80% of impact
+is permanent (information), and only the remaining fifth is the refillable part
+the paper's schedule can save on.
+
+**Use 15m.** On 15m the β_k curve decays monotonically and the exponential fits.
+On 5m it *rises* through k≈3 before decaying (order-splitting continuation),
+the exponential fits poorly, and the live estimator returns a usable ρ only
+~40% of the time versus 96% on 15m. The 5m preset ships, with a warning.
+
+## Correctness of the solver
+
+The risk-averse path is a numerical solve, so it is checked against things that
+can't both be wrong (`ow_execution.py verify`):
+
+- The generic ODE solver, run at vanishing urgency, reproduces the closed-form
+  Propositions 2/3 across 48 configurations — **worst relative error 1.1e-9**.
+- It reproduces **the paper's Table 1 exactly**, every row. (The ρ=50 row reads
+  1,921 in the paper; 100,000/52 = 1,923. That one is a rounding slip in the
+  table, not in the code.)
+- An independent path simulator, which walks any schedule through the paper's
+  own state equations (A.11)–(A.13), agrees with both closed-form cost
+  expressions to ~1e-4. It is what prices risk-averse schedules, since the
+  Proposition-3 formula does not apply to them.
+- Grid-size sweep sets the Pine loop at N=400 (x0 converged to 1e-10, xT to
+  0.2% of the N=4000 answer).
+
+## What it shows
+
+Dashboard: measured ρ, impact half-life in bars and minutes, transient share,
+depth in contracts/point, the live deviation `D_t`, the three-part schedule in
+contracts, and the expected impact cost of the OW schedule vs TWAP vs a market
+order — in points per contract and in dollars. On the chart: the steady-state
+value line `V_t = P_t − D_t`, and the execution window with the three expected
+average fill prices.
+
+Worked example (MNQ 15m preset, 500 contracts over 8 bars = 2 hours):
+
+```
+$ python3 backtest/ow_execution.py plan 500 8 MNQ_15m 0
+  first clip   117 (23.4%)  |  continuous 33/bar (53.1%)  |  last clip 117 (23.4%)
+  Obizhaeva-Wang         $250    0.2499 pts/ct   1.00 ticks
+  TWAP                   $254    0.2539 pts/ct   1.02 ticks
+  market order now       $283    0.2831 pts/ct   1.13 ticks
+  saved vs TWAP  $4 (1.59%)   |   saved vs market order  $33 (11.74%)
+```
+
+**Be honest about the size of the prize.** Because ~80% of impact is permanent
+and unavoidable, optimal scheduling saves only **1–2% of total impact cost**
+against TWAP — it saves ~11% of the *avoidable* transient part, and ~12–15%
+against dumping at market. Costs scale with `X0²`, so the same percentages on a
+5,000-lot are $243 vs TWAP and $4,341 vs a market order. If someone quotes you
+a bigger edge from this paper on index futures, they have not measured λ.
+
+## Caveats
+
+- **The cost level is uncalibrated; the decay shape is not.** Signed flow is
+  proxied from bar shape (close-location value × volume), not from true
+  trade-side data, so ρ and the κ/λ *ratio* are well identified but the
+  absolute points-per-contract level inherits the proxy's scaling. The
+  `Depth Calibration` input exists for this: compare the cost line to your own
+  fills and set it so they agree.
+- Impact coefficients are in ADV-normalised units, so the presets adapt
+  automatically to today's volume — the same contract count is a smaller
+  fraction of an ADV on a busy day, and the cost falls accordingly.
+- The model prices *impact*, not spread, fees or the fundamental drift over
+  the horizon. It is an impact-cost estimate, not a full TCA.
+- Two years of Yahoo hourly/5m/15m data, one underlying. MNQ and NQ are the
+  same index, so their agreement is a consistency check, not independent
+  replication.
+
+Reproduce:
+
+```
+python3 backtest/fetch_yahoo.py data MNQ=F && python3 backtest/fetch_yahoo.py data NQ=F
+python3 backtest/ow_impact.py data decay          # parameter estimates
+python3 backtest/ow_impact.py data horserace      # the negative directional result
+python3 backtest/ow_impact.py data rolling        # live-estimator stability
+python3 backtest/ow_execution.py verify           # solver vs the paper
+python3 backtest/ow_execution.py plan 500 8 MNQ_15m 0
+```
