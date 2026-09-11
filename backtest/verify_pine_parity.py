@@ -301,6 +301,8 @@ CONFIGS = {
     "max_sweep_atr=0 (cap off)": {"max_sweep_atr": 0.0},
     "min_target_pts=80": {"min_target_pts": 80.0},
     "all three gates": {"vol_mult": 1.2, "max_risk_atr": 2.5, "min_target_pts": 60.0},
+    "half-risk stop at +0.5R": {"be_at_r": 0.5, "be_to_r": -0.5},
+    "half-risk stop at +1R": {"be_at_r": 1.0, "be_to_r": -0.5},
     "wick_mid + vwap stretch": {"entry_mode": "wick_mid", "use_vwap": True,
                                 "dev_entry": 1.5},
     "vwap reclaim + eq + rth": {"vwap_reclaim": True, "eq_only": True,
@@ -334,29 +336,45 @@ def check_preset(pine_path):
         "stopBufAtr": ("0.50", CANDIDATE.stop_buf_atr, 0.50),
         "rrTarget": ("3.0", CANDIDATE.rr, 3.0),
         "beAtR": ("0.25", CANDIDATE.be_at_r, 0.25),
+        "beToR": ("0.0", CANDIDATE.be_to_r, 0.0),
         "validity": ("12", CANDIDATE.validity, 12),
         "cooldown": ("6", CANDIDATE.cooldown, 6),
     }
     bad = []
-    for name, (literal, cand, expect) in want.items():
-        m = re.search(r"^\s*\w+\s+" + name + r"\s*=\s*usePreset \? ([^ ]+)",
+
+    def resolved(name):
+        """Pull the value a preset resolves `name` to. Handles both shapes:
+            X = usePreset ? V : inX
+            X = pFewer ? W : usePreset ? V : inX
+        and returns (V, W) so BOTH presets stay guarded. Returning None means
+        the line was not found at all - which is the failure mode this check
+        exists for, since a refactor can silently stop verifying a value."""
+        m = re.search(r"^\s*\w+\s+" + name +
+                      r"\s*=\s*(?:pFewer \? (\S+)\s*:\s*)?usePreset \? ([^:]+?)\s*:",
                       src, re.M)
         if not m:
+            return None
+        return m.group(2).strip(), (m.group(1).strip() if m.group(1) else None)
+
+    for name, (literal, cand, expect) in want.items():
+        got = resolved(name)
+        if got is None:
             bad.append(f"{name}: no preset line found in the Pine")
-        elif m.group(1) != literal:
-            bad.append(f"{name}: Pine ships {m.group(1)}, validated value is {literal}")
+        elif got[0] != literal:
+            bad.append(f"{name}: Pine ships {got[0]}, validated value is {literal}")
         if abs(float(cand) - expect) > 1e-9:
             bad.append(f"{name}: CANDIDATE holds {cand}, expected {expect}")
-    for name, literal in [("maxSweepAtr", "0.0"), ("po3Mode", '"Sweep beyond open"'),
-                          ("po3Period", '"Week"'), ("vwapGate", "false"),
-                          ("vwapReclaim", "false"), ("needCloseDir", "true"),
-                          ("entryMode", '"Market on reclaim close"'),
-                          ("sessMode", '"All hours"'), ("eqOnly", "false")]:
-        m = re.search(r"^\s*\w+\s+" + name + r"\s*=\s*usePreset \? ([^:]+?)\s*:", src, re.M)
-        if not m:
-            bad.append(f"{name}: no preset line found in the Pine")
-        elif m.group(1).strip() != literal:
-            bad.append(f"{name}: Pine ships {m.group(1).strip()}, expected {literal}")
+    # the second preset differs ONLY in how the stop is managed after entry
+    for name, want_fewer in [("beAtR", "0.5"), ("beToR", "-0.5")]:
+        got = resolved(name)
+        if got is None or got[1] != want_fewer:
+            bad.append(f"{name}: 'fewer scratches' preset ships "
+                       f"{got[1] if got else 'nothing'}, expected {want_fewer}")
+    for name in ("minSweepAtr", "reclaimBars", "rrTarget", "stopBufAtr", "cooldown"):
+        got = resolved(name)
+        if got and got[1] is not None:
+            bad.append(f"{name}: the two presets must share this, but "
+                       f"'fewer scratches' overrides it with {got[1]}")
     # the engine-side twins of the string options
     for got, exp, label in [(CANDIDATE.po3_mode, "below_open", "po3_mode"),
                             (CANDIDATE.po3_period, "week", "po3_period"),

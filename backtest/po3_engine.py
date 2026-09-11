@@ -328,7 +328,10 @@ class Params:
     stop_at: str = "extreme"      # extreme | level  (where the stop is anchored)
     max_open_bars: int = 0        # signal must come within N bars of the period open (0 = off)
     rr: float = 2.0
-    be_at_r: float = 0.0          # move stop to entry at this R (0 = off)
+    be_at_r: float = 0.0          # move stop toward entry at this R (0 = off)
+    be_to_r: float = 0.0          # WHERE to move it, in R from entry. 0 = exact
+                                  # breakeven; -0.5 = halfway, a reduced-risk
+                                  # stop that is hit far less often
     partial_at_r: float = 0.0     # bank part of the position at this R (0 = off)
     partial_frac: float = 0.5     # how much of it to bank there
     trail_start_r: float = 0.0    # start trailing once this R is reached (0 = off)
@@ -533,7 +536,12 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                           (t["entry"] - p.be_at_r * t["risk"])
                     if (h[i] >= lvl) if bull else (l[i] <= lvl):
                         t["be"] = True
-                        t["stop"] = t["entry"]
+                        # move the stop to be_to_r measured from entry: 0 is
+                        # exact breakeven, negative leaves part of the original
+                        # risk on so noise cannot scratch the trade out
+                        moved = (t["entry"] + p.be_to_r * t["risk"]) if bull else \
+                                (t["entry"] - p.be_to_r * t["risk"])
+                        t["stop"] = max(t["stop"], moved) if bull else min(t["stop"], moved)
                 continue
 
             t["state"] = "closed"
@@ -547,7 +555,7 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                 r = -1.0
             elif outcome == "scratch":
                 res.scratches += 1
-                r = 0.0
+                r = p.be_to_r
             else:
                 r = (c[i] - t["entry"]) / t["risk"] if bull else (t["entry"] - c[i]) / t["risk"]
             if outcome == "win":

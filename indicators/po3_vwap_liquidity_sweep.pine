@@ -98,10 +98,20 @@ string G_RISK  = "Position Sizing"
 string G_UI    = "Display"
 
 string preset = input.string("Index Futures 1H — validated", "Preset",
-     options = ["Index Futures 1H — validated", "Custom"], group = G_PRE,
-     tooltip = "The validated preset locks the settings that survived " +
-     "walk-forward and cross-market corroboration. Custom exposes them all.")
-bool usePreset = preset == "Index Futures 1H — validated"
+     options = ["Index Futures 1H — validated", "Index Futures 1H — fewer scratches", "Custom"],
+     group = G_PRE,
+     tooltip = "Both presets share every signal rule and differ only in how the " +
+     "stop is managed after entry.\n\nVALIDATED moves the stop to exact " +
+     "breakeven at +0.25R: 67% of trades end as 0R scratches, average drawdown " +
+     "12R.\n\nFEWER SCRATCHES moves it only HALFWAY back, at +0.5R, so a " +
+     "pullback has to travel twice as far to end the trade: 43% managed exits " +
+     "instead of 67%, 72% more trades that actually resolve, win rate 40.1% " +
+     "instead of 35.0%, the same expectancy (+0.105R vs +0.110R, well inside " +
+     "one standard error) and better on the held-out CFD data (+0.080R vs " +
+     "+0.070R). The cost is drawdown: 19R instead of 12R. Positive on all five " +
+     "futures and all three CFDs either way.")
+bool pFewer    = preset == "Index Futures 1H — fewer scratches"
+bool usePreset = preset == "Index Futures 1H — validated" or pFewer
 
 string tz = input.string("America/New_York", "Exchange timezone", group = G_LIQ)
 bool usePDHL   = input.bool(true,  "Previous day high / low",      group = G_LIQ)
@@ -179,6 +189,15 @@ float inBeAt      = input.float(0.25, "Move stop to breakeven at (R, 0 = off)", 
      "and R-volatility by 27%. It also inflates the win rate and profit " +
      "factor, because a scratch books ~0R and so leaves both the win-rate " +
      "denominator and the gross loss smaller. Judge by expectancy, not by PF.")
+float inBeTo      = input.float(0.0,  "…and move it to (R from entry)", minval = -1.0, maxval = 1.0, step = 0.05, group = G_TR,
+     tooltip = "0 is exact breakeven. NEGATIVE leaves part of the original risk " +
+     "on the table - -0.5 puts the stop halfway back, so ordinary noise cannot " +
+     "end the trade and far more of them resolve as real wins or losses. " +
+     "Measured pooled over 1,997 trades: exact breakeven at +0.25R gives 67% " +
+     "managed exits and +0.110R; halfway back at +0.5R gives 43% and +0.105R; " +
+     "halfway back at +1R gives 27% and +0.115R. Expectancy is flat across all " +
+     "of them - you are choosing how the ride feels, not how much it makes. " +
+     "Positive values lock in profit and tested slightly worse.")
 int   inValidity  = input.int(12,     "Limit order expiry (bars)", minval = 1, group = G_TR)
 int   inMaxHold   = input.int(0,      "Time stop after fill (bars, 0 = off)", minval = 0, group = G_TR,
      tooltip = "LEAVE THIS OFF. Tested across 2,004 futures trades and 1,544 " +
@@ -248,7 +267,8 @@ float devEntry    = usePreset ? 2.0   : inDevEntry
 string entryMode  = usePreset ? "Market on reclaim close" : inEntryMode
 float stopBufAtr  = usePreset ? 0.50  : inStopBuf
 float rrTarget    = usePreset ? 3.0   : inRR
-float beAtR       = usePreset ? 0.25  : inBeAt
+float beAtR       = pFewer ? 0.5 : usePreset ? 0.25  : inBeAt
+float beToR       = pFewer ? -0.5 : usePreset ? 0.0 : inBeTo
 int   validity    = usePreset ? 12    : inValidity
 bool  eqOnly      = usePreset ? false : inEqOnly
 float volMult     = usePreset ? 0.0   : inVolMult
@@ -628,11 +648,15 @@ if barstate.isconfirmed
                 if outcome == 0 and beAtR > 0 and not s.be
                     float beLvl = bull ? s.entry + beAtR * s.risk : s.entry - beAtR * s.risk
                     if bull ? high >= beLvl : low <= beLvl
-                        s.be   := true
-                        s.stop := s.entry
+                        s.be := true
+                        // beToR is measured in R from entry: 0 is exact
+                        // breakeven, negative leaves part of the original risk
+                        // on so noise cannot scratch the trade out
+                        float moved = bull ? s.entry + beToR * s.risk : s.entry - beToR * s.risk
+                        s.stop := bull ? math.max(s.stop, moved) : math.min(s.stop, moved)
                         if not na(s.lnS)
-                            line.set_y1(s.lnS, s.entry)
-                            line.set_y2(s.lnS, s.entry)
+                            line.set_y1(s.lnS, s.stop)
+                            line.set_y2(s.lnS, s.stop)
                             line.set_color(s.lnS, color.orange)
                 if outcome == 0 and inMaxHold > 0 and bar_index - s.fillBar >= inMaxHold
                     outcome := 3
@@ -648,7 +672,7 @@ if barstate.isconfirmed
                     float costR = costTicks * syminfo.mintick / s.risk
                     float gross = outcome == 1 ? rrTarget
                          : outcome == -1 ? -1.0
-                         : outcome == 4 ? 0.0
+                         : outcome == 4 ? beToR
                          : (bull ? close - s.entry : s.entry - close) / s.risk
                     float booked = gross - costR
                     netR += booked
@@ -1016,7 +1040,8 @@ if showDash and barstate.islast
          (cntSignals > 0 ? "  (" + str.tostring(100.0 * cntFills / cntSignals, "#") + "%)" : ""), color.white)
     f_row(dash, 3, "Wins",            str.tostring(cntWins),    bullCol)
     f_row(dash, 4, "Losses",          str.tostring(cntLosses),  bearCol)
-    f_row(dash, 5, "Breakeven scratches", str.tostring(cntScratch) +
+    f_row(dash, 5, beToR == 0 ? "Breakeven scratches" : "Managed exits (" +
+         str.tostring(beToR, "#.##") + "R)", str.tostring(cntScratch) +
          (closed > 0 ? "  (" + str.tostring(100.0 * cntScratch / closed, "#") + "%)" : ""),
          color.orange)
     f_row(dash, 6, "Expired / evicted",   str.tostring(cntExpired) + " / " + str.tostring(cntTimeExit), color.gray)

@@ -348,6 +348,34 @@ buckets still make money and the intervals overlap. Filtering would discard
 positive-expectancy trades, which is why the hard volume gate tested neutral
 earlier. There is no dead weight to remove.
 
+### The one change that did work: where the stop moves to
+
+Every rejected idea above changed *when* a trade ends. This one changes only
+*where the stop goes* when it moves, and it is the first thing in the whole
+study that improved the experience without costing anything.
+
+Moving the stop to exact breakeven means any pullback to entry ends the trade,
+which is why 67% of trades become 0R scratches. Moving it only **halfway back**
+leaves part of the original risk on, so ordinary noise cannot end the trade:
+
+| stop moves to | trigger | managed exits | decisive trades | WR% | expectancy | avg DD |
+|---|---|---|---|---|---|---|
+| never moves | — | 0% | 1,993 | 27.9% | +0.094R | 29R |
+| exact breakeven | +0.25R | 67% | 657 | 35.0% | +0.110R | 12R |
+| exact breakeven | +1R | 32% | 1,356 | 29.8% | +0.109R | 18R |
+| **halfway back** | **+0.5R** | **43%** | **1,131** | **40.1%** | **+0.105R** | **19R** |
+| halfway back | +1R | 27% | 1,451 | 34.4% | +0.115R | 23R |
+
+Halfway-back at +0.5R gives **72% more trades that actually resolve**, a win
+rate of 40.1% instead of 35.0%, the same expectancy inside one standard error,
+and it is *better* on the held-out CFD data (+0.080R vs +0.070R). Positive on
+all five futures and all three CFDs. The cost is drawdown, 19R against 12R.
+
+That combination ships as a second preset, **"Index Futures 1H — fewer
+scratches"**. Both presets share every signal rule and differ only in stop
+management, which the parity suite now asserts: a check fails if the two
+presets ever diverge on anything but the two breakeven fields.
+
 ### A second round of upgrades, also rejected
 
 Four more ideas were tested the same way. All four failed, and the pattern is
