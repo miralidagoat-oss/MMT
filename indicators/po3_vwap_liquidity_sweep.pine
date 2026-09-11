@@ -364,8 +364,9 @@ bool vwapOk = anchorBars >= 2 and (time - anchorTime) >= 3600000 and vwapSd > 0
 plot(showVwap ? vwapVal : na, "VWAP", color = vwapCol, linewidth = 2)
 p_u1 = plot(showVwap and vwapOk ? vwapVal + inDev1 * vwapSd : na, "VWAP +1σ", color = color.new(vwapCol, 55))
 p_l1 = plot(showVwap and vwapOk ? vwapVal - inDev1 * vwapSd : na, "VWAP −1σ", color = color.new(vwapCol, 55))
-p_u2 = plot(showVwap and showBand2 and vwapOk ? vwapVal + inDev2 * vwapSd : na, "VWAP +2σ", color = color.new(vwapCol, 80))
-p_l2 = plot(showVwap and showBand2 and vwapOk ? vwapVal - inDev2 * vwapSd : na, "VWAP −2σ", color = color.new(vwapCol, 80))
+// the 2σ band is opt-in and has no fill, so these need no plot handle
+plot(showVwap and showBand2 and vwapOk ? vwapVal + inDev2 * vwapSd : na, "VWAP +2σ", color = color.new(vwapCol, 80))
+plot(showVwap and showBand2 and vwapOk ? vwapVal - inDev2 * vwapSd : na, "VWAP −2σ", color = color.new(vwapCol, 80))
 fill(p_u1, p_l1, color = color.new(vwapCol, 95), title = "VWAP 1σ zone")
 
 // ─────────────────────────────────────────────────────────────
