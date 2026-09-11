@@ -170,6 +170,21 @@ string inSessMode = input.string("All hours", "Signal session",
 float inVolMult   = input.float(0.0,  "Min reclaim volume (× 20-bar avg, 0 = off)", minval = 0.0, maxval = 5.0, step = 0.1, group = G_SIG,
      tooltip = "A reclaim nobody participated in is drift, not a decision. " +
      "Ignored on symbols with no volume feed.")
+string sigTf      = input.timeframe("60", "Signal timeframe", group = G_SIG,
+     tooltip = "THE MODEL IS A ONE-HOUR MODEL. Leave this at 60 and put the " +
+     "chart on whatever you want to execute from.\n\nMeasured on 5-minute " +
+     "bars with these same settings it is significantly NEGATIVE: -0.115R per " +
+     "trade over 7,059 trades, 95% band [-0.155,-0.076], against +0.098R and " +
+     "8 of 8 markets positive on 1H. Eighteen attempted repairs - cooldown, " +
+     "sweep depth, risk:reward, dropping fractal pivots, RTH-only, NY-AM-only " +
+     "- all failed, best of them PF 0.95. README.md has the full table.\n\n" +
+     "The reason is structural. The pools this hunts are DAY-SCALE: previous " +
+     "day and week extremes, session ranges, the initial balance. An hourly " +
+     "bar is the resolution at which sweeping one is a single decisive event. " +
+     "On 5m that raid fragments across twenty bars, the reclaim fires on " +
+     "whichever one closes back inside, and you pay costs on every extra " +
+     "trade.\n\nSet this to your chart timeframe (or lower) and the script " +
+     "bypasses the whole mechanism and runs exactly as it always has.")
 bool  inLongs     = input.bool(true, "Long setups",  group = G_SIG)
 bool  inShorts    = input.bool(true, "Short setups", group = G_SIG)
 
@@ -372,15 +387,74 @@ type Probe        // measures how often the raid extreme was the real extreme
     int   dir
     float extreme
 
-// ─────────────────────────────────────────────────────────────
-// CONTEXT: ATR, SESSIONS, PERIODS, VWAP
-// ─────────────────────────────────────────────────────────────
-float atrVal = ta.atr(ATR_LEN)
+// ═══════════════════════════════════════════════════════════════════════════
+// SIGNAL TIMEFRAME
+// Everything below reads bO/bH/bL/bC/bV/bT instead of the chart's own bars.
+// When sigTf is the chart's timeframe or faster these ARE the chart's bars and
+// nothing changes. When it is higher they are the last CLOSED bar of that
+// timeframe, so you can run a 1H model on a 5m chart and execute from the
+// faster chart without the signals changing.
+//
+// NON-REPAINTING BY CONSTRUCTION. request.security runs with lookahead_off,
+// and the forming higher-timeframe bar is never read: the state machine
+// advances only on the chart bar where a signal-timeframe bar has just CLOSED,
+// and it reads that closed bar's values, which can no longer change.
+// ═══════════════════════════════════════════════════════════════════════════
+bool useHtf = timeframe.in_seconds(sigTf) > timeframe.in_seconds()
+
+[qO, qH, qL, qC, qV, qT, qAtr, qPivH, qPivL, qHiWin, qLoWin, qHiAft, qLoAft,
+     qVolSma, qLow20, qHigh20] = request.security(syminfo.tickerid, sigTf,
+     [open, high, low, close, volume, time, ta.atr(ATR_LEN),
+     high[PIVOT_LEN], low[PIVOT_LEN],
+     ta.highest(high, 2 * PIVOT_LEN + 1), ta.lowest(low, 2 * PIVOT_LEN + 1),
+     ta.highest(high, PIVOT_LEN), ta.lowest(low, PIVOT_LEN),
+     ta.sma(nz(volume), 20), ta.lowest(low, 20), ta.highest(high, 20)],
+     lookahead = barmerge.lookahead_off)
+
+// v6 evaluates and/or lazily, so a ta.* call reached only inside a conditional
+// can miss bars and corrupt its own history. Every chart-timeframe one is
+// computed here, unconditionally, and only then selected between.
+float cAtr     = ta.atr(ATR_LEN)
+float cPivHigh = high[PIVOT_LEN]
+float cPivLow  = low[PIVOT_LEN]
+float cHiWin   = ta.highest(high, 2 * PIVOT_LEN + 1)
+float cLoWin   = ta.lowest(low,  2 * PIVOT_LEN + 1)
+float cHiAfter = ta.highest(high, PIVOT_LEN)
+float cLoAfter = ta.lowest(low,  PIVOT_LEN)
+float cVolSma  = ta.sma(nz(volume), 20)
+float cLow20   = ta.lowest(low,  20)
+float cHigh20  = ta.highest(high, 20)
+bool  cNewDay  = timeframe.change("1D")
+bool  cNewWeek = timeframe.change("1W")
+
+// "a signal-timeframe bar has just closed": its opening time changed, so the
+// PREVIOUS one is final. On the chart's own timeframe every confirmed bar runs.
+bool htfShut = useHtf and barstate.isconfirmed and not na(qT[1]) and qT != qT[1]
+bool runBar  = useHtf ? htfShut : barstate.isconfirmed
+
+// the bar the model actually sees
+float bO = useHtf ? nz(qO[1], open)  : open
+float bH = useHtf ? nz(qH[1], high)  : high
+float bL = useHtf ? nz(qL[1], low)   : low
+float bC = useHtf ? nz(qC[1], close) : close
+float bV = useHtf ? nz(qV[1]) : nz(volume)
+int   bT = useHtf ? int(nz(qT[1], time)) : time
+
+float atrVal  = useHtf ? qAtr[1]    : cAtr
+float pivHigh = useHtf ? qPivH[1]   : cPivHigh
+float pivLow  = useHtf ? qPivL[1]   : cPivLow
+float hiWin   = useHtf ? qHiWin[1]  : cHiWin
+float loWin   = useHtf ? qLoWin[1]  : cLoWin
+float hiAfter = useHtf ? qHiAft[1]  : cHiAfter
+float loAfter = useHtf ? qLoAft[1]  : cLoAfter
+float volSma  = useHtf ? qVolSma[1] : cVolSma
+float low20   = useHtf ? qLow20[1]  : cLow20
+float high20  = useHtf ? qHigh20[1] : cHigh20
 
 // Minutes since the 18:00 ET trade-day open. Every session window below is a
 // plain interval in [0,1440), which makes the midnight crossing disappear and
 // keeps the exchange clock DST-correct via hour()/minute() with a timezone.
-int etMin = hour(time, tz) * 60 + minute(time, tz)
+int etMin = hour(bT, tz) * 60 + minute(bT, tz)
 int mspo  = (etMin + 360) % 1440
 
 bool inAsia   = mspo < 480                       // 18:00 – 02:00
@@ -388,14 +462,27 @@ bool inLondon = mspo >= 480 and mspo < 840       // 02:00 – 08:00
 bool inIB     = mspo >= 930 and mspo < 990       // 09:30 – 10:30
 bool inRTH    = mspo >= 930 and mspo < 1320      // 09:30 – 16:00
 bool inNYAM   = mspo >= 870 and mspo < 1020      // 08:30 – 11:00
-bool rthPrev  = bar_index > 0 ? inRTH[1] : false
 
-// Period boundaries come from the exchange's own session definition, so on
-// CME futures the day rolls at 18:00 ET and the week at Sunday 18:00 ET -
-// which is what the daily and weekly candles on the chart already show, and
-// what the research engine's trade-day calendar reproduces.
-bool newDay  = timeframe.change("1D")
-bool newWeek = timeframe.change("1W")
+// Day and week rolls. On the chart's own timeframe these stay TradingView's
+// session definition - the one every published result was measured with. On a
+// higher signal timeframe they are derived the way the research engine does:
+// the trade day rolls when minutes-since-18:00-ET wrap, and the week is the
+// ISO week of that trade day, so a holiday Monday still rolls the week.
+var int  prevMspo = na
+var int  prevWk   = na
+var bool prevRth  = false
+bool rthPrev  = useHtf ? prevRth : (bar_index > 0 ? inRTH[1] : false)
+bool hNewDay  = false
+bool hNewWeek = false
+if runBar and useHtf
+    int tdWk = weekofyear(bT + 21600000, tz)
+    hNewDay  := na(prevMspo) or mspo < prevMspo
+    hNewWeek := hNewDay and (na(prevWk) or tdWk != prevWk)
+    prevMspo := mspo
+    prevWk   := tdWk
+    prevRth  := inRTH
+bool newDay  = useHtf ? hNewDay  : cNewDay
+bool newWeek = useHtf ? hNewWeek : cNewWeek
 
 bool signalSessionOk = switch sessMode
     "RTH 09:30–16:00"   => inRTH
@@ -407,8 +494,8 @@ bool signalSessionOk = switch sessMode
 // PO3 period open — the reference the manipulation leg is measured against
 var float periodOpen = na
 bool newPeriod = po3Period == "Week" ? newWeek : newDay
-if newPeriod
-    periodOpen := open
+if runBar and newPeriod
+    periodOpen := bO
 
 // ── session-anchored VWAP with volume-weighted deviation bands ─────────────
 // vwap = Σ(v·p)/Σv ;  σ² = Σ(v·p²)/Σv − vwap² .  Bars with no reported volume
@@ -422,19 +509,18 @@ var float sumV   = 0.0
 var float sumP2V = 0.0
 var int   anchorBars = 0
 var int   anchorTime = 0
-if newAnchor or bar_index == 0
-    sumPV  := 0.0
-    sumV   := 0.0
-    sumP2V := 0.0
-    anchorBars := 0
-    anchorTime := time
-
-float typical = hlc3
-float barVol  = nz(volume)
-sumPV      := sumPV + barVol * typical
-sumV       := sumV + barVol
-sumP2V     := sumP2V + barVol * typical * typical
-anchorBars := anchorBars + 1
+float typical = (bH + bL + bC) / 3.0
+if runBar
+    if newAnchor or anchorBars == 0
+        sumPV  := 0.0
+        sumV   := 0.0
+        sumP2V := 0.0
+        anchorBars := 0
+        anchorTime := bT
+    sumPV      := sumPV + bV * typical
+    sumV       := sumV + bV
+    sumP2V     := sumP2V + bV * typical * typical
+    anchorBars := anchorBars + 1
 
 float vwapVal = sumV > 0 ? sumPV / sumV : typical
 float vwapSd  = sumV > 0 ? math.sqrt(math.max(sumP2V / sumV - vwapVal * vwapVal, 0.0)) : 0.0
@@ -442,7 +528,7 @@ float vwapSd  = sumV > 0 ? math.sqrt(math.max(sumP2V / sumV - vwapVal * vwapVal,
 // three prints the volume-weighted variance is near zero and any deviation
 // scores as a huge sigma. Both a bar count and an elapsed-time floor are
 // required, so the rule behaves the same on a 5-minute chart as on an hourly.
-bool vwapOk = anchorBars >= 2 and (time - anchorTime) >= 3600000 and vwapSd > 0
+bool vwapOk = anchorBars >= 2 and (bT - anchorTime) >= 3600000 and vwapSd > 0
 
 plot(showVwap ? vwapVal : na, "VWAP", color = vwapCol, linewidth = 2)
 p_u1 = plot(showVwap and vwapOk ? vwapVal + inDev1 * vwapSd : na, "VWAP +1σ", color = color.new(vwapCol, 55))
@@ -512,17 +598,6 @@ var bool  asiaDone = false
 var bool  lonDone  = false
 var bool  ibDone   = false
 
-// v6 evaluates and/or lazily, so a ta.* call reached only inside a conditional
-// can miss bars and corrupt its own history. Every one is hoisted here.
-float pivHigh  = high[PIVOT_LEN]
-float pivLow   = low[PIVOT_LEN]
-float hiWin    = ta.highest(high, 2 * PIVOT_LEN + 1)
-float loWin    = ta.lowest(low,  2 * PIVOT_LEN + 1)
-float hiAfter  = ta.highest(high, PIVOT_LEN)
-float loAfter  = ta.lowest(low,  PIVOT_LEN)
-float volSma   = ta.sma(nz(volume), 20)
-float low20    = ta.lowest(low,  20)
-float high20   = ta.highest(high, 20)
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -650,7 +725,7 @@ f_spawn(int dir, float entryPx, float stopPx, float tpPx, float riskPx,
              "\nrisk    " + str.tostring(riskPx, format.mintick) + " pts" +
              "\nreward  " + str.tostring(rrTarget * riskPx, format.mintick) +
              " pts  (" + str.tostring(rrTarget, "#.#") + "R)"
-        label.new(bar_index, dir == 1 ? low : high,
+        label.new(bar_index, dir == 1 ? bL : bH,
              detailed ? detail : (dir == 1 ? "▲" : "▼"),
              style = dir == 1 ? label.style_label_up : label.style_label_down,
              color = color.new(c, detailed ? 15 : 30), textcolor = color.white,
@@ -667,7 +742,7 @@ float sigEntry = na
 float sigStop  = na
 float sigTp    = na
 
-if barstate.isconfirmed
+if runBar
 
     // ── 1. manage setups opened on an earlier bar ──────────────────────────
     int si = array.size(setups) - 1
@@ -686,7 +761,7 @@ if barstate.isconfirmed
                     line.set_x2(s.lnT, bar_index)
 
             if not s.filled
-                bool fillNow = bull ? low <= s.entry : high >= s.entry
+                bool fillNow = bull ? bL <= s.entry : bH >= s.entry
                 if fillNow
                     s.filled  := true
                     s.fillBar := bar_index
@@ -696,21 +771,21 @@ if barstate.isconfirmed
                         line.set_width(s.lnE, 2)
                     // pessimistic: a fill bar that also trades the stop books
                     // the loss now, and the target is never credited on it
-                    if bull ? low <= s.stop : high >= s.stop
+                    if bull ? bL <= s.stop : bH >= s.stop
                         outcome := -1
                 else if bar_index - s.created >= validity
                     outcome := 2
             else
-                float adverse = bull ? s.entry - low : high - s.entry
+                float adverse = bull ? s.entry - bL : bH - s.entry
                 s.mae := math.max(s.mae, adverse / s.risk)
-                bool stopHit = bull ? low <= s.stop : high >= s.stop
-                bool tpHit   = bull ? high >= s.tp  : low <= s.tp
+                bool stopHit = bull ? bL <= s.stop : bH >= s.stop
+                bool tpHit   = bull ? bH >= s.tp  : bL <= s.tp
                 outcome := stopHit ? (s.be ? 4 : -1) : tpHit ? 1 : 0
                 // breakeven is armed only after the exit checks, so it can
                 // never take effect on the bar that triggered it
                 if outcome == 0 and beAtR > 0 and not s.be
                     float beLvl = bull ? s.entry + beAtR * s.risk : s.entry - beAtR * s.risk
-                    if bull ? high >= beLvl : low <= beLvl
+                    if bull ? bH >= beLvl : bL <= beLvl
                         s.be := true
                         // beToR is measured in R from entry: 0 is exact
                         // breakeven, negative leaves part of the original risk
@@ -736,7 +811,7 @@ if barstate.isconfirmed
                     float gross = outcome == 1 ? rrTarget
                          : outcome == -1 ? -1.0
                          : outcome == 4 ? beToR
-                         : (bull ? close - s.entry : s.entry - close) / s.risk
+                         : (bull ? bC - s.entry : s.entry - bC) / s.risk
                     float booked = gross - costR
                     netR += booked
                     if booked > 0
@@ -753,7 +828,7 @@ if barstate.isconfirmed
                         cntTimeExit += 1
                     if showOutcomes
                         float lblY = outcome == 1 ? s.tp : outcome == -1 ? s.stop
-                             : outcome == 4 ? s.entry : close
+                             : outcome == 4 ? s.entry : bC
                         color lblC = outcome == 1 ? bullCol : outcome == -1 ? bearCol
                              : outcome == 4 ? color.orange : color.gray
                         string lblT = outcome == 1 ? "✔ " : outcome == -1 ? "✘ "
@@ -770,8 +845,8 @@ if barstate.isconfirmed
     if newDay
         pdH := dayH
         pdL := dayL
-        dayH := high
-        dayL := low
+        dayH := bH
+        dayL := bL
         asiaH := na
         asiaL := na
         lonH := na
@@ -784,19 +859,19 @@ if barstate.isconfirmed
         f_setNamed(pdH, 1,  "PDH", usePDHL)
         f_setNamed(pdL, -1, "PDL", usePDHL)
     else
-        dayH := na(dayH) ? high : math.max(dayH, high)
-        dayL := na(dayL) ? low  : math.min(dayL, low)
+        dayH := na(dayH) ? bH : math.max(dayH, bH)
+        dayL := na(dayL) ? bL  : math.min(dayL, bL)
 
     if newWeek
         pwH := wkH
         pwL := wkL
-        wkH := high
-        wkL := low
+        wkH := bH
+        wkL := bL
         f_setNamed(pwH, 1,  "PWH", usePWHL)
         f_setNamed(pwL, -1, "PWL", usePWHL)
     else
-        wkH := na(wkH) ? high : math.max(wkH, high)
-        wkL := na(wkL) ? low  : math.min(wkL, low)
+        wkH := na(wkH) ? bH : math.max(wkH, bH)
+        wkL := na(wkL) ? bL  : math.min(wkL, bL)
 
     // Each session range belongs to one trade day and is published exactly
     // once, on the first bar past its close. Seeding off "was the previous bar
@@ -804,24 +879,24 @@ if barstate.isconfirmed
     // Sunday-evening bar and the Tuesday bar after it are both inside the Asia
     // window but belong to different trade days.
     if inAsia
-        asiaH := na(asiaH) ? high : math.max(asiaH, high)
-        asiaL := na(asiaL) ? low  : math.min(asiaL, low)
+        asiaH := na(asiaH) ? bH : math.max(asiaH, bH)
+        asiaL := na(asiaL) ? bL  : math.min(asiaL, bL)
     else if not asiaDone
         asiaDone := true
         f_setNamed(asiaH, 1,  "AsiaH", useAsia)
         f_setNamed(asiaL, -1, "AsiaL", useAsia)
 
     if inLondon
-        lonH := na(lonH) ? high : math.max(lonH, high)
-        lonL := na(lonL) ? low  : math.min(lonL, low)
+        lonH := na(lonH) ? bH : math.max(lonH, bH)
+        lonL := na(lonL) ? bL  : math.min(lonL, bL)
     else if mspo >= 840 and not lonDone
         lonDone := true
         f_setNamed(lonH, 1,  "LonH", useLondon)
         f_setNamed(lonL, -1, "LonL", useLondon)
 
     if inIB
-        ibH := na(ibH) ? high : math.max(ibH, high)
-        ibL := na(ibL) ? low  : math.min(ibL, low)
+        ibH := na(ibH) ? bH : math.max(ibH, bH)
+        ibL := na(ibL) ? bL  : math.min(ibL, bL)
     else if mspo >= 990 and not ibDone
         ibDone := true
         f_setNamed(ibH, 1,  "IBH", useIB)
@@ -860,7 +935,7 @@ if barstate.isconfirmed
     int pi = array.size(pools) - 1
     while pi >= 0
         Pool p = array.get(pools, pi)
-        if not p.swept and (p.side > 0 ? high > p.price : low < p.price)
+        if not p.swept and (p.side > 0 ? bH > p.price : bL < p.price)
             p.swept := true
             if showSwept
                 if not na(p.ln)
@@ -892,7 +967,7 @@ if barstate.isconfirmed
         else
             raidLongOn    := true
             raidLongLvl   := sslLvl
-            raidLongExt   := low
+            raidLongExt   := bL
             raidLongBar   := bar_index
             raidLongFirst := bar_index
             raidLongKind  := sslKind
@@ -904,40 +979,40 @@ if barstate.isconfirmed
         else
             raidShortOn    := true
             raidShortLvl   := bslLvl
-            raidShortExt   := high
+            raidShortExt   := bH
             raidShortBar   := bar_index
             raidShortFirst := bar_index
             raidShortKind  := bslKind
 
     // ── 5. the reclaim: price closes back on the origin side of the pool ────
     if raidLongOn and not na(atrVal)
-        raidLongExt := math.min(raidLongExt, low)
+        raidLongExt := math.min(raidLongExt, bL)
         float depth = raidLongLvl - raidLongExt
         if maxSweepAtr > 0 and depth > maxSweepAtr * atrVal
             raidLongOn := false                       // ran on: breakout, not a raid
         else if bar_index - raidLongBar > reclaimBars
             raidLongOn := false                       // never reclaimed in time
-        else if close > raidLongLvl
+        else if bC > raidLongLvl
             bool ok = depth >= minSweepAtr * atrVal
             ok := ok and inLongs and signalSessionOk
             ok := ok and (na(lastLongBar) or bar_index - lastLongBar >= cooldown)
             if ok and needCloseDir
-                ok := close > open
+                ok := bC > bO
             if ok and volMult > 0
-                ok := not na(volSma) and volSma > 0 and nz(volume) >= volMult * volSma
+                ok := not na(volSma) and volSma > 0 and nz(bV) >= volMult * volSma
             if ok and vwapGate
                 ok := vwapOk and raidLongExt <= vwapVal - devEntry * vwapSd
             if ok and vwapReclaim
-                ok := vwapOk and close > vwapVal
+                ok := vwapOk and bC > vwapVal
             if ok and po3Mode != "Off" and not na(periodOpen)
                 ok := raidLongExt < periodOpen
                 if ok and po3Mode == "Sweep beyond open + reclaim open"
-                    ok := close > periodOpen
+                    ok := bC > periodOpen
             if ok
                 float entryPx = switch entryMode
                     "Limit at swept level"   => raidLongLvl
                     "Limit at wick midpoint" => (raidLongLvl + raidLongExt) / 2.0
-                    => close
+                    => bC
                 float stopPx = raidLongExt - stopBufAtr * atrVal
                 float riskPx = entryPx - stopPx
                 bool wideL  = maxRiskAtr > 0 and riskPx > maxRiskAtr * atrVal
@@ -957,33 +1032,33 @@ if barstate.isconfirmed
             raidLongOn := false
 
     if raidShortOn and not na(atrVal)
-        raidShortExt := math.max(raidShortExt, high)
+        raidShortExt := math.max(raidShortExt, bH)
         float depthS = raidShortExt - raidShortLvl
         if maxSweepAtr > 0 and depthS > maxSweepAtr * atrVal
             raidShortOn := false
         else if bar_index - raidShortBar > reclaimBars
             raidShortOn := false
-        else if close < raidShortLvl
+        else if bC < raidShortLvl
             bool okS = depthS >= minSweepAtr * atrVal
             okS := okS and inShorts and signalSessionOk
             okS := okS and (na(lastShortBar) or bar_index - lastShortBar >= cooldown)
             if okS and needCloseDir
-                okS := close < open
+                okS := bC < bO
             if okS and volMult > 0
-                okS := not na(volSma) and volSma > 0 and nz(volume) >= volMult * volSma
+                okS := not na(volSma) and volSma > 0 and nz(bV) >= volMult * volSma
             if okS and vwapGate
                 okS := vwapOk and raidShortExt >= vwapVal + devEntry * vwapSd
             if okS and vwapReclaim
-                okS := vwapOk and close < vwapVal
+                okS := vwapOk and bC < vwapVal
             if okS and po3Mode != "Off" and not na(periodOpen)
                 okS := raidShortExt > periodOpen
                 if okS and po3Mode == "Sweep beyond open + reclaim open"
-                    okS := close < periodOpen
+                    okS := bC < periodOpen
             if okS
                 float entryPxS = switch entryMode
                     "Limit at swept level"   => raidShortLvl
                     "Limit at wick midpoint" => (raidShortLvl + raidShortExt) / 2.0
-                    => close
+                    => bC
                 float stopPxS = raidShortExt + stopBufAtr * atrVal
                 float riskPxS = stopPxS - entryPxS
                 bool wideS  = maxRiskAtr > 0 and riskPxS > maxRiskAtr * atrVal
@@ -1020,7 +1095,7 @@ if barstate.isconfirmed
         if not old.filled
             cntExpired += 1
         else
-            float evR = (old.dir == 1 ? close - old.entry : old.entry - close) / old.risk
+            float evR = (old.dir == 1 ? bC - old.entry : old.entry - bC) / old.risk
                  - costTicks * syminfo.mintick / old.risk
             netR += evR
             if evR > 0
@@ -1078,13 +1153,13 @@ if showDash and barstate.islast
     // PO3 phase, read off the live state rather than asserted
     string phase = raidLongOn or raidShortOn ? "MANIPULATION (raid live)"
          : na(periodOpen) ? "—"
-         : close > periodOpen ? "DISTRIBUTION above open" : "DISTRIBUTION below open"
+         : bC > periodOpen ? "DISTRIBUTION above open" : "DISTRIBUTION below open"
 
     // The measured result for whichever timeframe this chart is on, so the
     // evidence sits next to the live statistics instead of in a README. Every
     // figure below comes from one 5-minute source resampled six ways across
     // three index CFDs, so bar size is the only thing that changed.
-    int tfSec = timeframe.in_seconds()
+    int tfSec = timeframe.in_seconds(sigTf)
     string tfVerdict = tfSec <= 60    ? "1m · PF 0.34 — avoid"
          : tfSec <= 300   ? "5m · PF 0.86, 1 of 3 mkts"
          : tfSec <= 900   ? "15m · PF 0.90, 1 of 3"
@@ -1125,7 +1200,8 @@ if showDash and barstate.islast
     float avgMae = cntMae > 0 ? sumMae / cntMae : na
     f_row(dash, 12, "Avg heat before exit", na(avgMae) ? "—" : str.tostring(avgMae, "#.##") + "R", color.aqua)
     f_row(dash, 13, "PO3 phase", phase, color.aqua)
-    f_row(dash, 14, "Timeframe (backtested)", tfVerdict,
+    f_row(dash, 14, useHtf ? "Signal TF (chart " + timeframe.period + ")"
+         : "Timeframe (backtested)", tfVerdict,
          tfOk ? bullCol : tfMaybe ? color.orange : bearCol)
     // Size for the most recent signal from its real stop distance and the
     // contract's own point value - no guessing at tick maths.

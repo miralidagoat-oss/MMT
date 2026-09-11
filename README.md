@@ -690,6 +690,42 @@ level is built from closed chart bars, fractal pivots only become visible five
 bars after the fact, and session levels only become pools once the session has
 closed. Signals commit on bar close.
 
+## Running a 1H model on a 5-minute chart
+
+Since the signals only work on 1H but people want to execute from a faster
+chart, both builds now take a **Signal timeframe** input (default `60`).
+
+- Set it to your chart's timeframe or lower and nothing changes — the script
+  reads the chart's own bars exactly as it always did. This is the path every
+  published number was measured on.
+- Set it higher than the chart and the model reads that timeframe's bars
+  instead. On a 5-minute chart with `60`, you get the validated +0.098R engine
+  driving signals while you execute from 5m candles.
+
+**Non-repainting by construction.** `request.security` runs with
+`lookahead_off`, and the forming higher-timeframe bar is never read. The state
+machine advances only on the chart bar where a signal-timeframe bar has just
+*closed*, and it reads that closed bar's values, which can no longer change.
+The parity suite has a dedicated breakage test for this: change `qH[1]` to
+`qH` — i.e. read the bar still forming — and the check fails.
+
+Everything the model reads goes through `bO/bH/bL/bC/bV/bT`, which are either
+the chart's bars or the last closed signal-timeframe bar. Day and week rolls
+keep TradingView's session definition on the chart's own timeframe (what the
+results were measured with) and, on a higher signal timeframe, are derived the
+way the research engine does it: the trade day rolls when minutes-since-18:00-ET
+wrap, and the week is the ISO week of that trade day, so a holiday Monday still
+rolls the week.
+
+The dashboard grades the **signal** timeframe, not the chart, and relabels its
+row to `Signal TF (chart 5m)` so it is obvious which is which.
+
+For the strategy build there is one genuine side effect, and it is an
+improvement: entries still fill at the 1H close, but the stop and target
+brackets are then evaluated on 5-minute bars instead of hourly ones. Fills are
+finer-grained than the 1H backtest, and the "which came first inside the bar"
+ambiguity largely disappears.
+
 ## Can this work on 5 minutes? No — and here is the whole attempt
 
 Re-measured under the stop management that actually ships, because every
