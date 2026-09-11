@@ -690,6 +690,86 @@ level is built from closed chart bars, fractal pivots only become visible five
 bars after the fact, and session levels only become pools once the session has
 closed. Signals commit on bar close.
 
+## Can this work on 5 minutes? No — and here is the whole attempt
+
+Re-measured under the stop management that actually ships, because every
+earlier 5m figure was taken under the old exact-breakeven rule and so did not
+settle the question on its own.
+
+### The shipped preset, 1H against 5m, same settings, same markets
+
+| | trades | PF | net R | expectancy | 95% band | markets positive |
+|---|---|---|---|---|---|---|
+| **1H** | 3,539 | 1.15 | +347R | **+0.098R** | [+0.041, +0.155] | **8/8** |
+| **5m** | 7,059 | 0.85 | **−815R** | **−0.115R** | [−0.155, −0.076] | 5/8 |
+
+The 5m band clears zero — on the wrong side. Per market on 5m, the verdict comes
+from the large samples, not the small ones:
+
+| market | trades | expectancy | note |
+|---|---|---|---|
+| SPX | 2,644 | **−0.283R** | −748R. The clearest result in the table. |
+| NDX | 2,267 | +0.013R | indistinguishable from zero |
+| DJI | 1,303 | −0.084R | |
+| MNQ | 158 | +0.107R | 60 days; band [−0.162, +0.377] — uninformative |
+| NQ | 159 | +0.100R | 60 days; band [−0.168, +0.368] — uninformative |
+| ES | 159 | −0.245R | same 60 days, opposite sign |
+
+MNQ and NQ 5m are the only encouraging cells and they are 158 trades over 60
+days with confidence bands half an R wide. ES over the identical window is
+−0.245R. That is noise, not an edge.
+
+### Eighteen attempts to repair it, all failed
+
+Three parameter axes, each with a reason to think it might be the problem:
+
+| axis | tested | best CFD result |
+|---|---|---|
+| cooldown (6 bars = 30 min on 5m vs 6 h on 1H) | 6, 12, 24, 48, 72, 144 | −0.116R at 144 |
+| min sweep depth (5m ATR is a smaller slice of the day) | 0.35 → 3.0 ATR | +0.001R at 1.5, on 641 trades |
+| risk:reward | 1.5 → 6 | −0.043R at 1:6 |
+
+Deepening the sweep threshold does move 5m toward zero, but only by destroying
+the trade count — at 2.0 ATR the five futures markets produce **zero trades in
+60 days**. That is not a system.
+
+Then two structural hypotheses, which were the real candidates:
+
+| configuration | CFD trades | CFD expR | CFD PF | futures expR | markets |
+|---|---|---|---|---|---|
+| baseline | 6,214 | −0.133R | 0.83 | +0.016R | 5/8 |
+| **H1** drop fractal pivots, hunt named levels only | 1,784 | −0.055R | 0.92 | −0.101R | 3/8 |
+| **H2** RTH only | 2,151 | −0.099R | 0.86 | −0.087R | 2/8 |
+| H1 + H2 | 817 | −0.040R | 0.94 | −0.172R | 2/7 |
+| H1 + H2 + cooldown 24 | 774 | −0.035R | 0.95 | −0.185R | 2/7 |
+| H1 + H2 + cooldown 24 + sweep 0.6 | 530 | −0.106R | 0.85 | no trades | 1/3 |
+| H1 + NY AM only | 667 | −0.062R | 0.91 | −0.212R | 2/5 |
+
+H1 was the strongest hypothesis: on 1H a 5-bar fractal is a half-day swing and
+60 tracked pivots span months, while on 5m the same fractal is 25 minutes and
+60 of them span two days — wiggles, not institutional liquidity. Dropping them
+more than halves the damage (−0.133R → −0.055R). **It still does not reach
+zero,** and it makes the futures side worse.
+
+**Not one of the eighteen configurations is positive on the data that has
+enough trades to tell.** The best is PF 0.95.
+
+### Why, mechanically
+
+The pools this model hunts — previous day and week extremes, Asia and London
+session ranges, the initial balance — are **day-scale structures**. An hourly
+bar is the resolution at which sweeping one is a single decisive event: the raid
+and the reclaim are one or two bars, and the 6-bar cooldown covers six hours.
+On 5m the same raid fragments across twenty bars, the reclaim trigger fires on
+whichever of them happens to close back inside, and 6 bars of cooldown is half
+an hour. The signal is the same idea sampled at a resolution where it is mostly
+noise — and costs are paid on every one of those extra trades.
+
+**The conclusion is not "5m needs more tuning". It is that this model is a
+1-hour model.** If you want to trade a 5-minute chart, take the signals from a
+1H chart — the entry, stop and target are exact prices, so nothing is lost by
+executing them in a 5m window.
+
 ## The strategy build (`indicators/arashi_strategy.pine`)
 
 The same system with its simulated tracker replaced by real TradingView orders,
