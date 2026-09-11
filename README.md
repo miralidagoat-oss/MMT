@@ -690,6 +690,90 @@ level is built from closed chart bars, fractal pivots only become visible five
 bars after the fact, and session levels only become pools once the session has
 closed. Signals commit on bar close.
 
+## The strategy build (`indicators/arashi_strategy.pine`)
+
+The same system with its simulated tracker replaced by real TradingView orders,
+so the Strategy Tester grades it. The signal engine is **byte-identical** to the
+indicator's — `backtest/verify_strategy_parity.py` diffs all 15 shared regions
+(555 lines: the inputs, the preset resolution, the trade-day clock and session
+windows, the pool helpers, and every condition in blocks 2–6) and fails if one
+character drifts. Self-tested against four deliberate breakages; all caught.
+
+### One net position — the constraint that mattered
+
+A TradingView strategy cannot be long and short at once: a short order while
+long *reverses* the position rather than opening a second trade. The research
+engine has no such limit, and it leans on that freedom — **55.8% of its trades
+overlap an opposite-direction trade**, and on 26.6% of in-trade bars both sides
+are open.
+
+So the strategy **skips** a signal that would oppose an open position. That was
+measured before it was adopted, and it costs nothing:
+
+| model | trades | expR | PF | net R | markets |
+|---|---|---|---|---|---|
+| unconstrained (the indicator) | 1,997 | +0.117R | 1.18 | +234R | 5/5 |
+| **net position, skip opposing** | **1,423** | **+0.185R** | **1.30** | **+264R** | **5/5** |
+| net position, one trade at a time | 1,064 | +0.163R | 1.26 | +174R | 4/5 |
+| long signals only | 856 | +0.098R | 1.15 | +84R | 4/5 |
+| short signals only | 1,141 | +0.131R | 1.21 | +150R | 5/5 |
+
+29% fewer trades for slightly *more* total R. Do not read +0.185R as an
+improvement: the intervals overlap heavily ([+0.042, +0.193] against
+[+0.094, +0.277]) and nothing was tuned. The honest conclusion is that the
+constraint is free. The CFD holdout agrees (+0.100R over 1,086 trades against
++0.073R over 1,542, same total R). Long-only and short-only are both worse than
+running both, and they disagree about which side is better across the two
+datasets — noise. Leave both on.
+
+Same-direction signals stack, since they are not in conflict. Measured peak
+stack is 4; `pyramiding` is 8 and a hard `MAX_STACK` guard refuses a 9th rather
+than booking a position TradingView would have silently dropped.
+
+### Two smaller differences, both measured
+
+**Tie-breaks.** The engine always books the stop when one bar contains both stop
+and target; TradingView's emulator instead assumes open→low→high→close on an up
+bar and open→high→low→close on a down bar. A non-issue here: across 1,997 trades
+it arises **3 times (0.2%)**, all on down bars, where the emulator agrees with
+the engine anyway.
+
+**Costs.** The engine charges a flat 4 ticks per round trip. A strategy cannot
+take a tick cost as an input, so this uses `slippage = 2` ticks per order, which
+TradingView applies to market and stop orders but not limit orders — a loser
+(market in, stop out) pays 4 ticks, a winner (market in, limit out) pays 2.
+Slightly kinder than the published model and slightly more realistic. Change it
+in the Properties tab, not the code.
+
+### Position sizing needs a real account
+
+Size comes from the actual stop distance and the contract's point value, so
+every trade risks the same fraction of closed equity and the equity curve is
+R-weighted. That requires being able to afford one contract at your risk budget,
+and on a 25,000 account at 1% (a $250 budget) mostly you cannot:
+
+| | median risk per contract | trades that cannot afford one |
+|---|---|---|
+| MNQ | $288 | 59% |
+| YM | $945 | 100% |
+| RTY | $842 | 99% |
+| ES | $1,360 | 100% |
+| NQ | $2,816 | 100% |
+
+So `initial_capital` defaults to 100,000, not 25,000. On a smaller account trade
+**MNQ** and expect the sizer to floor at 1 contract often — the dashboard counts
+how often, and turns that row red past 25%. Once it floors, the currency columns
+stop being risk-normalised and the R rows are the only comparable ones. Set your
+real account size in the Properties tab.
+
+### Reading it
+
+The dashboard is derived from TradingView's own closed trades, so it agrees with
+the Strategy Tester by construction rather than running a second scoreboard
+beside it. Grey dots mark signals refused as opposing, so the cost of the
+one-position constraint is visible on the chart. Expect roughly 29% fewer trades
+than the indicator plots — that is the constraint working, not a fault.
+
 ## Honest limitations
 
 - The edge is ~0.11R per trade. Position sizing, discipline and cost control

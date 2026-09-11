@@ -1,0 +1,1101 @@
+//@version=6
+strategy("Arashi framework (strategy)", "Arashi ST", overlay = true,
+     pyramiding = 8,
+     initial_capital = 100000,
+     default_qty_type = strategy.fixed,
+     default_qty_value = 1,
+     slippage = 2,
+     close_entries_rule = "ANY",
+     calc_on_every_tick = false,
+     process_orders_on_close = true,
+     max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ARASHI FRAMEWORK — STRATEGY BUILD
+//
+// This is the Arashi indicator with its simulated trade tracker replaced by
+// real TradingView orders, so the Strategy Tester grades it. THE SIGNAL ENGINE
+// IS BYTE-IDENTICAL to the indicator: same liquidity map, same sweep/reclaim
+// trigger, same PO3 gate, same presets, same entry, stop and target. Only what
+// happens after a signal differs.
+//
+// ── WHY THE STRATEGY TESTER WILL NOT MATCH THE INDICATOR EXACTLY ───────────
+// A TradingView strategy holds ONE NET POSITION. It cannot be long and short
+// at the same time - a short order while long would REVERSE the position, not
+// open a second trade beside it. The research engine has no such limit, and
+// this matters more than it sounds: 55.8% of its trades overlap an
+// opposite-direction trade, and on 26.6% of all in-trade bars both sides are
+// open at once.
+//
+// So this build SKIPS a signal that would oppose an open position, rather than
+// reversing. That was measured before it was chosen, and it costs nothing:
+//
+//     model                            trades   expR    PF    net R   markets
+//     unconstrained (the indicator)      1997  +0.117  1.18  +234R     5/5
+//     net position, skip opposing        1423  +0.185  1.30  +264R     5/5
+//     net position, one trade at a time  1064  +0.163  1.26  +174R     4/5
+//     long signals only                   856  +0.098  1.15   +84R     4/5
+//     short signals only                 1141  +0.131  1.21  +150R     5/5
+//
+// 29% fewer trades for slightly MORE total R. Do not read the higher +0.185R
+// as an improvement - the confidence intervals overlap heavily
+// ([+0.042,+0.193] against [+0.094,+0.277]) and no rule was tuned here. The
+// honest conclusion is that the constraint is free, not that it helps. The CFD
+// holdout agrees: +0.100R over 1,086 trades against +0.073R over 1,542, with
+// the same total R. Long-only and short-only are both worse than running both
+// and disagree about which side is better across the two datasets, which is
+// what noise looks like - leave both directions on.
+//
+// Same-direction signals DO stack, because they are not in conflict. The
+// measured peak stack is 4, so pyramiding is set to 8 and never binds.
+//
+// ── TWO SMALLER DIFFERENCES, BOTH MEASURED ────────────────────────────────
+// TIE-BREAKS. The research engine always books the stop when one bar contains
+// both the stop and the target. TradingView's broker emulator instead assumes
+// price ran open-low-high-close on an up bar and open-high-low-close on a down
+// bar. This is a non-issue here: across 1,997 trades it arises 3 times (0.2%),
+// and all 3 were down bars, where the emulator agrees with the engine anyway.
+//
+// COSTS. The engine charges a flat 4 ticks per round trip. A strategy cannot
+// take a tick cost as an input, so this uses slippage = 2 ticks per order,
+// which TradingView applies to market and stop orders but not to limit orders.
+// A losing trade (market in, stop out) therefore pays the full 4 ticks and a
+// winning trade (market in, limit out) pays 2. That is slightly kinder than
+// the published model and slightly more realistic. Change it in the Strategy
+// Tester's Properties tab, not in the code.
+//
+// ── POSITION SIZING ───────────────────────────────────────────────────────
+// Size is derived per trade from the actual stop distance and the contract's
+// point value, so every trade risks the same fraction of closed equity and the
+// equity curve is genuinely R-weighted. THIS NEEDS A BIG ENOUGH ACCOUNT.
+// Measured median risk per contract, and how often a 25,000 account at 1%
+// (a 250 budget) cannot afford even one contract:
+//
+//     MNQ  median 288/contract   59% of trades unaffordable
+//     YM   median 945/contract  100%
+//     RTY  median 842/contract   99%
+//     ES   median 1,360/contract 100%
+//     NQ   median 2,816/contract 100%
+//
+// Hence initial_capital defaults to 100,000, not 25,000. On a 25,000 account
+// trade MNQ and expect the sizer to floor at 1 contract often - the dashboard
+// counts how often that happened, and once it is floored the equity curve is
+// no longer risk-normalised and the R column is the only honest one. Set your
+// real account size in the Properties tab.
+//
+// Everything else - the research trail, why 1H only, why the limit entries are
+// worse, why the VWAP filters ship off - is in the indicator's header and in
+// README.md. Read those before trusting any number here.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── structural constants: fixed by convention, never fitted ────────────────
+int   PIVOT_LEN = 5      // fractal half-width for short-term highs/lows
+int   ATR_LEN   = 14     // Wilder ATR, the unit for every threshold below
+float EQ_TOL    = 0.10   // pivots within 0.10 ATR count as "relatively equal"
+int   MAX_POOLS = 60     // tracked pivot pools before the oldest are pruned
+int   MAX_STACK = 8      // must equal `pyramiding` above: past it TradingView
+                         // silently drops the order, so refuse it here instead
+                         // of booking a position the broker never opened.
+                         // Measured peak stack across all markets is 4.
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+string G_PRE   = "Preset"
+string G_LIQ   = "Liquidity Map"
+string G_SIG   = "Signal — Sweep & Reclaim"
+string G_PO3   = "PO3 Context"
+string G_VW    = "VWAP"
+string G_TR    = "Trade Construction"
+string G_RISK  = "Position Sizing"
+string G_UI    = "Display"
+
+string preset = input.string("Index Futures 1H — decisive", "Preset",
+     options = ["Index Futures 1H — decisive", "Index Futures 1H — low drawdown", "Custom"],
+     group = G_PRE,
+     tooltip = "Both presets are the SAME validated signal engine. Every rule " +
+     "that decides whether a trade is taken is identical; they differ only in " +
+     "how the stop is managed once you are in, and they make the same money. " +
+     "You are choosing the ride, not the return.\n\nDECISIVE moves the stop " +
+     "to -0.3R once the trade is +1.5R ahead. Ordinary noise cannot reach it, " +
+     "so trades resolve as real wins or losses: 17% end as managed exits " +
+     "instead of 67%, three times as many decisive trades, expectancy +0.117R " +
+     "vs +0.110R. Positive on all 5 futures and all 3 held-out CFDs. The cost " +
+     "is drawdown - about 23R instead of 13R - so keep risk at 1% per trade, " +
+     "not 2%.\n\nLOW DRAWDOWN moves the stop to exact breakeven at +0.25R. " +
+     "Two thirds of trades then end as 0R scratches, which feels like not " +
+     "trading, but drawdown is roughly half and it tolerates larger size.\n\n" +
+     "Both were measured over ~2,000 futures trades and ~1,540 CFD trades with " +
+     "4-tick round-trip costs.")
+bool pLowDD    = preset == "Index Futures 1H — low drawdown"
+bool usePreset = preset == "Index Futures 1H — decisive" or pLowDD
+
+string tz = input.string("America/New_York", "Exchange timezone", group = G_LIQ)
+bool usePDHL   = input.bool(true,  "Previous day high / low",      group = G_LIQ)
+bool usePWHL   = input.bool(true,  "Previous week high / low",     group = G_LIQ)
+bool useAsia   = input.bool(true,  "Asia session high / low (18:00–02:00)",   group = G_LIQ)
+bool useLondon = input.bool(true,  "London session high / low (02:00–08:00)", group = G_LIQ)
+bool useIB     = input.bool(true,  "Initial balance high / low (09:30–10:30)", group = G_LIQ)
+bool usePivots = input.bool(true,  "Unswept fractal pivots",       group = G_LIQ)
+bool inEqOnly  = input.bool(false, "Pivots must be equal highs / lows", group = G_LIQ,
+     tooltip = "Tested neutral. Reduces signal count without improving results.")
+
+float inMinSweep  = input.float(0.35, "Min sweep depth (× ATR)", minval = 0.0, maxval = 3.0, step = 0.05, group = G_SIG,
+     tooltip = "The single most important filter. Below ~0.25 ATR the raid is " +
+     "noise and results collapse; the surface is flat from 0.35 to 0.75.")
+float inMaxSweep  = input.float(0.0,  "Max sweep depth (× ATR, 0 = no cap)", minval = 0.0, maxval = 10.0, step = 0.25, group = G_SIG,
+     tooltip = "Tested: capping sweep depth never helped, so it is off.")
+int   inReclaim   = input.int(2,      "Reclaim window (bars)", minval = 0, maxval = 10, group = G_SIG,
+     tooltip = "0 = same-bar wick reclaim only, which tested clearly worse.")
+bool  inCloseDir  = input.bool(true,  "Reclaim bar must close in trade direction", group = G_SIG)
+int   inCooldown  = input.int(6,      "Cooldown between signals (bars, per side)", minval = 0, group = G_SIG)
+string inSessMode = input.string("All hours", "Signal session",
+     options = ["All hours", "RTH 09:30–16:00", "NY AM 08:30–11:00", "Globex only"], group = G_SIG,
+     tooltip = "Restricting to NY AM looked excellent on MNQ (PF 1.78) and " +
+     "fell apart on the four markets held back from tuning. Left off.")
+float inVolMult   = input.float(0.0,  "Min reclaim volume (× 20-bar avg, 0 = off)", minval = 0.0, maxval = 5.0, step = 0.1, group = G_SIG,
+     tooltip = "A reclaim nobody participated in is drift, not a decision. " +
+     "Ignored on symbols with no volume feed.")
+bool  inLongs     = input.bool(true, "Long setups",  group = G_SIG)
+bool  inShorts    = input.bool(true, "Short setups", group = G_SIG)
+
+string inPo3Mode   = input.string("Sweep beyond open", "PO3 manipulation gate",
+     options = ["Off", "Sweep beyond open", "Sweep beyond open + reclaim open"], group = G_PO3,
+     tooltip = "The raid extreme must sit beyond the period open for the leg " +
+     "to read as manipulation. Requiring the close to reclaim the open too " +
+     "looked great on the tuning market and did not corroborate.")
+string inPo3Period = input.string("Week", "PO3 period", options = ["Day", "Week"], group = G_PO3,
+     tooltip = "The weekly open corroborated slightly better than the daily open.")
+
+string inVwapAnchor = input.string("Trade day", "VWAP anchor",
+     options = ["Trade day", "RTH session", "Week"], group = G_VW)
+bool  inVwapGate    = input.bool(false, "Filter: raid must be stretched from VWAP", group = G_VW,
+     tooltip = "Did not corroborate on held-out markets. Off by default.")
+float inDevEntry    = input.float(2.0, "…by at least (× VWAP σ)", minval = 0.0, maxval = 6.0, step = 0.25, group = G_VW)
+bool  inVwapReclaim = input.bool(false, "Filter: reclaim bar must close across VWAP", group = G_VW,
+     tooltip = "Did not corroborate on held-out markets. Off by default.")
+float inDev1        = input.float(1.0, "Band 1 (σ)", minval = 0.0, step = 0.25, group = G_VW)
+float inDev2        = input.float(2.0, "Band 2 (σ)", minval = 0.0, step = 0.25, group = G_VW)
+
+string inEntryMode = input.string("Market on reclaim close", "Entry",
+     options = ["Market on reclaim close", "Limit at swept level", "Limit at wick midpoint"], group = G_TR,
+     tooltip = "Both limit modes tested WORSE on every market: the limit only " +
+     "fills when the reversal is already failing. Kept so you can verify it.")
+float inMaxRisk   = input.float(0.0,  "Max risk (× ATR, 0 = off)", minval = 0.0, maxval = 10.0, step = 0.25, group = G_TR,
+     tooltip = "Skip setups whose reclaim closed so far from the raid extreme " +
+     "that the stop, and therefore the target, becomes unreachable.")
+float inMinTarget = input.float(0.0,  "Min target size (price points, 0 = off)", minval = 0.0, step = 1.0, group = G_TR,
+     tooltip = "Skip setups whose reward would be smaller than this. On MNQ " +
+     "the target is a median ~98 points on 5m and ~290 on 1H, so this is a " +
+     "floor for the rare micro-setup, not a typical constraint.")
+float inStopBuf   = input.float(0.50, "Stop buffer beyond sweep extreme (× ATR)", minval = 0.0, maxval = 3.0, step = 0.05, group = G_TR,
+     tooltip = "Flat from 0.35 to 0.75 on held-out markets. Tighter stops at " +
+     "the extreme itself tested strictly worse - the extreme does not hold.")
+float inRR        = input.float(3.0,  "Risk : reward target", minval = 0.5, maxval = 10.0, step = 0.5, group = G_TR,
+     tooltip = "3 is the peak, and under the shipped stop management it wins " +
+     "outright rather than on a tiebreak. Measured on the five index futures, " +
+     "4-tick costs, with growth simulated over 400 trades at a fixed 2% risk:\n" +
+     "  1:2    +0.077R  optimal f 3.9%  DD 24R  growth 1.58x  4/5 markets\n" +
+     "  1:2.5  +0.105R  4.3%  21R  1.92x  5/5\n" +
+     "  1:3    +0.117R  4.1%  23R  2.06x  5/5   <- shipped\n" +
+     "  1:3.5  +0.104R  3.2%  24R  1.80x  5/5\n" +
+     "  1:4    +0.110R  3.0%  28R  1.77x  5/5\n" +
+     "  1:6    +0.083R  1.6%  40R  1.26x  5/5\n" +
+     "  1:8    +0.098R  1.4%  43R  1.31x  3/5\n" +
+     "Long targets have the LOWEST safe size: variance climbs faster than " +
+     "expectancy, so 1:8 carries nearly twice the drawdown to compound at two " +
+     "thirds the rate, on two fewer markets. Lowering it is the real mistake - " +
+     "1:2 loses a market and a third of the growth."
+     )
+float inBeAt      = input.float(1.5, "Move stop toward entry at (R, 0 = off)", minval = 0.0, step = 0.05, group = G_TR,
+     tooltip = "This is the single dial that decides how many of your trades " +
+     "actually resolve. It does NOT decide how much they make - expectancy is " +
+     "flat across the whole range, every setting within about one standard " +
+     "error of every other. Pooled over ~2,000 futures trades:\n" +
+     "  off    0% managed exits, win rate 27.9%, +0.094R, drawdown 41R\n" +
+     "  0.25R  67% managed, 35.0%, +0.110R, 13R\n" +
+     "  0.50R  51% managed, 31.1%, +0.099R, 17R\n" +
+     "  1.00R  32% managed, 29.8%, +0.109R, 22R\n" +
+     "  1.50R  17% managed, 30.8%, +0.117R, 23R   <- shipped\n" +
+     "  2.00R  11% managed, 28.6%, +0.108R, 26R\n" +
+     "Trigger it early and most trades scratch out for nothing but drawdown " +
+     "is small; trigger it late and trades run to a real conclusion but you " +
+     "give back more on the way. Nothing here changes the edge.")
+float inBeTo      = input.float(-0.30, "…and move it to (R from entry)", minval = -1.0, maxval = 1.0, step = 0.05, group = G_TR,
+     tooltip = "Where the stop goes, measured in R from entry. 0 is exact " +
+     "breakeven. NEGATIVE leaves part of the original risk on the table, so " +
+     "noise cannot end the trade.\n\nThis mattered more than expected, and " +
+     "for a reason worth knowing: a stop parked at EXACT breakeven sits at a " +
+     "price the market just traded, which is precisely where it is most likely " +
+     "to be revisited. Backing it off to -0.25R or -0.3R puts it somewhere " +
+     "price has no particular reason to return to. Measured across a dense " +
+     "grid, exact breakeven was positive on only 2 of the 3 held-out CFD " +
+     "markets at every trigger above 1R, while -0.25R to -0.35R was positive " +
+     "on 3 of 3 at every trigger - a consistent pattern across the grid, not " +
+     "one lucky cell.\n\nGoing all the way to -0.5R overshoots: one of the " +
+     "five futures markets turns negative. The shipped -0.30R is the middle " +
+     "of the region that holds on all eight markets, chosen as a plateau " +
+     "midpoint rather than a best cell. Positive values lock in profit and " +
+     "tested worse.")
+int   inValidity  = input.int(12,     "Limit order expiry (bars)", minval = 1, group = G_TR)
+
+// ── strategy-only controls ────────────────────────────────────────────────
+bool  skipOpposing = input.bool(true, "Skip signals opposing an open position", group = G_TR,
+     tooltip = "ON is the only honest setting for a single futures account, " +
+     "and it is what the header's table measured. A TradingView strategy holds " +
+     "one net position: with this OFF, a short signal while long does not open " +
+     "a second trade, it REVERSES the position, which is a different system " +
+     "from the one that was tested. Leave it on.")
+string sizeMode  = input.string("Risk % of equity", "Position size",
+     options = ["Risk % of equity", "Fixed contracts"], group = G_RISK,
+     tooltip = "Risk-based sizing derives contracts from the real stop distance " +
+     "so every trade risks the same fraction of equity and the equity curve is " +
+     "R-weighted. It needs an account big enough to afford one contract at " +
+     "your risk budget - see the header. Fixed contracts is the honest " +
+     "fallback on a small account: the Strategy Tester's dollar figures then " +
+     "over-weight wide-stop trades, so read the R rows on the dashboard.")
+float riskPct    = input.float(1.0, "Risk per trade (% of closed equity)", minval = 0.1, maxval = 10.0, step = 0.25, group = G_RISK,
+     tooltip = "Bootstrapped over 400-trade runs on the actual outcome " +
+     "distribution of the DECISIVE preset (per-trade sd 1.69R, optimal f " +
+     "4.1%): 1% grows a median 1.50x with no simulated path losing half and a " +
+     "median 22% drawdown; 1.5% grows 1.78x with 2% of paths halving; 2% grows " +
+     "2.02x with 7% halving; 4.5% grows 2.80x with 40% halving. The LOW " +
+     "DRAWDOWN preset tolerates roughly twice this. Real drawdowns cluster and " +
+     "are worse than simulated - 1% is the default for a reason.")
+int   fixedQty   = input.int(1, "Fixed contracts", minval = 1, group = G_RISK)
+
+bool  showPools    = input.bool(true, "Draw liquidity map",      group = G_UI)
+bool  inDrawPivots = input.bool(false, "…including fractal pivots", group = G_UI,
+     tooltip = "Pivots are always used for signals; this only draws them.")
+bool  inShowSwept  = input.bool(false, "…keep swept levels (greyed)", group = G_UI)
+bool  showVwap     = input.bool(true, "Draw VWAP",               group = G_UI)
+bool  inShowBand2  = input.bool(false, "…and the 2σ band",       group = G_UI)
+bool  showPeriodOp = input.bool(true, "Draw PO3 period open",    group = G_UI)
+bool  showLabels   = input.bool(true, "Signal labels (details in tooltip)", group = G_UI)
+bool  showSkipped  = input.bool(true, "Mark signals skipped as opposing", group = G_UI,
+     tooltip = "Small grey dots. Useful for seeing exactly what the one-net-" +
+     "position constraint costs you on this chart.")
+bool  showDash     = input.bool(true, "Self-audit dashboard",    group = G_UI)
+
+string chartStyle  = input.string("Clean", "Chart style", options = ["Clean", "Detailed"], group = G_UI,
+     tooltip = "Clean draws only the named institutional levels. Detailed adds " +
+     "every tracked pivot, swept levels and the 2σ VWAP band.")
+bool  detailed   = chartStyle == "Detailed"
+bool  drawPivots = detailed or inDrawPivots
+bool  showSwept  = detailed or inShowSwept
+bool  showBand2  = detailed or inShowBand2
+color bullCol      = input.color(#26A69A, "Long / sell-side",    group = G_UI)
+color bearCol      = input.color(#EF5350, "Short / buy-side",    group = G_UI)
+color vwapCol      = input.color(#FFB300, "VWAP",                group = G_UI)
+
+// ── resolve the preset ─────────────────────────────────────────────────────
+float minSweepAtr = usePreset ? 0.35  : inMinSweep
+float maxSweepAtr = usePreset ? 0.0   : inMaxSweep
+int   reclaimBars = usePreset ? 2     : inReclaim
+bool  needCloseDir= usePreset ? true  : inCloseDir
+int   cooldown    = usePreset ? 6     : inCooldown
+string sessMode   = usePreset ? "All hours" : inSessMode
+string po3Mode    = usePreset ? "Sweep beyond open" : inPo3Mode
+string po3Period  = usePreset ? "Week" : inPo3Period
+bool  vwapGate    = usePreset ? false : inVwapGate
+bool  vwapReclaim = usePreset ? false : inVwapReclaim
+float devEntry    = usePreset ? 2.0   : inDevEntry
+string entryMode  = usePreset ? "Market on reclaim close" : inEntryMode
+float stopBufAtr  = usePreset ? 0.50  : inStopBuf
+float rrTarget    = usePreset ? 3.0   : inRR
+float beAtR       = pLowDD ? 0.25 : usePreset ? 1.5 : inBeAt
+float beToR       = pLowDD ? 0.0 : usePreset ? -0.30 : inBeTo
+int   validity    = usePreset ? 12    : inValidity
+bool  eqOnly      = usePreset ? false : inEqOnly
+float volMult     = usePreset ? 0.0   : inVolMult
+float maxRiskAtr  = usePreset ? 0.0   : inMaxRisk
+float minTargetPts= usePreset ? 0.0   : inMinTarget
+
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
+type Pool
+    float  price
+    int    side      // +1 buy-side (above price), -1 sell-side (below)
+    string kind
+    int    born
+    bool   swept
+    bool   eq
+    line   ln
+    label  tag
+
+// One live strategy order. Mirrors the indicator's Setup, minus the drawings,
+// plus what is needed to grade the trade in R once TradingView closes it.
+type Pos
+    string eid
+    int    dir
+    float  entry
+    float  stop
+    float  tp
+    float  risk       // in price points
+    float  riskCash   // risk x contracts x point value, the R denominator
+    bool   be
+    bool   filled
+    int    created
+
+type Probe        // measures how often the raid extreme was the real extreme
+    int    bar
+    int    dir
+    float  extreme
+
+// ─────────────────────────────────────────────────────────────
+// CONTEXT: ATR, SESSIONS, PERIODS, VWAP
+// ─────────────────────────────────────────────────────────────
+float atrVal = ta.atr(ATR_LEN)
+
+// Minutes since the 18:00 ET trade-day open. Every session window below is a
+// plain interval in [0,1440), which makes the midnight crossing disappear and
+// keeps the exchange clock DST-correct via hour()/minute() with a timezone.
+int etMin = hour(time, tz) * 60 + minute(time, tz)
+int mspo  = (etMin + 360) % 1440
+
+bool inAsia   = mspo < 480                       // 18:00 – 02:00
+bool inLondon = mspo >= 480 and mspo < 840       // 02:00 – 08:00
+bool inIB     = mspo >= 930 and mspo < 990       // 09:30 – 10:30
+bool inRTH    = mspo >= 930 and mspo < 1320      // 09:30 – 16:00
+bool inNYAM   = mspo >= 870 and mspo < 1020      // 08:30 – 11:00
+bool rthPrev  = bar_index > 0 ? inRTH[1] : false
+
+// Period boundaries come from the exchange's own session definition, so on
+// CME futures the day rolls at 18:00 ET and the week at Sunday 18:00 ET -
+// which is what the daily and weekly candles on the chart already show, and
+// what the research engine's trade-day calendar reproduces.
+bool newDay  = timeframe.change("1D")
+bool newWeek = timeframe.change("1W")
+
+bool signalSessionOk = switch sessMode
+    "RTH 09:30–16:00"   => inRTH
+    "NY AM 08:30–11:00" => inNYAM
+    "Globex only"       => not inRTH
+    => true
+
+
+// PO3 period open — the reference the manipulation leg is measured against
+var float periodOpen = na
+bool newPeriod = po3Period == "Week" ? newWeek : newDay
+if newPeriod
+    periodOpen := open
+
+// ── session-anchored VWAP with volume-weighted deviation bands ─────────────
+// vwap = Σ(v·p)/Σv ;  σ² = Σ(v·p²)/Σv − vwap² .  Bars with no reported volume
+// (thin Globex prints) contribute nothing; if a whole anchor has no volume the
+// series falls back to hlc3 so it never goes na mid-chart.
+bool newAnchor = inVwapAnchor == "Week" ? newWeek
+     : inVwapAnchor == "RTH session" ? (inRTH and not rthPrev) : newDay
+
+var float sumPV  = 0.0
+var float sumV   = 0.0
+var float sumP2V = 0.0
+var int   anchorBars = 0
+var int   anchorTime = 0
+if newAnchor or bar_index == 0
+    sumPV  := 0.0
+    sumV   := 0.0
+    sumP2V := 0.0
+    anchorBars := 0
+    anchorTime := time
+
+float typical = hlc3
+float barVol  = nz(volume)
+sumPV      := sumPV + barVol * typical
+sumV       := sumV + barVol
+sumP2V     := sumP2V + barVol * typical * typical
+anchorBars := anchorBars + 1
+
+float vwapVal = sumV > 0 ? sumPV / sumV : typical
+float vwapSd  = sumV > 0 ? math.sqrt(math.max(sumP2V / sumV - vwapVal * vwapVal, 0.0)) : 0.0
+// The band is meaningless in the first minutes after a reset: with two or
+// three prints the volume-weighted variance is near zero and any deviation
+// scores as a huge sigma. Both a bar count and an elapsed-time floor are
+// required, so the rule behaves the same on a 5-minute chart as on an hourly.
+bool vwapOk = anchorBars >= 2 and (time - anchorTime) >= 3600000 and vwapSd > 0
+
+plot(showVwap ? vwapVal : na, "VWAP", color = vwapCol, linewidth = 2)
+p_u1 = plot(showVwap and vwapOk ? vwapVal + inDev1 * vwapSd : na, "VWAP +1σ", color = color.new(vwapCol, 55))
+p_l1 = plot(showVwap and vwapOk ? vwapVal - inDev1 * vwapSd : na, "VWAP −1σ", color = color.new(vwapCol, 55))
+// the 2σ band is opt-in and has no fill, so these need no plot handle
+plot(showVwap and showBand2 and vwapOk ? vwapVal + inDev2 * vwapSd : na, "VWAP +2σ", color = color.new(vwapCol, 80))
+plot(showVwap and showBand2 and vwapOk ? vwapVal - inDev2 * vwapSd : na, "VWAP −2σ", color = color.new(vwapCol, 80))
+fill(p_u1, p_l1, color = color.new(vwapCol, 95), title = "VWAP 1σ zone")
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+var array<Pool>  pools  = array.new<Pool>()
+var array<Pos>   live   = array.new<Pos>()
+var array<Probe> probes = array.new<Probe>()
+
+var int   seq         = 0
+var int   lastClosed  = 0     // how many closed trades have been graded
+var int   cntSignals  = 0
+var int   cntSkipped  = 0
+var int   cntWins     = 0
+var int   cntLosses   = 0
+var int   cntManaged  = 0
+var int   cntFloored  = 0     // sizer could not afford a full-risk position
+var float netR        = 0.0
+var float grossWinR   = 0.0
+var float grossLossR  = 0.0
+var int   probeHits   = 0
+var int   probeTotal  = 0
+var int   lastLongBar  = na
+var int   lastShortBar = na
+var float lastRiskPts  = na    // risk of the most recent signal, in price points
+var int   lastQty      = na
+
+// one live raid per side; a raid that keeps taking out pools is extended
+// rather than duplicated, so a single sweep leg cannot spawn a cluster of
+// near-identical setups
+var bool   raidLongOn   = false     // sell-side raid  -> long setup
+var float  raidLongLvl  = na
+var float  raidLongExt  = na
+var int    raidLongBar  = na
+var int    raidLongFirst= na
+var string raidLongKind = ""
+var bool   raidShortOn  = false     // buy-side raid   -> short setup
+var float  raidShortLvl = na
+var float  raidShortExt = na
+var int    raidShortBar = na
+var int    raidShortFirst = na
+var string raidShortKind = ""
+
+// running period extremes
+var float dayH  = na
+var float dayL  = na
+var float pdH   = na
+var float pdL   = na
+var float wkH   = na
+var float wkL   = na
+var float pwH   = na
+var float pwL   = na
+var float asiaH = na
+var float asiaL = na
+var float lonH  = na
+var float lonL  = na
+var float ibH   = na
+var float ibL   = na
+var bool  asiaDone = false
+var bool  lonDone  = false
+var bool  ibDone   = false
+
+// v6 evaluates and/or lazily, so a ta.* call reached only inside a conditional
+// can miss bars and corrupt its own history. Every one is hoisted here.
+float pivHigh  = high[PIVOT_LEN]
+float pivLow   = low[PIVOT_LEN]
+float hiWin    = ta.highest(high, 2 * PIVOT_LEN + 1)
+float loWin    = ta.lowest(low,  2 * PIVOT_LEN + 1)
+float hiAfter  = ta.highest(high, PIVOT_LEN)
+float loAfter  = ta.lowest(low,  PIVOT_LEN)
+float volSma   = ta.sma(nz(volume), 20)
+float low20    = ta.lowest(low,  20)
+float high20   = ta.highest(high, 20)
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+f_poolColor(int side) =>
+    side > 0 ? bearCol : bullCol
+
+f_allowed(Pool p) =>
+    p.kind == "Pivot" ? (usePivots and (not eqOnly or p.eq)) : true
+
+f_erase(Pool p) =>
+    if not na(p.ln)
+        line.delete(p.ln)
+    if not na(p.tag)
+        label.delete(p.tag)
+
+f_dropKind(string k) =>
+    int i = array.size(pools) - 1
+    while i >= 0
+        Pool p = array.get(pools, i)
+        if p.kind == k
+            f_erase(p)
+            array.remove(pools, i)
+        i -= 1
+
+f_addPool(float price, int side, string k, bool eqFlag) =>
+    // A level is drawn from where it was created to the current bar and no
+    // further. extend.right on sixty pools is what turns this kind of chart
+    // into a cobweb.
+    bool draw = showPools and (k != "Pivot" or drawPivots)
+    line ln = na
+    label tag = na
+    if draw
+        ln := line.new(bar_index, price, bar_index + 1, price,
+             color = color.new(f_poolColor(side), k == "Pivot" ? 65 : 30), width = 1,
+             style = k == "Pivot" ? line.style_dotted : line.style_dashed)
+        if k != "Pivot"
+            tag := label.new(bar_index + 1, price, k, style = label.style_label_left,
+                 color = color.new(color.black, 100), size = size.tiny,
+                 textcolor = color.new(f_poolColor(side), 20))
+    array.push(pools, Pool.new(price, side, k, bar_index, false, eqFlag, ln, tag))
+
+// a named level is replaced outright when its period rolls: yesterday's high
+// stops being a pool the moment there is a new yesterday
+f_setNamed(float price, int side, string k, bool enabled) =>
+    if enabled and not na(price)
+        f_dropKind(k)
+        f_addPool(price, side, k, false)
+
+f_prunePivots() =>
+    int nPiv = 0
+    int i = 0
+    while i < array.size(pools)
+        if array.get(pools, i).kind == "Pivot"
+            nPiv += 1
+        i += 1
+    if nPiv > MAX_POOLS
+        // Mirror the reference engine exactly: once the cap is hit EVERY
+        // swept pivot is discarded, then the oldest survivors, until
+        // MAX_POOLS remain. Letting swept pivots hold slots would evict
+        // still-live levels and silently drop the signals they would have
+        // produced - which is precisely what parity testing caught.
+        int j = array.size(pools) - 1
+        while j >= 0
+            Pool p = array.get(pools, j)
+            if p.kind == "Pivot" and p.swept
+                f_erase(p)
+                array.remove(pools, j)
+                nPiv -= 1
+            j -= 1
+        int k = 0
+        while k < array.size(pools) and nPiv > MAX_POOLS
+            Pool p2 = array.get(pools, k)
+            if p2.kind == "Pivot"
+                f_erase(p2)
+                array.remove(pools, k)
+                nPiv -= 1
+            else
+                k += 1
+
+// Direction of whatever is currently open, from this script's own book rather
+// than strategy.position_size. With process_orders_on_close the broker's
+// position does not update until after this bar's script run, so two opposing
+// signals on the SAME bar would both slip through if we asked the broker.
+f_liveDir() =>
+    int d = 0
+    int i = 0
+    while i < array.size(live)
+        d := array.get(live, i).dir
+        i += 1
+    d
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE MACHINE — runs once per bar, on close. Nothing below repaints.
+// Blocks 2 to 6 are byte-identical to the indicator; only block 1 (which
+// grades closed trades instead of simulating them) and the order placement
+// inside block 5 differ.
+// ═══════════════════════════════════════════════════════════════════════════
+bool sigLong  = false
+bool sigShort = false
+bool skipLong  = false
+bool skipShort = false
+
+if barstate.isconfirmed
+
+    // ── 1. grade whatever TradingView closed since the last bar ────────────
+    while lastClosed < strategy.closedtrades
+        string ceid = strategy.closedtrades.entry_id(lastClosed)
+        float  cpnl = strategy.closedtrades.profit(lastClosed) -
+             strategy.closedtrades.commission(lastClosed)
+        float  cex  = strategy.closedtrades.exit_price(lastClosed)
+        int li = 0
+        while li < array.size(live)
+            Pos q = array.get(live, li)
+            if q.eid == ceid
+                float r = q.riskCash > 0 ? cpnl / q.riskCash : 0.0
+                netR += r
+                if r > 0
+                    grossWinR += r
+                else
+                    grossLossR -= r
+                // classify from WHERE it exited, not from the R value, so a
+                // partial tick of slippage cannot turn a win into a scratch
+                float tol = 3 * syminfo.mintick
+                bool hitTp = q.dir == 1 ? cex >= q.tp - tol : cex <= q.tp + tol
+                if hitTp
+                    cntWins += 1
+                else if q.be
+                    cntManaged += 1
+                else
+                    cntLosses += 1
+                array.remove(live, li)
+            else
+                li += 1
+        lastClosed += 1
+
+    // A limit entry rests until price trades through it, then expires. Fill is
+    // judged by the indicator's own rule (a buy limit fills when the bar trades
+    // at or below it), which is the same test TradingView's emulator applies,
+    // so this book and the broker's stay in step.
+    int fi = array.size(live) - 1
+    while fi >= 0
+        Pos q = array.get(live, fi)
+        if not q.filled and q.created < bar_index
+            bool bull = q.dir == 1
+            if bull ? low <= q.entry : high >= q.entry
+                q.filled := true
+            else if bar_index - q.created >= validity
+                strategy.cancel(q.eid)
+                array.remove(live, fi)
+        fi -= 1
+
+    // move the stop once a trade is far enough ahead. Re-issuing strategy.exit
+    // with the same id modifies the resting bracket rather than adding one.
+    if beAtR > 0
+        int mi = 0
+        while mi < array.size(live)
+            Pos q = array.get(live, mi)
+            if q.filled and not q.be
+                bool bull = q.dir == 1
+                float beLvl = bull ? q.entry + beAtR * q.risk : q.entry - beAtR * q.risk
+                if bull ? high >= beLvl : low <= beLvl
+                    q.be := true
+                    // beToR is measured in R from entry: 0 is exact breakeven,
+                    // negative leaves part of the original risk on so noise
+                    // cannot scratch the trade out
+                    float moved = bull ? q.entry + beToR * q.risk : q.entry - beToR * q.risk
+                    q.stop := bull ? math.max(q.stop, moved) : math.min(q.stop, moved)
+                    strategy.exit("x" + q.eid, from_entry = q.eid,
+                         stop = q.stop, limit = q.tp)
+            mi += 1
+
+    // ── 2. roll periods and sessions, publishing completed levels as pools ──
+    if newDay
+        pdH := dayH
+        pdL := dayL
+        dayH := high
+        dayL := low
+        asiaH := na
+        asiaL := na
+        lonH := na
+        lonL := na
+        ibH := na
+        ibL := na
+        asiaDone := false
+        lonDone := false
+        ibDone := false
+        f_setNamed(pdH, 1,  "PDH", usePDHL)
+        f_setNamed(pdL, -1, "PDL", usePDHL)
+    else
+        dayH := na(dayH) ? high : math.max(dayH, high)
+        dayL := na(dayL) ? low  : math.min(dayL, low)
+
+    if newWeek
+        pwH := wkH
+        pwL := wkL
+        wkH := high
+        wkL := low
+        f_setNamed(pwH, 1,  "PWH", usePWHL)
+        f_setNamed(pwL, -1, "PWL", usePWHL)
+    else
+        wkH := na(wkH) ? high : math.max(wkH, high)
+        wkL := na(wkL) ? low  : math.min(wkL, low)
+
+    // Each session range belongs to one trade day and is published exactly
+    // once, on the first bar past its close. Seeding off "was the previous bar
+    // in this window" instead would merge two days across a holiday gap - a
+    // Sunday-evening bar and the Tuesday bar after it are both inside the Asia
+    // window but belong to different trade days.
+    if inAsia
+        asiaH := na(asiaH) ? high : math.max(asiaH, high)
+        asiaL := na(asiaL) ? low  : math.min(asiaL, low)
+    else if not asiaDone
+        asiaDone := true
+        f_setNamed(asiaH, 1,  "AsiaH", useAsia)
+        f_setNamed(asiaL, -1, "AsiaL", useAsia)
+
+    if inLondon
+        lonH := na(lonH) ? high : math.max(lonH, high)
+        lonL := na(lonL) ? low  : math.min(lonL, low)
+    else if mspo >= 840 and not lonDone
+        lonDone := true
+        f_setNamed(lonH, 1,  "LonH", useLondon)
+        f_setNamed(lonL, -1, "LonL", useLondon)
+
+    if inIB
+        ibH := na(ibH) ? high : math.max(ibH, high)
+        ibL := na(ibL) ? low  : math.min(ibL, low)
+    else if mspo >= 990 and not ibDone
+        ibDone := true
+        f_setNamed(ibH, 1,  "IBH", useIB)
+        f_setNamed(ibL, -1, "IBL", useIB)
+
+    // ── 3. fractal pivots — visible only PIVOT_LEN bars after the fact, and
+    //       only while still untouched, so nothing is known early ───────────
+    if usePivots and bar_index >= 2 * PIVOT_LEN and not na(atrVal)
+        if pivHigh == hiWin and hiAfter < pivHigh
+            bool eqH = false
+            int i = 0
+            while i < array.size(pools)
+                Pool p = array.get(pools, i)
+                if p.kind == "Pivot" and p.side > 0 and not p.swept and math.abs(p.price - pivHigh) <= EQ_TOL * atrVal
+                    p.eq := true
+                    eqH := true
+                i += 1
+            f_addPool(pivHigh, 1, "Pivot", eqH)
+        if pivLow == loWin and loAfter > pivLow
+            bool eqL = false
+            int i2 = 0
+            while i2 < array.size(pools)
+                Pool p = array.get(pools, i2)
+                if p.kind == "Pivot" and p.side < 0 and not p.swept and math.abs(p.price - pivLow) <= EQ_TOL * atrVal
+                    p.eq := true
+                    eqL := true
+                i2 += 1
+            f_addPool(pivLow, -1, "Pivot", eqL)
+        f_prunePivots()
+
+    // ── 4. mark swept pools and open / extend the raid on each side ────────
+    float sslLvl = na       // nearest (highest) sell-side level taken out
+    float bslLvl = na       // nearest (lowest)  buy-side level taken out
+    string sslKind = ""
+    string bslKind = ""
+    int pi = array.size(pools) - 1
+    while pi >= 0
+        Pool p = array.get(pools, pi)
+        if not p.swept and (p.side > 0 ? high > p.price : low < p.price)
+            p.swept := true
+            if showSwept
+                if not na(p.ln)
+                    line.set_x2(p.ln, bar_index)
+                    line.set_color(p.ln, color.new(color.gray, 75))
+                if not na(p.tag)
+                    label.delete(p.tag)
+                    p.tag := na
+            else
+                f_erase(p)
+                p.ln := na
+                p.tag := na
+            if f_allowed(p)
+                if p.side > 0
+                    if na(bslLvl) or p.price < bslLvl
+                        bslLvl  := p.price
+                        bslKind := p.kind
+                else
+                    if na(sslLvl) or p.price > sslLvl
+                        sslLvl  := p.price
+                        sslKind := p.kind
+        pi -= 1
+
+    if not na(sslLvl)
+        if raidLongOn
+            raidLongLvl  := math.max(raidLongLvl, sslLvl)
+            raidLongBar  := bar_index
+            raidLongKind := sslKind
+        else
+            raidLongOn    := true
+            raidLongLvl   := sslLvl
+            raidLongExt   := low
+            raidLongBar   := bar_index
+            raidLongFirst := bar_index
+            raidLongKind  := sslKind
+    if not na(bslLvl)
+        if raidShortOn
+            raidShortLvl  := math.min(raidShortLvl, bslLvl)
+            raidShortBar  := bar_index
+            raidShortKind := bslKind
+        else
+            raidShortOn    := true
+            raidShortLvl   := bslLvl
+            raidShortExt   := high
+            raidShortBar   := bar_index
+            raidShortFirst := bar_index
+            raidShortKind  := bslKind
+
+    // ── 5. the reclaim: price closes back on the origin side of the pool ────
+    if raidLongOn and not na(atrVal)
+        raidLongExt := math.min(raidLongExt, low)
+        float depth = raidLongLvl - raidLongExt
+        if maxSweepAtr > 0 and depth > maxSweepAtr * atrVal
+            raidLongOn := false                       // ran on: breakout, not a raid
+        else if bar_index - raidLongBar > reclaimBars
+            raidLongOn := false                       // never reclaimed in time
+        else if close > raidLongLvl
+            bool ok = depth >= minSweepAtr * atrVal
+            ok := ok and inLongs and signalSessionOk
+            ok := ok and (na(lastLongBar) or bar_index - lastLongBar >= cooldown)
+            if ok and needCloseDir
+                ok := close > open
+            if ok and volMult > 0
+                ok := not na(volSma) and volSma > 0 and nz(volume) >= volMult * volSma
+            if ok and vwapGate
+                ok := vwapOk and raidLongExt <= vwapVal - devEntry * vwapSd
+            if ok and vwapReclaim
+                ok := vwapOk and close > vwapVal
+            if ok and po3Mode != "Off" and not na(periodOpen)
+                ok := raidLongExt < periodOpen
+                if ok and po3Mode == "Sweep beyond open + reclaim open"
+                    ok := close > periodOpen
+            if ok
+                float entryPx = switch entryMode
+                    "Limit at swept level"   => raidLongLvl
+                    "Limit at wick midpoint" => (raidLongLvl + raidLongExt) / 2.0
+                    => close
+                float stopPx = raidLongExt - stopBufAtr * atrVal
+                float riskPx = entryPx - stopPx
+                bool wideL  = maxRiskAtr > 0 and riskPx > maxRiskAtr * atrVal
+                bool smallL = minTargetPts > 0 and rrTarget * riskPx < minTargetPts
+                if riskPx >= 2 * syminfo.mintick and not wideL and not smallL
+                    // the one-net-position rule: a long while short is not a
+                    // second trade, it is a reversal, so it is refused instead
+                    if (skipOpposing and f_liveDir() == -1) or array.size(live) >= MAX_STACK
+                        skipLong  := true
+                        cntSkipped += 1
+                    else
+                        sigLong := true
+                        float tpPx = entryPx + rrTarget * riskPx
+                        float acct = strategy.initial_capital + strategy.netprofit
+                        float perCon = riskPx * syminfo.pointvalue
+                        float want = sizeMode == "Fixed contracts" or perCon <= 0 ?
+                             float(fixedQty) : math.floor(acct * riskPct / 100.0 / perCon)
+                        if want < 1
+                            cntFloored += 1
+                        int qty = int(math.max(1, want))
+                        seq += 1
+                        string eid = "L" + str.tostring(seq)
+                        // a market order fills at this bar's close, which is
+                        // what the research engine assumes; a limit rests at
+                        // the price the chosen entry mode computed
+                        bool mktL = entryMode == "Market on reclaim close"
+                        strategy.entry(eid, strategy.long, qty = qty,
+                             limit = mktL ? na : entryPx)
+                        strategy.exit("x" + eid, from_entry = eid,
+                             stop = stopPx, limit = tpPx)
+                        array.push(live, Pos.new(eid, 1, entryPx, stopPx, tpPx,
+                             riskPx, riskPx * qty * syminfo.pointvalue, false,
+                             mktL, bar_index))
+                        array.push(probes, Probe.new(bar_index, 1, raidLongExt))
+                        cntSignals += 1
+                        lastRiskPts := riskPx
+                        lastQty := qty
+                        lastLongBar := bar_index
+                        if showLabels
+                            string dL = "PO3 LONG   swept: " + raidLongKind +
+                                 "\nlevel   " + str.tostring(raidLongLvl, format.mintick) +
+                                 "\nentry   " + str.tostring(entryPx, format.mintick) +
+                                 "\nstop    " + str.tostring(stopPx, format.mintick) +
+                                 "\ntarget  " + str.tostring(tpPx, format.mintick) +
+                                 "\nrisk    " + str.tostring(riskPx, format.mintick) + " pts" +
+                                 "\nsize    " + str.tostring(qty) + " contracts"
+                            label.new(bar_index, low, detailed ? dL : "▲",
+                                 style = label.style_label_up,
+                                 color = color.new(bullCol, detailed ? 15 : 30),
+                                 textcolor = color.white, size = size.small,
+                                 tooltip = dL)
+            raidLongOn := false
+
+    if raidShortOn and not na(atrVal)
+        raidShortExt := math.max(raidShortExt, high)
+        float depthS = raidShortExt - raidShortLvl
+        if maxSweepAtr > 0 and depthS > maxSweepAtr * atrVal
+            raidShortOn := false
+        else if bar_index - raidShortBar > reclaimBars
+            raidShortOn := false
+        else if close < raidShortLvl
+            bool okS = depthS >= minSweepAtr * atrVal
+            okS := okS and inShorts and signalSessionOk
+            okS := okS and (na(lastShortBar) or bar_index - lastShortBar >= cooldown)
+            if okS and needCloseDir
+                okS := close < open
+            if okS and volMult > 0
+                okS := not na(volSma) and volSma > 0 and nz(volume) >= volMult * volSma
+            if okS and vwapGate
+                okS := vwapOk and raidShortExt >= vwapVal + devEntry * vwapSd
+            if okS and vwapReclaim
+                okS := vwapOk and close < vwapVal
+            if okS and po3Mode != "Off" and not na(periodOpen)
+                okS := raidShortExt > periodOpen
+                if okS and po3Mode == "Sweep beyond open + reclaim open"
+                    okS := close < periodOpen
+            if okS
+                float entryPxS = switch entryMode
+                    "Limit at swept level"   => raidShortLvl
+                    "Limit at wick midpoint" => (raidShortLvl + raidShortExt) / 2.0
+                    => close
+                float stopPxS = raidShortExt + stopBufAtr * atrVal
+                float riskPxS = stopPxS - entryPxS
+                bool wideS  = maxRiskAtr > 0 and riskPxS > maxRiskAtr * atrVal
+                bool smallS = minTargetPts > 0 and rrTarget * riskPxS < minTargetPts
+                if riskPxS >= 2 * syminfo.mintick and not wideS and not smallS
+                    if (skipOpposing and f_liveDir() == 1) or array.size(live) >= MAX_STACK
+                        skipShort := true
+                        cntSkipped += 1
+                    else
+                        sigShort := true
+                        float tpPxS = entryPxS - rrTarget * riskPxS
+                        float acctS = strategy.initial_capital + strategy.netprofit
+                        float perConS = riskPxS * syminfo.pointvalue
+                        float wantS = sizeMode == "Fixed contracts" or perConS <= 0 ?
+                             float(fixedQty) : math.floor(acctS * riskPct / 100.0 / perConS)
+                        if wantS < 1
+                            cntFloored += 1
+                        int qtyS = int(math.max(1, wantS))
+                        seq += 1
+                        string eidS = "S" + str.tostring(seq)
+                        // a market order fills at this bar's close, which is
+                        // what the research engine assumes; a limit rests at
+                        // the price the chosen entry mode computed
+                        bool mktS = entryMode == "Market on reclaim close"
+                        strategy.entry(eidS, strategy.short, qty = qtyS,
+                             limit = mktS ? na : entryPxS)
+                        strategy.exit("x" + eidS, from_entry = eidS,
+                             stop = stopPxS, limit = tpPxS)
+                        array.push(live, Pos.new(eidS, -1, entryPxS, stopPxS, tpPxS,
+                             riskPxS, riskPxS * qtyS * syminfo.pointvalue, false,
+                             mktS, bar_index))
+                        array.push(probes, Probe.new(bar_index, -1, raidShortExt))
+                        cntSignals += 1
+                        lastRiskPts := riskPxS
+                        lastQty := qtyS
+                        lastShortBar := bar_index
+                        if showLabels
+                            string dS = "PO3 SHORT   swept: " + raidShortKind +
+                                 "\nlevel   " + str.tostring(raidShortLvl, format.mintick) +
+                                 "\nentry   " + str.tostring(entryPxS, format.mintick) +
+                                 "\nstop    " + str.tostring(stopPxS, format.mintick) +
+                                 "\ntarget  " + str.tostring(tpPxS, format.mintick) +
+                                 "\nrisk    " + str.tostring(riskPxS, format.mintick) + " pts" +
+                                 "\nsize    " + str.tostring(qtyS) + " contracts"
+                            label.new(bar_index, high, detailed ? dS : "▼",
+                                 style = label.style_label_down,
+                                 color = color.new(bearCol, detailed ? 15 : 30),
+                                 textcolor = color.white, size = size.small,
+                                 tooltip = dS)
+            raidShortOn := false
+
+    // ── 6. diagnostic: was the raid extreme the real extreme? ──────────────
+    // Resolved 20 bars later, so it costs nothing and cannot leak forward.
+    int qi = array.size(probes) - 1
+    while qi >= 0
+        Probe q = array.get(probes, qi)
+        if bar_index - q.bar >= 20
+            probeTotal += 1
+            if q.dir == 1 ? q.extreme <= low20 : q.extreme >= high20
+                probeHits += 1
+            array.remove(probes, qi)
+        qi -= 1
+
+// ── cosmetic only: keep live levels reaching the right edge ────────────────
+// Purely a drawing refresh - it touches no state the model reads, so it is
+// safe to run on the live bar as well as on closed ones.
+if showPools and array.size(pools) > 0
+    int di = 0
+    while di < array.size(pools)
+        Pool pd = array.get(pools, di)
+        if not pd.swept
+            if not na(pd.ln)
+                line.set_x2(pd.ln, bar_index + 1)
+            if not na(pd.tag)
+                label.set_x(pd.tag, bar_index + 1)
+        di += 1
+
+// PO3 period open, drawn as the reference the manipulation leg is measured
+// against. plot() with a conditional colour keeps it to one series.
+plot(showPeriodOp ? periodOpen : na, "PO3 period open",
+     color = color.new(color.silver, 30), style = plot.style_stepline)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELF-AUDIT DASHBOARD
+// These numbers are derived from TradingView's own closed trades, so they
+// agree with the Strategy Tester by construction. The R rows are the ones to
+// read: the Strategy Tester's currency figures are not risk-normalised if the
+// sizer ever floored to one contract.
+// ═══════════════════════════════════════════════════════════════════════════
+f_row(table t, int r, string k, string v, color vc) =>
+    table.cell(t, 0, r, k, text_color = color.new(color.silver, 0),
+         text_halign = text.align_left,  text_size = size.small)
+    table.cell(t, 1, r, v, text_color = vc,
+         text_halign = text.align_right, text_size = size.small)
+
+if showDash and barstate.islast
+    var table dash = table.new(position.top_right, 2, 17,
+         bgcolor = color.new(#0E1116, 12), border_width = 1,
+         border_color = color.new(color.gray, 70),
+         frame_width = 1, frame_color = color.new(color.gray, 50))
+
+    int decisive = cntWins + cntLosses
+    int closed   = decisive + cntManaged
+    float winRate = decisive > 0 ? 100.0 * cntWins / decisive : na
+    float beRate  = 100.0 / (1.0 + rrTarget)
+    float expR    = closed > 0 ? netR / closed : na
+    float pf      = grossLossR > 0 ? grossWinR / grossLossR : na
+    float tickPct = probeTotal > 0 ? 100.0 * probeHits / probeTotal : na
+
+    string phase = raidLongOn or raidShortOn ? "MANIPULATION (raid live)"
+         : na(periodOpen) ? "—"
+         : close > periodOpen ? "DISTRIBUTION above open" : "DISTRIBUTION below open"
+
+    int tfSec = timeframe.in_seconds()
+    string tfVerdict = tfSec <= 60    ? "1m · PF 0.34 — avoid"
+         : tfSec <= 300   ? "5m · PF 0.86, 1 of 3 mkts"
+         : tfSec <= 900   ? "15m · PF 0.90, 1 of 3"
+         : tfSec <= 1800  ? "30m · PF 0.93, 1 of 3"
+         : tfSec <= 5400  ? "1H · PF 1.13–1.22, 3 of 3 ✓"
+         : tfSec <= 7200  ? "2H · PF 0.99, 1 of 3"
+         : tfSec <= 14400 ? "4H · PF 1.05, 2 of 3"
+         : "untested timeframe"
+    bool tfOk    = tfSec > 1800 and tfSec <= 5400
+    bool tfMaybe = tfSec > 5400 and tfSec <= 14400
+
+    table.cell(dash, 0, 0, "ARASHI — STRATEGY", text_color = color.white, text_size = size.normal)
+    table.merge_cells(dash, 0, 0, 1, 0)
+    f_row(dash, 1, "Orders placed",   str.tostring(cntSignals), color.white)
+    f_row(dash, 2, "Skipped (opposing open)", str.tostring(cntSkipped) +
+         (cntSignals + cntSkipped > 0 ? "  (" +
+         str.tostring(100.0 * cntSkipped / (cntSignals + cntSkipped), "#") + "%)" : ""),
+         color.gray)
+    f_row(dash, 3, "Closed / still open",
+         str.tostring(closed) + " / " + str.tostring(array.size(live)), color.white)
+    f_row(dash, 4, "Wins",            str.tostring(cntWins),    bullCol)
+    f_row(dash, 5, "Losses",          str.tostring(cntLosses),  bearCol)
+    f_row(dash, 6, beToR == 0 ? "Breakeven scratches" : "Managed exits (" +
+         str.tostring(beToR, "#.##") + "R)", str.tostring(cntManaged) +
+         (closed > 0 ? "  (" + str.tostring(100.0 * cntManaged / closed, "#") + "%)" : ""),
+         color.orange)
+    // Win rate deliberately excludes managed exits: one is neither a win nor a
+    // loss. The expectancy row below is the one that compounds.
+    f_row(dash, 7, "Win rate of W+L only",
+         na(winRate) ? "—" : str.tostring(winRate, "#.#") + "%",
+         na(winRate) ? color.white : winRate > beRate ? bullCol : bearCol)
+    f_row(dash, 8, "Profit factor (R)", na(pf) ? "—" : str.tostring(pf, "#.##"),
+         na(pf) ? color.white : pf >= 1.0 ? bullCol : bearCol)
+    f_row(dash, 9, "Net R", (netR >= 0 ? "+" : "") + str.tostring(netR, "#.#") + "R",
+         netR >= 0 ? bullCol : bearCol)
+    f_row(dash, 10, "Expectancy / trade", na(expR) ? "—" : str.tostring(expR, "#.###") + "R",
+         na(expR) ? color.white : expR >= 0 ? bullCol : bearCol)
+    f_row(dash, 11, "Net profit", str.tostring(strategy.netprofit, "#") +
+         "  (" + str.tostring(100.0 * strategy.netprofit / strategy.initial_capital, "#.#") + "%)",
+         strategy.netprofit >= 0 ? bullCol : bearCol)
+    f_row(dash, 12, "Max drawdown", str.tostring(strategy.max_drawdown, "#") +
+         "  (" + str.tostring(100.0 * strategy.max_drawdown /
+         math.max(strategy.initial_capital, 1), "#.#") + "%)", color.orange)
+    // If the sizer ever floored, the currency columns above stopped being
+    // risk-normalised and only the R rows remain comparable.
+    f_row(dash, 13, "Size floored to 1 contract", str.tostring(cntFloored) +
+         (cntSignals > 0 ? "  (" + str.tostring(100.0 * cntFloored / cntSignals, "#") + "%)" : ""),
+         cntFloored == 0 ? color.gray : cntFloored * 4 > cntSignals ? bearCol : color.orange)
+    f_row(dash, 14, "Raid = true extreme", na(tickPct) ? "—" : str.tostring(tickPct, "#") + "%",
+         color.aqua)
+    f_row(dash, 15, "PO3 phase", phase, color.aqua)
+    f_row(dash, 16, "Timeframe (backtested)", tfVerdict,
+         tfOk ? bullCol : tfMaybe ? color.orange : bearCol)
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MARKERS AND ALERTS
+// ═══════════════════════════════════════════════════════════════════════════
+plotshape(sigLong,  "Long entry",  shape.triangleup,   location.belowbar, bullCol, size = size.tiny)
+plotshape(sigShort, "Short entry", shape.triangledown, location.abovebar, bearCol, size = size.tiny)
+plotshape(showSkipped and skipLong,  "Skipped long",  shape.circle,
+     location.belowbar, color.new(color.gray, 40), size = size.tiny)
+plotshape(showSkipped and skipShort, "Skipped short", shape.circle,
+     location.abovebar, color.new(color.gray, 40), size = size.tiny)
+
+alertcondition(sigLong,  "PO3 long entry",  "PO3 sweep reclaimed — long entry")
+alertcondition(sigShort, "PO3 short entry", "PO3 sweep reclaimed — short entry")
