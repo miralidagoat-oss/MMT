@@ -324,7 +324,9 @@ class Params:
     stop_buf_atr: float = 0.25
     max_risk_atr: float = 0.0     # skip setups whose stop is further than this (0 = off)
     min_target_pts: float = 0.0   # skip setups whose target is worth less than this (0 = off)
-    tp_mode: str = "rr"           # rr | vwap
+    tp_mode: str = "rr"           # rr | vwap | pool  (pool = opposing liquidity)
+    stop_at: str = "extreme"      # extreme | level  (where the stop is anchored)
+    max_open_bars: int = 0        # signal must come within N bars of the period open (0 = off)
     rr: float = 2.0
     be_at_r: float = 0.0          # move stop to entry at this R (0 = off)
     partial_at_r: float = 0.0     # bank part of the position at this R (0 = off)
@@ -574,6 +576,7 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             asia_done = lon_done = ib_done = False
             if p.po3_period == "day":
                 period_open = o[i]
+                period_open_bar = i
         else:
             day_h, day_l = max(day_h, h[i]), min(day_l, l[i])
 
@@ -586,6 +589,7 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             cur_week = wk
             if p.po3_period == "week":
                 period_open = o[i]
+                period_open_bar = i
         else:
             wk_h, wk_l = max(wk_h, h[i]), min(wk_l, l[i])
 
@@ -721,6 +725,9 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                     ok = False
                 else:
                     ok = c[i] > vwap[i] if bull else c[i] < vwap[i]
+            if ok and p.max_open_bars > 0:
+                # PO3 says the Judas swing comes early in the period, not late.
+                ok = (i - period_open_bar) <= p.max_open_bars
             if ok and p.po3_mode != "off" and period_open is not None:
                 ok = r.extreme < period_open if bull else r.extreme > period_open
                 if ok and p.po3_mode == "reclaim_open":
@@ -737,7 +744,8 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                 entry = r.level
             else:
                 raise ValueError(p.entry_mode)
-            stop = (r.extreme - p.stop_buf_atr * a) if bull else (r.extreme + p.stop_buf_atr * a)
+            anchor = r.extreme if p.stop_at == "extreme" else r.level
+            stop = (anchor - p.stop_buf_atr * a) if bull else (anchor + p.stop_buf_atr * a)
             risk = (entry - stop) if bull else (stop - entry)
             if risk < min_risk:
                 continue
@@ -750,6 +758,16 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             if p.min_target_pts > 0 and p.rr * risk < p.min_target_pts:
                 continue
             tp = (entry + p.rr * risk) if bull else (entry - p.rr * risk)
+            if p.tp_mode == "pool":
+                # ERL -> IRL: aim at the nearest untouched pool on the far side
+                # rather than a fixed multiple. Falls back to the R target when
+                # there is nothing left to aim at.
+                opp = [q.price for q in lm.live(1 if bull else -1)
+                       if ((q.price > entry) if bull else (q.price < entry))]
+                if opp:
+                    cand = min(opp) if bull else max(opp)
+                    if (cand - entry if bull else entry - cand) >= 0.5 * risk:
+                        tp = cand
             market = p.entry_mode == "reclaim_close"
             trades.append({"dir": 1 if bull else -1,
                            "entry": entry, "stop": stop, "tp": tp, "risk": risk,

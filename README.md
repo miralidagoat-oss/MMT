@@ -348,6 +348,50 @@ buckets still make money and the intervals overlap. Filtering would discard
 positive-expectancy trades, which is why the hard volume gate tested neutral
 earlier. There is no dead weight to remove.
 
+### A second round of upgrades, also rejected
+
+Four more ideas were tested the same way. All four failed, and the pattern is
+the point:
+
+| change | futures expR | CFD expR | verdict |
+|---|---|---|---|
+| baseline | **+0.110R** | **+0.070R** | — |
+| time stop after 6 bars | +0.057R | +0.036R | worse |
+| time stop after 24 bars | +0.099R | +0.051R | worse |
+| target nearest opposing pool (ERL→IRL) | +0.056R | +0.033R | halves it |
+| signal within 20 bars of the weekly open | +0.119R | +0.080R | same, ¼ the trades |
+| daily period, within 8 bars of the open | +0.179R | **−0.067R** | overfit trap |
+| stop beyond the swept level, not the extreme | +0.067R (3/5) | +0.099R (3/3) | datasets disagree |
+
+**The design principle, now demonstrated eight independent ways.** Trailing
+stops, partial exits, re-entry after a scratch, time stops and targeting the
+next liquidity pool all failed for the *same* reason: only about a third of
+decisive trades win, so the 3R runners carry the entire result, and every one
+of those ideas clips them. **Do not add anything that cuts a winner short.**
+
+The PO3-timing test deserves a note because it is the most seductive: gating to
+the first 8 bars of the daily period scores +0.179R on the futures, the best
+single number in this whole study — and −0.067R on the CFDs, with 1 of 3
+markets positive. That is exactly what a fitted artefact looks like.
+
+### And the corollary: does letting winners run *further* help?
+
+It does not, once compounding is accounted for. Raw expectancy keeps climbing
+with the target, but variance climbs faster, and variance is what caps position
+size:
+
+| R:R | futures expR | optimal risk | max DD | growth at a fixed 2% risk, 400 trades |
+|---|---|---|---|---|
+| 1:2 | +0.073R | 9.7% | 11.9R | 1.67x |
+| **1:3** | **+0.110R** | **10.7%** | **13.2R** | **2.18x** |
+| 1:3.5 | +0.115R | 10.0% | 14.6R | 2.24x |
+| 1:6 | +0.116R | 6.7% | 29.9R | 2.12x |
+| 1:8 | +0.129R | 5.8% | 27.0R | 2.23x |
+
+1:8 has the highest average trade and the *lowest* safe size. Everything from
+1:3 to 1:8 compounds within 5% of the same rate, and 1:3 does it with half the
+drawdown. The target is settled at 3.
+
 ### The one large improvement left is not a setting
 
 The signals are far less correlated across index futures than the indices
