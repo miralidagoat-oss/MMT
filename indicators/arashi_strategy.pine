@@ -599,7 +599,10 @@ bool skipShort = false
 
 if barstate.isconfirmed
 
-    // ── 1. grade whatever TradingView closed since the last bar ────────────
+    // ── 1. reconcile with the broker: grade closures, then advance stops ──
+    // Order matters here and mirrors the indicator: grade what closed, move
+    // stops for positions that were already filled BEFORE this bar, only then
+    // fill resting limits, and finally re-state every bracket.
     while lastClosed < strategy.closedtrades
         string ceid = strategy.closedtrades.entry_id(lastClosed)
         float  cpnl = strategy.closedtrades.profit(lastClosed) -
@@ -607,9 +610,9 @@ if barstate.isconfirmed
         float  cex  = strategy.closedtrades.exit_price(lastClosed)
         int li = 0
         while li < array.size(live)
-            Pos q = array.get(live, li)
-            if q.eid == ceid
-                float r = q.riskCash > 0 ? cpnl / q.riskCash : 0.0
+            Pos pg = array.get(live, li)
+            if pg.eid == ceid
+                float r = pg.riskCash > 0 ? cpnl / pg.riskCash : 0.0
                 netR += r
                 if r > 0
                     grossWinR += r
@@ -618,10 +621,10 @@ if barstate.isconfirmed
                 // classify from WHERE it exited, not from the R value, so a
                 // partial tick of slippage cannot turn a win into a scratch
                 float tol = 3 * syminfo.mintick
-                bool hitTp = q.dir == 1 ? cex >= q.tp - tol : cex <= q.tp + tol
+                bool hitTp = pg.dir == 1 ? cex >= pg.tp - tol : cex <= pg.tp + tol
                 if hitTp
                     cntWins += 1
-                else if q.be
+                else if pg.be
                     cntManaged += 1
                 else
                     cntLosses += 1
@@ -630,41 +633,64 @@ if barstate.isconfirmed
                 li += 1
         lastClosed += 1
 
+    // Move the stop once a trade is far enough ahead. Two guards make this
+    // behave exactly as the indicator does, and both matter:
+    //   * it runs BEFORE the fill check below, so it can never arm on the same
+    //     bar a resting limit filled - the indicator does not arm on a fill bar
+    //     either, because its breakeven block sits in the already-filled branch;
+    //   * it is skipped on a bar that already traded the stop or the target,
+    //     which is the indicator's `outcome == 0` guard. Without it a single
+    //     wide bar spanning the stop and +1.5R would arm breakeven on a trade
+    //     the broker had already stopped out, and the exit would then be
+    //     graded a managed exit when it was really a loss.
+    if beAtR > 0
+        int mi = 0
+        while mi < array.size(live)
+            Pos pm = array.get(live, mi)
+            if pm.filled and not pm.be
+                bool bullM   = pm.dir == 1
+                bool stopHit = bullM ? low <= pm.stop : high >= pm.stop
+                bool tpHit   = bullM ? high >= pm.tp  : low <= pm.tp
+                if not stopHit and not tpHit
+                    float beLvl = bullM ? pm.entry + beAtR * pm.risk : pm.entry - beAtR * pm.risk
+                    if bullM ? high >= beLvl : low <= beLvl
+                        pm.be := true
+                        // beToR is measured in R from entry: 0 is exact
+                        // breakeven, negative leaves part of the original risk
+                        // on so noise cannot scratch the trade out
+                        float moved = bullM ? pm.entry + beToR * pm.risk : pm.entry - beToR * pm.risk
+                        pm.stop := bullM ? math.max(pm.stop, moved) : math.min(pm.stop, moved)
+            mi += 1
+
     // A limit entry rests until price trades through it, then expires. Fill is
     // judged by the indicator's own rule (a buy limit fills when the bar trades
     // at or below it), which is the same test TradingView's emulator applies,
     // so this book and the broker's stay in step.
     int fi = array.size(live) - 1
     while fi >= 0
-        Pos q = array.get(live, fi)
-        if not q.filled and q.created < bar_index
-            bool bull = q.dir == 1
-            if bull ? low <= q.entry : high >= q.entry
-                q.filled := true
-            else if bar_index - q.created >= validity
-                strategy.cancel(q.eid)
+        Pos pnd = array.get(live, fi)
+        if not pnd.filled and pnd.created < bar_index
+            bool bullF = pnd.dir == 1
+            if bullF ? low <= pnd.entry : high >= pnd.entry
+                pnd.filled := true
+            else if bar_index - pnd.created >= validity
+                strategy.cancel(pnd.eid)
                 array.remove(live, fi)
         fi -= 1
 
-    // move the stop once a trade is far enough ahead. Re-issuing strategy.exit
-    // with the same id modifies the resting bracket rather than adding one.
-    if beAtR > 0
-        int mi = 0
-        while mi < array.size(live)
-            Pos q = array.get(live, mi)
-            if q.filled and not q.be
-                bool bull = q.dir == 1
-                float beLvl = bull ? q.entry + beAtR * q.risk : q.entry - beAtR * q.risk
-                if bull ? high >= beLvl : low <= beLvl
-                    q.be := true
-                    // beToR is measured in R from entry: 0 is exact breakeven,
-                    // negative leaves part of the original risk on so noise
-                    // cannot scratch the trade out
-                    float moved = bull ? q.entry + beToR * q.risk : q.entry - beToR * q.risk
-                    q.stop := bull ? math.max(q.stop, moved) : math.min(q.stop, moved)
-                    strategy.exit("x" + q.eid, from_entry = q.eid,
-                         stop = q.stop, limit = q.tp)
-            mi += 1
+    // Re-state the protective bracket for every filled position, every bar.
+    // strategy.exit with an id that already exists modifies it rather than
+    // adding a second one, so this is idempotent - and it is the only way to
+    // be certain a position is never left naked. A bracket submitted beside a
+    // limit entry that has not filled yet can be discarded, and a stop moved
+    // to breakeven must not depend on one earlier call having been accepted.
+    int xi = 0
+    while xi < array.size(live)
+        Pos px = array.get(live, xi)
+        if px.filled
+            strategy.exit("x" + px.eid, from_entry = px.eid,
+                 stop = px.stop, limit = px.tp)
+        xi += 1
 
     // ── 2. roll periods and sessions, publishing completed levels as pools ──
     if newDay
@@ -865,7 +891,7 @@ if barstate.isconfirmed
                         // the price the chosen entry mode computed
                         bool mktL = entryMode == "Market on reclaim close"
                         strategy.entry(eid, strategy.long, qty = qty,
-                             limit = mktL ? na : entryPx)
+                             limit = mktL ? float(na) : entryPx)
                         strategy.exit("x" + eid, from_entry = eid,
                              stop = stopPx, limit = tpPx)
                         array.push(live, Pos.new(eid, 1, entryPx, stopPx, tpPx,
@@ -944,7 +970,7 @@ if barstate.isconfirmed
                         // the price the chosen entry mode computed
                         bool mktS = entryMode == "Market on reclaim close"
                         strategy.entry(eidS, strategy.short, qty = qtyS,
-                             limit = mktS ? na : entryPxS)
+                             limit = mktS ? float(na) : entryPxS)
                         strategy.exit("x" + eidS, from_entry = eidS,
                              stop = stopPxS, limit = tpPxS)
                         array.push(live, Pos.new(eidS, -1, entryPxS, stopPxS, tpPxS,
