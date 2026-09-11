@@ -327,6 +327,10 @@ class Params:
     tp_mode: str = "rr"           # rr | vwap
     rr: float = 2.0
     be_at_r: float = 0.0          # move stop to entry at this R (0 = off)
+    partial_at_r: float = 0.0     # bank part of the position at this R (0 = off)
+    partial_frac: float = 0.5     # how much of it to bank there
+    trail_start_r: float = 0.0    # start trailing once this R is reached (0 = off)
+    trail_atr: float = 1.0        # trail this far behind the run-up extreme
     validity: int = 12            # bars a resting limit stays live
     max_hold: int = 0             # bars after fill before a market exit (0 = off)
     # --- gating ---
@@ -424,7 +428,7 @@ class Raid:
 # ── the model ────────────────────────────────────────────────────────────────
 
 def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
-        collector=None, trade_log=None):
+        collector=None, trade_log=None, outcome_log=None):
     PL = p.pivot_len
     """Walk the series once, bar by bar, exactly as the Pine script does.
 
@@ -479,6 +483,10 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                         res.exits.append((i, -1.0 - cost_r))
                         res.hold.append(0)
                         res.mae_r.append(1.0)
+                if outcome_log is not None:
+                    outcome_log.append(dict(t["feat"], bar=t["created"],
+                                            exit_bar=i, dir=t["dir"],
+                                            r=-1.0 - cost_r, outcome="loss_on_fill_bar"))
                 elif i - t["created"] >= p.validity:
                     t["state"] = "closed"
                     res.expired += 1
@@ -487,6 +495,7 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             # filled
             adverse = (t["entry"] - l[i]) if bull else (h[i] - t["entry"])
             t["mae"] = max(t["mae"], adverse / t["risk"])
+            t["peak"] = max(t["peak"], h[i]) if bull else min(t["peak"], l[i])
             tgt = t["tp"]
             if p.tp_mode == "vwap":
                 tgt = max(vwap[i], t["entry"]) if bull else min(vwap[i], t["entry"])
@@ -502,8 +511,21 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                 outcome = "time"
 
             if outcome is None:
-                # arm breakeven only after the exit checks, so it can never
-                # take effect on the same bar it was triggered
+                # Bank a partial, and trail, only AFTER the exit checks, so
+                # neither can take effect on the bar that triggered it - the
+                # same pessimism the breakeven rule already uses.
+                if p.partial_at_r > 0 and t["part"] == 0.0:
+                    lvl = (t["entry"] + p.partial_at_r * t["risk"]) if bull else \
+                          (t["entry"] - p.partial_at_r * t["risk"])
+                    if (h[i] >= lvl) if bull else (l[i] <= lvl):
+                        t["part"] = p.partial_frac
+                if p.trail_start_r > 0 and a:
+                    start = (t["entry"] + p.trail_start_r * t["risk"]) if bull else \
+                            (t["entry"] - p.trail_start_r * t["risk"])
+                    if (t["peak"] >= start) if bull else (t["peak"] <= start):
+                        trail = (t["peak"] - p.trail_atr * a) if bull else \
+                                (t["peak"] + p.trail_atr * a)
+                        t["stop"] = max(t["stop"], trail) if bull else min(t["stop"], trail)
                 if p.be_at_r > 0 and not t["be"]:
                     lvl = (t["entry"] + p.be_at_r * t["risk"]) if bull else \
                           (t["entry"] - p.be_at_r * t["risk"])
@@ -515,19 +537,30 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             t["state"] = "closed"
             res.hold.append(i - t["fill_bar"])
             res.mae_r.append(t["mae"])
+            _booked = None
             if outcome == "win":
                 r = p.rr if p.tp_mode == "rr" else abs(tgt - t["entry"]) / t["risk"]
-                res.wins += 1
-                res.exits.append((i, r - cost_r))
             elif outcome == "loss":
                 res.losses += 1
-                res.exits.append((i, -1.0 - cost_r))
+                r = -1.0
             elif outcome == "scratch":
                 res.scratches += 1
-                res.exits.append((i, 0.0 - cost_r))
+                r = 0.0
             else:
                 r = (c[i] - t["entry"]) / t["risk"] if bull else (t["entry"] - c[i]) / t["risk"]
-                res.exits.append((i, r - cost_r))
+            if outcome == "win":
+                res.wins += 1
+            # A banked partial is already realised at partial_at_r; only the
+            # remainder is exposed to whatever happened afterwards. The extra
+            # exit ticket is charged half a round trip on the banked size.
+            f = t["part"]
+            gross = f * p.partial_at_r + (1.0 - f) * r if f > 0 else r
+            _booked = gross - cost_r * (1.0 + 0.5 * f)
+            res.exits.append((i, _booked))
+            if outcome_log is not None:
+                outcome_log.append(dict(t["feat"], bar=t["created"], exit_bar=i,
+                                        dir=t["dir"], r=_booked, outcome=outcome,
+                                        mae=t["mae"], hold=i - t["fill_bar"]))
         trades = [t for t in trades if t["state"] != "closed"]
 
         # ── 2. roll period / session state ──────────────────────────────────
@@ -722,7 +755,17 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                            "entry": entry, "stop": stop, "tp": tp, "risk": risk,
                            "created": i, "fill_bar": i if market else -1,
                            "state": "filled" if market else "pending",
-                           "be": False, "mae": 0.0})
+                           "be": False, "mae": 0.0,
+                           "part": 0.0, "peak": entry,
+                           "feat": {"kind": r.kind, "depth_atr": depth / a,
+                                    "lag": i - r.first_bar, "mspo": mspos[i],
+                                    "atr": a, "risk": risk, "entry": entry,
+                                    "reclaim_atr": (abs(c[i] - r.level)) / a,
+                                    "range_atr": (h[i] - l[i]) / a,
+                                    "vwap_z": ((r.extreme - vwap[i]) / vsd[i]
+                                               if vsd[i] > 0 else 0.0),
+                                    "vol_rel": (v[i] / vsma[i]
+                                                if vsma[i] and vsma[i] > 0 else None)}})
             if market:
                 res.fills += 1
             res.signals += 1

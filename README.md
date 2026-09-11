@@ -300,6 +300,98 @@ and evaporated on the holdout (1.03). It ships off.
 Restricting to the NY AM killzone scored PF 1.78 on MNQ and 0.99 with 1/4
 markets positive on the four held-back instruments. Sessions are off.
 
+## Making it better: what was tested after the parameters were locked
+
+Once the entry rules were settled, the obvious next levers were tested the same
+way — on the CME futures **and** on the independent index-CFD series, judged by
+expectancy per closed trade with error bars. Almost all of them failed, which is
+worth knowing before you try them.
+
+### Exit management: three popular ideas, all rejected
+
+| change | futures expR | CFD expR | verdict |
+|---|---|---|---|
+| baseline (shipped preset) | **+0.110R** | **+0.070R** | — |
+| bank 50% at 1R, rest runs to 3R | +0.088R | +0.053R | worse on both |
+| bank 30% at 2R, rest runs | +0.104R | +0.068R | no better |
+| trail stop 1.0 ATR from +1R | −0.148R | −0.177R | **destroys it** |
+| trail stop 2.0 ATR from +2R | −0.022R | −0.057R | **destroys it** |
+
+**Do not trail this model.** Every trailing variant was negative on 0 of 5
+futures and 0 of 3 CFDs. The reason is structural: only about a third of
+decisive trades win, so the 3R winners carry the whole result, and a trail
+clips exactly those. Partial exits are not catastrophic, just pointless — they
+cut return and variance in the same proportion, then lose the difference to the
+extra exit ticket.
+
+### Re-entering after a breakeven scratch: clearly negative
+
+Two thirds of trades scratch, which invites the thought that those setups were
+right but early. They were not. Re-entering every scratched setup at its
+original entry, stop and target:
+
+| | trades | win rate | breakeven | expectancy |
+|---|---|---|---|---|
+| futures | 1,122 | 20.9% | 25.0% | **−0.189R** |
+| CFD | 889 | 20.5% | 25.0% | **−0.215R** |
+
+A scratched setup is dead. Getting out flat was the correct outcome.
+
+### Selectivity: there is nothing left to filter out
+
+Every signal is logged with the features knowable when it fired, then bucketed
+(`backtest/study_features.py`). Across pool count, pool type, sweep depth,
+reclaim lag, reclaim size, relative volume, session and direction —
+**every bucket is positive on both datasets.** Higher relative volume and
+higher volatility are mildly better and lower volume mildly worse, but all
+buckets still make money and the intervals overlap. Filtering would discard
+positive-expectancy trades, which is why the hard volume gate tested neutral
+earlier. There is no dead weight to remove.
+
+### The one large improvement left is not a setting
+
+The signals are far less correlated across index futures than the indices
+themselves are, because they fire at different times off different levels.
+Daily R correlation of the strategy's own returns:
+
+| | MNQ | NQ | ES | YM | RTY |
+|---|---|---|---|---|---|
+| **NQ** | 0.95 | 1.00 | 0.15 | 0.08 | 0.10 |
+
+MNQ and NQ are the same instrument (0.95) — running both just doubles your size.
+Everything else is nearly uncorrelated. Levering each basket to the **same**
+drawdown NQ alone produces (11.35R):
+
+| traded | trades | net R | max DD | peak open | net R at equal drawdown |
+|---|---|---|---|---|---|
+| NQ only | 417 | +68R | 11.35R | 3 | **+68R** |
+| NQ + ES | 777 | +102R | 13.45R | 6 | +86R |
+| NQ + ES + RTY | 1,179 | +127R | 13.13R | 7 | +110R |
+| **NQ + ES + YM + RTY** | 1,586 | +166R | 14.16R | 8 | **+133R** |
+| MNQ + NQ | 835 | +122R | 22.71R | 6 | +61R — *worse than NQ alone* |
+
+Spreading the same risk over four index futures nearly **doubles return at
+equal drawdown**, with no parameter change at all. Running MNQ alongside NQ
+does the opposite.
+
+### How much to risk per trade
+
+Bootstrapped from the 2,004 actual R outcomes over a 400-trade run (roughly two
+years on one market):
+
+| risk/trade | median final equity | 5th percentile | paths that halved |
+|---|---|---|---|
+| 1% | 1.51x | 1.06x | 0% |
+| 2% | 2.18x | 1.08x | 0% |
+| 3% | 2.89x | 1.11x | 1% |
+| 5% | 5.01x | 0.89x | 9% |
+| 8% | 7.38x | 0.20x | 29% |
+
+Above 5% the tail dominates. The simulation draws trades independently, so real
+drawdowns cluster and are worse than this — **1–2% is the sane range.** The
+dashboard now sizes the most recent signal from its actual stop distance and
+the contract's point value.
+
 ## How the parameters were chosen (the anti-overfitting protocol)
 
 1. **Structural constants are conventional, not fitted**: pivot half-width 5,

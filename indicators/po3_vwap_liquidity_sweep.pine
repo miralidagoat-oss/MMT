@@ -94,6 +94,7 @@ string G_SIG   = "Signal — Sweep & Reclaim"
 string G_PO3   = "PO3 Context"
 string G_VW    = "VWAP"
 string G_TR    = "Trade Construction"
+string G_RISK  = "Position Sizing"
 string G_UI    = "Display"
 
 string preset = input.string("Index Futures 1H — validated", "Preset",
@@ -188,6 +189,16 @@ float costTicks   = input.float(4.0,  "Round-trip cost (ticks)", minval = 0.0, s
 string chartStyle  = input.string("Clean", "Chart style", options = ["Clean", "Detailed"], group = G_UI,
      tooltip = "Clean draws only the named institutional levels and the live " +
      "trade. Detailed adds every tracked pivot, swept levels and the 2σ VWAP band.")
+float acctSize  = input.float(25000, "Account size", minval = 0, step = 1000, group = G_RISK,
+     tooltip = "Used only to size the row on the dashboard. Nothing about the " +
+     "signals depends on it.")
+float riskPct   = input.float(1.0, "Risk per trade (% of account)", minval = 0.0, maxval = 10.0, step = 0.25, group = G_RISK,
+     tooltip = "Bootstrapped from the 2,004 backtested outcomes over a 400-trade " +
+     "run: 1% grew a median 1.5x with no simulated path losing half the account, " +
+     "2% grew 2.2x, 3% grew 2.9x with 1% of paths halving, 5% grew 5.0x but 9% " +
+     "of paths halved and the 5th percentile finished DOWN. Above 5% the tail " +
+     "takes over. The simulation draws trades independently, so real drawdowns " +
+     "cluster and are worse - treat 1-2% as the sane range.")
 bool  showPools    = input.bool(true, "Draw liquidity map",      group = G_UI)
 bool  inDrawPivots = input.bool(false, "…including fractal pivots", group = G_UI,
      tooltip = "Pivots are always used for signals; this only draws them.")
@@ -367,6 +378,7 @@ var int   probeHits   = 0
 var int   probeTotal  = 0
 var int   lastLongBar  = na
 var int   lastShortBar = na
+var float lastRiskPts  = na    // risk of the most recent signal, in price points
 
 // one live raid per side; a raid that keeps taking out pools is extended
 // rather than duplicated, so a single sweep leg cannot spawn a cluster of
@@ -839,6 +851,7 @@ if barstate.isconfirmed
                     cntSignals += 1
                     if entryMode == "Market on reclaim close"
                         cntFills += 1
+                    lastRiskPts := riskPx
                     lastLongBar := bar_index
             raidLongOn := false
 
@@ -884,6 +897,7 @@ if barstate.isconfirmed
                     cntSignals += 1
                     if entryMode == "Market on reclaim close"
                         cntFills += 1
+                    lastRiskPts := riskPxS
                     lastShortBar := bar_index
             raidShortOn := false
 
@@ -947,7 +961,7 @@ f_row(table t, int r, string k, string v, color vc) =>
          text_halign = text.align_right, text_size = size.small)
 
 if showDash and barstate.islast
-    var table dash = table.new(position.top_right, 2, 15,
+    var table dash = table.new(position.top_right, 2, 16,
          bgcolor = color.new(#0E1116, 12), border_width = 1,
          border_color = color.new(color.gray, 70),
          frame_width = 1, frame_color = color.new(color.gray, 50))
@@ -1011,6 +1025,16 @@ if showDash and barstate.islast
     f_row(dash, 13, "PO3 phase", phase, color.aqua)
     f_row(dash, 14, "Timeframe (backtested)", tfVerdict,
          tfOk ? bullCol : tfMaybe ? color.orange : bearCol)
+    // Size for the most recent signal from its real stop distance and the
+    // contract's own point value - no guessing at tick maths.
+    float riskCcy = acctSize * riskPct / 100.0
+    float perCon  = na(lastRiskPts) ? na : lastRiskPts * syminfo.pointvalue
+    float nCon    = na(perCon) or perCon <= 0 ? na : math.floor(riskCcy / perCon)
+    f_row(dash, 15, "Size at " + str.tostring(riskPct, "#.##") + "% risk",
+         na(nCon) ? "—" : str.tostring(nCon, "#") + " contract" + (nCon == 1 ? "" : "s") +
+         "  (stop " + str.tostring(lastRiskPts, format.mintick) + " pts = " +
+         str.tostring(perCon, "#") + "/contract)",
+         na(nCon) ? color.white : nCon >= 1 ? color.aqua : color.orange)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ALERTS
