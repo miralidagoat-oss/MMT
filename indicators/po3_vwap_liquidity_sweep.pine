@@ -22,23 +22,50 @@ indicator("Arashi framework", "Arashi", overlay = true,
 // tables). Read this before trusting a single number on the dashboard:
 //
 //   * The edge is REAL BUT MODEST and specific to equity index futures on 1H.
-//     Pooled MNQ+NQ+ES+YM+RTY 1H, 2,004 trades, 4-tick round-trip costs:
-//     PF 1.47, +220R, +0.110R per closed trade, and the 95% band on that
-//     expectancy is [+0.060, +0.159], which clears zero. Reproduced on an
-//     independent vendor (Nasdaq/S&P/Dow CFDs, 1,544 trades): PF 1.28,
-//     +0.070R. Positive on all five futures and all three CFDs.
-//   * READ PROFIT FACTOR AND WIN RATE WITH CARE HERE. The breakeven rule
-//     turns most trades into 0R scratches (67% at the shipped 0.25R trigger).
-//     A scratch is excluded from the win rate and contributes almost nothing
-//     to gross loss, so BOTH statistics inflate as the trigger tightens while
-//     the money made barely moves. Measured on the same 2,000 trades:
-//         BE off  : win rate 27.9%, PF 1.13, expectancy +0.094R
-//         BE 0.25R: win rate 35.0%, PF 1.47, expectancy +0.110R
-//         BE 0.15R: win rate 39.5%, PF 1.72, expectancy +0.122R
-//     Expectancy across that whole range spans about one standard error, so
-//     it is flat. What the tight trigger really buys is VARIANCE: average
-//     drawdown falls from 29R (no breakeven) to 12R, and R-volatility by a
-//     third. Judge a change by expectancy per closed trade, never by PF.
+//     Pooled MNQ+NQ+ES+YM+RTY 1H, 1,997 trades, 4-tick round-trip costs, on
+//     the shipped DECISIVE preset: PF 1.18, +234R, +0.117R per closed trade,
+//     95% band [+0.042, +0.193], which clears zero. Reproduced on an
+//     independent vendor (Nasdaq/S&P/Dow CFDs, 1,542 trades): PF 1.11,
+//     +0.073R. Positive on all five futures and all three CFDs individually.
+//   * THE STOP-MANAGEMENT DIAL CHANGES EVERYTHING ABOUT HOW THIS FEELS AND
+//     ALMOST NOTHING ABOUT WHAT IT EARNS. Pooled over the same ~2,000 trades,
+//     varying only when the stop is moved and where it goes:
+//         off             0% managed exits, WR 27.9%, PF 1.13, +0.094R, DD 41R
+//         0.25R -> 0R    67% managed exits, WR 35.0%, PF 1.47, +0.110R, DD 13R
+//         1.00R -> 0R    32% managed exits, WR 29.8%, PF 1.22, +0.109R, DD 22R
+//         1.50R -> -0.3R 17% managed exits, WR 30.8%, PF 1.18, +0.117R, DD 23R
+//         2.00R -> 0R    11% managed exits, WR 28.6%, PF 1.17, +0.108R, DD 26R
+//     Every expectancy there sits inside one standard error of every other, so
+//     the column that matters is the last one. An early trigger buys low
+//     drawdown and pays for it by scratching two thirds of the trades out for
+//     nothing; a late trigger lets trades reach a real conclusion and gives
+//     back more on the way. Ship the late one by default because a system you
+//     will not actually follow is worth nothing, and it is also slightly
+//     better on both panels - but size it smaller.
+//   * WATCH OUT FOR PF AND WIN RATE. A managed exit books ~0R, so it leaves
+//     both the win-rate denominator and the gross loss smaller. Tightening the
+//     trigger therefore inflates BOTH statistics while the money barely moves:
+//     the 0.25R setting reads a far prettier PF 1.47 / WR 35% than the shipped
+//     PF 1.18 / WR 31% and earns slightly less per trade. Judge any change by
+//     expectancy per closed trade, never by PF and never by win rate.
+//   * WHERE the stop goes turned out to matter as much as when. A stop parked
+//     at EXACT breakeven sits on a price the market just traded, which is
+//     where it is most likely to be revisited; backing it off to -0.25/-0.35R
+//     puts it where price has no reason to return. Across a dense grid, exact
+//     breakeven held on only 2 of 3 held-out CFD markets at every trigger
+//     above 1R, while -0.25R to -0.35R held on 3 of 3 at every trigger. -0.5R
+//     overshoots and loses one futures market. The shipped -0.30R is the
+//     midpoint of the region that survives on all eight, picked as a plateau
+//     midpoint rather than a best cell.
+//   * THE HONEST CAVEAT on the shipped preset: because far fewer trades end at
+//     0R, per-trade variance is higher (sd 1.69R vs 1.11R), so the SAME mean
+//     is measured less precisely. On the CFD holdout the 95% band is
+//     [-0.013, +0.158] - it touches zero, where the low-drawdown preset's
+//     [+0.015, +0.125] does not. The point estimates are the same (+0.073 vs
+//     +0.070); this is wider error bars, not a weaker edge. It is also why
+//     risk per trade should be 1% here, not 2%: optimal f falls from 8.9% to
+//     4.1% and at 2% risk roughly 7% of simulated 400-trade paths lose half
+//     the account, against 0.1% for the low-drawdown preset.
 //   * A PLACEBO TEST passes: the same entries re-planted at random bars with
 //     identical direction, risk and exit rules score PF 0.90-1.06. The signal
 //     does the work, not the stop/target scheme.
@@ -97,21 +124,25 @@ string G_TR    = "Trade Construction"
 string G_RISK  = "Position Sizing"
 string G_UI    = "Display"
 
-string preset = input.string("Index Futures 1H — validated", "Preset",
-     options = ["Index Futures 1H — validated", "Index Futures 1H — fewer scratches", "Custom"],
+string preset = input.string("Index Futures 1H — decisive", "Preset",
+     options = ["Index Futures 1H — decisive", "Index Futures 1H — low drawdown", "Custom"],
      group = G_PRE,
-     tooltip = "Both presets share every signal rule and differ only in how the " +
-     "stop is managed after entry.\n\nVALIDATED moves the stop to exact " +
-     "breakeven at +0.25R: 67% of trades end as 0R scratches, average drawdown " +
-     "12R.\n\nFEWER SCRATCHES moves it only HALFWAY back, at +0.5R, so a " +
-     "pullback has to travel twice as far to end the trade: 43% managed exits " +
-     "instead of 67%, 72% more trades that actually resolve, win rate 40.1% " +
-     "instead of 35.0%, the same expectancy (+0.105R vs +0.110R, well inside " +
-     "one standard error) and better on the held-out CFD data (+0.080R vs " +
-     "+0.070R). The cost is drawdown: 19R instead of 12R. Positive on all five " +
-     "futures and all three CFDs either way.")
-bool pFewer    = preset == "Index Futures 1H — fewer scratches"
-bool usePreset = preset == "Index Futures 1H — validated" or pFewer
+     tooltip = "Both presets are the SAME validated signal engine. Every rule " +
+     "that decides whether a trade is taken is identical; they differ only in " +
+     "how the stop is managed once you are in, and they make the same money. " +
+     "You are choosing the ride, not the return.\n\nDECISIVE moves the stop " +
+     "to -0.3R once the trade is +1.5R ahead. Ordinary noise cannot reach it, " +
+     "so trades resolve as real wins or losses: 17% end as managed exits " +
+     "instead of 67%, three times as many decisive trades, expectancy +0.117R " +
+     "vs +0.110R. Positive on all 5 futures and all 3 held-out CFDs. The cost " +
+     "is drawdown - about 23R instead of 13R - so keep risk at 1% per trade, " +
+     "not 2%.\n\nLOW DRAWDOWN moves the stop to exact breakeven at +0.25R. " +
+     "Two thirds of trades then end as 0R scratches, which feels like not " +
+     "trading, but drawdown is roughly half and it tolerates larger size.\n\n" +
+     "Both were measured over ~2,000 futures trades and ~1,540 CFD trades with " +
+     "4-tick round-trip costs.")
+bool pLowDD    = preset == "Index Futures 1H — low drawdown"
+bool usePreset = preset == "Index Futures 1H — decisive" or pLowDD
 
 string tz = input.string("America/New_York", "Exchange timezone", group = G_LIQ)
 bool usePDHL   = input.bool(true,  "Previous day high / low",      group = G_LIQ)
@@ -182,22 +213,36 @@ float inRR        = input.float(3.0,  "Risk : reward target", minval = 0.5, maxv
      "fixed 2% risk over 400 trades: 1:3 grows 2.18x, 1:3.5 2.24x, 1:6 2.12x, " +
      "1:8 2.23x - all the same, with 1:3 taking half the drawdown. Lowering it " +
      "is the real mistake: 1:1.5 roughly halves growth.")
-float inBeAt      = input.float(0.25, "Move stop to breakeven at (R, 0 = off)", minval = 0.0, step = 0.05, group = G_TR,
-     tooltip = "Expectancy is FLAT from 0 to 1.5R (all within ~1 standard " +
-     "error), so this does not change how much the system earns. What it " +
-     "changes is variance: at 0.25R average drawdown falls from 18R to 12R " +
-     "and R-volatility by 27%. It also inflates the win rate and profit " +
-     "factor, because a scratch books ~0R and so leaves both the win-rate " +
-     "denominator and the gross loss smaller. Judge by expectancy, not by PF.")
-float inBeTo      = input.float(0.0,  "…and move it to (R from entry)", minval = -1.0, maxval = 1.0, step = 0.05, group = G_TR,
-     tooltip = "0 is exact breakeven. NEGATIVE leaves part of the original risk " +
-     "on the table - -0.5 puts the stop halfway back, so ordinary noise cannot " +
-     "end the trade and far more of them resolve as real wins or losses. " +
-     "Measured pooled over 1,997 trades: exact breakeven at +0.25R gives 67% " +
-     "managed exits and +0.110R; halfway back at +0.5R gives 43% and +0.105R; " +
-     "halfway back at +1R gives 27% and +0.115R. Expectancy is flat across all " +
-     "of them - you are choosing how the ride feels, not how much it makes. " +
-     "Positive values lock in profit and tested slightly worse.")
+float inBeAt      = input.float(1.5, "Move stop toward entry at (R, 0 = off)", minval = 0.0, step = 0.05, group = G_TR,
+     tooltip = "This is the single dial that decides how many of your trades " +
+     "actually resolve. It does NOT decide how much they make - expectancy is " +
+     "flat across the whole range, every setting within about one standard " +
+     "error of every other. Pooled over ~2,000 futures trades:\n" +
+     "  off    0% managed exits, win rate 27.9%, +0.094R, drawdown 41R\n" +
+     "  0.25R  67% managed, 35.0%, +0.110R, 13R\n" +
+     "  0.50R  51% managed, 31.1%, +0.099R, 17R\n" +
+     "  1.00R  32% managed, 29.8%, +0.109R, 22R\n" +
+     "  1.50R  17% managed, 30.4%, +0.117R, 23R   <- shipped\n" +
+     "  2.00R  11% managed, 28.6%, +0.108R, 26R\n" +
+     "Trigger it early and most trades scratch out for nothing but drawdown " +
+     "is small; trigger it late and trades run to a real conclusion but you " +
+     "give back more on the way. Nothing here changes the edge.")
+float inBeTo      = input.float(-0.30, "…and move it to (R from entry)", minval = -1.0, maxval = 1.0, step = 0.05, group = G_TR,
+     tooltip = "Where the stop goes, measured in R from entry. 0 is exact " +
+     "breakeven. NEGATIVE leaves part of the original risk on the table, so " +
+     "noise cannot end the trade.\n\nThis mattered more than expected, and " +
+     "for a reason worth knowing: a stop parked at EXACT breakeven sits at a " +
+     "price the market just traded, which is precisely where it is most likely " +
+     "to be revisited. Backing it off to -0.25R or -0.3R puts it somewhere " +
+     "price has no particular reason to return to. Measured across a dense " +
+     "grid, exact breakeven was positive on only 2 of the 3 held-out CFD " +
+     "markets at every trigger above 1R, while -0.25R to -0.35R was positive " +
+     "on 3 of 3 at every trigger - a consistent pattern across the grid, not " +
+     "one lucky cell.\n\nGoing all the way to -0.5R overshoots: one of the " +
+     "five futures markets turns negative. The shipped -0.30R is the middle " +
+     "of the region that holds on all eight markets, chosen as a plateau " +
+     "midpoint rather than a best cell. Positive values lock in profit and " +
+     "tested worse.")
 int   inValidity  = input.int(12,     "Limit order expiry (bars)", minval = 1, group = G_TR)
 int   inMaxHold   = input.int(0,      "Time stop after fill (bars, 0 = off)", minval = 0, group = G_TR,
      tooltip = "LEAVE THIS OFF. Tested across 2,004 futures trades and 1,544 " +
@@ -225,12 +270,22 @@ float acctSize  = input.float(25000, "Account size", minval = 0, step = 1000, gr
      tooltip = "Used only to size the row on the dashboard. Nothing about the " +
      "signals depends on it.")
 float riskPct   = input.float(1.0, "Risk per trade (% of account)", minval = 0.0, maxval = 10.0, step = 0.25, group = G_RISK,
-     tooltip = "Bootstrapped from the 2,004 backtested outcomes over a 400-trade " +
-     "run: 1% grew a median 1.5x with no simulated path losing half the account, " +
-     "2% grew 2.2x, 3% grew 2.9x with 1% of paths halving, 5% grew 5.0x but 9% " +
-     "of paths halved and the 5th percentile finished DOWN. Above 5% the tail " +
-     "takes over. The simulation draws trades independently, so real drawdowns " +
-     "cluster and are worse - treat 1-2% as the sane range.")
+     tooltip = "1% is the shipped default and it is not conservatism for its " +
+     "own sake - the preset you pick changes what is safe. Bootstrapped over " +
+     "400-trade runs on the actual backtested outcomes:\n\n" +
+     "DECISIVE (wider swings, per-trade sd 1.69R, optimal f 4.1%)\n" +
+     "  1%   median 1.50x,  0% of paths lose half,  median drawdown 22%\n" +
+     "  1.5% median 1.78x,  2% lose half,  31%\n" +
+     "  2%   median 2.02x,  7% lose half,  40%\n" +
+     "  4.5% median 2.80x, 40% lose half,  71%\n\n" +
+     "LOW DRAWDOWN (per-trade sd 1.11R, optimal f 8.9%)\n" +
+     "  1%   median 1.50x,  0% lose half,  12%\n" +
+     "  2%   median 2.16x,  0% lose half,  22%\n" +
+     "  4.5% median 4.42x,  7% lose half,  45%\n\n" +
+     "Note that 1% grows the same either way - the extra size the low-drawdown " +
+     "preset tolerates is the only thing that separates them. The simulation " +
+     "draws trades independently, so real drawdowns cluster and are worse than " +
+     "shown. Past 2% you are betting on the backtest being exactly right.")
 bool  showPools    = input.bool(true, "Draw liquidity map",      group = G_UI)
 bool  inDrawPivots = input.bool(false, "…including fractal pivots", group = G_UI,
      tooltip = "Pivots are always used for signals; this only draws them.")
@@ -267,8 +322,8 @@ float devEntry    = usePreset ? 2.0   : inDevEntry
 string entryMode  = usePreset ? "Market on reclaim close" : inEntryMode
 float stopBufAtr  = usePreset ? 0.50  : inStopBuf
 float rrTarget    = usePreset ? 3.0   : inRR
-float beAtR       = pFewer ? 0.5 : usePreset ? 0.25  : inBeAt
-float beToR       = pFewer ? -0.5 : usePreset ? 0.0 : inBeTo
+float beAtR       = pLowDD ? 0.25 : usePreset ? 1.5 : inBeAt
+float beToR       = pLowDD ? 0.0 : usePreset ? -0.30 : inBeTo
 int   validity    = usePreset ? 12    : inValidity
 bool  eqOnly      = usePreset ? false : inEqOnly
 float volMult     = usePreset ? 0.0   : inVolMult

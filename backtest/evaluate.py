@@ -41,8 +41,16 @@ CANDIDATE = E.Params(
     stop_buf_atr=0.50,       # flat 0.35-0.75 on the holdout; take the middle
     tp_mode="rr",            # targeting VWAP destroyed the edge (0/4)
     rr=3.0,
-    be_at_r=0.25,            # same expectancy as 1.0R, ~1/3 less drawdown and
-                             # 27% less R-volatility; better on the CFD holdout
+    be_at_r=1.5,             # WHEN the stop is moved. Expectancy is flat from
+                             # 0 to 2R (all inside one standard error), so this
+                             # is a variance dial, not a returns dial. 1.5R is
+                             # the middle of the low-scratch plateau: 17% of
+                             # trades end as managed exits instead of 67%.
+    be_to_r=-0.30,           # WHERE it goes. Exact breakeven (0.0) sits on a
+                             # price just traded and held on only 2/3 CFD
+                             # markets at every trigger above 1R; -0.25..-0.35
+                             # held on 3/3 throughout, -0.5 overshoots and
+                             # loses a futures market. -0.30 is the midpoint.
 
     validity=12, session="all", cooldown=6,
 )

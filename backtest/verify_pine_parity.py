@@ -66,6 +66,8 @@ def pine(bars, p):
     pools = []          # dicts: price, side, kind, swept, eq
     setups = []
     signals = []
+    outcomes = []
+    peak_open = 0
     day_h = day_l = wk_h = wk_l = None
     pd_h = pd_l = pw_h = pw_l = None
     asia_h = asia_l = lon_h = lon_l = ib_h = ib_l = None
@@ -96,34 +98,50 @@ def pine(bars, p):
             period_open = o[i]
 
         # --- 1. manage setups opened earlier -------------------------------
+        # outcome codes are the Pine's: 1 win, -1 loss, 2 expired, 3 time stop,
+        # 4 stop hit after it was moved. Booking mirrors the Pine exactly,
+        # including its pessimism (a fill bar that also trades the stop books
+        # the loss now, and the target is never credited on the entry bar).
         for s in setups:
             if s["done"] or s["created"] >= i:
                 continue
             bull = s["dir"] == 1
+            outcome = 0
             if not s["filled"]:
                 if (l[i] <= s["entry"]) if bull else (h[i] >= s["entry"]):
                     s["filled"] = True
                     s["fill"] = i
                     if (l[i] <= s["stop"]) if bull else (h[i] >= s["stop"]):
-                        s["done"] = True
-                        s["r"] = -1.0
+                        outcome = -1
                 elif i - s["created"] >= p.validity:
-                    s["done"] = True
+                    outcome = 2
+            else:
+                stop_hit = (l[i] <= s["stop"]) if bull else (h[i] >= s["stop"])
+                tp_hit = (h[i] >= s["tp"]) if bull else (l[i] <= s["tp"])
+                outcome = -1 if stop_hit and not s["be"] else \
+                    4 if stop_hit else 1 if tp_hit else 0
+                # breakeven is armed only AFTER the exit checks, so it can
+                # never take effect on the bar that triggered it
+                if outcome == 0 and p.be_at_r > 0 and not s["be"]:
+                    lvl = s["entry"] + (1 if bull else -1) * p.be_at_r * s["risk"]
+                    if (h[i] >= lvl) if bull else (l[i] <= lvl):
+                        s["be"] = True
+                        moved = s["entry"] + (1 if bull else -1) * p.be_to_r * s["risk"]
+                        s["stop"] = max(s["stop"], moved) if bull else \
+                            min(s["stop"], moved)
+                if outcome == 0 and p.max_hold > 0 and i - s["fill"] >= p.max_hold:
+                    outcome = 3
+            if outcome != 0:
+                s["done"] = True
+                if outcome == 2:
                     s["r"] = None
-                continue
-            stop_hit = (l[i] <= s["stop"]) if bull else (h[i] >= s["stop"])
-            tp_hit = (h[i] >= s["tp"]) if bull else (l[i] <= s["tp"])
-            if stop_hit:
-                s["done"] = True
-                s["r"] = 0.0 if s["be"] else -1.0
-            elif tp_hit:
-                s["done"] = True
-                s["r"] = p.rr
-            elif p.be_at_r > 0 and not s["be"]:
-                lvl = s["entry"] + (1 if bull else -1) * p.be_at_r * s["risk"]
-                if (h[i] >= lvl) if bull else (l[i] <= lvl):
-                    s["be"] = True
-                    s["stop"] = s["entry"]
+                else:
+                    gross = p.rr if outcome == 1 else -1.0 if outcome == -1 else \
+                        p.be_to_r if outcome == 4 else \
+                        ((c[i] - s["entry"]) if bull else (s["entry"] - c[i])) / s["risk"]
+                    s["r"] = gross - p.cost_ticks * p.tick / s["risk"]
+                    s["exit"] = i
+                    outcomes.append((s["created"], s["dir"], i, round(s["r"], 6)))
 
         # --- 2. period / session rolls -------------------------------------
         if new_day:
@@ -287,8 +305,14 @@ def pine(bars, p):
                     signals.append((i, d, round(entry, 6), round(stop, 6), round(tp, 6)))
                     last_sig[d] = i
             raid[d] = None
-        setups = [s for s in setups if not s["done"]] + [s for s in setups if s["done"]]
-    return signals
+        live = [s for s in setups if not s["done"]]
+        peak_open = max(peak_open, len(live))
+        setups = live + [s for s in setups if s["done"]]
+    # the Pine evicts the oldest setup past inMaxOpen (20) and books it as a
+    # market exit. If that valve ever bound, the two would legitimately differ,
+    # so assert it does not rather than quietly transliterating around it.
+    assert peak_open <= 20, f"Pine's max-open valve would bind: {peak_open} live setups"
+    return signals, outcomes
 
 
 CONFIGS = {
@@ -312,16 +336,32 @@ CONFIGS = {
 
 
 def compare(bars, ctx, p):
-    got = pine(bars, p)
-    ref = []
-    E.run(bars, ctx, p, 0, len(bars["c"]), trade_log=ref)
+    """Diff the transliteration against the engine on BOTH halves of the model:
+    which trades are taken (bar, direction, entry, stop, target) and how each
+    one is then managed to its exit (exit bar and booked R). Signals alone were
+    not enough - stop management is where the shipped preset now lives."""
+    got, got_out = pine(bars, p)
+    ref, ref_out = [], []
+    E.run(bars, ctx, p, 0, len(bars["c"]), trade_log=ref, outcome_log=ref_out)
+
     gs = {(b, d) for b, d, *_ in got}
     rs = {(b, d) for b, d, *_ in ref}
     gm = {(b, d): (e, s, t) for b, d, e, s, t in got}
     rm = {(b, d): (e, s, t) for b, d, e, s, t in ref}
     diffs = [k for k in gs & rs
              if any(abs(x - y) > 1e-6 for x, y in zip(gm[k], rm[k]))]
-    return len(got), len(ref), sorted(gs - rs), sorted(rs - gs), diffs
+
+    # exits, keyed by the signal that produced them
+    go = {(b, d): (x, r) for b, d, x, r in got_out}
+    ro = {(o["bar"], o["dir"]): (o["exit_bar"], round(o["r"], 6)) for o in ref_out}
+    odiffs = [k for k in set(go) & set(ro)
+              if go[k][0] != ro[k][0] or abs(go[k][1] - ro[k][1]) > 1e-6]
+    # a trade booked by one side and not the other is just as much a mismatch
+    odiffs += sorted(set(go) ^ set(ro))
+    return len(got), len(ref), sorted(gs - rs), sorted(rs - gs), diffs, odiffs
+
+
+OVERRIDE_VAR = "pLowDD"   # the Pine variable the 2nd preset overrides through
 
 
 def check_preset(pine_path):
@@ -330,13 +370,19 @@ def check_preset(pine_path):
     validated preset are that parameter set - otherwise the indicator would
     faithfully reproduce a configuration nobody tested."""
     src = open(pine_path).read()
+    if not re.search(r"^bool\s+" + OVERRIDE_VAR + r"\s*=", src, re.M):
+        print("\nPreset consistency:")
+        print(f"  MISMATCH: the Pine no longer defines `{OVERRIDE_VAR}`. Every "
+              f"second-preset check below would silently pass - update "
+              f"OVERRIDE_VAR in this guard to the new name.")
+        return False
     want = {
         "minSweepAtr": ("0.35", CANDIDATE.min_sweep_atr, 0.35),
         "reclaimBars": ("2", CANDIDATE.reclaim_bars, 2),
         "stopBufAtr": ("0.50", CANDIDATE.stop_buf_atr, 0.50),
         "rrTarget": ("3.0", CANDIDATE.rr, 3.0),
-        "beAtR": ("0.25", CANDIDATE.be_at_r, 0.25),
-        "beToR": ("0.0", CANDIDATE.be_to_r, 0.0),
+        "beAtR": ("1.5", CANDIDATE.be_at_r, 1.5),
+        "beToR": ("-0.30", CANDIDATE.be_to_r, -0.30),
         "validity": ("12", CANDIDATE.validity, 12),
         "cooldown": ("6", CANDIDATE.cooldown, 6),
     }
@@ -345,12 +391,12 @@ def check_preset(pine_path):
     def resolved(name):
         """Pull the value a preset resolves `name` to. Handles both shapes:
             X = usePreset ? V : inX
-            X = pFewer ? W : usePreset ? V : inX
+            X = pLowDD ? W : usePreset ? V : inX
         and returns (V, W) so BOTH presets stay guarded. Returning None means
         the line was not found at all - which is the failure mode this check
         exists for, since a refactor can silently stop verifying a value."""
         m = re.search(r"^\s*\w+\s+" + name +
-                      r"\s*=\s*(?:pFewer \? (\S+)\s*:\s*)?usePreset \? ([^:]+?)\s*:",
+                      r"\s*=\s*(?:" + OVERRIDE_VAR + r" \? (\S+)\s*:\s*)?usePreset \? ([^:]+?)\s*:",
                       src, re.M)
         if not m:
             return None
@@ -365,16 +411,16 @@ def check_preset(pine_path):
         if abs(float(cand) - expect) > 1e-9:
             bad.append(f"{name}: CANDIDATE holds {cand}, expected {expect}")
     # the second preset differs ONLY in how the stop is managed after entry
-    for name, want_fewer in [("beAtR", "0.5"), ("beToR", "-0.5")]:
+    for name, want_alt in [("beAtR", "0.25"), ("beToR", "0.0")]:
         got = resolved(name)
-        if got is None or got[1] != want_fewer:
-            bad.append(f"{name}: 'fewer scratches' preset ships "
-                       f"{got[1] if got else 'nothing'}, expected {want_fewer}")
+        if got is None or got[1] != want_alt:
+            bad.append(f"{name}: 'low drawdown' preset ships "
+                       f"{got[1] if got else 'nothing'}, expected {want_alt}")
     for name in ("minSweepAtr", "reclaimBars", "rrTarget", "stopBufAtr", "cooldown"):
         got = resolved(name)
         if got and got[1] is not None:
             bad.append(f"{name}: the two presets must share this, but "
-                       f"'fewer scratches' overrides it with {got[1]}")
+                       f"'low drawdown' overrides it with {got[1]}")
     # the engine-side twins of the string options
     for got, exp, label in [(CANDIDATE.po3_mode, "below_open", "po3_mode"),
                             (CANDIDATE.po3_period, "week", "po3_period"),
@@ -399,19 +445,20 @@ if __name__ == "__main__":
     specs = sys.argv[2].split(",") if len(sys.argv) > 2 else ["MNQ_1h"]
     check_preset(os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "indicators", "po3_vwap_liquidity_sweep.pine"))
-    print("\nSignal-by-signal parity, Pine transliteration vs research engine:")
+    print("\nSignal- and exit-by-exit parity, Pine transliteration vs engine:")
     failures = 0
     for spec in specs:
         bars = E.load_csv(os.path.join(data, f"{spec}.csv"))
         ctx = E.build_context(bars)
         for name, kw in CONFIGS.items():
             p = replace(CANDIDATE, **kw)
-            ng, nr, extra, missing, diffs = compare(bars, ctx, p)
-            ok = not extra and not missing and not diffs
+            ng, nr, extra, missing, diffs, odiffs = compare(bars, ctx, p)
+            ok = not extra and not missing and not diffs and not odiffs
             failures += 0 if ok else 1
             print(f"  {'OK ' if ok else 'FAIL'} {spec:<9} {name:<26} "
                   f"pine={ng:<5} engine={nr:<5} extra={len(extra)} "
-                  f"missing={len(missing)} price-diff={len(diffs)}"
-                  + ("" if ok else f"  {(extra + missing)[:4]}"))
+                  f"missing={len(missing)} price-diff={len(diffs)} "
+                  f"exit-diff={len(odiffs)}"
+                  + ("" if ok else f"  {(extra + missing + odiffs)[:4]}"))
     print(f"\n{'ALL CONFIGURATIONS MATCH' if not failures else str(failures) + ' MISMATCHING CONFIGURATIONS'}")
     sys.exit(1 if failures else 0)

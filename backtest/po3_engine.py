@@ -488,10 +488,16 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                         res.exits.append((i, -1.0 - cost_r))
                         res.hold.append(0)
                         res.mae_r.append(1.0)
-                if outcome_log is not None:
-                    outcome_log.append(dict(t["feat"], bar=t["created"],
-                                            exit_bar=i, dir=t["dir"],
-                                            r=-1.0 - cost_r, outcome="loss_on_fill_bar"))
+                        if outcome_log is not None:
+                            outcome_log.append(dict(t["feat"], bar=t["created"],
+                                                    exit_bar=i, dir=t["dir"],
+                                                    r=-1.0 - cost_r,
+                                                    outcome="loss_on_fill_bar"))
+                # a resting order expires only if it did NOT fill on this bar.
+                # This `elif` must chain to `if filled` - when it was chained to
+                # the outcome_log branch instead, a fill landing exactly on the
+                # expiry bar was thrown away as an expiry, and every resting bar
+                # emitted a phantom -1R row into outcome_log.
                 elif i - t["created"] >= p.validity:
                     t["state"] = "closed"
                     res.expired += 1

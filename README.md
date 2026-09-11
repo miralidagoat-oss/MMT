@@ -348,33 +348,128 @@ buckets still make money and the intervals overlap. Filtering would discard
 positive-expectancy trades, which is why the hard volume gate tested neutral
 earlier. There is no dead weight to remove.
 
-### The one change that did work: where the stop moves to
+### The one change that did work: when and where the stop moves
 
-Every rejected idea above changed *when* a trade ends. This one changes only
-*where the stop goes* when it moves, and it is the first thing in the whole
-study that improved the experience without costing anything.
+Every rejected idea above changed *when a trade ends* and all of them cost
+money. This one changes only the stop-management rule, and it turns out to be
+almost a free parameter for **returns** while completely controlling how the
+system **feels** to trade.
 
-Moving the stop to exact breakeven means any pullback to entry ends the trade,
-which is why 67% of trades become 0R scratches. Moving it only **halfway back**
-leaves part of the original risk on, so ordinary noise cannot end the trade:
+Two dials: the trigger (`be_at_r`, at what profit the stop moves) and the
+destination (`be_to_r`, where it goes, in R from entry — 0 is exact breakeven,
+negative leaves part of the original risk on).
 
-| stop moves to | trigger | managed exits | decisive trades | WR% | expectancy | avg DD |
-|---|---|---|---|---|---|---|
-| never moves | — | 0% | 1,993 | 27.9% | +0.094R | 29R |
-| exact breakeven | +0.25R | 67% | 657 | 35.0% | +0.110R | 12R |
-| exact breakeven | +1R | 32% | 1,356 | 29.8% | +0.109R | 18R |
-| **halfway back** | **+0.5R** | **43%** | **1,131** | **40.1%** | **+0.105R** | **19R** |
-| halfway back | +1R | 27% | 1,451 | 34.4% | +0.115R | 23R |
+Pooled MNQ+NQ+ES+YM+RTY 1H, ~2,000 trades, 4-tick costs:
 
-Halfway-back at +0.5R gives **72% more trades that actually resolve**, a win
-rate of 40.1% instead of 35.0%, the same expectancy inside one standard error,
-and it is *better* on the held-out CFD data (+0.080R vs +0.070R). Positive on
-all five futures and all three CFDs. The cost is drawdown, 19R against 12R.
+| trigger | moves to | managed exits | decisive | WR% | PF | expectancy | avg DD |
+|---|---|---|---|---|---|---|---|
+| never | — | 0% | 1,993 | 27.9% | 1.13 | +0.094R | 41R |
+| +0.25R | breakeven | 67% | 657 | 35.0% | 1.47 | +0.110R | 13R |
+| +0.50R | breakeven | 51% | 983 | 31.1% | 1.28 | +0.099R | 17R |
+| +1.00R | breakeven | 32% | 1,356 | 29.8% | 1.22 | +0.109R | 22R |
+| **+1.50R** | **−0.30R** | **17%** | **1,651** | **30.8%** | **1.18** | **+0.117R** | **23R** |
+| +2.00R | breakeven | 11% | 1,785 | 28.6% | 1.17 | +0.108R | 26R |
 
-That combination ships as a second preset, **"Index Futures 1H — fewer
-scratches"**. Both presets share every signal rule and differ only in stop
-management, which the parity suite now asserts: a check fails if the two
-presets ever diverge on anything but the two breakeven fields.
+Every expectancy in that table sits inside one standard error of every other.
+**The trigger is a variance dial, not a returns dial.** What it really buys is
+the shape of the experience: trigger early and two thirds of trades scratch out
+at 0R, which feels like not trading at all; trigger late and trades run to a
+real conclusion at the cost of giving more back on the way.
+
+#### Where the stop goes mattered as much as when
+
+Exact breakeven parks the stop on a price the market *just traded*, which is
+precisely where it is most likely to be revisited. Backing it off to −0.25R or
+−0.35R puts it somewhere price has no particular reason to return to. Over a
+6 × 5 grid (trigger 0.75–2.0R × destination 0 to −0.5R), scored by how many of
+the five futures and three held-out CFD markets stay positive:
+
+| destination | CFD markets positive (triggers above 1R) | futures markets positive |
+|---|---|---|
+| exact breakeven (0.0) | **2 of 3 at every trigger** | 5 of 5 |
+| −0.15R | 2 of 3 | 5 of 5 |
+| **−0.25R to −0.35R** | **3 of 3 at every trigger** | **5 of 5** |
+| −0.50R | 3 of 3 | **4 of 5 — overshoots** |
+
+That is a consistent pattern across the whole grid, not one lucky cell, which
+is the only reason it was adopted. The shipped **−0.30R** is the midpoint of
+the region that survives on all eight markets — a plateau midpoint, not an
+argmax — paired with a **+1.5R** trigger, the middle of the low-scratch band.
+
+#### What ships
+
+**`Index Futures 1H — decisive`** (default): trigger +1.5R, stop to −0.30R.
+17% managed exits instead of 67%, 2.5× as many decisive trades, +0.117R on
+futures (5/5 markets) and +0.073R on the CFD holdout (3/3).
+
+**`Index Futures 1H — low drawdown`**: trigger +0.25R, stop to breakeven. The
+previously shipped behaviour, kept because it is genuinely better on one axis —
+roughly half the drawdown, and it tolerates about twice the position size.
+
+Both presets share every signal rule and differ only in stop management, which
+the parity suite asserts: a check fails if they ever diverge on anything else.
+
+#### Two honest caveats on the new default
+
+1. **Read PF and win rate with suspicion.** A managed exit books ~0R, so it
+   leaves both the win-rate denominator and the gross loss smaller. Tightening
+   the trigger therefore inflates *both* statistics while the money barely
+   moves — the 0.25R setting reads a much prettier PF 1.47 / WR 35% than the
+   shipped PF 1.18 / WR 31% and earns slightly *less* per trade. Judge changes
+   by expectancy per closed trade only.
+2. **Wider error bars, not a stronger edge.** Because far fewer trades end at
+   0R, per-trade variance rises (sd 1.69R vs 1.11R), so the same mean is
+   measured less precisely. On the CFD holdout the 95% band is [−0.013, +0.158]
+   — it touches zero, where the low-drawdown preset's [+0.015, +0.125] does
+   not. Point estimates are the same (+0.073 vs +0.070).
+
+The second caveat is also why **risk per trade should be 1%, not 2%**, on this
+preset. Bootstrapped over 400-trade runs on the actual outcome distribution:
+
+| risk/trade | decisive: median × / % of paths halved / median DD | low-drawdown: same |
+|---|---|---|
+| 1.0% | 1.50× / 0% / 22% | 1.50× / 0% / 12% |
+| 1.5% | 1.78× / 2% / 31% | — |
+| 2.0% | 2.02× / 7% / 40% | 2.16× / 0% / 22% |
+| 4.5% | 2.80× / 40% / 71% | 4.42× / 7% / 45% |
+
+Optimal f falls from 8.9% to 4.1%. At 1% the two presets grow identically; the
+extra size the low-drawdown preset tolerates is the only thing separating them.
+
+### A bug this change exposed in the research engine
+
+Making the shipped default depend on stop management meant the parity suite had
+to be extended — it had only ever diffed **signals** (bar, direction, entry,
+stop, target), never **exits**. Post-entry management had therefore never been
+verified between the Pine and the engine at all.
+
+Extending it to diff exit bar and booked R immediately failed on two of the
+twelve configurations — both limit-entry modes — and the cause was an
+indentation defect in `po3_engine.py`:
+
+```python
+if filled:
+    ...
+    if stop_also_hit_this_bar:
+        ...
+if outcome_log is not None:        # one level too shallow
+    outcome_log.append(...)        # phantom -1R on every resting bar
+elif i - t["created"] >= p.validity:   # chained to the wrong `if`
+    expire()
+```
+
+Two consequences: on the normal path a limit order that filled on exactly its
+expiry bar was discarded as an expiry, and on the `outcome_log` path every bar
+a limit order rested emitted a phantom −1R row while expiry never fired at all.
+
+The shipped preset enters at market and never takes that branch, so **no
+published headline number moved** (+0.117R / +0.073R before and after). The
+conclusion it *did* affect — that limit-into-the-wick entries are worse — got
+stronger after the fix: `wick_mid` −0.059R (1 of 5 futures markets positive),
+`level_retest` +0.037R (3 of 5, negative on the CFD holdout), against
+`reclaim_close` +0.117R (5 of 5).
+
+All 60 configuration × market combinations now match on signals *and* exits.
 
 ### A second round of upgrades, also rejected
 
@@ -408,17 +503,24 @@ It does not, once compounding is accounted for. Raw expectancy keeps climbing
 with the target, but variance climbs faster, and variance is what caps position
 size:
 
-| R:R | futures expR | optimal risk | max DD | growth at a fixed 2% risk, 400 trades |
-|---|---|---|---|---|
-| 1:2 | +0.073R | 9.7% | 11.9R | 1.67x |
-| **1:3** | **+0.110R** | **10.7%** | **13.2R** | **2.18x** |
-| 1:3.5 | +0.115R | 10.0% | 14.6R | 2.24x |
-| 1:6 | +0.116R | 6.7% | 29.9R | 2.12x |
-| 1:8 | +0.129R | 5.8% | 27.0R | 2.23x |
+| R:R | futures expR | optimal f | avg DD | growth at a fixed 2% risk, 400 trades | markets |
+|---|---|---|---|---|---|
+| 1:2 | +0.077R | 3.9% | 23.8R | 1.58x | 4/5 |
+| 1:2.5 | +0.105R | 4.3% | 21.4R | 1.92x | 5/5 |
+| **1:3** | **+0.117R** | **4.1%** | **22.7R** | **2.06x** | **5/5** |
+| 1:3.5 | +0.104R | 3.2% | 23.8R | 1.80x | 5/5 |
+| 1:4 | +0.110R | 3.0% | 27.8R | 1.77x | 5/5 |
+| 1:6 | +0.083R | 1.6% | 39.5R | 1.26x | 5/5 |
+| 1:8 | +0.098R | 1.4% | 42.8R | 1.31x | 3/5 |
 
-1:8 has the highest average trade and the *lowest* safe size. Everything from
-1:3 to 1:8 compounds within 5% of the same rate, and 1:3 does it with half the
-drawdown. The target is settled at 3.
+(Re-measured under the stop management that actually ships. Under the old
+exact-breakeven preset 1:8 had the highest raw expectancy and 1:3 won only on
+compounding; with the stop moving later, 1:3 is now the outright peak on both
+axes, which settles the question rather than trading it off.)
+
+Long targets have the *lowest* safe size, because variance caps position size
+faster than expectancy raises it: 1:8 carries nearly twice the drawdown of 1:3
+to compound at two thirds the rate, on two fewer markets. The target is 3.
 
 ### The one large improvement left is not a setting
 
@@ -451,6 +553,8 @@ does the opposite.
 Bootstrapped from the 2,004 actual R outcomes over a 400-trade run (roughly two
 years on one market):
 
+Measured on the `low drawdown` preset (per-trade sd 1.11R, optimal f 8.9%):
+
 | risk/trade | median final equity | 5th percentile | paths that halved |
 |---|---|---|---|
 | 1% | 1.51x | 1.06x | 0% |
@@ -459,8 +563,11 @@ years on one market):
 | 5% | 5.01x | 0.89x | 9% |
 | 8% | 7.38x | 0.20x | 29% |
 
-Above 5% the tail dominates. The simulation draws trades independently, so real
-drawdowns cluster and are worse than this — **1–2% is the sane range.** The
+The shipped `decisive` preset has the same mean but wider swings (sd 1.69R,
+optimal f 4.1%), so the safe range is narrower — see the table in the
+stop-management section above. Above 5% the tail dominates either way. The
+simulation draws trades independently, so real drawdowns cluster and are worse
+than this — **1% is the default and 2% is the ceiling.** The
 dashboard now sizes the most recent signal from its actual stop distance and
 the contract's point value.
 
@@ -548,13 +655,23 @@ difference cannot flatter it.
 
 ## Using it on TradingView
 
-Load on **MNQ1! or NQ1!, 1-hour**, keep the `Index Futures 1H — validated`
-preset. The dashboard grades its own signals live, with the win rate always
+Load on **MNQ1! or NQ1!, 1-hour** and keep the default
+`Index Futures 1H — decisive` preset at **1% risk per trade**. Switch to
+`Index Futures 1H — low drawdown` only if you would rather have half the
+drawdown and two thirds of your trades scratching out at 0R; both make the same
+money per trade. Note that TradingView remembers a preset you selected
+previously, so check the dropdown after updating the script rather than assuming
+the new default took.
+
+The dashboard grades its own signals live, with the win rate always
 shown against the breakeven rate for the chosen R:R, and charges the round-trip
 cost you set (4 ticks by default) against every closed trade — so its net R is
 comparable with the tables above. Its last row reports the **measured** result
 for whatever timeframe the chart is on, so the evidence sits next to the live
-statistics rather than in this file.
+statistics rather than in this file. Row 5 renames itself to match the stop
+rule in force — `Breakeven scratches` when the stop goes to exact breakeven,
+`Managed exits (-0.3R)` when it does not — so the panel always says which
+behaviour you are actually running.
 
 The chart defaults to a **Clean** style: only the named institutional levels are
 drawn, each from where it formed to the current bar with a small right-edge tag,
