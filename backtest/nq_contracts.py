@@ -74,7 +74,7 @@ if __name__ == "__main__":
         wd = sum(1 for i in range((a0-w0).days) if (w0+dt.timedelta(days=i)).weekday() < 5)
         tot_act += ad; tot_warm += wd
         flag = "*" if (r["truncated_start"] or r["truncated_end"]) else " "
-        print(f"  {r['symbol']:<8} {r['contract_month']:<8} {r['expiry']:<12} "
+        print(f"  {r['contract_month']:<8} {r['expiry']:<12} "
               f"{r['warmup_start']:<13} {r['active_start']:<13} {r['active_end']:<12} {ad:>8}{flag}")
     print(f"\n  * = window truncated by the requested range")
     print(f"  total active trading days  {tot_act}")
