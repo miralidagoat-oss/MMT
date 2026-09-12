@@ -15,6 +15,7 @@ def ok(c, msg):
 # ── A. price-* cannot download billable data ───────────────────────────────
 print("A. `price` cannot issue a billable timeseries request")
 calls = []
+_REAL_REQUEST = F._request          # keep the genuine one for the allow-list test
 def spy(path, fields, k, raw):
     calls.append(path)
     if path == "metadata.get_cost": return 1.23
@@ -47,6 +48,41 @@ try:
     F._meta("timeseries.get_range", {}, "db-FAKE"); metaguard = False
 except RuntimeError: metaguard = True
 ok(metaguard, "_meta() refuses any non-metadata path")
+# Exercise the REAL _request so the runtime guard itself is under test, not the spy.
+F._request = _REAL_REQUEST
+F.restrict_endpoints("metadata.")
+try:
+    F._request("timeseries.get_range", {}, "db-FAKE", True); rt = False
+except RuntimeError as e: rt = "HALT" in str(e)
+except Exception: rt = False
+ok(rt, "runtime allow-list refuses timeseries.* before any socket is opened")
+# Stub the socket so nothing leaves this box: reaching the stub proves the
+# guard allowed the call through, without actually contacting Databento.
+class _Reached(Exception): pass
+import urllib.request as _ur
+_real_open = _ur.urlopen
+_ur.urlopen = lambda *a, **k: (_ for _ in ()).throw(_Reached())
+try:
+    F._request("metadata.get_cost", {}, "db-FAKE", False); rt2 = False
+except _Reached: rt2 = True
+except RuntimeError: rt2 = False
+finally:
+    _ur.urlopen = _real_open
+ok(rt2, "runtime allow-list still permits metadata.* (reached the socket, none sent)")
+F._request = spy
+F.restrict_endpoints.__globals__["_ENDPOINT_ALLOW"] = None
+_orig = F._meta
+for shape, label in ((1.23, "bare number"), ("1.23", "numeric string")):
+    F._meta = lambda *a, _s=shape, **kw: _s
+    ok(F._cost("db-FAKE", schema="definition") == 1.23, f"cost parses {label}")
+import subprocess
+r = subprocess.run([sys.executable, "-c",
+    "import sys,os;sys.path.insert(0,'backtest');import fetch_databento as F;"
+    "F._meta=lambda *a,**k:{'total':5,'surprise':1};F._cost('db-FAKE',schema='definition')"],
+    capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ok(r.returncode != 0 and "unexpected shape" in (r.stdout + r.stderr),
+   "an undocumented dict response HALTS instead of being reinterpreted")
+F._meta = _orig
 
 # ── B. discovery does not depend on a two-digit ticker regex ───────────────
 print("\nB. discovery works on real single-digit GLBX symbols")

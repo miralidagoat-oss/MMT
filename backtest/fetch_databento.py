@@ -38,6 +38,15 @@ WARMUP_DAYS = 30            # PROTOCOL.md causal feature warm-up
 SANITY_RX = re.compile(r"^NQ[A-Z]\d{1,2}$")   # SECONDARY check only
 
 _UNLOCKED = set()           # steps a fetch command has explicitly unlocked
+_ENDPOINT_ALLOW = None      # None = unrestricted; else a tuple of allowed prefixes
+
+
+def restrict_endpoints(*prefixes):
+    """Runtime allow-list enforced inside _request(), the single HTTP chokepoint.
+    price-discovery restricts to metadata. so no other endpoint can be reached
+    even through a code path the AST tests did not anticipate."""
+    global _ENDPOINT_ALLOW
+    _ENDPOINT_ALLOW = tuple(prefixes)
 
 
 def _excl(d):
@@ -54,6 +63,10 @@ def api_key():
 
 
 def _request(path, fields, k, raw):
+    if _ENDPOINT_ALLOW is not None and not path.startswith(_ENDPOINT_ALLOW):
+        raise RuntimeError(
+            f"HALT: this command is restricted to {_ENDPOINT_ALLOW} endpoints; "
+            f"refused {path!r}. No request was sent.")
     body = urllib.parse.urlencode(fields, doseq=True).encode()
     req = urllib.request.Request(f"{HOST}/{path}", data=body, method="POST")
     req.add_header("Authorization",
@@ -91,9 +104,22 @@ def _data(path, fields, k, step):
 
 
 def _cost(k, **f):
+    """metadata.get_cost is documented to return a bare numeric USD value.
+    That is treated as canonical. Any other shape HALTS rather than being
+    silently reinterpreted - a cost we cannot read is not a cost we act on."""
     v = _meta("metadata.get_cost",
               dict(dataset=DATASET, mode="historical-streaming", **f), k)
-    return float(v) if not isinstance(v, dict) else float(v.get("total", 0))
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    if isinstance(v, str):
+        try:
+            return float(v.strip())
+        except ValueError:
+            pass
+    sys.exit(f"HALT: metadata.get_cost returned an unexpected shape "
+             f"{type(v).__name__}"
+             + (f" with keys {sorted(v)}" if isinstance(v, dict) else "")
+             + ". The documented response is a bare number. Not proceeding.")
 
 
 def _ns(x):
@@ -107,9 +133,15 @@ def def_fields(start, end):
 
 
 def price_discovery(start, end, k):
-    c = _cost(k, **{x: y for x, y in def_fields(start, end).items() if x != "dataset"})
-    print(f"  definition / discovery request  {start} -> {_excl(end)} (end exclusive)")
-    print(f"  estimated cost: ${c:,.2f}")
+    f = def_fields(start, end)
+    print("  EXACT REQUEST TO BE PRICED (API key excluded):")
+    for key in ("dataset", "symbols", "stype_in", "schema", "start", "end"):
+        print(f"    {key:<10} {f[key]}")
+    print(f"    {'limit':<10} (none - omitted so the universe cannot be truncated)")
+    print(f"    note       inclusive research end {end}; API end {f['end']} is exclusive")
+    print("  endpoint     metadata.get_cost   (no timeseries call in this command)")
+    c = _cost(k, **{x: y for x, y in f.items() if x != "dataset"})
+    print(f"\n  Databento quote: ${c:,.2f} USD")
     return c
 
 
@@ -246,6 +278,7 @@ if __name__ == "__main__":
         sys.exit(0)
     k = api_key()
     if cmd == "price-discovery":
+        restrict_endpoints("metadata.")
         price_discovery(start, end, k)
         sys.exit("\nPRICED ONLY. Nothing downloaded. Next: fetch-discovery "
                  "with DATABENTO_CONFIRM_DISCOVERY=yes")
