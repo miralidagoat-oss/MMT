@@ -1,4 +1,4 @@
-# NQ 5-minute research protocol — v1.3, FROZEN 2026-09-12
+# NQ 5-minute research protocol — v1.3a, FROZEN 2026-09-12
 
 Supersedes v1.0. Declared **before** the multi-year NQ dataset exists and before
 any paid data request. No strategy result was produced while writing this
@@ -341,6 +341,27 @@ initial point risk - the same dollars-first-then-R order §3 requires. This keep
 R-multiples comparable across the two bases. It does not model CFD spread, which
 is unobservable in a bid-only feed and is assumed to be inside the 0.70.
 
+### Tick-grid quantization — binding
+
+The feed quotes to three decimals; observed increments are around **0.002 index
+points**. NQ trades on a **0.25** tick. Research is run on a quantized copy
+(`quantize_basis.py`, raw files retained untouched) because native precision
+manufactures edge three separate ways:
+
+- `min_risk = 2 * tick` becomes 0.004 points instead of 0.50 and stops
+  rejecting untradeable stops;
+- a sweep is price *exceeding* a level; at 0.002 resolution levels are pierced
+  by amounts no NQ order can express, inflating sweep counts against an
+  instrument that could never register them;
+- stop distances land between ticks, so every R-multiple is computed off risk
+  that is unfillable in practice.
+
+Method: round OHLC to the nearest 0.25, then re-derive high and low as the
+extremes of the rounded four. Nearest-grid is unbiased; rounding highs down and
+lows up would shrink every range and bias sweep detection the other way, which
+is not more honest for being conservative. Measured effect at 5m: invariant
+repair needed on 0.00% of bars, mean bar range 17.537 -> 17.539 points.
+
 ### Claim limits — binding
 
 - Results on this basis may be stated as: *this rule survives across regimes in
@@ -356,6 +377,12 @@ is unobservable in a bid-only feed and is assumed to be inside the 0.70.
 
 ## Changelog
 
+- **1.3a — 2026-09-12** — tick-grid quantization made binding after measuring
+  the feed's native precision (~0.002 pts vs NQ's 0.25 tick); engine gained the
+  §3 dollar friction model it had never actually implemented, replacing the
+  deprecated `cost_ticks x tick` approximation that overcharged the headline by
+  43%; MDE script parameterized per §8. Both parity suites pass unchanged. No
+  strategy result produced during this revision.
 - **1.3 — 2026-09-12** — Databento route closed: the operator declined to open a
   paid account, so no multi-year NQ intraday data is obtainable and the staged
   acquisition of §9b is dormant, not deleted. Dukascopy `USATECHIDXUSD`
