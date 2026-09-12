@@ -1,4 +1,4 @@
-# NQ 5-minute research protocol — v1.3a, FROZEN 2026-09-12
+# NQ 5-minute research protocol — v1.3b, FROZEN 2026-09-12
 
 Supersedes v1.0. Declared **before** the multi-year NQ dataset exists and before
 any paid data request. No strategy result was produced while writing this
@@ -126,6 +126,41 @@ Cutting bars at a timestamp produces missing state or leakage.
 - **No parameter selection may use any information from a later partition.**
 - Any feature requiring a longer lookback than the warm-up extends the warm-up,
   not the embargo.
+
+### §4a — the holdout is the UNTOUCHED block, not the latest one
+
+§4 as frozen puts the holdout in the latest 25%. On this basis that window is
+**already contaminated**: `data_long/NDX_5m.csv` spans 2022-09-09..2026-09-08
+and prior research searched it heavily — eighteen 5m repair configurations, the
+tier ablation, the frontier scan, the baseline study. A holdout carved from it
+would be development data wearing a holdout label, and every number drawn from
+it would overstate what it proves.
+
+The block no run has ever touched is **2018-01-01 .. 2022-09-08**, first fetched
+in v1.3. It is therefore the holdout.
+
+| Partition | Range | Days | Use |
+|---|---|---|---|
+| Development | 2022-09-09 → ~2025-05 | ~2/3 of searched block | free exploration |
+| Validation | ~2025-05 → 2026-09-01 | ~1/3 of searched block | predeclared variants only |
+| **Holdout** | **2018-01-31 → 2022-09-08** | **~1,140** | **ONE run, after freeze** |
+
+Consequences, all disclosed rather than managed away:
+
+- **The test runs backwards in time.** Parameters are fitted on later data and
+  tested on earlier data. This is unconventional. It is stated alongside every
+  holdout number, never omitted because the number is favourable.
+- The holdout's own first 30 calendar days are warm-up, not evidence: there is
+  no earlier data to initialize from, since pre-2018 returns truncated ~14h
+  sessions and is excluded by §12.
+- The holdout spans COVID and the 2022 bear market — regimes absent from the
+  fitting window. A rule that survives it survives something genuinely
+  different. A rule that fails it may be failing regime, not logic, and that
+  ambiguity is reported rather than resolved in the strategy's favour.
+- The forward-looking guarantee of §4 ("no parameter selection may use
+  information from a later partition") is inverted here and cannot be claimed.
+  What is claimed instead: no selection used information from the holdout,
+  because the holdout had never been fetched when the fitting data was searched.
 
 ### Partitions (chronological, never shuffled)
 
@@ -377,6 +412,12 @@ repair needed on 0.00% of bars, mean bar range 17.537 -> 17.539 points.
 
 ## Changelog
 
+- **1.3b — 2026-09-12** — §4a added after discovering that the window §4
+  designates as holdout had already been searched over 18+ configurations by
+  prior research. The holdout moves to the never-fetched 2018-01-01..2022-09-08
+  block; the test consequently runs backwards in time, which is disclosed with
+  every holdout number rather than buried. Operator approved the design. No
+  strategy result produced during this revision.
 - **1.3a — 2026-09-12** — tick-grid quantization made binding after measuring
   the feed's native precision (~0.002 pts vs NQ's 0.25 tick); engine gained the
   §3 dollar friction model it had never actually implemented, replacing the

@@ -29,6 +29,13 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 CSV = sys.argv[1] if len(sys.argv) > 1 else "data_ndx_q/NDX_5m.csv"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "research/PARTITIONS.json"
+# Everything strictly BEFORE this date is the holdout. See §4a: the window §4
+# originally designated (latest 25%) is contaminated - prior research searched
+# 18+ configurations over 2022-09-09..2026-09-08 - so the holdout is taken from
+# the block no run has ever touched instead of from the most recent one.
+HOLDOUT_BEFORE = dt.date.fromisoformat(sys.argv[3]) if len(sys.argv) > 3 \
+    else dt.date(2022, 9, 9)
+DEV_SHARE = 2 / 3          # split of the remaining (contaminated) block
 WARMUP_DAYS = 30
 EMBARGO_TRADE_DAYS = 1
 
@@ -49,15 +56,38 @@ if len(days) < 400:
              "partition a sample this short into three parts.")
 
 n = len(days)
-i_dev = int(n * 0.50)
-i_val = int(n * 0.75)
-parts = [("development", days[:i_dev], "debugging, hypothesis formation, free exploration"),
-         ("validation", days[i_dev:i_val], "selecting among predeclared variants only"),
-         ("holdout", days[i_val:], "ONE run, after freeze")]
+untouched = [d for d in days if d < HOLDOUT_BEFORE]
+searched = [d for d in days if d >= HOLDOUT_BEFORE]
+if not untouched:
+    sys.exit(f"HALT: no trade days before {HOLDOUT_BEFORE}; there is no "
+             "uncontaminated block to hold out.")
+if len(untouched) < 250:
+    sys.exit(f"HALT: only {len(untouched)} untouched trade days before "
+             f"{HOLDOUT_BEFORE}; too few to serve as a holdout.")
+# The holdout's own first 30 calendar days are spent initializing causal state:
+# there is no earlier data to warm up from (pre-2018 returns truncated ~14h
+# sessions and is excluded by §12). Those days are warm-up, not evidence.
+h_warm_end = untouched[0] + dt.timedelta(days=WARMUP_DAYS)
+holdout_days = [d for d in untouched if d >= h_warm_end]
+i_dev = int(len(searched) * DEV_SHARE)
+parts = [("development", searched[:i_dev],
+          "debugging, hypothesis formation, free exploration"),
+         ("validation", searched[i_dev:],
+          "selecting among predeclared variants only"),
+         ("holdout", holdout_days, "ONE run, after freeze")]
 
 manifest = {"basis": CSV,
             "generated_utc": dt.datetime.utcnow().isoformat(),
-            "protocol": "v1.3a §4",
+            "protocol": "v1.3b §4a - untouched-block holdout",
+            "design": "Holdout is the block no prior run has touched "
+                      f"(before {HOLDOUT_BEFORE}), NOT the latest 25%. Prior "
+                      "research searched 18+ configurations over "
+                      "2022-09-09..2026-09-08, so a recent holdout would be "
+                      "development data wearing a holdout label.",
+            "holdout_direction": "EARLIER than the fitting data. The test runs "
+                                 "backwards in time. This is unconventional and "
+                                 "is disclosed with every holdout number.",
+            "contaminated_block": f"{HOLDOUT_BEFORE} onward",
             "trade_days_total": n,
             "warmup_calendar_days": WARMUP_DAYS,
             "embargo_trade_days": EMBARGO_TRADE_DAYS,
@@ -67,13 +97,16 @@ manifest = {"basis": CSV,
             "partitions": []}
 
 print(f"basis {CSV}")
-print(f"{n:,} CME trade days   {days[0]} .. {days[-1]}\n")
+print(f"{n:,} CME trade days   {days[0]} .. {days[-1]}")
+print(f"untouched block  {len(untouched):,} days before {HOLDOUT_BEFORE}"
+      f"  ({WARMUP_DAYS}d of it spent on warm-up)")
+print(f"searched block   {len(searched):,} days from {HOLDOUT_BEFORE}\n")
 prev_end = None
 for name, dd, use in parts:
     start, end = dd[0], dd[-1]
     warm = start - dt.timedelta(days=WARMUP_DAYS)
     # the embargo eats the first trade days of every partition after the first
-    embargo = dd[:EMBARGO_TRADE_DAYS] if prev_end else []
+    embargo = dd[:EMBARGO_TRADE_DAYS] if (prev_end and name != "holdout") else []
     tradeable = dd[len(embargo):]
     manifest["partitions"].append({
         "name": name, "use": use,
