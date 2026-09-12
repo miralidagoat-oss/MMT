@@ -1,0 +1,312 @@
+[
+  {
+    "symbol": "NQZ18",
+    "contract_month": "2018-12",
+    "expiry": "2018-12-21",
+    "active_start": "2019-01-01",
+    "active_end": "2019-03-11",
+    "warmup_start": "2018-12-02",
+    "truncated_start": true,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQH19",
+    "contract_month": "2019-03",
+    "expiry": "2019-03-15",
+    "active_start": "2019-03-12",
+    "active_end": "2019-06-17",
+    "warmup_start": "2019-02-10",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQM19",
+    "contract_month": "2019-06",
+    "expiry": "2019-06-21",
+    "active_start": "2019-06-18",
+    "active_end": "2019-09-16",
+    "warmup_start": "2019-05-19",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQU19",
+    "contract_month": "2019-09",
+    "expiry": "2019-09-20",
+    "active_start": "2019-09-17",
+    "active_end": "2019-12-16",
+    "warmup_start": "2019-08-18",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQZ19",
+    "contract_month": "2019-12",
+    "expiry": "2019-12-20",
+    "active_start": "2019-12-17",
+    "active_end": "2020-03-16",
+    "warmup_start": "2019-11-17",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQH20",
+    "contract_month": "2020-03",
+    "expiry": "2020-03-20",
+    "active_start": "2020-03-17",
+    "active_end": "2020-06-15",
+    "warmup_start": "2020-02-16",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQM20",
+    "contract_month": "2020-06",
+    "expiry": "2020-06-19",
+    "active_start": "2020-06-16",
+    "active_end": "2020-09-14",
+    "warmup_start": "2020-05-17",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQU20",
+    "contract_month": "2020-09",
+    "expiry": "2020-09-18",
+    "active_start": "2020-09-15",
+    "active_end": "2020-12-14",
+    "warmup_start": "2020-08-16",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQZ20",
+    "contract_month": "2020-12",
+    "expiry": "2020-12-18",
+    "active_start": "2020-12-15",
+    "active_end": "2021-03-15",
+    "warmup_start": "2020-11-15",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQH21",
+    "contract_month": "2021-03",
+    "expiry": "2021-03-19",
+    "active_start": "2021-03-16",
+    "active_end": "2021-06-14",
+    "warmup_start": "2021-02-14",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQM21",
+    "contract_month": "2021-06",
+    "expiry": "2021-06-18",
+    "active_start": "2021-06-15",
+    "active_end": "2021-09-13",
+    "warmup_start": "2021-05-16",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQU21",
+    "contract_month": "2021-09",
+    "expiry": "2021-09-17",
+    "active_start": "2021-09-14",
+    "active_end": "2021-12-13",
+    "warmup_start": "2021-08-15",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQZ21",
+    "contract_month": "2021-12",
+    "expiry": "2021-12-17",
+    "active_start": "2021-12-14",
+    "active_end": "2022-03-14",
+    "warmup_start": "2021-11-14",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQH22",
+    "contract_month": "2022-03",
+    "expiry": "2022-03-18",
+    "active_start": "2022-03-15",
+    "active_end": "2022-06-13",
+    "warmup_start": "2022-02-13",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQM22",
+    "contract_month": "2022-06",
+    "expiry": "2022-06-17",
+    "active_start": "2022-06-14",
+    "active_end": "2022-09-12",
+    "warmup_start": "2022-05-15",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQU22",
+    "contract_month": "2022-09",
+    "expiry": "2022-09-16",
+    "active_start": "2022-09-13",
+    "active_end": "2022-12-12",
+    "warmup_start": "2022-08-14",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQZ22",
+    "contract_month": "2022-12",
+    "expiry": "2022-12-16",
+    "active_start": "2022-12-13",
+    "active_end": "2023-03-13",
+    "warmup_start": "2022-11-13",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQH23",
+    "contract_month": "2023-03",
+    "expiry": "2023-03-17",
+    "active_start": "2023-03-14",
+    "active_end": "2023-06-12",
+    "warmup_start": "2023-02-12",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQM23",
+    "contract_month": "2023-06",
+    "expiry": "2023-06-16",
+    "active_start": "2023-06-13",
+    "active_end": "2023-09-11",
+    "warmup_start": "2023-05-14",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQU23",
+    "contract_month": "2023-09",
+    "expiry": "2023-09-15",
+    "active_start": "2023-09-12",
+    "active_end": "2023-12-11",
+    "warmup_start": "2023-08-13",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQZ23",
+    "contract_month": "2023-12",
+    "expiry": "2023-12-15",
+    "active_start": "2023-12-12",
+    "active_end": "2024-03-11",
+    "warmup_start": "2023-11-12",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQH24",
+    "contract_month": "2024-03",
+    "expiry": "2024-03-15",
+    "active_start": "2024-03-12",
+    "active_end": "2024-06-17",
+    "warmup_start": "2024-02-11",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQM24",
+    "contract_month": "2024-06",
+    "expiry": "2024-06-21",
+    "active_start": "2024-06-18",
+    "active_end": "2024-09-16",
+    "warmup_start": "2024-05-19",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQU24",
+    "contract_month": "2024-09",
+    "expiry": "2024-09-20",
+    "active_start": "2024-09-17",
+    "active_end": "2024-12-16",
+    "warmup_start": "2024-08-18",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQZ24",
+    "contract_month": "2024-12",
+    "expiry": "2024-12-20",
+    "active_start": "2024-12-17",
+    "active_end": "2025-03-17",
+    "warmup_start": "2024-11-17",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQH25",
+    "contract_month": "2025-03",
+    "expiry": "2025-03-21",
+    "active_start": "2025-03-18",
+    "active_end": "2025-06-16",
+    "warmup_start": "2025-02-16",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQM25",
+    "contract_month": "2025-06",
+    "expiry": "2025-06-20",
+    "active_start": "2025-06-17",
+    "active_end": "2025-09-15",
+    "warmup_start": "2025-05-18",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQU25",
+    "contract_month": "2025-09",
+    "expiry": "2025-09-19",
+    "active_start": "2025-09-16",
+    "active_end": "2025-12-15",
+    "warmup_start": "2025-08-17",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQZ25",
+    "contract_month": "2025-12",
+    "expiry": "2025-12-19",
+    "active_start": "2025-12-16",
+    "active_end": "2026-03-16",
+    "warmup_start": "2025-11-16",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQH26",
+    "contract_month": "2026-03",
+    "expiry": "2026-03-20",
+    "active_start": "2026-03-17",
+    "active_end": "2026-06-15",
+    "warmup_start": "2026-02-15",
+    "truncated_start": false,
+    "truncated_end": false
+  },
+  {
+    "symbol": "NQM26",
+    "contract_month": "2026-06",
+    "expiry": "2026-06-19",
+    "active_start": "2026-06-16",
+    "active_end": "2026-09-01",
+    "warmup_start": "2026-05-17",
+    "truncated_start": false,
+    "truncated_end": true
+  }
+]

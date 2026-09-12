@@ -1,4 +1,4 @@
-# NQ 5-minute research protocol — v1.1, FROZEN 2026-09-12
+# NQ 5-minute research protocol — v1.2, FROZEN 2026-09-12
 
 Supersedes v1.0. Declared **before** the multi-year NQ dataset exists and before
 any paid data request. No strategy result was produced while writing this
@@ -216,6 +216,32 @@ edge, that is the reported conclusion.** No optimization until one appears.
 
 ---
 
+## 9b. Data acquisition is staged, and buys only outrights
+
+A parent request (`NQ.FUT`, `stype_in=parent`) resolves to **every child
+instrument**, which for a CME futures root includes **calendar spreads** and
+other non-outright instruments. Purchasing seven years of minute bars for that
+universe would buy a large volume of spread data this research never reads, and
+invalidates any size estimate derived from outright volume.
+
+Acquisition therefore proceeds in stages, and **no paid minute request is priced
+until the universe has been filtered**:
+
+| Stage | Action | Cost class |
+|---|---|---|
+| **A** | Discover outrights: `symbology.resolve` parent→raw_symbol, filter `^NQ[HMUZ]\d{2}$`, verify against `instrument_class == FUTURE` with a one-day definition probe | metadata / negligible |
+| **B** | `ohlcv-1d` for those outrights only — daily volume for the roll | negligible |
+| **C** | Apply the **frozen** roll policy to build active-contract intervals | local |
+| **D** | Plan per-contract minute windows: active interval + 30-day contract-specific warm-up | local |
+| **E** | `metadata.get_cost` on exactly that plan, reported per stage, then **stop** | metadata |
+
+`instrument_id` is **not** assumed stable over arbitrary periods. `raw_symbol`
+plus point-in-time mappings are the key throughout; any `instrument_id` recorded
+is stored with the date range it applied to.
+
+Stage A halts the pipeline if the symbol regex and the exchange's own
+`instrument_class` disagree, rather than spending on an unverified universe.
+
 ## 10. Predeclared hypotheses
 
 - **H1** Parameter re-normalisation in three categories — temporal → elapsed
@@ -269,6 +295,13 @@ never pooled. NDX power is never reported as NQ power.**
 
 ## Changelog
 
+- **1.2 — 2026-09-12** — acquisition staged A–E so only outright quarterly
+  contracts are priced and purchased, spreads excluded; `raw_symbol` rather than
+  `instrument_id` as the durable key; warm-up clarified as the incoming
+  contract's own pre-roll history, explicitly distinct from cross-contract level
+  carryover; dataset manifest required so every bar stays attributable to a real
+  CME contract. Calendar roll fallback verified by the operator and no longer
+  flagged. No strategy result produced during this revision.
 - **1.1 — 2026-09-12** — holdout reduced to a single post-freeze use; calendar
   roll fallback corrected and its uncertainty disclosed; costs made
   dollar-explicit ($14 RT headline) and applied per-trade before R conversion;

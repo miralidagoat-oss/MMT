@@ -1,4 +1,4 @@
-# NQ contract roll policy — v1.1, FROZEN 2026-09-12
+# NQ contract roll policy — v1.2, FROZEN 2026-09-12
 
 Supersedes v1.0. Written **before** any roll rule was compared on strategy
 performance, and before the multi-year dataset exists. No roll variant has been
@@ -34,23 +34,58 @@ optimization variable and is never selected by comparing outcomes.
 > **Switch at the open of the session following the Monday preceding the third
 > Friday of the contract month.**
 
-### Disclosure on this rule
+### Provenance of this rule
 
-This follows the convention you specified. **I could not verify it against CME's
-published roll-date table: `cmegroup.com` returns HTTP 403 to automated
-requests from this environment.** For transparency, my own understanding had
-been that CME's equity-index roll-date tables cite the **Thursday eight days
-before the third-Friday expiry**, and I am not confident which is correct.
-
-I am adopting your rule as directed and flagging the uncertainty rather than
-silently accepting or silently overriding it. Practical impact is near zero:
-this fallback fires only when volume data has already failed, and the primary
-volume-crossover rule governs in all normal operation. **Worth confirming against
-CME's own table before the dataset is purchased** — if it should be the Thursday,
-that is a one-line change with no research consequence.
+**Verified independently by the operator against CME's published U.S.
+equity-index convention: customary roll date = the Monday preceding the third
+Friday of the expiration month.** My earlier uncertainty — I had believed it was
+the Thursday eight days before expiry, and `cmegroup.com` returns HTTP 403 to
+automated requests from this environment so I could not check — is resolved.
+The rule stands as written and is no longer flagged.
 
 NQ expiry itself is the **third Friday** of Mar/Jun/Sep/Dec, settled on the
 Special Opening Quotation that morning.
+
+## Warm-up is NOT level carryover — the distinction is load-bearing
+
+Two different things that must never be conflated:
+
+| Forbidden | Required |
+|---|---|
+| A price level formed on `NQU25` becoming a level on `NQZ25` | `NQZ25` using its **own** pre-roll history to warm state |
+
+When `NQZ25` becomes active it must already possess a legitimate ATR, realized
+volatility, session/VWAP history, market structure and its **own**
+contract-specific liquidity pools. It obtains those from **its own genuine
+1-minute bars in the 30 calendar days before its active start**, during which it
+was listed and trading as the deferred contract.
+
+So: **no cross-contract price-level carryover** does **not** mean **no pre-roll
+history from the incoming contract**. The incoming contract's warm-up bars are
+real trades at real prices in that instrument, and using them is causal and
+correct. What is forbidden is transplanting a level *discovered on a different
+instrument*.
+
+No trade may be taken during a warm-up window. Warm-up exists only to
+initialize state.
+
+## Dataset manifest — every minute bar must remain attributable
+
+The research dataset is **never** transformed into a stitched series in which
+the source contract can no longer be identified. Every minute bar carries, or
+permits exact recovery of:
+
+| Field | |
+|---|---|
+| `raw_symbol` | the actual CME contract, e.g. `NQZ25` |
+| `ts_event` | UTC nanosecond timestamp |
+| `open/high/low/close/volume` | raw, unadjusted |
+| `trade_date` | CME trade day (18:00 ET roll) |
+| `phase` | `warmup` or `active` |
+| `roll_regime` | sessions since / until the nearest roll |
+
+The backtest must always be able to answer: *"which actual CME NQ contract
+produced this bar?"* Any pipeline step that loses this is a defect.
 
 ## Per-bar and per-trade record
 
