@@ -345,7 +345,19 @@ class Params:
     shorts: bool = True
     # --- costs ---
     tick: float = 0.25
-    cost_ticks: float = 0.0       # round-trip slippage+commission, in ticks
+    cost_ticks: float = 0.0       # DEPRECATED approximation; see friction_points
+    friction_points: float = 0.0  # round-trip friction in PRICE POINTS
+    # PROTOCOL v1.1 §3 requires friction in dollars, divided by each trade's own
+    # initial dollar risk. Because risk_$ = risk_points * point_value, that is
+    # algebraically identical to friction_points / risk_points with
+    # friction_points = friction_$ / point_value - so one field expresses the
+    # rule exactly, with no point-value constant inside the engine:
+    #     NQ headline $14.00 RT / $20.00 per point = 0.70 points
+    #     NQ optimistic $4.00                      = 0.20 points
+    #     NQ stressed   $24.00                     = 1.20 points
+    # cost_ticks is retained only so pre-v1.1 runs remain reproducible. It
+    # conflates fees with slippage and ignores point value; when
+    # friction_points is non-zero it takes precedence and cost_ticks is unused.
 
 
 @dataclass
@@ -472,7 +484,9 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             if t["state"] in ("closed",) or t["created"] >= i:
                 continue
             bull = t["dir"] == 1
-            cost_r = p.cost_ticks * p.tick / t["risk"]
+            friction = (p.friction_points if p.friction_points
+                        else p.cost_ticks * p.tick)
+            cost_r = friction / t["risk"]
 
             if t["state"] == "pending":
                 filled = l[i] <= t["entry"] if bull else h[i] >= t["entry"]
