@@ -4,3 +4,16 @@ data_po3/
 data_holdout/
 data/
 data_long/
+
+# ── secrets: never commit credentials or anything that could carry them ─────
+.env
+.env.*
+*.env
+secrets/
+*.key
+*.pem
+*credentials*
+*api_key*
+*apikey*
+.databento
+databento.json

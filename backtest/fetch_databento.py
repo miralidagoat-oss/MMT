@@ -21,7 +21,7 @@ Two schemas are pulled:
 The definition schema is what turns an opaque instrument_id into NQZ25 plus its
 expiry, which the roll engine needs.
 """
-import csv, gzip, io, json, os, sys, urllib.error, urllib.request
+import csv, gzip, io, json, os, re, sys, urllib.error, urllib.parse, urllib.request
 
 HOST = "https://hist.databento.com/v0"
 DATASET = "GLBX.MDP3"
@@ -52,6 +52,11 @@ def post(path, fields, k):
             return raw
     except urllib.error.HTTPError as e:
         detail = e.read()[:400].decode("utf-8", "replace")
+        # Defence in depth: scrub anything key-shaped before it reaches a log,
+        # a terminal, or a transcript. The key is never printed by design, but
+        # an error body echoed back from a server must not become the leak.
+        detail = re.sub(r"db-[A-Za-z0-9]{20,}", "db-***REDACTED***", detail)
+        detail = detail.replace(k, "***REDACTED***") if k else detail
         sys.exit(f"Databento HTTP {e.code} on {path}: {detail}")
 
 
