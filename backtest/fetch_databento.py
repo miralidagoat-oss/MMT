@@ -116,8 +116,11 @@ def _numeric_meta(method, k, **f):
     A failed estimate must never be treated as permission to proceed: this
     function exits the process rather than returning a sentinel a caller might
     misread as zero."""
-    if method == "metadata.get_cost":
-        f = dict(f, mode="historical-streaming")      # mode applies to cost only
+    # Every field sent must be one Databento documents for these methods:
+    # dataset, symbols, stype_in, schema, start, end, limit. No `mode` - the
+    # published unit-price categories (historical, historical-streaming, live)
+    # are a price list, not evidence that `mode` is a valid query parameter.
+    # All three methods therefore receive the identical query.
     v = _meta(method, dict(dataset=DATASET, **f), k)
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)

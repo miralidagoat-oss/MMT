@@ -30,10 +30,19 @@ ok(calls == list(F.DISCOVERY_METHODS),
 ok(est == dict(cost_usd=1.23, record_count=4567.0,
                billable_bytes=2e9, billable_gb=2.0),
    "all three estimates come from Databento, none computed locally")
-ok(all(set(f) - {"mode"} == set(SENT[1]) - {"mode"} for f in SENT),
-   "all three were priced on the identical definition request")
-ok([("mode" in f) for f in SENT] == [True, False, False],
-   "mode=historical-streaming is sent to get_cost only")
+DOCUMENTED = {"dataset", "symbols", "stype_in", "schema", "start", "end", "limit"}
+CONTRACT = {"dataset": "GLBX.MDP3", "symbols": "NQ.FUT", "stype_in": "parent",
+            "schema": "definition", "start": "2019-01-01", "end": "2026-09-02"}
+disc = SENT[:3]
+ok(all(f == CONTRACT for f in disc),
+   "each of the three requests is exactly {dataset, symbols, stype_in, schema, start, end}")
+ok(all("limit" not in f for f in disc), "limit is absent - the universe is unlimited")
+ok(not any("mode" in f for f in SENT),
+   "`mode` is in NO request - not get_cost, not record_count, not billable_size")
+ok(all(set(f) <= DOCUMENTED for f in SENT),
+   "no price-path request carries a field outside the documented set")
+ok(disc[0] == disc[1] == disc[2],
+   "all three estimates are priced on one identical query, field for field")
 uni = {"NQ-2026-03": dict(research_id="NQ-2026-03",
                           expiration=dt.datetime(2026,3,20,tzinfo=dt.timezone.utc),
                           activation=dt.datetime(2025,3,20,tzinfo=dt.timezone.utc),
