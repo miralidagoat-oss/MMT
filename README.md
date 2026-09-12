@@ -1143,3 +1143,69 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+## NQ futures data: what is actually obtainable (probed 2026-09-12)
+
+Every route below was tested from this environment, not assumed. `backtest/fetch_nq.py`
+reproduces the accessible ones and writes `data_nq/PROVENANCE.json`.
+
+### Obtainable — genuine CME NQ futures
+
+| Source | Symbol | Interval | Bars | Span (ET) | Trading days | Volume |
+|---|---|---|---|---|---|---|
+| Yahoo v8 chart | `NQ=F` front-month continuous | 1m | 8,880 | 2026-09-02 → 09-11 | 7 | 99.9% |
+| Yahoo v8 chart | `NQ=F` | **5m** | **13,665** | **2026-07-02 → 09-11** | **59** | 99.7% |
+| Yahoo v8 chart | `NQ=F` | 15m | 4,576 | 2026-07-02 → 09-11 | 59 | 100% |
+| Yahoo v8 chart | `NQ=F` | 60m | 13,748 | 2024-04-19 → 2026-09-11 | 724 | 96.5% |
+
+Exchange `CME`, instrument `FUTURE`, timezone `America/New_York`, currency USD,
+**raw front-month continuous — no back-adjustment**. Yahoo does not document its
+roll rule; treat roll dates as unknown, which is a real caveat for level-based
+research (§3).
+
+**Yahoo requires a cookie + crumb session.** Anonymous requests return HTTP 429 and
+look like a dead API. `fc.yahoo.com` cookie + `/v1/test/getcrumb` fixes it.
+
+### Hard limits — measured, not assumed
+
+- 5m/15m/30m cap at ~71 calendar days; 1m at ~9; 60m at ~875.
+- Paging backwards with `period1`/`period2` beyond the window returns **HTTP 422**.
+- **Expired contracts are purged.** `NQU26.CME` (just expired) resolves; `NQM26.CME`
+  and everything older returns **404**. Stitching quarterly contracts backwards to
+  build multi-year 5m history is therefore impossible on this source.
+
+### Not obtainable, and why
+
+| Route | Result | Note |
+|---|---|---|
+| Databento (`GLBX.MDP3`) | HTTP 401 | Key required; account signup not possible here. **This is the gold-standard source.** |
+| Polygon.io futures | HTTP 401 | Key required |
+| FirstRateData | HTTP 200 `no active subscription` | Sells 15y of NQ 1-min. Free samples exist but **equities/ETFs/indices only** — every NQ futures sample URL returns 403 |
+| Barchart ondemand | HTTP 410 | "Free Market Data API service is no longer available" |
+| Nasdaq Data Link `CHRIS/CME_NQ1` | HTTP 403 | Free continuous-futures tables retired |
+| CME DataMine | SSL handshake failure | Paid regardless |
+| Stooq | JS browser-verification wall | |
+| Kibot (guest) | authenticates, then `401 Not Logged In` on futures | Guest tier is daily-only, equities-only |
+| Investing.com / Barchart site | HTTP 403 | |
+| Tiingo / Finnhub / Twelve Data / Alpha Vantage | 401/403/demo-only | None carry CME futures on any tier |
+| Dukascopy | HTTP 403 on instrument list | Carries index **CFDs**, not CME futures — this is where NDX came from |
+| Interactive Brokers | n/a | Needs TWS/Gateway + funded account |
+
+**The limitation is genuine and platform-specific.** The dataset needed to validate an
+NQ 5-minute system properly is multi-year NQ 1-minute or 5-minute data with contract
+identity — available commercially from Databento or FirstRateData, not from any free
+source reachable here.
+
+### Intrabar sequencing, calibrated against 1-minute ground truth
+
+Rebuilding 1,770 five-minute bars from the 1m series:
+
+- 74 buckets (4.2%) have high and low inside the **same 1-minute bar** — unresolvable
+  even at 1m resolution.
+- Of the 1,696 resolvable, TradingView's heuristic (up bar → low first, down bar →
+  high first) is **correct 88.0% of the time**, and symmetric: 87.9% on up bars,
+  88.0% on down bars — so it carries no directional bias.
+
+This only applies to bars containing both the stop and the target, measured at
+**0.00% of NQ 5m trades** (0/159) and 0.22% on the four-year proxy. Residual exposure
+is ~12% of ~0% of trades: not a material risk for this system.
