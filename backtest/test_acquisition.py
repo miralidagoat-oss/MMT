@@ -14,15 +14,26 @@ def ok(c, msg):
 
 # ── A. price-* cannot download billable data ───────────────────────────────
 print("A. `price` cannot issue a billable timeseries request")
-calls = []
+calls, SENT = [], []
 _REAL_REQUEST = F._request          # keep the genuine one for the allow-list test
+STUB = {"metadata.get_cost": 1.23, "metadata.get_record_count": 4567,
+        "metadata.get_billable_size": 2_000_000_000}
 def spy(path, fields, k, raw):
-    calls.append(path)
-    if path == "metadata.get_cost": return 1.23
+    calls.append(path); SENT.append(dict(fields))
+    if path in STUB: return STUB[path]
     raise AssertionError(f"a price command reached billable path {path}")
 F._request = spy
 F._UNLOCKED.clear()
-F.price_discovery("2019-01-01", "2026-09-01", "db-FAKE")
+est = F.price_discovery("2019-01-01", "2026-09-01", "db-FAKE")
+ok(calls == list(F.DISCOVERY_METHODS),
+   "price-discovery called get_cost, get_record_count and get_billable_size, in that order")
+ok(est == dict(cost_usd=1.23, record_count=4567.0,
+               billable_bytes=2e9, billable_gb=2.0),
+   "all three estimates come from Databento, none computed locally")
+ok(all(set(f) - {"mode"} == set(SENT[1]) - {"mode"} for f in SENT),
+   "all three were priced on the identical definition request")
+ok([("mode" in f) for f in SENT] == [True, False, False],
+   "mode=historical-streaming is sent to get_cost only")
 uni = {"NQ-2026-03": dict(research_id="NQ-2026-03",
                           expiration=dt.datetime(2026,3,20,tzinfo=dt.timezone.utc),
                           activation=dt.datetime(2025,3,20,tzinfo=dt.timezone.utc),
@@ -31,8 +42,10 @@ uni = {"NQ-2026-03": dict(research_id="NQ-2026-03",
 F.price_volume(uni, "2019-01-01", "2026-09-01", "db-FAKE")
 F.price_minute(uni, [dict(research_id="NQ-2026-03", active_start="2025-12-16",
                           active_end="2026-03-16")], "db-FAKE")
-ok(all(c == "metadata.get_cost" for c in calls),
-   f"all {len(calls)} price-path calls were metadata.get_cost")
+ok(all(c in F.DISCOVERY_METHODS for c in calls),
+   f"all {len(calls)} price-path calls were metadata estimation methods")
+ok(all(c == "metadata.get_cost" for c in calls[3:]),
+   "price-volume and price-minute still use metadata.get_cost only")
 try:
     F._data("timeseries.get_range", {}, "db-FAKE", "discovery"); guarded = False
 except RuntimeError: guarded = True
@@ -50,7 +63,7 @@ except RuntimeError: metaguard = True
 ok(metaguard, "_meta() refuses any non-metadata path")
 # Exercise the REAL _request so the runtime guard itself is under test, not the spy.
 F._request = _REAL_REQUEST
-F.restrict_endpoints("metadata.")
+F.restrict_endpoints(*F.DISCOVERY_METHODS)
 try:
     F._request("timeseries.get_range", {}, "db-FAKE", True); rt = False
 except RuntimeError as e: rt = "HALT" in str(e)
@@ -68,20 +81,35 @@ except _Reached: rt2 = True
 except RuntimeError: rt2 = False
 finally:
     _ur.urlopen = _real_open
-ok(rt2, "runtime allow-list still permits metadata.* (reached the socket, none sent)")
+ok(rt2, "allow-list permits metadata.get_cost (reached the socket, none sent)")
+try:
+    F._request("metadata.list_datasets", {}, "db-FAKE", False); rt3 = False
+except RuntimeError as e: rt3 = "may only call" in str(e)
+except Exception: rt3 = False
+ok(rt3, "allow-list refuses an unrelated metadata.* method - exact match, not prefix")
 F._request = spy
 F.restrict_endpoints.__globals__["_ENDPOINT_ALLOW"] = None
 _orig = F._meta
 for shape, label in ((1.23, "bare number"), ("1.23", "numeric string")):
     F._meta = lambda *a, _s=shape, **kw: _s
     ok(F._cost("db-FAKE", schema="definition") == 1.23, f"cost parses {label}")
+F._meta = lambda *a, **kw: 4567.0
+ok(F._numeric_meta("metadata.get_record_count", "db-FAKE", schema="definition") == 4567.0,
+   "record_count parses")
+ok(F._numeric_meta("metadata.get_billable_size", "db-FAKE", schema="definition") == 4567.0,
+   "billable_size parses")
 import subprocess
 r = subprocess.run([sys.executable, "-c",
     "import sys,os;sys.path.insert(0,'backtest');import fetch_databento as F;"
-    "F._meta=lambda *a,**k:{'total':5,'surprise':1};F._cost('db-FAKE',schema='definition')"],
+    "F._meta=lambda *a,**k:{'total':5,'surprise':1};"
+    "F._numeric_meta('metadata.get_billable_size','db-FAKE',schema='definition')"],
     capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ok(r.returncode != 0 and "unexpected shape" in (r.stdout + r.stderr),
+out = r.stdout + r.stderr
+ok(r.returncode != 0 and "unexpected response shape" in out,
    "an undocumented dict response HALTS instead of being reinterpreted")
+ok("metadata.get_billable_size" in out, "the HALT names which method failed")
+ok("'total'" in out or "keys" in out, "the HALT shows safe shape info (keys), not the payload")
+ok("downloaded" in out, "the HALT states explicitly that nothing will be downloaded")
 F._meta = _orig
 
 # ── B. discovery does not depend on a two-digit ticker regex ───────────────

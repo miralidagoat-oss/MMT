@@ -41,12 +41,13 @@ _UNLOCKED = set()           # steps a fetch command has explicitly unlocked
 _ENDPOINT_ALLOW = None      # None = unrestricted; else a tuple of allowed prefixes
 
 
-def restrict_endpoints(*prefixes):
-    """Runtime allow-list enforced inside _request(), the single HTTP chokepoint.
-    price-discovery restricts to metadata. so no other endpoint can be reached
-    even through a code path the AST tests did not anticipate."""
+def restrict_endpoints(*methods):
+    """Runtime allow-list of EXACT endpoint paths, enforced inside _request(),
+    the single HTTP chokepoint. price-discovery allows only the three metadata
+    methods its report needs - not all of metadata.* - so no other endpoint can
+    be reached even through a code path the AST tests did not anticipate."""
     global _ENDPOINT_ALLOW
-    _ENDPOINT_ALLOW = tuple(prefixes)
+    _ENDPOINT_ALLOW = frozenset(methods)
 
 
 def _excl(d):
@@ -63,9 +64,9 @@ def api_key():
 
 
 def _request(path, fields, k, raw):
-    if _ENDPOINT_ALLOW is not None and not path.startswith(_ENDPOINT_ALLOW):
+    if _ENDPOINT_ALLOW is not None and path not in _ENDPOINT_ALLOW:
         raise RuntimeError(
-            f"HALT: this command is restricted to {_ENDPOINT_ALLOW} endpoints; "
+            f"HALT: this command may only call {sorted(_ENDPOINT_ALLOW)}; "
             f"refused {path!r}. No request was sent.")
     body = urllib.parse.urlencode(fields, doseq=True).encode()
     req = urllib.request.Request(f"{HOST}/{path}", data=body, method="POST")
@@ -103,12 +104,21 @@ def _data(path, fields, k, step):
     return _request(path, fields, k, raw=True)
 
 
-def _cost(k, **f):
-    """metadata.get_cost is documented to return a bare numeric USD value.
-    That is treated as canonical. Any other shape HALTS rather than being
-    silently reinterpreted - a cost we cannot read is not a cost we act on."""
-    v = _meta("metadata.get_cost",
-              dict(dataset=DATASET, mode="historical-streaming", **f), k)
+DISCOVERY_METHODS = ("metadata.get_cost", "metadata.get_record_count",
+                     "metadata.get_billable_size")
+
+
+def _numeric_meta(method, k, **f):
+    """All three estimation methods are documented to return a bare numeric.
+    That is canonical. Any other shape HALTS, naming the method and showing only
+    safe shape information - never the payload, which could echo anything.
+
+    A failed estimate must never be treated as permission to proceed: this
+    function exits the process rather than returning a sentinel a caller might
+    misread as zero."""
+    if method == "metadata.get_cost":
+        f = dict(f, mode="historical-streaming")      # mode applies to cost only
+    v = _meta(method, dict(dataset=DATASET, **f), k)
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)
     if isinstance(v, str):
@@ -116,10 +126,19 @@ def _cost(k, **f):
             return float(v.strip())
         except ValueError:
             pass
-    sys.exit(f"HALT: metadata.get_cost returned an unexpected shape "
-             f"{type(v).__name__}"
-             + (f" with keys {sorted(v)}" if isinstance(v, dict) else "")
-             + ". The documented response is a bare number. Not proceeding.")
+    shape = type(v).__name__
+    if isinstance(v, dict):
+        shape += f" with keys {sorted(map(str, v))}"
+    elif isinstance(v, (list, tuple)):
+        shape += f" of length {len(v)}"
+    sys.exit(f"HALT: {method} returned an unexpected response shape: {shape}.\n"
+             f"  The documented response is a bare numeric value.\n"
+             f"  No estimate was obtained, so nothing proceeds. No data was "
+             f"downloaded and none will be.")
+
+
+def _cost(k, **f):
+    return _numeric_meta("metadata.get_cost", k, **f)
 
 
 def _ns(x):
@@ -134,15 +153,35 @@ def def_fields(start, end):
 
 def price_discovery(start, end, k):
     f = def_fields(start, end)
-    print("  EXACT REQUEST TO BE PRICED (API key excluded):")
+    q = {x: y for x, y in f.items() if x != "dataset"}
+    whole_days = all(len(f[x]) == 10 for x in ("start", "end"))
+
+    print("EXACT REQUEST")
     for key in ("dataset", "symbols", "stype_in", "schema", "start", "end"):
-        print(f"    {key:<10} {f[key]}")
-    print(f"    {'limit':<10} (none - omitted so the universe cannot be truncated)")
-    print(f"    note       inclusive research end {end}; API end {f['end']} is exclusive")
-    print("  endpoint     metadata.get_cost   (no timeseries call in this command)")
-    c = _cost(k, **{x: y for x, y in f.items() if x != "dataset"})
-    print(f"\n  Databento quote: ${c:,.2f} USD")
-    return c
+        print(f"  {key:<12} {f[key]}")
+    print(f"  {'limit':<12} (none - omitted so the universe cannot be truncated)")
+    print(f"  {'':<12} inclusive research end {end}; API end {f['end']} is exclusive")
+    span = "a whole number of 24-hour periods" if whole_days else "NOT whole days"
+    print(f"  {'':<12} range is {span} - the condition Databento documents for"
+          f" accurate definition estimates")
+    print(f"  endpoints    {', '.join(DISCOVERY_METHODS)}")
+    print(f"  {'':<12} no timeseries call is permitted in this command")
+
+    cost = _numeric_meta("metadata.get_cost", k, **q)
+    recs = _numeric_meta("metadata.get_record_count", k, **q)
+    size = _numeric_meta("metadata.get_billable_size", k, **q)
+    gb = size / 1e9
+
+    print("\nESTIMATES")
+    print(f"  {'cost_usd':<22} {cost:,.2f}")
+    print(f"  {'record_count':<22} {recs:,.0f}")
+    print(f"  {'billable_bytes':<22} {size:,.0f}")
+    print(f"  {'billable_GB':<22} {gb:,.4f}")
+    if gb > 0:
+        print(f"  {'effective_cost_per_GB':<22} {cost / gb:,.2f}")
+    else:
+        print(f"  {'effective_cost_per_GB':<22} n/a (billable size reported as 0)")
+    return dict(cost_usd=cost, record_count=recs, billable_bytes=size, billable_gb=gb)
 
 
 def fetch_discovery(start, end, k):
@@ -278,7 +317,7 @@ if __name__ == "__main__":
         sys.exit(0)
     k = api_key()
     if cmd == "price-discovery":
-        restrict_endpoints("metadata.")
+        restrict_endpoints(*DISCOVERY_METHODS)
         price_discovery(start, end, k)
         sys.exit("\nPRICED ONLY. Nothing downloaded. Next: fetch-discovery "
                  "with DATABENTO_CONFIRM_DISCOVERY=yes")
