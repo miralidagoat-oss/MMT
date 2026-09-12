@@ -1,4 +1,4 @@
-# NQ 5-minute research protocol — v1.2, FROZEN 2026-09-12
+# NQ 5-minute research protocol — v1.3, FROZEN 2026-09-12
 
 Supersedes v1.0. Declared **before** the multi-year NQ dataset exists and before
 any paid data request. No strategy result was produced while writing this
@@ -48,7 +48,15 @@ holdout may never again be described as untouched once opened.
 
 ## 2. Instrument, timeframe, objective
 
-- **Market:** CME NQ, individual contracts, raw prices, roll per `ROLL_POLICY.md` v1.1
+- **Primary statistical basis:** Dukascopy `USATECHIDXUSD`, a CFD on the
+  Nasdaq-100 cash index, 2018-01-01 .. 2026-09-01, 1-minute aggregated to
+  5-minute. ~8.7 years. See §12 for what this basis may and may not be used to
+  claim. Adopted in v1.3 only after every NQ route was exhausted (§9b).
+- **Corroboration set:** CME NQ, real exchange volume, via Yahoo `NQ=F` —
+  5-minute (~72 days) and 1-hour (~2.4 years). The actual traded instrument.
+  **Never used for parameter selection.** Roll per `ROLL_POLICY.md` v1.3, which
+  continues to govern any NQ contract data; the CFD basis has no roll and the
+  policy does not apply to it.
 - **Execution:** 5-minute, aggregated deterministically from 1-minute
 - **Primary metric:** expectancy in R per trade with **multi-scale block-bootstrap** CI (§7)
 - **Secondary:** PF, win rate, trades/session, max drawdown in R, day-level stats, long/short, session split
@@ -218,6 +226,13 @@ edge, that is the reported conclusion.** No optimization until one appears.
 
 ## 9b. Data acquisition is staged, and buys only outrights
 
+> **DORMANT as of v1.3.** The operator has declined to open a paid Databento
+> account, so no stage below has been executed and none will be without an
+> explicit new decision. The machinery is retained, tested (46 offline
+> assertions) and correct; it is unfunded, not withdrawn. The primary basis is
+> now the free Dukascopy feed (§12). Nothing in this section has ever been run
+> against a live key, and no money has been spent at any point in this research.
+
 A parent request (`NQ.FUT`, `stype_in=parent`) resolves to **every child
 instrument**, which for a CME futures root includes **calendar spreads** and
 other non-outright instruments. Purchasing seven years of minute bars for that
@@ -285,15 +300,71 @@ retried with adjusted thresholds.
 
 ---
 
-## 12. NDX status
+## 12. NDX status — PRIMARY as of v1.3, with claim limits
 
-Secondary falsification set only. Answers one question: *does this behavioural
-hypothesis have the same directional effect in another representation of
-Nasdaq-100 price action?* Sign agreement is the test; parameter equality is not
-required and NDX parameters are never transplanted. **NQ and NDX trades are
-never pooled. NDX power is never reported as NQ power.**
+v1.2 held NDX as a secondary falsification set while multi-year NQ data was
+still thought reachable. It is not reachable without payment, which the operator
+has declined (§9b). NDX is therefore promoted to the primary statistical basis.
+The promotion changes where parameters are fitted. It does **not** change what
+may be claimed.
+
+### What the CFD basis is
+
+`USATECHIDXUSD` is a broker CFD on the Nasdaq-100 **cash index**. It is not the
+futures contract and is not a substitute for it:
+
+| Property | NQ futures | This basis |
+|---|---|---|
+| Instrument | exchange-traded contract | broker CFD |
+| Roll / basis | quarterly roll, term structure | none - continuous |
+| Price side | bid and ask | **BID only** - spread unobservable |
+| Volume | exchange contract volume | broker volume (proxy) |
+| Session | 23h CME trade day | ~22h, 17:00 ET break present |
+
+Verified before adoption: volume carries the correct intraday profile - peak at
+the 10:00 ET cash open, secondary peak at the 03:00 ET London open, trough at
+the 18:00 ET reopen, CV 1.20. It is a usable VWAP weight. It is not exchange
+volume and is never reported as such.
+
+Full-session coverage begins in 2018. 2015-2017 returns ~14h/day and **must not
+be used**: a truncated day silently corrupts every Asia-session and overnight
+liquidity-pool feature. 2012-2013 is RTH-only and is excluded for the same
+reason. The window is pinned at 2018-01-01 in `fetch_dukascopy.py fetch_range`
+and recorded in `data_ndx/PROVENANCE.json` with every empty weekday listed.
+
+### Friction on this basis
+
+The $14 round-trip headline (§3) is an NQ figure in NQ dollars. The E-mini NQ
+multiplier is $20 per index point, so the headline translates to **0.70 index
+points round trip**, applied in points and then divided by each trade's own
+initial point risk - the same dollars-first-then-R order §3 requires. This keeps
+R-multiples comparable across the two bases. It does not model CFD spread, which
+is unobservable in a bid-only feed and is assumed to be inside the 0.70.
+
+### Claim limits — binding
+
+- Results on this basis may be stated as: *this rule survives across regimes in
+  Nasdaq-100 price action.*
+- They may **not** be stated as a futures P&L, a dollar return, or an expected
+  NQ result. No equity curve from this basis is presented as tradeable.
+- Every headline figure names the basis that produced it. A number without a
+  named basis is a defect, not a rounding.
+- **NQ and NDX trades are never pooled.** NDX power is never reported as NQ
+  power.
+- Directional disagreement between the two bases is a **failure**, reported as
+  such (§11), never averaged away or explained post hoc.
 
 ## Changelog
+
+- **1.3 — 2026-09-12** — Databento route closed: the operator declined to open a
+  paid account, so no multi-year NQ intraday data is obtainable and the staged
+  acquisition of §9b is dormant, not deleted. Dukascopy `USATECHIDXUSD`
+  2018-01-01..2026-09-01 promoted to primary statistical basis; real NQ (5m 72d,
+  1h 2.4y) demoted to a corroboration set never used for selection. Claim limits
+  on the CFD basis made binding, friction translated to 0.70 index points,
+  pre-2018 data excluded for truncated sessions. Fetch pinned to explicit dates
+  and made to emit provenance including every empty weekday. No strategy result
+  produced during this revision.
 
 - **1.2 — 2026-09-12** — acquisition staged A–E so only outright quarterly
   contracts are priced and purchased, spreads excluded; `raw_symbol` rather than

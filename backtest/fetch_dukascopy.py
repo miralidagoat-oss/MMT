@@ -20,6 +20,7 @@ float32 volume), prices scaled by 1000.
 """
 import csv
 import datetime
+import json
 import lzma
 import os
 import struct
@@ -96,6 +97,82 @@ def save(path, rows):
         w.writerows(rows)
 
 
+def fetch_range(out_dir, inst, tag, start, end, tfs=(5, 15, 60)):
+    """Research-grade fetch over an EXPLICIT date window.
+
+    Differs from main() in three ways that matter for reproducibility:
+      * the window is pinned to dates, not to `today` minus N years, so a
+        re-run a month from now produces byte-identical files;
+      * the 1-minute source is written out alongside the resampled frames,
+        because intrabar sequencing is calibrated against it;
+      * a PROVENANCE.json records the request, the coverage actually returned,
+        and every weekday that came back empty. A gap we cannot see is a gap
+        we will silently interpolate over later.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    d0 = datetime.date.fromisoformat(start)
+    d1 = datetime.date.fromisoformat(end)
+    days = [d0 + datetime.timedelta(days=i)
+            for i in range((d1 - d0).days + 1)
+            if (d0 + datetime.timedelta(days=i)).weekday() < 5]
+    rows, empty = [], []
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        for i, (d, chunk) in enumerate(
+                zip(days, ex.map(lambda d: fetch_day(inst, d), days))):
+            if chunk:
+                rows.extend(chunk)
+            else:
+                empty.append(d.isoformat())
+            if i % 200 == 0:
+                print(f"  {tag}: {i}/{len(days)} days, {len(rows)} minutes",
+                      flush=True)
+    if not rows:
+        sys.exit(f"HALT: {inst} returned no data for {start}..{end}.")
+    rows.sort(key=lambda r: r[0])
+    dedup = []
+    for r in rows:
+        if not dedup or r[0] > dedup[-1][0]:
+            dedup.append(r)
+
+    prov = {"source": "Dukascopy free datafeed",
+            "url_template": "https://datafeed.dukascopy.com/datafeed/"
+                            "{INSTRUMENT}/{YYYY}/{MM-1:02d}/{DD:02d}/"
+                            "BID_candles_min_1.bi5",
+            "instrument": inst,
+            "instrument_class": "CFD on cash index - NOT the futures contract",
+            "price_side": "BID only (no ask; spread is not observable)",
+            "volume": "broker volume, not exchange contract volume; used only "
+                      "to weight VWAP",
+            "requested_start": start, "requested_end": end,
+            "weekdays_requested": len(days),
+            "weekdays_empty": len(empty),
+            "empty_days": empty,
+            "bars_1m": len(dedup),
+            "first_utc": datetime.datetime.utcfromtimestamp(
+                dedup[0][0]).isoformat(),
+            "last_utc": datetime.datetime.utcfromtimestamp(
+                dedup[-1][0]).isoformat(),
+            "fetched_utc": datetime.datetime.utcnow().isoformat(),
+            "adjustment": "none - CFD has no roll and no back-adjustment",
+            "files": {}}
+
+    save(os.path.join(out_dir, f"{tag}_1m.csv"), dedup)
+    prov["files"][f"{tag}_1m.csv"] = len(dedup)
+    print(f"  {tag}_1m.csv: {len(dedup)} bars")
+    for m in tfs:
+        bars = resample(dedup, m)
+        name = f"{tag}_{m}m.csv" if m < 60 else f"{tag}_{m // 60}h.csv"
+        save(os.path.join(out_dir, name), bars)
+        prov["files"][name] = len(bars)
+        print(f"  {name}: {len(bars)} bars")
+
+    with open(os.path.join(out_dir, "PROVENANCE.json"), "w") as f:
+        json.dump(prov, f, indent=2)
+    print(f"{tag}: {len(dedup)} 1m bars {prov['first_utc'][:10]} .. "
+          f"{prov['last_utc'][:10]}; {len(empty)} empty weekdays")
+    return prov
+
+
 def main(out_dir, inst, tag, years, tfs=(5, 15, 60)):
     os.makedirs(out_dir, exist_ok=True)
     end = datetime.date.today()
@@ -126,5 +203,8 @@ def main(out_dir, inst, tag, years, tfs=(5, 15, 60)):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], sys.argv[3],
-         float(sys.argv[4]) if len(sys.argv) > 4 else 4.0)
+    if sys.argv[1] == "range":       # out_dir inst tag start end
+        fetch_range(*sys.argv[2:7])
+    else:
+        main(sys.argv[1], sys.argv[2], sys.argv[3],
+             float(sys.argv[4]) if len(sys.argv) > 4 else 4.0)

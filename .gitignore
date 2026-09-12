@@ -4,6 +4,8 @@ data_po3/
 data_holdout/
 data/
 data_long/
+data_ndx/*.csv          # bars are refetchable; PROVENANCE.json is not
+data_nq/*.csv
 
 # ── secrets: never commit credentials or anything that could carry them ─────
 .env
