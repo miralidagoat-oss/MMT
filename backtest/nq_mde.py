@@ -14,9 +14,17 @@ ALPHA, POWER = 0.05, 0.80
 Z_A, Z_P = 1.959964, 0.841621      # two-sided alpha, one-sided power
 K = Z_A + Z_P                       # 2.802
 
-bars = E.load_csv("data_nq/NQ_5m.csv"); ctx = E.build_context(bars)
+# PROTOCOL §8: MDE is recomputed from the data actually ingested, never carried
+# forward from an earlier sample. Path and friction are arguments so the same
+# script serves both bases; friction is in price points per §3 / §12.
+CSV      = sys.argv[1] if len(sys.argv) > 1 else "data_nq/NQ_5m.csv"
+FRICTION = float(sys.argv[2]) if len(sys.argv) > 2 else 0.70
+print(f"basis    {CSV}")
+print(f"friction {FRICTION:.2f} price points round trip\n")
+
+bars = E.load_csv(CSV); ctx = E.build_context(bars)
 log = []
-E.run(bars, ctx, replace(CANDIDATE, tick=0.25, cost_ticks=4.0), outcome_log=log)
+E.run(bars, ctx, replace(CANDIDATE, friction_points=FRICTION), outcome_log=log)
 t = bars["t"]
 
 def trade_day(ts):
