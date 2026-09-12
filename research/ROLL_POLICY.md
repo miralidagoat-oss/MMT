@@ -1,4 +1,4 @@
-# NQ contract roll policy — v1.2, FROZEN 2026-09-12
+# NQ contract roll policy — v1.3, FROZEN 2026-09-12
 
 Supersedes v1.0. Written **before** any roll rule was compared on strategy
 performance, and before the multi-year dataset exists. No roll variant has been
@@ -25,6 +25,25 @@ offset, moving levels relative to each other across roll boundaries. That can
 Two consecutive sessions prevents a single illiquid session from flipping the
 series back and forth. Switching at the *next* open guarantees the decision uses
 only information available when it is made.
+
+## SESSION VOLUME — methodology, chosen once and frozen
+
+The crossover compares **CME trade-day** volume. Databento `ohlcv-1d` is keyed
+to **UTC calendar dates**, whose boundary is not the CME session boundary, so it
+is **not used**.
+
+**Chosen: `ohlcv-1h`, aggregated locally into the CME trade day** (18:00 →
+17:00 `America/New_York`, DST-correct). Hourly bars are sufficient because the
+session boundaries fall on whole hours. This is causal, reproducible, and
+measures the same electronic market the strategy trades.
+
+The `statistics` schema cleared-volume alternative was **not** chosen: its
+publication timestamp would have to be verified as available before each
+historical roll decision, and that verification is an extra causal risk for no
+benefit here.
+
+**This choice is frozen and was made before any strategy result was produced.**
+It is never revisited on the basis of profitability.
 
 ## CALENDAR FALLBACK (data-integrity failure only)
 

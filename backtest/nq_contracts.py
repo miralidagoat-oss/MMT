@@ -13,6 +13,10 @@ the switch takes effect at the open of the following session.
 """
 import datetime as dt
 
+# NOTE: this module NEVER produces API symbols. It previously generated
+# "NQZ25"-style tickers; GLBX uses single-digit maturity years ("NQZ5"), so that
+# generator was deleted rather than corrected - the authoritative source for any
+# symbol is the exchange definition record, via nq_universe.build_universe().
 MONTH_CODE = {3: "H", 6: "M", 9: "U", 12: "Z"}
 WARMUP_DAYS = 30          # PROTOCOL.md causal warm-up, calendar days
 
@@ -31,10 +35,6 @@ def roll_monday(year, month):
     return tf - dt.timedelta(days=(tf.weekday() - 0) % 7 or 7)
 
 
-def symbol(year, month):
-    return f"NQ{MONTH_CODE[month]}{year % 100:02d}"
-
-
 def calendar(start, end):
     """Contracts whose ACTIVE window intersects [start, end], with the planned
     active interval and the contract-specific warm-up start."""
@@ -44,11 +44,9 @@ def calendar(start, end):
         for m in (3, 6, 9, 12):
             sw = roll_monday(y, m) + dt.timedelta(days=1)   # effective next session
             if prev_switch is not None:
-                sym_prev = symbol(*prev_switch[1])
                 a0, a1 = prev_switch[0], sw - dt.timedelta(days=1)
                 if a1 >= start and a0 <= end:
-                    out.append(dict(symbol=sym_prev,
-                                    contract_month=f"{prev_switch[1][0]}-{prev_switch[1][1]:02d}",
+                    out.append(dict(contract_month=f"{prev_switch[1][0]}-{prev_switch[1][1]:02d}",
                                     expiry=third_friday(*prev_switch[1]).isoformat(),
                                     active_start=max(a0, start).isoformat(),
                                     active_end=min(a1, end).isoformat(),
@@ -66,7 +64,7 @@ if __name__ == "__main__":
     e = dt.date.fromisoformat(sys.argv[2] if len(sys.argv) > 2 else "2026-09-01")
     rows = calendar(s, e)
     print(f"Planned outright universe, {s} -> {e}   ({len(rows)} contracts)\n")
-    print(f"  {'symbol':<8} {'month':<8} {'expiry':<12} {'warm-up from':<13} "
+    print(f"  {'month':<8} {'expiry':<12} {'warm-up from':<13} "
           f"{'active start':<13} {'active end':<12} {'act.days':>8}")
     tot_act = tot_warm = 0
     for r in rows:
