@@ -134,13 +134,20 @@ ok(I.average_ranks([10,20,20,30])==[1.0,2.5,2.5,4.0], "ties get average ranks")
 ok(I.average_ranks([5,5,5])==[2.0,2.0,2.0], "all-tied -> all mid-rank")
 
 # ── 8. Holm ───────────────────────────────────────────────────────────────
-print("\n8. Holm step-down")
-h=I.holm({"a":0.001,"b":0.02,"c":0.04,"d":0.5},alpha=0.05)
-adj=dict((k,a) for k,_,a,_ in h)
-ok(abs(adj["a"]-0.004)<1e-12, f"smallest p x m ({adj['a']:.4f})")
-ok(all(h[i][2]<=h[i+1][2]+1e-12 for i in range(len(h)-1)), "adjusted p is monotone")
-ok([k for k,_,_,r in h if r]==["a"], "only 'a' survives at alpha=0.05")
-ok(len(I.holm({f"f{i}":0.03 for i in range(22)}))==22, "family of 22 handled")
+print("\n8. Holm step-down (fixed family of 22)")
+# The generic dynamic-family holm() was DELETED: with m = len(items) it made the
+# tested hypotheses easier to reject whenever fewer than 22 were testable.
+ok(not hasattr(I,"holm"), "the generic dynamic-family holm() no longer exists")
+h=I.holm_fixed_family({"a":0.001,"b":0.02,"c":0.04,"d":0.5},alpha=0.05)
+adj={x["feature"]:x["p_holm"] for x in h["results"]}
+ok(abs(adj["a"]-0.022)<1e-12, f"smallest p x 22 = {adj['a']:.4f} (family size, not 4)")
+ok(all(h["results"][i]["p_holm"]<=h["results"][i+1]["p_holm"]+1e-12
+       for i in range(len(h["results"])-1)), "adjusted p is monotone")
+ok([x["feature"] for x in h["results"] if x["reject"]]==["a"],
+   "only 'a' survives at alpha=0.05")
+ok(h["family_size"]==22, "family size is 22 even with 4 p-values supplied")
+full=I.holm_fixed_family({f"f{i}":0.03 for i in range(22)})
+ok(full["tested"]==22 and full["family_size"]==22, "a full family of 22 is handled")
 
 print()
 if FAILS:
