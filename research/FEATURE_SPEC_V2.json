@@ -1,5 +1,5 @@
 {
-  "spec_version": "V2.2-locked",
+  "spec_version": "V2.3-locked",
   "basis_class": "PROXY - Dukascopy USATECHIDXUSD BID-quote CFD. NOT CME NQ trades, NOT NQ order flow. Volume is broker-side.",
   "bar_timeframe_seconds": 300,
   "global": {
@@ -141,9 +141,8 @@
       "units": "sigma/bar",
       "formula": "(VWAP_t - VWAP_{t-12}) / (12 * VWAP_SIGMA_t)",
       "lookback_bars": 12,
-      "note": "12 closed 5m bars = 60 min",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "0.0 when fewer than 12 bars since anchor"
+      "missing": "FEATURE MISSING / event ineligible for THIS feature when fewer than 12 completed bars since the VWAP anchor. Insufficient history is NOT a flat slope: zero means an observed flat slope, which is a different economic state. No adaptive shorter window."
     },
     "session_location": {
       "type": "categorical",
@@ -205,25 +204,37 @@
     "atr_percentile": {
       "type": "float",
       "units": "0-1",
-      "formula": "rank of ATR0 among the reference distribution, /252. REFERENCE: one value per each of the previous 252 eligible CME trade dates, each being the FINAL observable 5m Wilder ATR(14) value of that proxy trade date (the ATR at that date's last observed bar close).",
+      "formula": "percentile rank of ATR0 among same-bucket historical ATR values. BUCKET = the completed 5-minute bucket-of-CME-trade-day containing t0. REFERENCE = the Wilder ATR(14) value at that SAME 5m bucket on each of the preceding 252 eligible trade dates carrying a valid observation for it. Not end-of-day ATR, not a neighbouring bucket, never a future date.",
       "ties": "average rank",
       "min_periods": 252,
-      "on_insufficient": "EVENT IS INELIGIBLE - never computed on partial history",
+      "on_insufficient": "fewer than 252 valid same-bucket comparators -> FEATURE MISSING / ineligible for this feature",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
-      "comparator_causality": "every reference timestamp is strictly earlier than t0; enforced by require_prior_comparators()"
+      "comparator_causality": "every comparator timestamp is STRICTLY earlier than t0, enforced mechanically. No nearest-bucket substitution, no interpolation, no bucket from a short/holiday session standing in. If the same bucket does not exist on a date, that date provides no comparator.",
+      "comparator_identity": [
+        "trade_date",
+        "bucket_id",
+        "timestamp",
+        "value"
+      ]
     },
     "realized_vol_state": {
       "type": "float",
       "units": "0-1",
-      "formula": "percentile of RV0 = sqrt(sum of squared 5m log returns over the 78 CLOSED bars ending at t0). REFERENCE: one value per each of the previous 252 eligible trade dates, each computed over the 78 closed bars ending at THAT date's last observed bar close - the same end-of-proxy-day timestamp used by atr_percentile.",
+      "formula": "percentile rank of RV0 = sqrt(sum of squared 5m log returns over the 78 CLOSED bars ending at t0) among same-bucket historical values. REFERENCE = the corresponding 78-bar statistic ending at the SAME 5m bucket-of-trade-day on each of the preceding 252 eligible trade dates. Not end-of-day RV, not a neighbouring bucket.",
       "return": "log(close_t/close_{t-1}) on 5m bars",
       "window_bars": 78,
       "annualization": "NONE",
       "min_periods": 252,
-      "on_insufficient": "EVENT IS INELIGIBLE",
+      "on_insufficient": "fewer than 252 valid same-bucket comparators -> FEATURE MISSING / ineligible for this feature",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "comparator_causality": "every reference timestamp is strictly earlier than t0; enforced by require_prior_comparators()"
+      "comparator_causality": "every comparator timestamp is STRICTLY earlier than t0, enforced mechanically. No nearest-bucket substitution, no interpolation, no bucket from a short/holiday session standing in. If the same bucket does not exist on a date, that date provides no comparator.",
+      "comparator_identity": [
+        "trade_date",
+        "bucket_id",
+        "timestamp",
+        "value"
+      ]
     },
     "range_compression": {
       "type": "float",
@@ -285,18 +296,30 @@
       "units": "0-1",
       "formula": "percentile of the range (high-low) of the newest fully CLOSED 1H bucket at t0. REFERENCE: the SAME bucket-of-trade-day from each of the previous 252 eligible trade dates where that bucket exists and is complete. An overnight bucket is compared only with overnight buckets. If fewer than 252 prior dates carry that bucket, the event is INELIGIBLE.",
       "min_periods": 252,
-      "on_insufficient": "EVENT IS INELIGIBLE",
+      "on_insufficient": "fewer than 252 valid same-bucket comparators -> FEATURE MISSING / ineligible for this feature",
       "available": "last closed 1H as of t0",
-      "comparator_causality": "every reference timestamp is strictly earlier than t0; enforced by require_prior_comparators()"
+      "comparator_causality": "every comparator timestamp is STRICTLY earlier than t0, enforced mechanically. No nearest-bucket substitution, no interpolation, no bucket from a short/holiday session standing in. If the same bucket does not exist on a date, that date provides no comparator.",
+      "comparator_identity": [
+        "trade_date",
+        "bucket_id",
+        "timestamp",
+        "value"
+      ]
     },
     "htf_1h_vol_state": {
       "type": "float",
       "units": "0-1",
       "formula": "percentile of sqrt(sum of squared 1H log returns over the 24 CLOSED 1H bars ending at t0). REFERENCE: same bucket-of-trade-day comparator as htf_1h_range_pctile - one value per prior eligible trade date at the SAME bucket, never an arbitrary end-of-day bucket.",
       "min_periods": 252,
-      "on_insufficient": "EVENT IS INELIGIBLE",
+      "on_insufficient": "fewer than 252 valid same-bucket comparators -> FEATURE MISSING / ineligible for this feature",
       "available": "last closed 1H as of t0",
-      "comparator_causality": "every reference timestamp is strictly earlier than t0; enforced by require_prior_comparators()"
+      "comparator_causality": "every comparator timestamp is STRICTLY earlier than t0, enforced mechanically. No nearest-bucket substitution, no interpolation, no bucket from a short/holiday session standing in. If the same bucket does not exist on a date, that date provides no comparator.",
+      "comparator_identity": [
+        "trade_date",
+        "bucket_id",
+        "timestamp",
+        "value"
+      ]
     },
     "htf_1h_dist_ref_atr": {
       "type": "float",
@@ -797,5 +820,17 @@
     },
     "gapped_events": "gap-excluded rerun is descriptive only; gapped events are INCLUDED in the primary analysis",
     "adds_no_holm_hypothesis": true
+  },
+  "quantile_algorithm": {
+    "name": "linear interpolation on order statistics (NumPy 'linear' / type 7)",
+    "formula": "for sorted x of size n and probability q: h=(n-1)*q ; j=floor(h) ; g=h-j ; Q = (1-g)*x[j] + g*x[j+1] if j+1<n else x[j]",
+    "note": "frozen explicitly so no library-version default can decide it silently"
+  },
+  "winsorization_freeze_rules": {
+    "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31 ONLY",
+    "uses": "valid causal event-time feature values only; missing burn-in values are NEVER imputed to estimate a quantile",
+    "min_valid_observations": 100,
+    "on_insufficient": "HALT and report before outcomes - no arbitrary constant",
+    "immutable_after_freeze": "never recomputed from evaluable-development, validation, stress-set or outcome data"
   }
 }

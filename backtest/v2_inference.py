@@ -289,11 +289,18 @@ def category_effect_vector(cat, y, categories):
     reference, so stability cannot depend on an arbitrary coding choice. The
     unweighted mean is the frozen choice.
     """
-    ry = average_ranks(list(y))
+    # FILTER FIRST, THEN RANK. Ranking the full sample and filtering afterwards
+    # would let an excluded category shift the ranks of included observations,
+    # so the effect vector would depend on data the frozen category set excludes.
+    keep = [(c, yi) for c, yi in zip(cat, y)
+            if c in categories and yi is not None
+            and not (isinstance(yi, float) and math.isnan(yi))]
+    if not keep:
+        return {}
+    ry = average_ranks([k[1] for k in keep])
     means = {}
-    for c, r in zip(cat, ry):
-        if c in categories:
-            means.setdefault(c, []).append(r)
+    for (c, _), r in zip(keep, ry):
+        means.setdefault(c, []).append(r)
     fitted = {c: (sum(v) / len(v)) for c, v in means.items() if v}
     if len(fitted) < 2:
         return {}
@@ -365,13 +372,48 @@ def categorical_test(cat, y, clusters, alpha=0.05):
     return out
 
 
-def holm(pvalues, alpha=0.05):
-    """Holm step-down FWER control. Returns [(key, p, adjusted_p, reject)]."""
+HOLM_FAMILY_SIZE = 22          # frozen; never reduced after the fact
+HOLM_ALPHA = 0.05
+
+
+def holm_fixed_family(pvalues, family_size=HOLM_FAMILY_SIZE, alpha=HOLM_ALPHA,
+                      not_testable=()):
+    """THE authoritative multiple-testing procedure for V2_PROXY.
+
+    Holm step-down with a FIXED family size. The generic dynamic-family variant
+    that used m = len(pvalues) has been deleted: with fewer than 22 testable
+    hypotheses it would have made the tested ones easier to reject, which is
+    exactly backwards. An untestable hypothesis cannot reject, and must not
+    hand its power to the others.
+
+    For sorted valid p-values p(1) <= ... <= p(T), the raw candidate at rank i
+    uses the ORIGINAL family size:
+
+        (family_size - i + 1) * p(i)              i = 1..T
+
+    then Holm monotonicity is enforced by a running maximum. With T = 2 and
+    family_size = 22 the multipliers are 22 and 21 - never 2 and 1.
+
+    Untestable hypotheses receive p = None, p_holm = None, reject = False,
+    status = "NOT TESTABLE / NOT PROMOTABLE". They are never replaced.
+    """
+    if family_size < 1:
+        raise ValueError("family_size must be >= 1")
     items = sorted(pvalues.items(), key=lambda kv: kv[1])
-    m = len(items)
+    if len(items) + len(not_testable) > family_size:
+        raise ValueError(
+            f"{len(items)} testable + {len(not_testable)} untestable exceeds the "
+            f"frozen family size {family_size}; the family may not be enlarged")
     out, running = [], 0.0
-    for i, (k, p) in enumerate(items):
-        adj = min(1.0, max(running, (m - i) * p))
+    for i, (k, p) in enumerate(items, start=1):
+        adj = min(1.0, max(running, (family_size - i + 1) * p))
         running = adj
-        out.append((k, p, adj, adj <= alpha))
-    return out
+        out.append({"feature": k, "p": p, "p_holm": adj,
+                    "reject": adj <= alpha, "testable": True,
+                    "multiplier": family_size - i + 1})
+    for k in not_testable:
+        out.append({"feature": k, "p": None, "p_holm": None, "reject": False,
+                    "testable": False,
+                    "status": "NOT TESTABLE / NOT PROMOTABLE"})
+    return {"family_size": family_size, "alpha": alpha, "tested": len(items),
+            "not_testable": len(not_testable), "results": out}

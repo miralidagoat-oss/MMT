@@ -20,7 +20,8 @@ import v2_events as V
 
 PRIMARY_HORIZON_MIN = 30
 MIN_CLUSTERS_PER_CATEGORY = 30      # item 4, frozen sample-availability rule
-HOLM_FAMILY_SIZE = 22               # item 10, NEVER reduced after the fact
+# HOLM_FAMILY_SIZE is owned by v2_inference; re-exported for callers.
+from v2_inference import HOLM_FAMILY_SIZE                        # noqa: E402
 
 CENSOR_REASONS = ("outside_evaluable", "invalid_confirmation", "invalid_atr0",
                   "missing_endpoint_bar", "path_gap", "partition_boundary",
@@ -84,6 +85,49 @@ def build_population(events, bar_index, evaluable_lo, evaluable_hi):
     return eligible, censored, counts
 
 
+FORBIDDEN_OUTCOME_FIELDS = (
+    "y_5", "y_15", "y_30", "y_60", "mfe", "mae", "mfe_30", "mae_30",
+    "mfe_atr", "mae_atr", "forward_return", "ret_5", "ret_15", "ret_30",
+    "ret_60", "signed_return", "time_to_mfe", "time_to_mae",
+    "remaining_return", "vwap_reached", "level_revisited",
+    "opposing_liquidity_reached")
+
+
+def assert_no_outcome_fields(events):
+    """EVERY event is inspected - no sampling. The earlier version checked only
+    the first 50, which did not establish the guarantee it claimed."""
+    bad = []
+    for idx, e in enumerate(events):
+        for k in e:
+            kl = str(k).lower()
+            if kl in FORBIDDEN_OUTCOME_FIELDS or kl.startswith(
+                    ("y_", "mfe", "mae", "ret_", "forward")):
+                bad.append((idx, k))
+    if bad:
+        raise OutcomeValueAccess(
+            f"{len(bad)} outcome field(s) present, first at index {bad[0][0]} "
+            f"({bad[0][1]!r}). The censoring audit reads availability only.")
+    return True
+
+
+class CensorDescriptor(dict):
+    """Item 15: the audit's input schema, in which an outcome magnitude cannot
+    physically exist. Built by `descriptor()`; the field guard above remains as
+    defence in depth."""
+    FIELDS = ("event_id", "trade_date", "session_location", "hour_et",
+              "direction", "liquidity_class", "primary_eligible",
+              "censor_reason")
+
+
+def descriptor(event, primary_eligible, censor_reason=None):
+    """Project an event down to the outcome-free audit schema."""
+    d = CensorDescriptor({k: event.get(k) for k in CensorDescriptor.FIELDS})
+    d["primary_eligible"] = bool(primary_eligible)
+    d["censor_reason"] = censor_reason
+    d["event_id"] = event["event_id"]
+    return d
+
+
 def censoring_audit(events, eligible_ids, by=("session_location", "direction",
                                               "liquidity_class", "year",
                                               "hour_et")):
@@ -93,12 +137,7 @@ def censoring_audit(events, eligible_ids, by=("session_location", "direction",
     structurally incapable of reading a return. If an event dict carries an
     outcome value, that is a programming error and this raises.
     """
-    for e in events[:50]:
-        for k in e:
-            if k.startswith(("y_", "Y_", "mfe", "mae", "ret", "forward")):
-                raise OutcomeValueAccess(
-                    f"event carries outcome field {k!r}; the censoring audit "
-                    "may read availability only, never values")
+    assert_no_outcome_fields(events)          # EVERY event, no sampling
     out = {}
     for dim in by:
         tab = {}
@@ -134,30 +173,10 @@ def admissible_categories(audit_dim):
     return sorted(keep), drop
 
 
-# ── item 10: Holm over a FIXED family of 22 ────────────────────────────────
-def holm_fixed_family(pvalues, family=HOLM_FAMILY_SIZE, alpha=0.05,
-                      not_testable=()):
-    """Holm step-down where m is ALWAYS `family`, even when some predeclared
-    features produced no valid test.
-
-    A feature that cannot be tested for a pre-outcome reason (missingness,
-    singular design, too few clusters) is reported NOT TESTABLE / NOT
-    PROMOTABLE. It is never replaced, and its absence never shrinks m - power
-    must not be gained because a predeclared test failed to become usable.
-    """
-    items = sorted(pvalues.items(), key=lambda kv: kv[1])
-    out, running = [], 0.0
-    for i, (k, p) in enumerate(items):
-        adj = min(1.0, max(running, (family - i) * p))
-        running = adj
-        out.append({"feature": k, "p": p, "p_holm": adj,
-                    "reject": adj <= alpha, "testable": True})
-    for k in not_testable:
-        out.append({"feature": k, "p": None, "p_holm": None, "reject": False,
-                    "testable": False, "status": "NOT TESTABLE / NOT PROMOTABLE"})
-    return {"family_size": family, "alpha": alpha,
-            "tested": len(items), "not_testable": len(not_testable),
-            "results": out}
+# ── item 10: Holm lives in v2_inference; this is a thin re-export ─────────
+# There is exactly ONE executable Holm implementation for V2_PROXY. This module
+# does not carry a second copy.
+from v2_inference import holm_fixed_family, HOLM_ALPHA          # noqa: E402
 
 
 # ── item 8: the ONLY hard promotion gates ──────────────────────────────────
