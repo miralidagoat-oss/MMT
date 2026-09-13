@@ -331,6 +331,9 @@ class Params:
     # earlier runs stay reproducible.
     # --- confirmation quality ---
     require_close_dir: bool = True   # reclaim bar must close in the trade's direction
+    min_range_atr: float = 0.0       # H4 binary displacement filter: the reclaim
+                                     # bar's own range must be at least this many
+                                     # ATR (0 = off)
     vol_mult: float = 0.0            # reclaim bar volume vs its 20-bar average (0 = off)
     # --- trade construction ---
     entry_mode: str = "wick_mid"  # reclaim_close | wick_mid | level_retest
@@ -729,6 +732,8 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                 continue
             if p.max_event_bars and i - r.first_bar > p.max_event_bars:
                 continue                                # event ran too long
+            if p.min_range_atr and (h[i] - l[i]) < p.min_range_atr * a:
+                continue                                # no displacement
             reclaimed = c[i] > r.level if bull else c[i] < r.level
             if not reclaimed:
                 still.append(r)

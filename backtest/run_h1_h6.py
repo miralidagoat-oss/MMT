@@ -323,7 +323,72 @@ def h3():
                         "significant": sig})
 
 
-CMDS = {"baseline": baseline, "h1": h1, "h2": h2, "h3": h3, "h5": h5}
+# ── H4: displacement ──────────────────────────────────────────────────────
+def _buckets(rows, key, k=5):
+    """Equal-count buckets on one feature. Returns (edges, [(lo,hi,n,mean)])."""
+    vals = sorted(x[key] for x in rows if x.get(key) is not None)
+    if len(vals) < k * 20:
+        return None, []
+    edges = [vals[len(vals) * i // k] for i in range(1, k)]
+    out = [[] for _ in range(k)]
+    for x in rows:
+        if x.get(key) is None:
+            continue
+        b = sum(1 for e in edges if x[key] >= e)
+        out[b].append(x["r"])
+    spans = [vals[0]] + edges + [vals[-1]]
+    return edges, [(spans[i], spans[i + 1], len(out[i]),
+                    sum(out[i]) / len(out[i]) if out[i] else 0.0)
+                   for i in range(k)]
+
+
+def h4():
+    print("H4 - displacement, continuous before binary\n")
+    print("§10 requires displacement tested both as a binary permission filter")
+    print("and as a continuous contribution, with marginal value assessed AFTER")
+    print("controlling for sweep quality.\n")
+    print("The continuous test runs first on purpose: if displacement carries no")
+    print("gradient across trades the model already takes, a binary filter that")
+    print("merely removes some of them cannot manufacture one.\n")
+
+    log, bars = raw(CANDIDATE)
+    res = {}
+    for feat, desc in (("range_atr", "reclaim bar range / ATR"),
+                       ("reclaim_atr", "distance reclaimed past the level / ATR")):
+        print(f"── {feat}  ({desc})")
+        _, bs = _buckets(log, feat)
+        for lo, hi, n, m in bs:
+            print(f"   [{lo:6.2f},{hi:6.2f})  n={n:>5}  mean {m:+.4f}R")
+        if bs:
+            grad = bs[-1][3] - bs[0][3]
+            print(f"   top-minus-bottom quintile: {grad:+.4f}R\n")
+            res[feat] = {"buckets": bs, "gradient": grad}
+
+    # control for sweep quality: displacement within each depth tercile
+    print("── displacement gradient WITHIN sweep-quality terciles")
+    print("   (controls for depth_atr, so the gradient is not just deeper sweeps)")
+    depths = sorted(x["depth_atr"] for x in log)
+    d1, d2 = depths[len(depths) // 3], depths[2 * len(depths) // 3]
+    res["controlled"] = {}
+    for name, lo, hi in (("shallow", -1e9, d1), ("mid", d1, d2), ("deep", d2, 1e9)):
+        sub = [x for x in log if lo <= x["depth_atr"] < hi]
+        _, bs = _buckets(sub, "range_atr", k=3)
+        if not bs:
+            continue
+        grad = bs[-1][3] - bs[0][3]
+        cells = "  ".join(f"{m:+.4f}({n})" for _, _, n, m in bs)
+        print(f"   depth {name:<8} n={len(sub):>5}  low->high displacement: "
+              f"{cells}   gradient {grad:+.4f}R")
+        res["controlled"][name] = {"n": len(sub), "buckets": bs, "gradient": grad}
+
+    print("\n── binary permission filter")
+    print("   Applied as min_range_atr on the reclaim bar.")
+    rows = sweep("h4", "min_range_atr", [0.0, 0.5, 0.75, 1.0, 1.25, 1.5], unit="atr")
+    res["binary"] = rows
+    save("h4_displacement", res)
+
+
+CMDS = {"baseline": baseline, "h1": h1, "h2": h2, "h3": h3, "h4": h4, "h5": h5}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in CMDS:
