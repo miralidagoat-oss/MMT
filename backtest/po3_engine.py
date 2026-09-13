@@ -294,7 +294,47 @@ def build_context(bars, anchor="day"):
         if i >= 19:
             vsma[i] = run / 20.0
     return {"days": days, "mspos": mspos, "weeks": weeks, "atr": atr,
-            "vwap": vwap, "vsd": vsd, "vok": vok, "vsma": vsma}
+            "vwap": vwap, "vsd": vsd, "vok": vok, "vsma": vsma,
+            "htf": htf_bias(bars)}
+
+
+HTF_SECONDS = (900, 3600)          # 15-minute and 1-hour, §10 H6
+
+
+def htf_bias(bars, periods=HTF_SECONDS):
+    """Direction of the last FULLY CLOSED higher-timeframe bar, per base bar.
+
+    §10 H6 permits only fully closed HTF bars, which is the whole difficulty:
+    an HTF bar covering the current moment has not finished, and using it would
+    leak the very move the signal is trying to anticipate.
+
+    A bar starting at `s` closes at `s + period`, so at base-bar time t the
+    newest usable HTF bar starts at floor((t - period) / period) * period. At a
+    boundary - t exactly 10:00 with a 15m period - that yields the 09:45 bar,
+    which closed precisely at 10:00, and never the 10:00 bar, which is still
+    open. Aggregation is from the base series itself rather than a separate
+    file, so the two cannot silently disagree about a bar's contents.
+    """
+    t = bars["t"]
+    o, h, l, c = bars["o"], bars["h"], bars["l"], bars["c"]
+    n = len(t)
+    out = {}
+    for per in periods:
+        agg = {}                                  # bucket start -> [open, close]
+        for i in range(n):
+            k = t[i] - (t[i] % per)
+            if k in agg:
+                agg[k][1] = c[i]
+            else:
+                agg[k] = [o[i], c[i]]
+        dirs = [0] * n
+        for i in range(n):
+            k = ((t[i] - per) // per) * per       # newest CLOSED bucket
+            b = agg.get(k)
+            if b is not None:
+                dirs[i] = 1 if b[1] > b[0] else (-1 if b[1] < b[0] else 0)
+        out[per] = dirs
+    return out
 
 
 # ── parameters ───────────────────────────────────────────────────────────────
@@ -331,6 +371,10 @@ class Params:
     # earlier runs stay reproducible.
     # --- confirmation quality ---
     require_close_dir: bool = True   # reclaim bar must close in the trade's direction
+    htf_confirm: tuple = ()          # H6: seconds-per-bar of each higher
+                                     # timeframe that must agree with the trade
+                                     # direction, e.g. (900,) or (900, 3600).
+                                     # Empty = 5m alone.
     min_range_atr: float = 0.0       # H4 binary displacement filter: the reclaim
                                      # bar's own range must be at least this many
                                      # ATR (0 = off)
@@ -463,6 +507,7 @@ class Raid:
 def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
         collector=None, trade_log=None, outcome_log=None):
     PL = p.pivot_len
+    htf = ctx.get("htf", {})
     """Walk the series once, bar by bar, exactly as the Pine script does.
 
     `lo_i`/`hi_i` restrict which bars may *originate* a signal (used for
@@ -734,6 +779,10 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                 continue                                # event ran too long
             if p.min_range_atr and (h[i] - l[i]) < p.min_range_atr * a:
                 continue                                # no displacement
+            if p.htf_confirm:
+                want = 1 if bull else -1
+                if any(htf[per][i] != want for per in p.htf_confirm):
+                    continue                            # HTF disagrees
             reclaimed = c[i] > r.level if bull else c[i] < r.level
             if not reclaimed:
                 still.append(r)

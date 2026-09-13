@@ -388,7 +388,57 @@ def h4():
     save("h4_displacement", res)
 
 
-CMDS = {"baseline": baseline, "h1": h1, "h2": h2, "h3": h3, "h4": h4, "h5": h5}
+# ── H6: confirmed HTF context ─────────────────────────────────────────────
+H6_COMBOS = {"5m alone": (), "5m+15m": (900,), "5m+1H": (3600,),
+             "5m+15m+1H": (900, 3600)}
+
+
+def h6():
+    print("H6 - confirmed higher-timeframe context\n")
+    print("§10: 5m alone / 5m+15m / 5m+1H / 5m+15m+1H, using ONLY fully closed")
+    print("HTF bars. That constraint is the whole difficulty - an HTF bar")
+    print("covering the current moment has not finished, and using it would")
+    print("leak the move the signal is trying to anticipate. The engine takes")
+    print("the newest bucket whose close time has already passed; verified at a")
+    print("boundary, where a 15m bar closing exactly at t IS usable and the one")
+    print("opening at t is not.\n")
+    print("§10 also treats the 1H result (+0.183R) as a hypothesis, not fact.\n")
+
+    _, bars = raw(CANDIDATE)
+    per_window = [{} for _ in range(3)]
+    res = {}
+    for name, combo in H6_COMBOS.items():
+        s_c = run(replace(CANDIDATE, htf_confirm=combo), label=name)
+        log_c, _ = raw(replace(CANDIDATE, htf_confirm=combo))
+        wins = _by_subwindow(log_c, bars)
+        means = [sum(w) / len(w) if w else 0.0 for w in wins]
+        for k, m in enumerate(means):
+            per_window[k][name] = m
+        print(f"  {name:<12} n={s_c['n']:>5}  mean {s_c['mean_r']:+.4f}R  "
+              f"CI [{s_c['headline_ci'][0]:+.4f},{s_c['headline_ci'][1]:+.4f}]  "
+              f"freq {s_c['freq_per_trade_day']:.2f}/day"
+              f"{'  SIGNIFICANT' if s_c['significant'] else ''}")
+        print(f"  {'':<12} sub-windows {['%+.4f' % m for m in means]}")
+        res[name] = {"combo": combo, "summary": s_c, "subwindows": means}
+
+    opts = list(H6_COMBOS)
+    best = max(opts, key=lambda k: res[k]["summary"]["mean_r"])
+    ok, detail = PL.categorical(opts, per_window, best)
+    print(f"\n  best combination: {best}")
+    print(f"  §5 categorical: {'PASS' if ok else 'FAIL'} - {detail}")
+    floor_ok = [k for k in opts
+                if res[k]["summary"]["freq_per_trade_day"] >= R.FREQ_FLOOR]
+    print(f"  meets the §11 frequency floor of "
+          f"{R.FREQ_FLOOR}/trade day: {floor_ok}")
+    sig = [k for k in opts if res[k]["summary"]["significant"]]
+    print(f"  interval excludes zero: {sig or 'NONE'}")
+    save("h6_htf", {"results": res, "best": best, "categorical_ok": ok,
+                    "categorical_detail": detail, "significant": sig,
+                    "meets_freq_floor": floor_ok})
+
+
+CMDS = {"baseline": baseline, "h1": h1, "h2": h2, "h3": h3, "h4": h4,
+        "h5": h5, "h6": h6}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in CMDS:
