@@ -1,0 +1,37 @@
+{
+  "basis": "data_ndx_q/NDX_5m.csv",
+  "generation": "V2_PROXY",
+  "protocol": "PROTOCOL_V2.md (post-audit)",
+  "basis_class": "PROXY - Dukascopy USATECHIDXUSD CFD, NOT CME NQ futures",
+  "partitions": [
+    {
+      "name": "development",
+      "start": "2022-09-09",
+      "end": "2025-05-05",
+      "burn_in_days": 252,
+      "burn_in_start": "2022-09-09",
+      "burn_in_end": "2023-08-31",
+      "first_evaluable": "2023-09-01",
+      "eligible_days_total": 683,
+      "evaluable_days": 431,
+      "note": "No bar before 2022-09-09 is read. State initializes causally from the partition's own first day, so the sealed stress set is untouched."
+    },
+    {
+      "name": "validation",
+      "start": "2025-05-07",
+      "end": "2026-08-31",
+      "burn_in_days": 252,
+      "note": "Burn-in applies here too; evaluable span computed at load time. ONE promoted architecture, ONE primary evaluation (GATE M)."
+    },
+    {
+      "name": "stress_set",
+      "start": "2018-05-31",
+      "end": "2022-09-08",
+      "burn_in_days": 0,
+      "sealed": true,
+      "note": "SEALED HISTORICAL STRESS SET. Precedes development. Cannot support a prospective-holdout claim."
+    }
+  ],
+  "stress_set_uses_remaining": 1,
+  "spend_variable": "MMT_SPEND_STRESS_SET"
+}

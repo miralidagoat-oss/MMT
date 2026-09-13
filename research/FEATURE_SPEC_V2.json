@@ -1,0 +1,369 @@
+{
+  "spec_version": "V2.0",
+  "basis_class": "PROXY (Dukascopy USATECHIDXUSD CFD) - NOT CME NQ",
+  "tick": 0.25,
+  "bar_timeframe_seconds": 300,
+  "global": {
+    "ATR": {
+      "formula": "Wilder RMA of True Range",
+      "timeframe": "5m",
+      "lookback": 14,
+      "tr": "max(h-l, |h-prev_close|, |l-prev_close|)",
+      "seed": "SMA of first 14 TR",
+      "min_periods": 14,
+      "note": "identical to po3_engine.wilder_atr; one definition only"
+    },
+    "price_fields": "OHLC of the quantized 5m bar; BID side only (no ask)",
+    "availability": "every feature evaluated at EVENT_CONFIRMATION_TIME = close of the sweep bar, using only bars with close_time <= that",
+    "clip_default": "winsorize at [p0.5, p99.5] computed on the DEVELOPMENT BURN-IN ONLY (2022-09-09..2023-08-31); constants frozen there and reused unchanged everywhere else"
+  },
+  "event_time_features": {
+    "liquidity_class": {
+      "type": "categorical",
+      "values": [
+        "pdh",
+        "pdl",
+        "pwh",
+        "pwl",
+        "asia_h",
+        "asia_l",
+        "lon_h",
+        "lon_l",
+        "ib_h",
+        "ib_l",
+        "pivot"
+      ],
+      "formula": "level generator id",
+      "available": "LEVEL_AVAILABILITY_TIME",
+      "missing": "never",
+      "encode": "one-hot"
+    },
+    "level_kind_dynamic": {
+      "type": "bool",
+      "formula": "liquidity_class == 'pivot'",
+      "available": "LEVEL_AVAILABILITY_TIME",
+      "missing": "never"
+    },
+    "level_age_min": {
+      "type": "float",
+      "units": "minutes",
+      "formula": "(SWEEP_TIME - LEVEL_AVAILABILITY_TIME)/60",
+      "note": "age from AVAILABILITY, not formation - formation is unknowable to the algorithm at that moment",
+      "available": "sweep",
+      "missing": "ineligible",
+      "transform": "log1p"
+    },
+    "level_formation_lag_min": {
+      "type": "float",
+      "units": "minutes",
+      "formula": "(LEVEL_AVAILABILITY_TIME - LEVEL_FORMATION_TIME)/60",
+      "note": "DIAGNOSTIC ONLY, never a predictor",
+      "available": "availability",
+      "missing": "0"
+    },
+    "touch_count": {
+      "type": "int",
+      "formula": "count of prior bars whose [low,high] intersected [level-TICK, level+TICK] strictly between LEVEL_AVAILABILITY_TIME and SWEEP_TIME",
+      "includes_this_sweep": false,
+      "reset": "never; level dies on expiration",
+      "available": "sweep",
+      "missing": "0"
+    },
+    "level_prominence_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "|level - median(close over the 20 bars preceding LEVEL_AVAILABILITY_TIME)| / ATR_at_availability",
+      "available": "availability",
+      "missing": "ineligible"
+    },
+    "competing_liquidity_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "min over all OTHER available levels of |other.price - level| / ATR_at_sweep; SAME SIDE only",
+      "cap": 10.0,
+      "missing": "cap (10.0) when no other same-side level exists",
+      "available": "sweep"
+    },
+    "penetration_pts": {
+      "type": "float",
+      "units": "points",
+      "formula": "sell-side: level - low_of_sweep_bar ; buy-side: high_of_sweep_bar - level",
+      "available": "sweep",
+      "missing": "never"
+    },
+    "penetration_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "penetration_pts / ATR_at_sweep",
+      "available": "sweep",
+      "missing": "ineligible"
+    },
+    "close_vs_level_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "sell-side: (close_of_sweep_bar - level)/ATR ; buy-side: (level - close_of_sweep_bar)/ATR",
+      "note": "REPLACES reclaim_magnitude_atr at event time. Positive = the sweep bar already closed back through the level BEFORE confirmation.",
+      "available": "sweep bar CLOSE",
+      "missing": "never"
+    },
+    "same_bar_reclaim": {
+      "type": "bool",
+      "formula": "close_vs_level_atr > 0",
+      "note": "the only reclaim information knowable at EVENT_CONFIRMATION_TIME",
+      "available": "sweep bar CLOSE",
+      "missing": "never"
+    },
+    "wick_body_ratio": {
+      "type": "float",
+      "formula": "sell-side: (min(o,c) - l) / max(|c-o|, TICK) ; buy-side: (h - max(o,c)) / max(|c-o|, TICK)",
+      "zero_body": "denominator floored at one TICK (0.25)",
+      "clip": [
+        0.0,
+        10.0
+      ],
+      "available": "sweep bar CLOSE",
+      "missing": "never"
+    },
+    "vwap_dist_pts": {
+      "type": "float",
+      "units": "points",
+      "formula": "close_of_sweep_bar - VWAP",
+      "available": "sweep bar CLOSE",
+      "missing": "ineligible"
+    },
+    "vwap_dist_sigma": {
+      "type": "float",
+      "units": "sigma",
+      "formula": "(close - VWAP) / VWAP_SIGMA",
+      "available": "sweep bar CLOSE",
+      "missing": "ineligible"
+    },
+    "vwap_slope_sigma_per_bar": {
+      "type": "float",
+      "units": "sigma/bar",
+      "formula": "(VWAP_t - VWAP_{t-12}) / (12 * VWAP_SIGMA_t)",
+      "lookback_bars": 12,
+      "note": "12 closed 5m bars = 60 min",
+      "available": "sweep bar CLOSE",
+      "missing": "0.0 when fewer than 12 bars since anchor"
+    },
+    "session_location": {
+      "type": "categorical",
+      "formula": "bucket of minutes-since-18:00-ET open",
+      "boundaries_mspo": {
+        "overnight": [
+          0,
+          480
+        ],
+        "london": [
+          480,
+          780
+        ],
+        "premarket": [
+          780,
+          930
+        ],
+        "ny_open": [
+          930,
+          990
+        ],
+        "ny_morning": [
+          990,
+          1080
+        ],
+        "midday": [
+          1080,
+          1200
+        ],
+        "ny_afternoon": [
+          1200,
+          1260
+        ],
+        "power_hour": [
+          1260,
+          1320
+        ],
+        "post": [
+          1320,
+          1440
+        ]
+      },
+      "half_open": true,
+      "available": "sweep",
+      "missing": "never",
+      "encode": "one-hot"
+    },
+    "minutes_since_session_open": {
+      "type": "float",
+      "units": "minutes",
+      "formula": "(SWEEP_TIME - session_open_utc)/60",
+      "available": "sweep",
+      "missing": "never"
+    },
+    "atr_percentile": {
+      "type": "float",
+      "units": "0-1",
+      "formula": "rank of ATR_at_sweep among the ATR values at the CLOSE of each of the previous 252 eligible CME trade dates, divided by 252",
+      "ties": "average rank",
+      "min_periods": 252,
+      "on_insufficient": "EVENT IS INELIGIBLE - never computed on partial history",
+      "available": "sweep",
+      "missing": "ineligible"
+    },
+    "realized_vol_state": {
+      "type": "float",
+      "units": "0-1",
+      "formula": "percentile (same 252-day construction) of sqrt(sum of squared 5m log returns over the preceding 78 bars)",
+      "return": "log(close_t/close_{t-1}) on 5m bars",
+      "window_bars": 78,
+      "annualization": "NONE",
+      "min_periods": 252,
+      "on_insufficient": "EVENT IS INELIGIBLE",
+      "available": "sweep"
+    },
+    "range_compression": {
+      "type": "float",
+      "formula": "(mean true range of the last 12 closed 5m bars) / (mean true range of the last 72 closed 5m bars)",
+      "lookbacks": [
+        12,
+        72
+      ],
+      "clip": [
+        0.1,
+        5.0
+      ],
+      "available": "sweep",
+      "missing": "ineligible"
+    },
+    "dist_session_open_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "(close - open of the first bar of this CME trade day) / ATR",
+      "available": "sweep",
+      "missing": "ineligible"
+    },
+    "dist_weekly_open_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "(close - open of the first bar of the CME trade week, week starting with the Sunday 18:00 ET open) / ATR",
+      "available": "sweep",
+      "missing": "ineligible"
+    },
+    "dist_overnight_high_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "(close - max high over [18:00 ET, 09:30 ET) of this trade day) / ATR",
+      "window": "18:00-09:30 ET, half-open",
+      "available": "only after 09:30 ET",
+      "missing": "ineligible before 09:30 ET"
+    },
+    "dist_overnight_low_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "(close - min low over [18:00 ET, 09:30 ET) of this trade day) / ATR",
+      "window": "18:00-09:30 ET, half-open",
+      "available": "only after 09:30 ET",
+      "missing": "ineligible before 09:30 ET"
+    },
+    "htf_15m_compression": {
+      "type": "float",
+      "formula": "(mean TR of last 4 CLOSED 15m bars)/(mean TR of last 16 CLOSED 15m bars)",
+      "bar_rule": "newest bucket whose close_time <= EVENT_CONFIRMATION_TIME",
+      "clip": [
+        0.1,
+        5.0
+      ],
+      "available": "last closed 15m",
+      "missing": "ineligible"
+    },
+    "htf_1h_range_pctile": {
+      "type": "float",
+      "units": "0-1",
+      "formula": "percentile of (high-low) of the last CLOSED 1H bar among the previous 252 eligible trade dates' same statistic",
+      "min_periods": 252,
+      "on_insufficient": "EVENT IS INELIGIBLE",
+      "available": "last closed 1H"
+    },
+    "htf_1h_vol_state": {
+      "type": "float",
+      "units": "0-1",
+      "formula": "percentile (252-day) of sqrt(sum of squared 1H log returns over the last 24 CLOSED 1H bars)",
+      "min_periods": 252,
+      "on_insufficient": "EVENT IS INELIGIBLE",
+      "available": "last closed 1H"
+    },
+    "htf_1h_dist_ref_atr": {
+      "type": "float",
+      "units": "ATR",
+      "formula": "(close_of_last_CLOSED_1H_bar - REFERENCE) / ATR_1H, where REFERENCE is EXACTLY the open of the current CME trade day's first 1H bar",
+      "reference": "current CME trade-day 1H open - no other reference permitted",
+      "atr_1h": "Wilder RMA(14) of 1H true range",
+      "available": "last closed 1H",
+      "missing": "ineligible"
+    },
+    "direction": {
+      "type": "int",
+      "values": [
+        1,
+        -1
+      ],
+      "formula": "+1 sell-side sweep (hypothesised bullish reversal), -1 buy-side",
+      "available": "sweep",
+      "missing": "never"
+    }
+  },
+  "PROHIBITED_AT_EVENT_TIME": {
+    "reclaim_latency_min": "reclaim may occur AFTER confirmation - LANDMARK/OUTCOME only",
+    "reclaim_magnitude_atr": "same - LANDMARK/OUTCOME only",
+    "any_future_reclaim_flag": "same",
+    "displacement_after_event": "LANDMARK only",
+    "htf_directional_agreement": "H6 rejected it; prohibited under any name"
+  },
+  "landmark_features": {
+    "landmarks_min": [
+      5,
+      10,
+      15,
+      30
+    ],
+    "rule": "at landmark L, only information with timestamp <= SWEEP_TIME + L is usable",
+    "features": [
+      "reclaim_occurred_by_L",
+      "reclaim_latency_min_if_by_L",
+      "reclaim_magnitude_atr_if_by_L",
+      "distance_travelled_atr_by_L",
+      "displacement_observed_atr_by_L",
+      "bars_elapsed"
+    ],
+    "forbidden": [
+      "ultimate MFE",
+      "ultimate MAE",
+      "any reclaim after L",
+      "future displacement"
+    ]
+  },
+  "outcomes": {
+    "horizons_min": [
+      5,
+      15,
+      30,
+      60
+    ],
+    "primary": "30m ATR-normalised signed forward return, direction-normalised",
+    "secondary_are_descriptive": true,
+    "measures": [
+      "signed_return",
+      "signed_return_atr",
+      "mfe",
+      "mae",
+      "mfe_atr",
+      "mae_atr",
+      "time_to_mfe",
+      "time_to_mae",
+      "vwap_reached",
+      "level_revisited",
+      "opposing_liquidity_reached"
+    ],
+    "censoring": "horizon crossing a partition boundary, a data gap, the maintenance hour, or a contract roll is marked CENSORED and excluded from that horizon; never borrowed across"
+  }
+}

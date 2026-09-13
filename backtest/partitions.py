@@ -96,22 +96,77 @@ def countable(log, bars, countable_from):
     return [x for x in log if t[x["bar"]] >= countable_from]
 
 
-def guard(partition):
-    """Refuse to touch the holdout without an explicit, deliberate override.
+SPEND_VAR = "MMT_SPEND_STRESS_SET"          # canonical (GATE O)
+SPEND_VAR_LEGACY = "MMT_SPEND_HOLDOUT"      # accepted, deprecated
 
-    The holdout has exactly one permitted use. This makes spending it an act
-    rather than an accident: the caller must set MMT_SPEND_HOLDOUT=yes in the
-    environment, which no routine script does.
+
+def guard(partition):
+    """Refuse to touch the sealed historical stress set without a deliberate
+    override.
+
+    Named for what the block IS. It precedes the development data, so it cannot
+    support a prospective-holdout claim, and the old variable name invited
+    exactly that misreading. The legacy name still works so older scripts do not
+    silently bypass the guard, but it warns.
     """
-    if partition != "holdout":
+    if partition not in ("stress_set", "holdout"):
         return
-    if os.environ.get("MMT_SPEND_HOLDOUT") != "yes":
-        sys.exit("HALT: the holdout has ONE permitted use and this run did not "
-                 "declare it.\n"
-                 "  Set MMT_SPEND_HOLDOUT=yes only when the hypotheses are "
-                 "settled on development + validation and you intend to spend "
-                 "it now.\n"
-                 "  Nothing was read.")
+    if os.environ.get(SPEND_VAR) == "yes":
+        return
+    if os.environ.get(SPEND_VAR_LEGACY) == "yes":
+        print(f"WARNING: {SPEND_VAR_LEGACY} is deprecated; use {SPEND_VAR}. "
+              "This block is a historical stress set, not a prospective "
+              "holdout.", file=sys.stderr)
+        return
+    sys.exit("HALT: the sealed historical stress set has ONE permitted use and "
+             "this run did not declare it.\n"
+             f"  Set {SPEND_VAR}=yes only when a V2 architecture is frozen and "
+             "has survived development, internal walk-forward and validation.\n"
+             "  It PRECEDES the development data: it can show cross-regime "
+             "historical generalisation, never prospective performance.\n"
+             "  Nothing was read.")
+
+
+def load_v2(csv_path, partition, manifest="research/PARTITIONS_V2.json"):
+    """V2 loader. Two differences from load(), both required by the audit:
+
+    GATE B - NO bar earlier than the partition's own first trade date is read.
+    V1 pre-loaded 30 calendar days of warm-up which, for development, fell
+    inside the sealed stress set (2022-08-10..2022-09-08). Those bars were read
+    from disk and did initialize V1 state. V2 initializes causally from its own
+    first day instead, so the stress set is genuinely untouched.
+
+    GATE C - returns burn_end_ts. The first `burn_in_days` eligible trade dates
+    build feature state (including the 252-day rolling variables) and are NOT
+    eligible for inference. 252 days of state cannot come from 30 days of
+    warm-up, and must not be taken from the stress set.
+    """
+    guard(partition)
+    p, _ = spec(partition, manifest)
+    first = dt.date.fromisoformat(p["start"])
+    last = dt.date.fromisoformat(p["end"])
+    lo, hi = S.span_epoch(first, last)
+
+    cols = {k: [] for k in ("t", "o", "h", "l", "c", "v")}
+    seen = set()
+    for x in _rows(csv_path):
+        ts = int(x[0])
+        if ts < lo or ts >= hi:
+            continue
+        cols["t"].append(ts)
+        for k, i in (("o", 1), ("h", 2), ("l", 3), ("c", 4), ("v", 5)):
+            cols[k].append(float(x[i]))
+        d = S.trade_date(ts)
+        if d is not None:
+            seen.add(d)
+    days = sorted(seen)
+    burn = int(p.get("burn_in_days", 0))
+    if burn and len(days) <= burn:
+        sys.exit(f"HALT: {partition} has {len(days)} eligible trade days, "
+                 f"which cannot supply a {burn}-day burn-in.")
+    burn_end_ts = S.span_epoch(days[burn], last)[0] if burn else lo
+    evaluable = set(days[burn:])
+    return cols, burn_end_ts, evaluable
 
 
 if __name__ == "__main__":
