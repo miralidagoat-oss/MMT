@@ -1,0 +1,47 @@
+{
+  "source": "Dukascopy free datafeed",
+  "url_template": "https://datafeed.dukascopy.com/datafeed/{INSTRUMENT}/{YYYY}/{MM-1:02d}/{DD:02d}/BID_candles_min_1.bi5",
+  "instrument": "USATECHIDXUSD",
+  "instrument_class": "CFD on cash index - NOT the futures contract",
+  "price_side": "BID only (no ask; spread is not observable)",
+  "volume": "broker volume, not exchange contract volume; used only to weight VWAP",
+  "requested_start": "2018-01-01",
+  "requested_end": "2026-09-01",
+  "weekdays_requested": 2262,
+  "weekdays_empty": 11,
+  "empty_days": [
+    "2018-01-01",
+    "2018-03-30",
+    "2019-04-19",
+    "2020-04-10",
+    "2020-12-25",
+    "2021-01-01",
+    "2021-12-24",
+    "2022-04-15",
+    "2024-03-29",
+    "2025-04-18",
+    "2026-04-03"
+  ],
+  "bars_1m": 2885070,
+  "first_utc": "2018-01-02T07:05:00",
+  "last_utc": "2026-09-01T23:59:00",
+  "fetched_utc": "2026-09-13T00:02:01.416819",
+  "adjustment": "none - CFD has no roll and no back-adjustment",
+  "files": {
+    "NDX_1m.csv": 2885070,
+    "NDX_5m.csv": 577413,
+    "NDX_15m.csv": 192592,
+    "NDX_1h.csv": 49754
+  },
+  "unresolved_days": [],
+  "weekdays_unresolved": 0,
+  "repaired_utc": "2026-09-13T02:58:37.046449",
+  "repair_note": "12 days re-requested after a concurrency-induced silent-failure defect; 1,215 minutes recovered",
+  "quantization": "rounded to a 0.25 index-point grid (NQ tick) by quantize_basis.py; OHLC invariant re-derived from the rounded values. Raw files retained in data_ndx",
+  "derived_from": "data_ndx",
+  "research_window": {
+    "start": "2018-05-01",
+    "end": "2026-08-31T22:00",
+    "reason": "2018-01..2018-04 returns ~14h sessions (median 167 bars/day vs 267); truncated days corrupt Asia-session and overnight features"
+  }
+}
