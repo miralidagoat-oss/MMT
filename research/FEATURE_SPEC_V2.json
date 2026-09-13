@@ -1,5 +1,5 @@
 {
-  "spec_version": "V2.4-LOCKED",
+  "spec_version": "V2.5-LOCKED",
   "basis_class": "PROXY - Dukascopy USATECHIDXUSD BID-quote CFD. NOT CME NQ trades, NOT NQ order flow. Volume is broker-side.",
   "bar_timeframe_seconds": 300,
   "global": {
@@ -49,7 +49,9 @@
       "note": "age at CONFIRMATION, not at the sweep bar open - every baseline predictor row is the information set at t0",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
-      "transform": "log1p"
+      "transform": "log1p",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "level_formation_lag_min": {
       "type": "float",
@@ -57,7 +59,9 @@
       "formula": "(LEVEL_AVAILABILITY_TIME - LEVEL_FORMATION_TIME)/60",
       "note": "DIAGNOSTIC ONLY, never a predictor",
       "available": "availability",
-      "missing": "0"
+      "missing": "0",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "touch_count": {
       "type": "int",
@@ -72,7 +76,9 @@
       "units": "ATR",
       "formula": "|level - median(close over the 20 bars preceding LEVEL_AVAILABILITY_TIME)| / ATR_at_availability",
       "available": "availability",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "competing_liquidity_atr": {
       "type": "float",
@@ -80,21 +86,27 @@
       "formula": "min over all OTHER available levels of |other.price - level| / ATR_at_sweep; SAME SIDE only",
       "cap": 10.0,
       "missing": "cap (10.0) when no other same-side level exists",
-      "available": "EVENT_CONFIRMATION_TIME (t0)"
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "penetration_pts": {
       "type": "float",
       "units": "points",
       "formula": "sell-side: level - low_of_sweep_bar ; buy-side: high_of_sweep_bar - level",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "never"
+      "missing": "never",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "penetration_atr": {
       "type": "float",
       "units": "ATR",
       "formula": "penetration_pts / ATR_at_sweep",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "close_vs_level_atr": {
       "type": "float",
@@ -102,7 +114,9 @@
       "formula": "sell-side: (close_of_sweep_bar - level)/ATR ; buy-side: (level - close_of_sweep_bar)/ATR",
       "note": "REPLACES reclaim_magnitude_atr at event time. Positive = the sweep bar already closed back through the level BEFORE confirmation.",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "never"
+      "missing": "never",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "same_bar_reclaim": {
       "type": "bool",
@@ -120,21 +134,27 @@
         10.0
       ],
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "never"
+      "missing": "never",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "vwap_dist_pts": {
       "type": "float",
       "units": "points",
       "formula": "close_of_sweep_bar - VWAP",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "vwap_dist_sigma": {
       "type": "float",
       "units": "sigma",
       "formula": "(close - VWAP) / VWAP_SIGMA",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 1.58,
+      "promotion_status": "PROMOTABLE"
     },
     "vwap_slope_sigma_per_bar": {
       "type": "float",
@@ -142,7 +162,9 @@
       "formula": "(VWAP_t - VWAP_{t-12}) / (12 * VWAP_SIGMA_t)",
       "lookback_bars": 12,
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "FEATURE MISSING / event ineligible for THIS feature when fewer than 12 completed bars since the VWAP anchor. Insufficient history is NOT a flat slope: zero means an observed flat slope, which is a different economic state. No adaptive shorter window."
+      "missing": "FEATURE MISSING / event ineligible for THIS feature when fewer than 12 completed bars since the VWAP anchor. Insufficient history is NOT a flat slope: zero means an observed flat slope, which is a different economic state. No adaptive shorter window.",
+      "burn_in_missing_pct": 2.72,
+      "promotion_status": "PROMOTABLE"
     },
     "session_location": {
       "type": "categorical",
@@ -199,7 +221,9 @@
       "units": "minutes",
       "formula": "(EVENT_CONFIRMATION_TIME - session_open_utc)/60",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "never"
+      "missing": "never",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "atr_percentile": {
       "type": "float",
@@ -248,21 +272,27 @@
         5.0
       ],
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "dist_session_open_atr": {
       "type": "float",
       "units": "ATR",
       "formula": "(close - open of the first bar of this CME trade day) / ATR",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "dist_weekly_open_atr": {
       "type": "float",
       "units": "ATR",
       "formula": "(close - open of the first bar of the CME trade week, week starting with the Sunday 18:00 ET open) / ATR",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "dist_overnight_high_atr": {
       "type": "float",
@@ -270,7 +300,20 @@
       "formula": "(close - max high over [18:00 ET, 09:30 ET) of this trade day) / ATR",
       "window": "18:00-09:30 ET, half-open",
       "available": "EVENT_CONFIRMATION_TIME (t0), and only when t0 >= 09:30 ET",
-      "missing": "ineligible before 09:30 ET"
+      "missing": "ineligible before 09:30 ET",
+      "burn_in_missing_pct": 61.99,
+      "promotion_status": "NON_PROMOTABLE",
+      "non_promotable_reason": "burn-in missingness 61.99% exceeds the frozen 20% gate. The feature is only defined after 09:30 ET; this is a property of the frozen definition and is ACCEPTED, not repaired. It remains PREDECLARED, IN THE ORIGINAL FAMILY and DESCRIPTIVELY REPORTABLE. If its predefined test stays mechanically computable it may be reported under the frozen framework, but it is NON-PROMOTABLE regardless of its eventual p-value: no favourable result may override a gate it failed before outcomes were seen.",
+      "forbidden_repairs": [
+        "change the overnight definition",
+        "move availability before 09:30",
+        "forward-fill an overnight level",
+        "impute zero",
+        "impute a session value",
+        "remove and replace",
+        "create alternate overnight features",
+        "change the 20% threshold"
+      ]
     },
     "dist_overnight_low_atr": {
       "type": "float",
@@ -278,7 +321,20 @@
       "formula": "(close - min low over [18:00 ET, 09:30 ET) of this trade day) / ATR",
       "window": "18:00-09:30 ET, half-open",
       "available": "EVENT_CONFIRMATION_TIME (t0), and only when t0 >= 09:30 ET",
-      "missing": "ineligible before 09:30 ET"
+      "missing": "ineligible before 09:30 ET",
+      "burn_in_missing_pct": 61.99,
+      "promotion_status": "NON_PROMOTABLE",
+      "non_promotable_reason": "burn-in missingness 61.99% exceeds the frozen 20% gate. The feature is only defined after 09:30 ET; this is a property of the frozen definition and is ACCEPTED, not repaired. It remains PREDECLARED, IN THE ORIGINAL FAMILY and DESCRIPTIVELY REPORTABLE. If its predefined test stays mechanically computable it may be reported under the frozen framework, but it is NON-PROMOTABLE regardless of its eventual p-value: no favourable result may override a gate it failed before outcomes were seen.",
+      "forbidden_repairs": [
+        "change the overnight definition",
+        "move availability before 09:30",
+        "forward-fill an overnight level",
+        "impute zero",
+        "impute a session value",
+        "remove and replace",
+        "create alternate overnight features",
+        "change the 20% threshold"
+      ]
     },
     "htf_15m_compression": {
       "type": "float",
@@ -289,7 +345,9 @@
         5.0
       ],
       "available": "last closed 15m as of t0",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 1.91,
+      "promotion_status": "PROMOTABLE"
     },
     "htf_1h_range_pctile": {
       "type": "float",
@@ -328,7 +386,9 @@
       "reference": "current CME trade-day 1H open - no other reference permitted",
       "atr_1h": "Wilder RMA(14) of 1H true range",
       "available": "last closed 1H as of t0",
-      "missing": "ineligible"
+      "missing": "ineligible",
+      "burn_in_missing_pct": 19.8,
+      "promotion_status": "PROMOTABLE"
     },
     "direction": {
       "type": "int",
@@ -522,7 +582,8 @@
     ],
     "rho_note": "rho is DESCRIPTIVE effect size only; it supplies no p-value",
     "categorical_stability": "centred category-effect vector (fitted mean rank outcome per category minus the UNWEIGHTED grand mean across eligible categories) - reference-invariant. Spearman rho of S1vsS2 and S2vsS3 both > 0. Same category set required in all three subperiods; <3 common -> INCONCLUSIVE and non-promotable. Categories are dropped only for sample availability.",
-    "family_size_is_fixed": "m = 22 ALWAYS. A predeclared feature that cannot produce a valid test is NOT TESTABLE / NOT PROMOTABLE; it is never replaced and m is never reduced - power must not be gained because a predeclared test failed to become usable."
+    "family_size_is_fixed": "m = 22 ALWAYS. A predeclared feature that cannot produce a valid test is NOT TESTABLE / NOT PROMOTABLE; it is never replaced and m is never reduced - power must not be gained because a predeclared test failed to become usable.",
+    "non_promotable_do_not_create_vacancies": "the two overnight-distance features are NON-PROMOTABLE on missingness. They are NOT replaced, the family is NOT reduced, and no multiplicity power is gained from them. m = 22."
   },
   "winsorization": {
     "liquidity_class": {
@@ -928,5 +989,44 @@
     "on_insufficient": "HALT and report before outcomes - no arbitrary constant",
     "immutable_after_freeze": "never recomputed from evaluable-development, validation, stress-set or outcome data"
   },
-  "event_sweep_rule": "A level emits AT MOST ONE sweep event: its FIRST penetration after availability. Without this a level price simply sits beyond re-fires every bar (measured 16.8 events/bar; pdl events carried a median age of 865 minutes, the same event counted 939 times). This is the reading the frozen spec already presupposes - touch_count counts bars 'strictly between availability and THE sweep bar's open', level_revisited exists as an OUTCOME, and the pivot rule already treats being swept as a state change. Measured effect: 70,694 -> 404 events on a 16-day sample, 25.2 per trade day."
+  "event_sweep_rule": "A level emits AT MOST ONE sweep event: its FIRST penetration after availability. Without this a level price simply sits beyond re-fires every bar (measured 16.8 events/bar; pdl events carried a median age of 865 minutes, the same event counted 939 times). This is the reading the frozen spec already presupposes - touch_count counts bars 'strictly between availability and THE sweep bar's open', level_revisited exists as an OUTCOME, and the pivot rule already treats being swept as a state change. Measured effect: 70,694 -> 404 events on a 16-day sample, 25.2 per trade day.",
+  "event_state_machine": {
+    "states": [
+      "AVAILABLE",
+      "SWEPT",
+      "CONSUMED_FOR_EVENT_GENERATION"
+    ],
+    "identity": "each level carries an immutable identity for its whole lifetime",
+    "rule": "A level produces EXACTLY ONE baseline sweep event: the first bar after LEVEL_AVAILABILITY_TIME satisfying the frozen qualifying-penetration rule. On emission has_emitted_sweep := true, irreversibly.",
+    "qualifying_penetration": {
+      "sell_side": "low <= level_price - PROXY_SWEEP_PENETRATION_POINTS",
+      "buy_side": "high >= level_price + PROXY_SWEEP_PENETRATION_POINTS",
+      "equality": "equality to the level without the required penetration is NOT a sweep"
+    },
+    "never_re_emits_when": [
+      "price remains beyond the level for several bars",
+      "price subsequently reclaims it",
+      "price revisits it",
+      "price moves away and later trades through it again"
+    ],
+    "post_event_path": "those behaviours belong to the POST-EVENT PATH of the original event and may feed the frozen outcomes: reclaim, level revisit, MFE, MAE, opposing-liquidity interaction. They are NOT new baseline events.",
+    "new_events_only_via": "a genuinely distinct level created under the frozen level-generation rules, receiving a NEW immutable identity",
+    "explicitly_forbidden": [
+      "re-arm timer",
+      "re-arm after price moves X ATR away",
+      "regeneration of the same identity after N minutes",
+      "any other re-arm parameter family"
+    ],
+    "measured_justification": "the prior unspecified behaviour let an already-penetrated level fire on every subsequent qualifying bar: ~16.8 events/bar in diagnosis, individual levels firing hundreds of times. 16-day sample 70,694 -> 404 events, ~25.2/trade day across the 11 frozen liquidity classes.",
+    "counts_are_not_targets": "404 / 5,875 are observations, not optimisation targets. The event definition is NOT tuned toward any events-per-day figure, and eventual trade frequency is irrelevant at this stage: an event study is expected to carry far more candidate events than a strategy.",
+    "decided_before_outcomes": true,
+    "implementation": "backtest/v2_features.py event_time_features()",
+    "behavioural_proof": "research/EVENT_STREAM_CHECKSUM.json"
+  },
+  "missingness_gate": {
+    "threshold_pct": 20.0,
+    "comparison": "<= 20% missing is PROMOTABLE",
+    "frozen_before_outcomes": true,
+    "applied_literally": "the threshold was frozen before any result; it is not tightened, rounded up, nor given a safety margin"
+  }
 }

@@ -1,0 +1,8 @@
+{
+  "source_period": "2022-09-09..2023-08-31",
+  "basis": "data_ndx/NDX_5m.csv",
+  "events": 5875,
+  "unique_level_ids": 0,
+  "sha256": "cb3a3033f22b8faf77d7197cf81245f85437ab3cd0d7a0e709e439647fda5eab",
+  "note": "Event-stream identity for the first-qualifying-penetration rule. No outcome is computed."
+}

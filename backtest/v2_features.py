@@ -339,21 +339,46 @@ def event_time_features(bars, st, level_stream, vwap, vsig, vnbar,
         for key, lv in (levels or {}).items():
             if lv["avail"] > t[i]:
                 continue
-            # A level emits AT MOST ONE sweep event: its FIRST penetration.
-            # Without this a level that price simply sits beyond re-fires every
-            # bar - measured at 16.8 events/bar, with pdl events carrying a
-            # median age of 865 minutes, i.e. the same event counted 939 times.
-            # This is the reading the frozen spec already presupposes:
+            # ── FROZEN EVENT STATE MACHINE (one transition, no return) ────
+            #   AVAILABLE -> SWEPT -> CONSUMED_FOR_EVENT_GENERATION
+            #
+            # Each level object is an immutable identity. It emits EXACTLY ONE
+            # baseline sweep event: the FIRST bar after its availability time
+            # that satisfies the frozen qualifying-penetration rule
+            #   sell-side  low  <= price - PROXY_SWEEP_PENETRATION_POINTS
+            #   buy-side   high >= price + PROXY_SWEEP_PENETRATION_POINTS
+            # Equality to the level without the required penetration is NOT a
+            # sweep. Once has_emitted_sweep is set, that identity may NEVER
+            # produce another baseline event - not while price stays beyond it,
+            # not on reclaim, not on revisit, not when price leaves and trades
+            # through it again. Those behaviours are the POST-EVENT PATH of the
+            # original event and feed the frozen outcomes (reclaim, level
+            # revisit, MFE, MAE, opposing-liquidity interaction) instead.
+            #
+            # There is NO re-arm: no timer, no "moved X ATR away" rule, no
+            # regeneration after N minutes. A later genuinely distinct level
+            # gets a NEW identity under the frozen generation rules and emits
+            # its own event - that is the only way a second event appears at a
+            # similar price. Identity is the level object itself, so a session
+            # level rebuilt on the next trade day is a NEW level, while pwh/pwl
+            # and fractal pivots keep their identity (and their consumed state)
+            # for as long as they live.
+            #
+            # Without this rule a level price merely sits beyond re-fires on
+            # every subsequent qualifying bar: measured 16.8 events/bar, pdl
+            # events carrying a median age of 865 minutes - one level counted
+            # 939 times. The frozen spec already presupposes a single emission:
             # touch_count counts bars "strictly between availability and THE
             # sweep bar's open"; level_revisited exists as an OUTCOME; and the
             # pivot rule already treats being swept as a state change.
-            if lv.get("swept"):
+            if lv.get("has_emitted_sweep"):
                 continue
             side = lv["side"]; price = lv["price"]
             direction = 1 if side == 1 else -1
             if not V.is_sweep(direction, price, h[i], l[i]):
                 continue
-            lv["swept"] = True          # consumed; never re-fires
+            # AVAILABLE/SWEPT -> CONSUMED_FOR_EVENT_GENERATION, irreversible
+            lv["has_emitted_sweep"] = True
             pen = V.penetration_pts(direction, price, h[i], l[i])
             close_vs = ((c[i]-price)/a0) if direction == 1 else ((price-c[i])/a0)
             comp = [abs(x["price"]-price)/a0 for k2, x in levels.items()

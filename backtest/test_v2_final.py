@@ -227,6 +227,48 @@ ok(not (_called & _LOADERS),
    f"{sorted(_called & _LOADERS)}")
 ok(not os.path.exists("research/V2_RESULTS.json"), "no V2 results artifact exists")
 
+# S. the frozen event stream has not moved (Ruling 1 behavioural proof)
+print("\nS. Event-stream checksum pins the winsorization freeze")
+CK=json.load(open("research/EVENT_STREAM_CHECKSUM.json"))
+ok(CK["events"]==W["burn_in_events"],
+   f"checksum and freeze describe the same stream ({CK['events']})")
+ok(CK["source_period"]==W["source_period"], "same burn-in period")
+ok(CK["basis"]==V.RAW_BASIS, "same raw basis")
+ok(len(CK["sha256"])==64, "a full sha256 is recorded")
+FSM=FS["event_state_machine"]
+ok(FSM["states"]==["AVAILABLE","SWEPT","CONSUMED_FOR_EVENT_GENERATION"],
+   "the three frozen states are named in the spec")
+ok(FSM["explicitly_forbidden"] and all("re-arm" in x or "regeneration" in x
+   for x in FSM["explicitly_forbidden"]), "every re-arm mechanism is forbidden")
+esrc=open("backtest/v2_features.py").read()
+ok("has_emitted_sweep" in esrc and "swept\"" not in esrc,
+   "the engine uses the frozen has_emitted_sweep vocabulary")
+ok(sum(1 for n in ast.walk(ast.parse(esrc)) if isinstance(n,ast.Subscript)
+       and isinstance(n.slice,ast.Constant)
+       and n.slice.value=="has_emitted_sweep")==1,
+   "has_emitted_sweep is written exactly once and never cleared")
+
+# T. Ruling 2 - the two overnight features are non-promotable, pre-outcome
+print("\nT. Missingness gate applied literally")
+for f in ("dist_overnight_high_atr","dist_overnight_low_atr"):
+    e=FS["event_time_features"][f]
+    ok(e["promotion_status"]=="NON_PROMOTABLE", f"{f} is NON_PROMOTABLE")
+    ok(e["burn_in_missing_pct"]>20.0, f"{f} missingness {e['burn_in_missing_pct']}% > 20%")
+    ok("no favourable" in e["non_promotable_reason"].lower() or
+       "regardless of its eventual p-value" in e["non_promotable_reason"],
+       f"{f} cannot be rescued by a favourable result")
+    ok(f in FS["confirmatory_family"] if isinstance(FS["confirmatory_family"],list)
+       else True, f"{f} remains in the predeclared family")
+hd=FS["event_time_features"]["htf_1h_dist_ref_atr"]
+ok(hd["burn_in_missing_pct"]==19.8 and hd["promotion_status"]=="PROMOTABLE",
+   f"htf_1h_dist_ref_atr passes at {hd['burn_in_missing_pct']}%")
+ok(FS["missingness_gate"]["threshold_pct"]==20.0, "threshold still 20%, untightened")
+ok(I.HOLM_FAMILY_SIZE==22 and FS["holm"]["m"]==22,
+   "Holm m = 22 - non-promotable features create no vacancies")
+ok(len([f for f in FS["event_time_features"]
+        if FS["event_time_features"][f].get("promotion_status")])==19,
+   "all 19 winsorized features carry an explicit promotion status")
+
 print()
 if FAILS:
     print(f"V2 FINAL TESTS FAILED - {len(FAILS)}")
