@@ -1,21 +1,215 @@
 {
   "scope": "development evaluable window",
-  "note": "AVAILABILITY ONLY - no outcome, no return, no performance was computed.",
-  "evaluable_trade_dates": 431,
-  "first": "2023-09-01",
-  "last": "2025-05-05",
-  "buckets_total": 267,
-  "features_governed": [
-    "atr_percentile",
-    "realized_vol_state",
-    "htf_1h_range_pctile",
-    "htf_1h_vol_state"
-  ],
-  "requirement": "252 prior eligible trade dates carrying the SAME bucket",
-  "first_date_any_bucket_available": "2023-09-01",
-  "first_date_all_buckets_available": "2023-11-27",
-  "mean_bucket_coverage_pct": 98.6,
-  "coverage_day1_pct": 59.93,
-  "coverage_final_day_pct": 100.0,
-  "days_below_90pct_coverage": 9
+  "start": "2023-09-01",
+  "end": "2025-05-05",
+  "events": 16666,
+  "trade_dates": 431,
+  "engine": "backtest/v2_features.py compute_events()",
+  "gate": "PROTOCOL_V2_CANONICAL section 10: >20% missing -> descriptive only",
+  "note": "AVAILABILITY ONLY - no outcome, no return, no performance.",
+  "features": {
+    "atr_percentile": {
+      "valid_n": 16555,
+      "missing_n": 111,
+      "missing_pct": 0.67,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "close_vs_level_atr": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "competing_liquidity_atr": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "direction": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": false,
+      "promotion_status": null
+    },
+    "dist_overnight_high_atr": {
+      "valid_n": 6634,
+      "missing_n": 10032,
+      "missing_pct": 60.19,
+      "in_confirmatory_family": true,
+      "promotion_status": "NON_PROMOTABLE"
+    },
+    "dist_overnight_low_atr": {
+      "valid_n": 6634,
+      "missing_n": 10032,
+      "missing_pct": 60.19,
+      "in_confirmatory_family": true,
+      "promotion_status": "NON_PROMOTABLE"
+    },
+    "dist_session_open_atr": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "dist_weekly_open_atr": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": false,
+      "promotion_status": null
+    },
+    "htf_15m_compression": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "htf_1h_dist_ref_atr": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "htf_1h_range_pctile": {
+      "valid_n": 16533,
+      "missing_n": 133,
+      "missing_pct": 0.8,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "htf_1h_vol_state": {
+      "valid_n": 16521,
+      "missing_n": 145,
+      "missing_pct": 0.87,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "level_age_min": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "level_formation_lag_min": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": false,
+      "promotion_status": null
+    },
+    "level_kind_dynamic": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": false,
+      "promotion_status": null
+    },
+    "level_prominence_atr": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "liquidity_class": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "minutes_since_session_open": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "penetration_atr": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "penetration_pts": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": false,
+      "promotion_status": null
+    },
+    "range_compression": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "realized_vol_state": {
+      "valid_n": 16551,
+      "missing_n": 115,
+      "missing_pct": 0.69,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "same_bar_reclaim": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": false,
+      "promotion_status": null
+    },
+    "session_location": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "touch_count": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "vwap_dist_pts": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": false,
+      "promotion_status": null
+    },
+    "vwap_dist_sigma": {
+      "valid_n": 16346,
+      "missing_n": 320,
+      "missing_pct": 1.92,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "vwap_slope_sigma_per_bar": {
+      "valid_n": 16127,
+      "missing_n": 539,
+      "missing_pct": 3.23,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    },
+    "wick_body_ratio": {
+      "valid_n": 16666,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "in_confirmatory_family": true,
+      "promotion_status": "PROMOTABLE"
+    }
+  }
 }

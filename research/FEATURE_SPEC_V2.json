@@ -1,5 +1,5 @@
 {
-  "spec_version": "V2.5-LOCKED",
+  "spec_version": "V2.6-CONFORMANT",
   "basis_class": "PROXY - Dukascopy USATECHIDXUSD BID-quote CFD. NOT CME NQ trades, NOT NQ order flow. Volume is broker-side.",
   "bar_timeframe_seconds": 300,
   "global": {
@@ -34,13 +34,18 @@
       "formula": "level generator id",
       "available": "LEVEL_AVAILABILITY_TIME",
       "missing": "never",
-      "encode": "one-hot"
+      "encode": "one-hot",
+      "development_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "level_kind_dynamic": {
       "type": "bool",
       "formula": "liquidity_class == 'pivot'",
       "available": "LEVEL_AVAILABILITY_TIME",
-      "missing": "never"
+      "missing": "never",
+      "development_missing_pct": 0.0,
+      "promotion_status": null,
+      "not_in_confirmatory_family": true
     },
     "level_age_min": {
       "type": "float",
@@ -50,6 +55,7 @@
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
       "transform": "log1p",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
@@ -60,8 +66,11 @@
       "note": "DIAGNOSTIC ONLY, never a predictor",
       "available": "availability",
       "missing": "0",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
-      "promotion_status": "PROMOTABLE"
+      "promotion_status": null,
+      "not_in_confirmatory_family": true,
+      "diagnostic_only": true
     },
     "touch_count": {
       "type": "int",
@@ -69,7 +78,9 @@
       "includes_this_sweep": false,
       "reset": "never; level dies on expiration",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "0"
+      "missing": "0",
+      "development_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "level_prominence_atr": {
       "type": "float",
@@ -77,7 +88,8 @@
       "formula": "|level - median(close over the 20 bars preceding LEVEL_AVAILABILITY_TIME)| / ATR_at_availability",
       "available": "availability",
       "missing": "ineligible",
-      "burn_in_missing_pct": 0.0,
+      "development_missing_pct": 0.0,
+      "burn_in_missing_pct": 0.01,
       "promotion_status": "PROMOTABLE"
     },
     "competing_liquidity_atr": {
@@ -87,6 +99,7 @@
       "cap": 10.0,
       "missing": "cap (10.0) when no other same-side level exists",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
@@ -96,8 +109,10 @@
       "formula": "sell-side: level - low_of_sweep_bar ; buy-side: high_of_sweep_bar - level",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
-      "promotion_status": "PROMOTABLE"
+      "promotion_status": null,
+      "not_in_confirmatory_family": true
     },
     "penetration_atr": {
       "type": "float",
@@ -105,6 +120,7 @@
       "formula": "penetration_pts / ATR_at_sweep",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
@@ -115,6 +131,7 @@
       "note": "REPLACES reclaim_magnitude_atr at event time. Positive = the sweep bar already closed back through the level BEFORE confirmation.",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
@@ -123,7 +140,10 @@
       "formula": "close_vs_level_atr > 0",
       "note": "the only reclaim information knowable at EVENT_CONFIRMATION_TIME",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "never"
+      "missing": "never",
+      "development_missing_pct": 0.0,
+      "promotion_status": null,
+      "not_in_confirmatory_family": true
     },
     "wick_body_ratio": {
       "type": "float",
@@ -135,6 +155,7 @@
       ],
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
@@ -144,8 +165,10 @@
       "formula": "close_of_sweep_bar - VWAP",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
-      "promotion_status": "PROMOTABLE"
+      "promotion_status": null,
+      "not_in_confirmatory_family": true
     },
     "vwap_dist_sigma": {
       "type": "float",
@@ -153,7 +176,8 @@
       "formula": "(close - VWAP) / VWAP_SIGMA",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
-      "burn_in_missing_pct": 1.58,
+      "development_missing_pct": 1.92,
+      "burn_in_missing_pct": 1.3,
       "promotion_status": "PROMOTABLE"
     },
     "vwap_slope_sigma_per_bar": {
@@ -163,7 +187,8 @@
       "lookback_bars": 12,
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "FEATURE MISSING / event ineligible for THIS feature when fewer than 12 completed bars since the VWAP anchor. Insufficient history is NOT a flat slope: zero means an observed flat slope, which is a different economic state. No adaptive shorter window.",
-      "burn_in_missing_pct": 2.72,
+      "development_missing_pct": 3.23,
+      "burn_in_missing_pct": 2.5,
       "promotion_status": "PROMOTABLE"
     },
     "session_location": {
@@ -214,7 +239,9 @@
       "half_open": true,
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never",
-      "encode": "one-hot"
+      "encode": "one-hot",
+      "development_missing_pct": 0.0,
+      "promotion_status": "PROMOTABLE"
     },
     "minutes_since_session_open": {
       "type": "float",
@@ -222,6 +249,7 @@
       "formula": "(EVENT_CONFIRMATION_TIME - session_open_utc)/60",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
@@ -240,7 +268,9 @@
         "bucket_id",
         "timestamp",
         "value"
-      ]
+      ],
+      "development_missing_pct": 0.67,
+      "promotion_status": "PROMOTABLE"
     },
     "realized_vol_state": {
       "type": "float",
@@ -258,7 +288,9 @@
         "bucket_id",
         "timestamp",
         "value"
-      ]
+      ],
+      "development_missing_pct": 0.69,
+      "promotion_status": "PROMOTABLE"
     },
     "range_compression": {
       "type": "float",
@@ -273,6 +305,7 @@
       ],
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
@@ -282,6 +315,7 @@
       "formula": "(close - open of the first bar of this CME trade day) / ATR",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
@@ -291,8 +325,10 @@
       "formula": "(close - open of the first bar of the CME trade week, week starting with the Sunday 18:00 ET open) / ATR",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
+      "development_missing_pct": 0.0,
       "burn_in_missing_pct": 0.0,
-      "promotion_status": "PROMOTABLE"
+      "promotion_status": null,
+      "not_in_confirmatory_family": true
     },
     "dist_overnight_high_atr": {
       "type": "float",
@@ -301,19 +337,10 @@
       "window": "18:00-09:30 ET, half-open",
       "available": "EVENT_CONFIRMATION_TIME (t0), and only when t0 >= 09:30 ET",
       "missing": "ineligible before 09:30 ET",
-      "burn_in_missing_pct": 61.99,
+      "development_missing_pct": 60.19,
+      "burn_in_missing_pct": 60.23,
       "promotion_status": "NON_PROMOTABLE",
-      "non_promotable_reason": "burn-in missingness 61.99% exceeds the frozen 20% gate. The feature is only defined after 09:30 ET; this is a property of the frozen definition and is ACCEPTED, not repaired. It remains PREDECLARED, IN THE ORIGINAL FAMILY and DESCRIPTIVELY REPORTABLE. If its predefined test stays mechanically computable it may be reported under the frozen framework, but it is NON-PROMOTABLE regardless of its eventual p-value: no favourable result may override a gate it failed before outcomes were seen.",
-      "forbidden_repairs": [
-        "change the overnight definition",
-        "move availability before 09:30",
-        "forward-fill an overnight level",
-        "impute zero",
-        "impute a session value",
-        "remove and replace",
-        "create alternate overnight features",
-        "change the 20% threshold"
-      ]
+      "non_promotable_reason": "development missingness 60.19% exceeds the frozen 20% gate. A property of the frozen definition (defined only after 09:30 ET); ACCEPTED, not repaired. Remains PREDECLARED, IN THE ORIGINAL FAMILY and DESCRIPTIVELY REPORTABLE. NON-PROMOTABLE regardless of its eventual p-value."
     },
     "dist_overnight_low_atr": {
       "type": "float",
@@ -322,19 +349,10 @@
       "window": "18:00-09:30 ET, half-open",
       "available": "EVENT_CONFIRMATION_TIME (t0), and only when t0 >= 09:30 ET",
       "missing": "ineligible before 09:30 ET",
-      "burn_in_missing_pct": 61.99,
+      "development_missing_pct": 60.19,
+      "burn_in_missing_pct": 60.23,
       "promotion_status": "NON_PROMOTABLE",
-      "non_promotable_reason": "burn-in missingness 61.99% exceeds the frozen 20% gate. The feature is only defined after 09:30 ET; this is a property of the frozen definition and is ACCEPTED, not repaired. It remains PREDECLARED, IN THE ORIGINAL FAMILY and DESCRIPTIVELY REPORTABLE. If its predefined test stays mechanically computable it may be reported under the frozen framework, but it is NON-PROMOTABLE regardless of its eventual p-value: no favourable result may override a gate it failed before outcomes were seen.",
-      "forbidden_repairs": [
-        "change the overnight definition",
-        "move availability before 09:30",
-        "forward-fill an overnight level",
-        "impute zero",
-        "impute a session value",
-        "remove and replace",
-        "create alternate overnight features",
-        "change the 20% threshold"
-      ]
+      "non_promotable_reason": "development missingness 60.19% exceeds the frozen 20% gate. A property of the frozen definition (defined only after 09:30 ET); ACCEPTED, not repaired. Remains PREDECLARED, IN THE ORIGINAL FAMILY and DESCRIPTIVELY REPORTABLE. NON-PROMOTABLE regardless of its eventual p-value."
     },
     "htf_15m_compression": {
       "type": "float",
@@ -346,7 +364,8 @@
       ],
       "available": "last closed 15m as of t0",
       "missing": "ineligible",
-      "burn_in_missing_pct": 1.91,
+      "development_missing_pct": 0.0,
+      "burn_in_missing_pct": 0.0,
       "promotion_status": "PROMOTABLE"
     },
     "htf_1h_range_pctile": {
@@ -362,7 +381,9 @@
         "bucket_id",
         "timestamp",
         "value"
-      ]
+      ],
+      "development_missing_pct": 0.8,
+      "promotion_status": "PROMOTABLE"
     },
     "htf_1h_vol_state": {
       "type": "float",
@@ -377,7 +398,9 @@
         "bucket_id",
         "timestamp",
         "value"
-      ]
+      ],
+      "development_missing_pct": 0.87,
+      "promotion_status": "PROMOTABLE"
     },
     "htf_1h_dist_ref_atr": {
       "type": "float",
@@ -387,7 +410,8 @@
       "atr_1h": "Wilder RMA(14) of 1H true range",
       "available": "last closed 1H as of t0",
       "missing": "ineligible",
-      "burn_in_missing_pct": 19.8,
+      "development_missing_pct": 0.0,
+      "burn_in_missing_pct": 0.09,
       "promotion_status": "PROMOTABLE"
     },
     "direction": {
@@ -398,7 +422,10 @@
       ],
       "formula": "+1 sell-side sweep (hypothesised bullish reversal), -1 buy-side",
       "available": "EVENT_CONFIRMATION_TIME (t0)",
-      "missing": "never"
+      "missing": "never",
+      "development_missing_pct": 0.0,
+      "promotion_status": null,
+      "not_in_confirmatory_family": true
     }
   },
   "PROHIBITED_AT_EVENT_TIME": {
@@ -599,28 +626,30 @@
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
       "frozen_lower": 5.0,
-      "frozen_upper": 49608.25000000019,
+      "frozen_upper": 70860.49999999974,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "level_formation_lag_min": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": 0.016666666666666666,
-      "frozen_upper": 135.0,
+      "frozen_lower": 5.0,
+      "frozen_upper": 4805.849999999991,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "touch_count": {
       "winsorize": false,
@@ -630,71 +659,76 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": 0.3103756487629749,
-      "frozen_upper": 6.182653722682918,
+      "frozen_lower": 0.3459266069611077,
+      "frozen_upper": 17.918347085573227,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
-      "burn_in_missing_n": 0,
-      "burn_in_missing_pct": 0.0,
+      "burn_in_valid_n": 9722,
+      "burn_in_missing_n": 1,
+      "burn_in_missing_pct": 0.01,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "competing_liquidity_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
       "frozen_lower": 0.0,
-      "frozen_upper": 13.30107947686638,
+      "frozen_upper": 5.9582493491276445,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "penetration_pts": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": 0.3999999999996362,
-      "frozen_upper": 207.12409999999952,
+      "frozen_lower": 0.2899999999990541,
+      "frozen_upper": 158.3008799999934,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "penetration_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": 0.029526073344925314,
-      "frozen_upper": 6.1654027295549705,
+      "frozen_lower": 0.01946547616240376,
+      "frozen_upper": 5.436413635494267,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "close_vs_level_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": -5.506759128974385,
-      "frozen_upper": 1.8506118423541866,
+      "frozen_lower": -4.573647010041109,
+      "frozen_upper": 3.1611893355857017,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "same_bar_reclaim": {
       "winsorize": false,
@@ -708,11 +742,12 @@
       "frozen_upper": 10.0,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "vwap_dist_pts": {
       "winsorize": true,
@@ -722,39 +757,42 @@
       "frozen_upper": 327.8175873485998,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "vwap_dist_sigma": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
       "frozen_lower": -6.933625644630628,
-      "frozen_upper": 6.8837813797221505,
+      "frozen_upper": 6.388913541739566,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5782,
-      "burn_in_missing_n": 93,
-      "burn_in_missing_pct": 1.58,
+      "burn_in_valid_n": 9597,
+      "burn_in_missing_n": 126,
+      "burn_in_missing_pct": 1.3,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "vwap_slope_sigma_per_bar": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": -0.07496812722026705,
-      "frozen_upper": 0.07727126348633444,
+      "frozen_lower": -0.07641757295778086,
+      "frozen_upper": 0.07584387071685927,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5715,
-      "burn_in_missing_n": 160,
-      "burn_in_missing_pct": 2.72,
+      "burn_in_valid_n": 9480,
+      "burn_in_missing_n": 243,
+      "burn_in_missing_pct": 2.5,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "session_location": {
       "winsorize": false,
@@ -768,11 +806,12 @@
       "frozen_upper": 1325.0,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "atr_percentile": {
       "winsorize": false,
@@ -786,85 +825,91 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": 0.2962450815864113,
+      "frozen_lower": 0.28995190962665296,
       "frozen_upper": 2.958583287138247,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "dist_session_open_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": -16.172814642809143,
-      "frozen_upper": 17.474038852478163,
+      "frozen_lower": -16.197053273744093,
+      "frozen_upper": 19.67893136928861,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "dist_weekly_open_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": -68.9134585945097,
-      "frozen_upper": 96.56898684630735,
+      "frozen_lower": -68.78277210339283,
+      "frozen_upper": 94.83825707785935,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5875,
+      "burn_in_valid_n": 9723,
       "burn_in_missing_n": 0,
       "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "dist_overnight_high_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": -18.571977173144834,
-      "frozen_upper": 13.769041338611109,
+      "frozen_lower": -20.303724409682385,
+      "frozen_upper": 16.478076237772598,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 2233,
-      "burn_in_missing_n": 3642,
-      "burn_in_missing_pct": 61.99,
+      "burn_in_valid_n": 3867,
+      "burn_in_missing_n": 5856,
+      "burn_in_missing_pct": 60.23,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "dist_overnight_low_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": -9.619623915018767,
-      "frozen_upper": 24.434487554729202,
+      "frozen_lower": -10.847083349862105,
+      "frozen_upper": 25.286670616233955,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 2233,
-      "burn_in_missing_n": 3642,
-      "burn_in_missing_pct": 61.99,
+      "burn_in_valid_n": 3867,
+      "burn_in_missing_n": 5856,
+      "burn_in_missing_pct": 60.23,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "htf_15m_compression": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": 0.30352668198793187,
-      "frozen_upper": 2.473987135791713,
+      "frozen_lower": 0.2921275859063136,
+      "frozen_upper": 2.4894535534428104,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 5763,
-      "burn_in_missing_n": 112,
-      "burn_in_missing_pct": 1.91,
+      "burn_in_valid_n": 9723,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "htf_1h_range_pctile": {
       "winsorize": false,
@@ -878,15 +923,16 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": -5.058053140152742,
-      "frozen_upper": 4.903809755453719,
+      "frozen_lower": -5.6451679220877775,
+      "frozen_upper": 6.011775441418983,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
       "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
-      "burn_in_valid_n": 4712,
-      "burn_in_missing_n": 1163,
-      "burn_in_missing_pct": 19.8,
+      "burn_in_valid_n": 9714,
+      "burn_in_missing_n": 9,
+      "burn_in_missing_pct": 0.09,
       "status": "FROZEN",
-      "artifact": "research/WINSORIZATION_FREEZE.json"
+      "artifact": "research/WINSORIZATION_FREEZE_V2.json",
+      "supersedes": "research/WINSORIZATION_FREEZE.json"
     },
     "direction": {
       "winsorize": false,
@@ -1027,6 +1073,10 @@
     "threshold_pct": 20.0,
     "comparison": "<= 20% missing is PROMOTABLE",
     "frozen_before_outcomes": true,
-    "applied_literally": "the threshold was frozen before any result; it is not tightened, rounded up, nor given a safety margin"
-  }
+    "measured_on": "the development evaluable population, per PROTOCOL_V2_CANONICAL section 10 ('every univariate result ... percent missing'). Burn-in missingness is reported alongside but cannot govern the four 252-day percentile features, which are 100% missing in burn-in BY CONSTRUCTION because burn-in is exactly the window that builds their comparators.",
+    "applied_literally": "threshold frozen before any result: not tightened, not rounded up, no safety margin"
+  },
+  "canonical_feature_engine": "backtest/v2_features.py :: compute_events()",
+  "reference_engine": "backtest/v2_reference.py :: reference_events()",
+  "conformance_matrix": "research/CONFORMANCE_MATRIX_V2.json"
 }

@@ -4,34 +4,19 @@
 Computes event-time features for burn-in events. NO forward return, NO MFE,
 NO MAE, NO outcome of any kind is calculated or read.
 """
-import csv, datetime as dt, json, os, sys
+import datetime as dt, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cme_session as S, v2_events as V, v2_features as FE
 
 BURN_START, BURN_END = dt.date(2022, 9, 9), dt.date(2023, 8, 31)
 MIN_VALID = 100
+OUT = "research/WINSORIZATION_FREEZE_V2.json"
 QL, QU = 0.005, 0.995
 
 lo, hi = S.span_epoch(BURN_START, BURN_END)
-bars = FE.load_raw(V.RAW_BASIS, lo, hi)
+bars = FE.load_raw(V.RAW_BASIS, lo, hi)          # canonical loader, incl. volume
 print(f"burn-in bars {len(bars['t']):,}  {BURN_START} .. {BURN_END}")
-# volume column for VWAP
-vol = []
-with open(V.RAW_BASIS) as f:
-    r = csv.reader(f); next(r)
-    for x in r:
-        ts = int(x[0])
-        if lo <= ts < hi:
-            vol.append(float(x[5]))
-bars["v"] = vol
-
-st = FE.build_state(bars)
-stream = FE.iter_levels(bars, st)
-vwap, vsig, vnbar = FE.session_vwap(bars, st)
-agg15, new15, keys15 = FE.htf_aggregates(bars, st, 900)
-agg1h, new1h, keys1h = FE.htf_aggregates(bars, st, 3600)
-rows = FE.event_time_features(bars, st, stream, vwap, vsig, vnbar,
-                              agg15, new15, keys15, agg1h, new1h, keys1h)
+rows = FE.compute_events(bars)                   # THE canonical engine
 print(f"burn-in events {len(rows):,}   trade dates "
       f"{len({r['trade_date'] for r in rows})}")
 
@@ -39,7 +24,8 @@ out = {"source_period": f"{BURN_START}..{BURN_END}",
        "basis": V.RAW_BASIS, "quantile_algorithm": "type-7 linear",
        "lower_quantile": QL, "upper_quantile": QU,
        "min_valid_observations": MIN_VALID,
-       "burn_in_events": len(rows), "features": {}}
+       "burn_in_events": len(rows), "engine": "backtest/v2_features.py compute_events()",
+       "supersedes": "research/WINSORIZATION_FREEZE.json", "features": {}}
 halt = []
 for name in FE.WINSORIZED:
     vals = [r[name] for r in rows if r.get(name) is not None]
@@ -65,7 +51,7 @@ for name in FE.WINSORIZED:
 if halt:
     print(f"\nHALT: {len(halt)} feature(s) below {MIN_VALID} valid burn-in "
           f"observations: {halt}")
-    json.dump(out, open("research/WINSORIZATION_FREEZE.json", "w"), indent=2, default=str)
+    json.dump(out, open(OUT, "w"), indent=2, default=str)
     sys.exit(1)
-json.dump(out, open("research/WINSORIZATION_FREEZE.json", "w"), indent=2, default=str)
-print(f"\n-> research/WINSORIZATION_FREEZE.json  ({len(FE.WINSORIZED)} features frozen)")
+json.dump(out, open(OUT, "w"), indent=2, default=str)
+print(f"\n-> {OUT}  ({len(FE.WINSORIZED)} features frozen)")

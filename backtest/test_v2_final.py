@@ -131,7 +131,7 @@ ok(not any(w in src for w in ("mean","beta","p_value","effect","y_30")),
 
 # H/I/J/K. winsorization freeze
 print("\nH/I/J/K. Winsorization constants")
-W=json.load(open("research/WINSORIZATION_FREEZE.json"))
+W=json.load(open("research/WINSORIZATION_FREEZE_V2.json"))
 feats=W["features"]
 ok(len(feats)==19, f"19 winsorized features present ({len(feats)})")
 nonnull=[k for k,v in feats.items() if v["frozen_lower"] is not None and v["frozen_upper"] is not None]
@@ -164,8 +164,8 @@ ok("FEATURE MISSING" in FS["event_time_features"]["vwap_slope_sigma_per_bar"]["m
 ok("0.0" not in FS["event_time_features"]["vwap_slope_sigma_per_bar"]["missing"],
    "no zero-imputation remains in the spec")
 fsrc2=open("backtest/v2_features.py").read()
-ok("if vnbar[i] >= 12 and i >= 12" in fsrc2 and "else None" in fsrc2,
-   "implementation yields None, not 0.0, below 12 bars")
+ok("vnbar[i] >= 13" in fsrc2 and "vsid[i] == vsid[i-12]" in fsrc2,
+   "implementation requires 13 same-session observations, yielding None below")
 
 # M/N/O/P/Q. same-bucket comparators
 print("\nM/N/O/P/Q. Same-bucket comparator causality")
@@ -230,8 +230,10 @@ ok(not os.path.exists("research/V2_RESULTS.json"), "no V2 results artifact exist
 # S. the frozen event stream has not moved (Ruling 1 behavioural proof)
 print("\nS. Event-stream checksum pins the winsorization freeze")
 CK=json.load(open("research/EVENT_STREAM_CHECKSUM.json"))
-ok(CK["events"]==W["burn_in_events"],
-   f"checksum and freeze describe the same stream ({CK['events']})")
+ok(CK["status"]=="SUPERSEDED_PRE_OUTCOME_NONCONFORMANT_ENGINE",
+   "the old checksum is marked superseded, not reused")
+ok(W.get("supersedes")=="research/WINSORIZATION_FREEZE.json",
+   "the new freeze records what it supersedes")
 ok(CK["source_period"]==W["source_period"], "same burn-in period")
 ok(CK["basis"]==V.RAW_BASIS, "same raw basis")
 ok(len(CK["sha256"])==64, "a full sha256 is recorded")
@@ -241,7 +243,7 @@ ok(FSM["states"]==["AVAILABLE","SWEPT","CONSUMED_FOR_EVENT_GENERATION"],
 ok(FSM["explicitly_forbidden"] and all("re-arm" in x or "regeneration" in x
    for x in FSM["explicitly_forbidden"]), "every re-arm mechanism is forbidden")
 esrc=open("backtest/v2_features.py").read()
-ok("has_emitted_sweep" in esrc and "swept\"" not in esrc,
+ok("has_emitted_sweep" in esrc and 'lv["swept"]' not in esrc,
    "the engine uses the frozen has_emitted_sweep vocabulary")
 ok(sum(1 for n in ast.walk(ast.parse(esrc)) if isinstance(n,ast.Subscript)
        and isinstance(n.slice,ast.Constant)
@@ -253,21 +255,31 @@ print("\nT. Missingness gate applied literally")
 for f in ("dist_overnight_high_atr","dist_overnight_low_atr"):
     e=FS["event_time_features"][f]
     ok(e["promotion_status"]=="NON_PROMOTABLE", f"{f} is NON_PROMOTABLE")
-    ok(e["burn_in_missing_pct"]>20.0, f"{f} missingness {e['burn_in_missing_pct']}% > 20%")
+    ok(e["development_missing_pct"]>20.0,
+       f"{f} development missingness {e['development_missing_pct']}% > 20%")
     ok("no favourable" in e["non_promotable_reason"].lower() or
        "regardless of its eventual p-value" in e["non_promotable_reason"],
        f"{f} cannot be rescued by a favourable result")
     ok(f in FS["confirmatory_family"] if isinstance(FS["confirmatory_family"],list)
        else True, f"{f} remains in the predeclared family")
 hd=FS["event_time_features"]["htf_1h_dist_ref_atr"]
-ok(hd["burn_in_missing_pct"]==19.8 and hd["promotion_status"]=="PROMOTABLE",
-   f"htf_1h_dist_ref_atr passes at {hd['burn_in_missing_pct']}%")
+ok(hd["development_missing_pct"]<=20.0 and hd["promotion_status"]=="PROMOTABLE",
+   f"htf_1h_dist_ref_atr passes at {hd['development_missing_pct']}% "
+   "(its old 19.80% was an artifact of the sqrt(12) approximation)")
 ok(FS["missingness_gate"]["threshold_pct"]==20.0, "threshold still 20%, untightened")
 ok(I.HOLM_FAMILY_SIZE==22 and FS["holm"]["m"]==22,
    "Holm m = 22 - non-promotable features create no vacancies")
+fam_=set(FS["confirmatory_family"])
 ok(len([f for f in FS["event_time_features"]
-        if FS["event_time_features"][f].get("promotion_status")])==19,
-   "all 19 winsorized features carry an explicit promotion status")
+        if FS["event_time_features"][f].get("promotion_status")])==22,
+   "exactly the 22 confirmatory features carry a promotion status")
+ok(not [f for f,e in FS["event_time_features"].items()
+        if f not in fam_ and e.get("promotion_status")],
+   "no non-confirmatory feature carries a promotion status")
+ok(FS["event_time_features"]["level_formation_lag_min"].get("diagnostic_only")
+   and not FS["event_time_features"]["level_formation_lag_min"]
+       .get("promotion_status"),
+   "the DIAGNOSTIC-ONLY feature is not marked promotable")
 
 print()
 if FAILS:

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Tests A-G: the frozen first-qualifying-penetration state machine.
+"""Tests A-J: the frozen first-qualifying-penetration state machine.
 
     AVAILABLE -> SWEPT -> CONSUMED_FOR_EVENT_GENERATION
 
-Drives the REAL engine (v2_features.event_time_features) with synthetic bars,
-so these prove the shipped emission path, not a restatement of it.
+Drives the CANONICAL engine (v2_features.compute_events) with synthetic bars,
+so these prove the shipped emission path rather than restating it.
 
 Computes NO outcome: no return, no MFE, no MAE, no p-value.
 """
@@ -19,159 +19,172 @@ def ok(c, m):
 
 BAR = V.BAR_SECONDS
 PEN = V.PROXY_SWEEP_PENETRATION_POINTS
-LEVEL = 15000.0
+LOW, HIGH, BASE = 14990.0, 15010.0, 15000.0
+D0 = dt.date(2023, 3, 1)
 
 
-def synth(n=140, base=LEVEL + 20.0):
-    """Flat bars well ABOVE the buy-side level, so nothing sweeps by accident.
-    Starts at an 18:00 ET session open so trade dates are well defined."""
-    op, _ = S.session_bounds(dt.date(2023, 3, 1))
-    t0 = int(op.timestamp())
+def fixture(days=3, per=100):
+    """Flat bars across whole trade days. Day 0 sets a known high and low, so
+    day 1 carries a PDH at 15010 and a PDL at 14990 with known identities."""
     b = {k: [] for k in ("t", "o", "h", "l", "c", "v")}
-    for i in range(n):
-        b["t"].append(t0 + i * BAR)
-        b["o"].append(base); b["c"].append(base)
-        b["h"].append(base + 2.0); b["l"].append(base - 2.0)
-        b["v"].append(100.0)
-    return b
+    d = D0
+    for k in range(days):
+        op, _ = S.session_bounds(d)
+        ts = int(op.timestamp())
+        for j in range(per):
+            b["t"].append(ts + j*BAR)
+            b["o"].append(BASE); b["c"].append(BASE)
+            b["h"].append(HIGH if (k == 0 and j == 40) else BASE + 1.0)
+            b["l"].append(LOW if (k == 0 and j == 60) else BASE - 1.0)
+            b["v"].append(10.0)
+        d += dt.timedelta(days=1)
+        while d.weekday() >= 5:
+            d += dt.timedelta(days=1)
+    return b, [D0 + dt.timedelta(days=i) for i in range(days)]
 
 
-def sweep_bar(b, i, level=LEVEL, extra=1.0):
-    """Make bar i penetrate a BUY-SIDE (side=+1) level from above."""
-    b["l"][i] = level - PEN - extra
+def day_index(b, day_no, per=100):
+    return day_no * per
 
 
-def run(b, stream):
-    st = FE.build_state(b)
-    vwap, vsig, vnbar = FE.session_vwap(b, st)
-    a15, n15, k15 = FE.htf_aggregates(b, st, 900)
-    a1h, n1h, k1h = FE.htf_aggregates(b, st, 3600)
-    return FE.event_time_features(b, st, stream, vwap, vsig, vnbar,
-                                  a15, n15, k15, a1h, n1h, k1h)
+def run(b):
+    tr = {}
+    return FE.compute_events(b, trace=tr), tr
 
 
-def level(price=LEVEL, kind="pdl", side=1, avail_i=0, b=None):
-    return dict(price=price, side=side, kind=kind,
-                formation=b["t"][avail_i] - 60, avail=b["t"][avail_i])
-
-
-def const_stream(b, view, lo=20):
-    """The SAME dict objects on every bar - level identity is the object."""
-    for i in range(len(b["t"])):
-        yield i, (view if i >= lo else {})
+def pdl_id(b, day_no, per=100):
+    return f"PDL-{FE.S.trade_date(b['t'][day_index(b, day_no, per)])}"
 
 
 print("A. A never-swept available level emits one event")
-b = synth(); sweep_bar(b, 60)
-lv = level(b=b); rows = run(b, const_stream(b, {"pdl": lv}))
-ok(len(rows) == 1, f"exactly one event emitted ({len(rows)})")
-ok(lv.get("has_emitted_sweep") is True, "level is CONSUMED_FOR_EVENT_GENERATION")
+b, _ = fixture()
+i = day_index(b, 1) + 20
+b["l"][i] = LOW - PEN - 1.0
+rows, tr = run(b)
+pid = pdl_id(b, 1)
+mine = [r for r in rows if r["level_id"] == pid]
+ok(len(mine) == 1, f"exactly one event from {pid} ({len(mine)})")
+lv = [x for x in tr["levels"] if x["level_id"] == pid][0]
+ok(lv["has_emitted_sweep"] is True, "level is CONSUMED_FOR_EVENT_GENERATION")
+ok(abs(lv["price"] - LOW) < 1e-9, f"it is the previous day's low ({lv['price']})")
 
 print("\nB. Emitted on the FIRST qualifying penetration")
-b = synth(); sweep_bar(b, 60); sweep_bar(b, 80)
-lv = level(b=b); rows = run(b, const_stream(b, {"pdl": lv}))
-ok(len(rows) == 1, f"still one event with two qualifying bars ({len(rows)})")
-ok(rows[0]["t0"] == b["t"][60] + BAR,
-   "the event is stamped to the FIRST qualifying bar, not the later one")
+b, _ = fixture()
+i0 = day_index(b, 1) + 20
+for k in (i0, i0 + 30):
+    b["l"][k] = LOW - PEN - 1.0
+rows, _ = run(b)
+mine = [r for r in rows if r["level_id"] == pdl_id(b, 1)]
+ok(len(mine) == 1, f"two qualifying bars -> one event ({len(mine)})")
+ok(mine[0]["t0"] == b["t"][i0] + BAR, "stamped to the FIRST qualifying bar")
 
 print("\nC. A second qualifying bar immediately after adds nothing")
-b = synth(); sweep_bar(b, 60); sweep_bar(b, 61)
-lv = level(b=b); rows = run(b, const_stream(b, {"pdl": lv}))
-ok(len(rows) == 1, f"consecutive qualifying bars -> one event ({len(rows)})")
-ok(rows[0]["t0"] == b["t"][60] + BAR, "it is the first of the two")
+b, _ = fixture()
+i0 = day_index(b, 1) + 20
+b["l"][i0] = b["l"][i0+1] = LOW - PEN - 1.0
+rows, _ = run(b)
+mine = [r for r in rows if r["level_id"] == pdl_id(b, 1)]
+ok(len(mine) == 1, f"consecutive qualifying bars -> one event ({len(mine)})")
+ok(mine[0]["t0"] == b["t"][i0] + BAR, "it is the first of the two")
 
 print("\nD. Ten subsequent bars beyond the level add nothing")
-b = synth()
-for i in range(60, 71): sweep_bar(b, i)
-lv = level(b=b); rows = run(b, const_stream(b, {"pdl": lv}))
-ok(len(rows) == 1, f"11 consecutive qualifying bars -> one event ({len(rows)})")
+b, _ = fixture()
+i0 = day_index(b, 1) + 20
+for k in range(i0, i0 + 11):
+    b["l"][k] = LOW - PEN - 1.0
+rows, _ = run(b)
+ok(len([r for r in rows if r["level_id"] == pdl_id(b, 1)]) == 1,
+   "11 consecutive qualifying bars -> one event")
 
 print("\nE. Reclaim then penetrate again adds no new baseline event")
-b = synth()
-sweep_bar(b, 60)
-for i in range(61, 70):                       # reclaimed: back above the level
-    b["l"][i] = LEVEL + 5.0; b["c"][i] = LEVEL + 8.0; b["h"][i] = LEVEL + 10.0
-sweep_bar(b, 75); sweep_bar(b, 90)            # penetrates again, twice
-lv = level(b=b); rows = run(b, const_stream(b, {"pdl": lv}))
-ok(len(rows) == 1, f"reclaim + re-penetration -> still one event ({len(rows)})")
-ok(rows[0]["t0"] == b["t"][60] + BAR, "the original event stands")
+b, _ = fixture()
+i0 = day_index(b, 1) + 20
+b["l"][i0] = LOW - PEN - 1.0
+for k in range(i0+1, i0+10):                 # reclaimed: back above the level
+    b["l"][k] = LOW + 5.0; b["c"][k] = LOW + 8.0; b["h"][k] = LOW + 10.0
+b["l"][i0+20] = LOW - PEN - 1.0
+b["l"][i0+40] = LOW - PEN - 1.0
+rows, _ = run(b)
+mine = [r for r in rows if r["level_id"] == pdl_id(b, 1)]
+ok(len(mine) == 1, f"reclaim + two re-penetrations -> one event ({len(mine)})")
+ok(mine[0]["t0"] == b["t"][i0] + BAR, "the original event stands")
 
 print("\nF. A NEW level with a new identity emits its own event")
-b = synth(); sweep_bar(b, 60); sweep_bar(b, 100)
-old = level(b=b)
-new = level(b=b, avail_i=70)                  # distinct object = new identity
-def two(bars):
-    for i in range(len(bars["t"])):
-        v = {}
-        if i >= 20: v["pdl"] = old
-        if i >= 70: v["pdl2"] = new
-        yield i, v
-rows = run(b, two(b))
-ok(len(rows) == 2, f"two distinct identities -> two events ({len(rows)})")
-ok({r["t0"] for r in rows} == {b["t"][60] + BAR, b["t"][100] + BAR},
-   "each identity emits at its own first qualifying penetration")
-ok(old["has_emitted_sweep"] and new["has_emitted_sweep"], "both consumed")
+b, _ = fixture(days=3)
+b["l"][day_index(b, 1) + 20] = LOW - PEN - 1.0     # sweeps day 1's PDL
+b["l"][day_index(b, 2) + 20] = LOW - PEN - 6.0     # sweeps day 2's PDL
+rows, _ = run(b)
+ids = {r["level_id"] for r in rows}
+ok(pdl_id(b, 1) in ids and pdl_id(b, 2) in ids,
+   f"both trade days' PDLs emitted: {sorted(x for x in ids if 'PDL' in x)}")
+ok(pdl_id(b, 1) != pdl_id(b, 2), "they are distinct immutable identities")
+for n_ in (1, 2):
+    ok(len([r for r in rows if r["level_id"] == pdl_id(b, n_)]) == 1,
+       f"day {n_} PDL emitted exactly once")
 
 print("\nG. Nested distinct levels swept on the SAME bar keep their identities")
-b = synth()
-b["l"][60] = LEVEL - 60.0                     # deep bar crossing all three
-lv1 = level(price=LEVEL, kind="pdl", b=b)
-lv2 = level(price=LEVEL - 20.0, kind="pwl", b=b)
-lv3 = level(price=LEVEL - 40.0, kind="pivot", b=b)
-rows = run(b, const_stream(b, {"a": lv1, "b": lv2, "c": lv3}))
-ok(len(rows) == 3, f"three levels -> three events on one bar ({len(rows)})")
-ok(sorted(r["liquidity_class"] for r in rows) == ["pdl", "pivot", "pwl"],
-   "each event carries its OWN liquidity class, not one level repeated")
-# rows carry no level_price field and adding one would move the frozen
-# event-stream checksum, so identity is shown through penetration depth:
-# three levels 20 points apart, swept by one bar, give three distinct depths
-ok(len({round(r["penetration_pts"], 6) for r in rows}) == 3,
-   f"three distinct penetration depths - not one level counted three times "
-   f"{sorted(round(r['penetration_pts'],2) for r in rows)}")
-ok(all(x["has_emitted_sweep"] for x in (lv1, lv2, lv3)), "all three consumed")
-b2 = synth()
-for i in range(61, 75): b2["l"][i] = LEVEL - 60.0
-b2["l"][60] = LEVEL - 60.0
-lv1 = level(price=LEVEL, kind="pdl", b=b2)
-lv2 = level(price=LEVEL - 20.0, kind="pwl", b=b2)
-lv3 = level(price=LEVEL - 40.0, kind="pivot", b=b2)
-rows = run(b2, const_stream(b2, {"a": lv1, "b": lv2, "c": lv3}))
-ok(len(rows) == 3, f"14 further bars beyond all three add nothing ({len(rows)})")
+b, _ = fixture(days=2, per=140)
+i = day_index(b, 1, 140) + 60
+b["l"][i] = LOW - 60.0                       # one deep bar through everything
+rows, tr = run(b)
+same = [r for r in rows if r["t0"] == b["t"][i] + BAR]
+ok(len(same) >= 2, f"several levels swept on one bar ({len(same)})")
+ok(len({r['level_id'] for r in same}) == len(same),
+   "each event carries its OWN identity, not one level repeated")
+# NOT penetration depth: distinct levels legitimately coincide in price (a
+# PDL, a PWL and a fractal pivot can all sit at the same low), so equal depths
+# prove nothing either way. Identity is what must be distinct.
+ok(len({r["liquidity_class"] for r in same}) >= 2,
+   f"they come from different generators "
+   f"{sorted(r['liquidity_class'] for r in same)}")
+ok(all(len([x for x in rows if x["level_id"] == r["level_id"]]) == 1
+       for r in same),
+   "each of those identities appears exactly once in the whole run")
+for k in range(i+1, i+15):
+    b["l"][k] = LOW - 60.0
+rows2, _ = run(b)
+ok(len([r for r in rows2 if r["t0"] == b["t"][i] + BAR]) == len(same)
+   and len(rows2) == len(rows),
+   f"14 further bars beyond them all add nothing ({len(rows2)} vs {len(rows)})")
 
 print("\nH. Equality without penetration is NOT a sweep (frozen rule)")
-b = synth(); b["l"][60] = LEVEL                      # touches exactly
-lv = level(b=b); rows = run(b, const_stream(b, {"pdl": lv}))
-ok(len(rows) == 0, f"touching the level exactly emits nothing ({len(rows)})")
-ok(not lv.get("has_emitted_sweep"), "the level stays AVAILABLE")
-b = synth(); b["l"][60] = LEVEL - PEN                # exactly at the threshold
-lv = level(b=b); rows = run(b, const_stream(b, {"pdl": lv}))
-ok(len(rows) == 1, "penetration exactly equal to the threshold DOES qualify")
-b = synth(); b["l"][60] = LEVEL - PEN + 0.01         # one cent short
-lv = level(b=b); rows = run(b, const_stream(b, {"pdl": lv}))
-ok(len(rows) == 0, "one cent short of the threshold does NOT qualify")
+for delta, expect, label in ((0.0, 0, "touching the level exactly"),
+                             (PEN, 1, "penetration exactly at the threshold"),
+                             (PEN - 0.01, 0, "one cent short of the threshold")):
+    b, _ = fixture()
+    i = day_index(b, 1) + 20
+    b["l"][i] = LOW - delta
+    rows, tr = run(b)
+    n_ = len([r for r in rows if r["level_id"] == pdl_id(b, 1)])
+    ok(n_ == expect, f"{label} -> {expect} event(s) (got {n_})")
 
 print("\nI. Sell-side (side=-1) obeys the mirror rule")
-b = synth(base=LEVEL - 20.0); b["h"][60] = LEVEL + PEN + 1.0
-lv = level(kind="pdh", side=-1, b=b)
-rows = run(b, const_stream(b, {"pdh": lv}))
-ok(len(rows) == 1, "a buy-side sweep of a sell-side level emits once")
-b = synth(base=LEVEL - 20.0); b["h"][60] = LEVEL
-lv = level(kind="pdh", side=-1, b=b)
-ok(len(run(b, const_stream(b, {"pdh": lv}))) == 0,
+b, _ = fixture()
+i = day_index(b, 1) + 20
+b["h"][i] = HIGH + PEN + 1.0
+rows, _ = run(b)
+hid = f"PDH-{FE.S.trade_date(b['t'][day_index(b, 1)])}"
+ok(len([r for r in rows if r["level_id"] == hid]) == 1,
+   "a buy-side sweep of a sell-side level emits once")
+b, _ = fixture()
+b["h"][day_index(b, 1) + 20] = HIGH
+rows, _ = run(b)
+ok(len([r for r in rows if r["level_id"] == hid]) == 0,
    "equality on the sell side is not a sweep either")
 
 print("\nJ. No re-arm mechanism exists in the engine")
-src = open("backtest/v2_features.py").read()
 import ast
-names = {n.id for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Name)}
-names |= {n.attr for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Attribute)}
-ok(not (names & {"rearm", "re_arm", "rearm_after", "rearm_atr", "rearm_minutes"}),
-   f"no re-arm symbol {sorted(names & {'rearm','re_arm','rearm_after'})}")
-ok(sum(1 for _ in [x for x in ast.walk(ast.parse(src))
-                   if isinstance(x, ast.Subscript)
-                   and isinstance(x.slice, ast.Constant)
-                   and x.slice.value == "has_emitted_sweep"]) == 1,
-   "has_emitted_sweep is assigned in exactly one place - never cleared")
+src = open("backtest/v2_features.py").read()
+tree = ast.parse(src)
+names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+names |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+bad = names & {"rearm", "re_arm", "rearm_after", "rearm_atr", "rearm_minutes"}
+ok(not bad, f"no re-arm symbol {sorted(bad)}")
+writes = [n for n in ast.walk(tree) if isinstance(n, ast.Subscript)
+          and isinstance(n.slice, ast.Constant)
+          and n.slice.value == "has_emitted_sweep"]
+ok(len(writes) == 1, f"has_emitted_sweep assigned in exactly one place, never "
+   f"cleared ({len(writes)})")
 
 print()
 if FAILS:

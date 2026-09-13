@@ -4,5 +4,9 @@
   "events": 5875,
   "unique_level_ids": 0,
   "sha256": "cb3a3033f22b8faf77d7197cf81245f85437ab3cd0d7a0e709e439647fda5eab",
-  "note": "Event-stream identity for the first-qualifying-penetration rule. No outcome is computed."
+  "note": "Event-stream identity for the first-qualifying-penetration rule. No outcome is computed.",
+  "status": "SUPERSEDED_PRE_OUTCOME_NONCONFORMANT_ENGINE",
+  "superseded_reason": "pins the event stream of the nonconformant engine. Bit-identical reproducibility is not mathematical conformance: the engine used a MEAN of pre-sweep closes for level_prominence_atr instead of a MEDIAN of pre-availability closes, high-low instead of true range for htf_15m_compression, a sqrt(12) proxy instead of real 1H Wilder ATR(14), invented formation timestamps, an equal-weighted VWAP fallback when volume was absent, structurally invalidated pivots BEFORE emitting the events they had just created, carried no immutable level_id, never merged duplicate pivots, and omitted 6 of the 22 confirmatory features entirely.",
+  "superseded_by": "research/CONFORMANCE_MATRIX_V2.json",
+  "retained_for": "audit history only - NEVER used for Phase 1"
 }
