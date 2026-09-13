@@ -86,7 +86,7 @@ vwap_dist_sigma at Y_60 produced one nominal unadjusted p < 0.05 (p = 0.04945). 
 
 ## 5. Landmark analysis — EXPLORATORY ONLY
 
-The landmark analysis contained a small negative association between already-completed reclaim/displacement and remaining forward return, directionally consistent with hypothesis A. However, effect sizes were tiny (|rho| <= 0.047), the landmark comparisons were secondary, and the 24 comparisons were not multiplicity-controlled. Therefore this pattern is exploratory and does not distinguish A from B or C reliably.
+The landmark analysis contained a small negative association between already-completed reclaim/displacement and remaining forward return, directionally consistent with hypothesis A. However, effect sizes were tiny (|rho| <= 0.047), the landmark comparisons were secondary, and the 19 evaluated landmark comparisons were not multiplicity-controlled. Therefore this pattern is exploratory and does not distinguish A from B or C reliably.
 
 | landmark | reclaim_magnitude_atr β | p (descriptive) | ρ |
 |---|---|---|---|
@@ -157,6 +157,73 @@ Prohibited continuations:
 Each would continue a search family that has already failed. Any future generation requires a genuinely new economic hypothesis, a protocol preregistered before its outcomes are seen, and the full accumulated research-history count carried forward.
 
 **No V3 is authorized by this closure.** Future target-market research should use genuine CME NQ data rather than continue increasingly elaborate discovery on the CFD proxy.
+
+## 9a. Research-history accounting
+
+Research history is tracked BY UNIT. Configurations, hypotheses and individual statistical comparisons are different objects and are never summed into one 'cumulative research history' number.
+
+### A. Strategy / configuration searches
+
+| | count |
+|---|---|
+| V1 verified-minimum performance-inspected configurations | **50** |
+| V1 unknown additional historical searches (not independently auditable) | **70** |
+| V2_PROXY new strategy configurations optimized after outcomes | **0** |
+
+Source: `research/PROTOCOL_V2_PRECANONICAL.md` GATE 8 (frozen). Unknown-additional provenance: 38 pre-V1 5m, 4 session variants, ~12 exit variants, 7 timeframes, 9 rejected improvement ideas.
+
+> The 13 V1 rows in the frozen ledger are **reportable result rows**, not the complete historical search. The verified minimum of 50 is **not** revised down to 13, and this repository holds no stronger evidence that would revise either 50 or 70.
+
+### B. Primary hypotheses
+
+| | count |
+|---|---|
+| V1 formal hypothesis families (H1–H6, plus 1 baseline) | **6** |
+| V1 frozen report rows | **13** |
+| V2_PROXY predeclared primary hypotheses | **22** |
+| V2_PROXY primary hypotheses inspected | **22** |
+| V2_PROXY primary hypotheses promoted | **0** |
+
+These are hypotheses/tests, not strategy configurations; the 22 are never added to the configuration-search count.
+
+### C. Secondary / exploratory outcome-exposed comparisons
+
+| family | inspected | nominal max |
+|---|---|---|
+| secondary-horizon feature relationships (Y_5, Y_15, Y_60) | **66** | 66 |
+| landmark comparisons | **19** | 24 |
+
+Secondary horizons: 22/22 features evaluated at each of Y_5, Y_15 and Y_60. Y_30 is the primary horizon and is counted under B, not here.
+
+Landmarks by landmark: +5m **4**, +10m **5**, +15m **5**, +30m **5**. `bars_elapsed` was not evaluable at any landmark (no variation within a landmark once path completeness is required) and `reclaim_latency_min_if_by_L` was not evaluable at +5m.
+
+> **Correction.** An earlier statement of “24 landmark comparisons” used the nominal maximum 6 features × 4 landmarks. Counted mechanically from the artifact, **19** were actually evaluated.
+
+These remain descriptive/exploratory — never in the Holm family, unable to promote — but they are outcome-exposed analyses and are recorded here rather than collapsed into a single ledger entry.
+
+### Descriptive outcome summaries (not hypotheses)
+
+| family | artifact |
+|---|---|
+| Y_H / MFE / MAE / time-to-extreme distribution summaries | `research/V2_PROXY_OUTCOME_SUMMARY.json` |
+| level revisit rate, opposing-liquidity hit rate, VWAP hit rate | `research/V2_PROXY_OUTCOME_SUMMARY.json` |
+| direction split (sell-side / buy-side) | `research/V2_PROXY_OUTCOME_SUMMARY.json` |
+| subperiod effect estimates S1/S2/S3 for all 22 features | `research/V2_PROXY_SUBPERIODS.json` |
+
+Listed for an honest audit trail and deliberately **not** converted into a test count. The subperiod estimates are the frozen stability procedure applied to already-predeclared hypotheses, not new hypotheses.
+
+### D/E. Reserved data
+
+| | count |
+|---|---|
+| validation inspections | **0** |
+| pristine historical stress-set inspections | **0** |
+
+**No grand total is calculated: these entries do not share a unit.**
+
+> Research history is tracked by unit rather than collapsed into one total. The previously audited V1 search history remains at a verified minimum of 50 performance-inspected configurations plus 70 additional historical searches whose exact provenance is unavailable. V2_PROXY added 22 predeclared primary hypothesis tests and the separately recorded secondary/descriptive analyses. Validation and the pristine historical stress set remain uninspected.
+
+*Withdrawn:* an earlier closeout reported 'cumulative research history carried forward = 36' (13 + 22 + 1). That summed unlike units AND silently replaced the audited verified-minimum of 50 configurations with the 13 frozen V1 report rows. It is withdrawn.
 
 ## 10. Reproduction hashes
 

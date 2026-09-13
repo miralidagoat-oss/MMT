@@ -7,7 +7,7 @@
   "conclusion": "The frozen V2_PROXY development event study found no statistically supported stable conditional relationship between any of the 22 predeclared event-time features and the primary 30-minute direction-normalized post-event return. Across 16,182 primary-eligible events spanning 431 CME trade dates, no primary feature rejected under the frozen Holm FWER procedure (m=22, alpha=0.05), and therefore no feature satisfied the complete Phase-1 promotion gate. These results apply to the tested V2_PROXY architecture and Dukascopy Nasdaq CFD proxy dataset. They do not establish that all liquidity-event models are ineffective, that every possible post-event variable is uninformative, or that genuine CME NQ must behave identically.",
   "power_statement": "The event study has a substantially larger effective research sample than earlier work - 16,182 primary-eligible events across 431 trade-date clusters - making the null more informative for effects of practically relevant magnitude. Sample size alone, however, does not prove power against arbitrarily small or irregular clustered effects. No post-hoc power test was run; the CR1 effect estimates and 95% clustered confidence intervals below show the range of effects compatible with the data.",
   "categorical_stability_statement": "The categorical effects were unstable across adjacent development subperiods, which is consistent with a non-robust/noisy relationship.",
-  "landmark_statement": "The landmark analysis contained a small negative association between already-completed reclaim/displacement and remaining forward return, directionally consistent with hypothesis A. However, effect sizes were tiny (|rho| <= 0.047), the landmark comparisons were secondary, and the 24 comparisons were not multiplicity-controlled. Therefore this pattern is exploratory and does not distinguish A from B or C reliably.",
+  "landmark_statement": "The landmark analysis contained a small negative association between already-completed reclaim/displacement and remaining forward return, directionally consistent with hypothesis A. However, effect sizes were tiny (|rho| <= 0.047), the landmark comparisons were secondary, and the 19 evaluated landmark comparisons were not multiplicity-controlled. Therefore this pattern is exploratory and does not distinguish A from B or C reliably.",
   "y60_nominal_result": "vwap_dist_sigma at Y_60 produced one nominal unadjusted p < 0.05 (p = 0.04945). Y_60 was SECONDARY; Y_30 was the frozen PRIMARY horizon; 22 Y_60 relationships were examined descriptively; no second multiplicity-controlled family was declared. The result does NOT promote the feature. Re-running V2 with Y_60 as primary would be post-result horizon selection and is prohibited.",
   "code_commit": "cb75fe962350f2acb66c7980e8e95dd5122f3ffe",
   "hashes": {
@@ -2400,7 +2400,7 @@
       }
     }
   },
-  "landmark_note": "The landmark analysis contained a small negative association between already-completed reclaim/displacement and remaining forward return, directionally consistent with hypothesis A. However, effect sizes were tiny (|rho| <= 0.047), the landmark comparisons were secondary, and the 24 comparisons were not multiplicity-controlled. Therefore this pattern is exploratory and does not distinguish A from B or C reliably.",
+  "landmark_note": "The landmark analysis contained a small negative association between already-completed reclaim/displacement and remaining forward return, directionally consistent with hypothesis A. However, effect sizes were tiny (|rho| <= 0.047), the landmark comparisons were secondary, and the 19 evaluated landmark comparisons were not multiplicity-controlled. Therefore this pattern is exploratory and does not distinguish A from B or C reliably.",
   "descriptive_outcome_record": {
     "Y_5": {
       "n": 16182,
@@ -2683,5 +2683,83 @@
     "rationale": "Each would continue a search family that has already failed. Any future generation requires a genuinely new economic hypothesis, a protocol preregistered before its outcomes are seen, and the full accumulated research-history count carried forward."
   },
   "no_v3_authorized": true,
-  "future_preference": "target-market research should use genuine CME NQ data rather than continue increasingly elaborate discovery on the CFD proxy"
+  "future_preference": "target-market research should use genuine CME NQ data rather than continue increasingly elaborate discovery on the CFD proxy",
+  "research_history_accounting": {
+    "principle": "Research history is tracked BY UNIT. Configurations, hypotheses and individual statistical comparisons are different objects and are never summed into one 'cumulative research history' number.",
+    "A_strategy_configuration_searches": {
+      "v1_verified_minimum_performance_inspected_configurations": 50,
+      "v1_unknown_additional_historical_searches": 70,
+      "v1_unknown_additional_provenance": "recorded in PROTOCOL.md section 0 but carrying no commit, hash or artifact, therefore not independently auditable: 38 pre-V1 5m, 4 session variants, ~12 exit variants, 7 timeframes, 9 rejected improvement ideas",
+      "v2_proxy_new_strategy_configurations_optimized_after_outcomes": 0,
+      "source": "research/PROTOCOL_V2_PRECANONICAL.md GATE 8 (frozen)",
+      "note": "The 13 V1 rows in the frozen ledger are REPORTABLE RESULT ROWS, not the complete historical search. The verified minimum of 50 is NOT revised downward to 13; no stronger evidence in this repository supports revising either 50 or 70."
+    },
+    "B_primary_hypotheses": {
+      "v1_formal_hypothesis_families": 6,
+      "v1_formal_hypothesis_families_detail": "H1-H6, plus 1 baseline",
+      "v1_frozen_report_rows": 13,
+      "v2_proxy_primary_hypotheses_predeclared": 22,
+      "v2_proxy_primary_hypotheses_inspected": 22,
+      "v2_proxy_primary_hypotheses_promoted": 0,
+      "note": "These are hypotheses/tests, NOT strategy configurations. The 22 are never added to the configuration-search count."
+    },
+    "C_secondary_exploratory_performance_inspected_comparisons": {
+      "secondary_horizon_relationships_inspected": 66,
+      "secondary_horizon_detail": {
+        "Y_5": 22,
+        "Y_15": 22,
+        "Y_60": 22
+      },
+      "secondary_horizon_nominal_maximum": 66,
+      "secondary_horizon_artifact": "research/V2_PROXY_SECONDARY_HORIZONS.json",
+      "landmark_relationships_inspected": 19,
+      "landmark_nominal_maximum": 24,
+      "landmark_detail": {
+        "+5m": 4,
+        "+10m": 5,
+        "+15m": 5,
+        "+30m": 5
+      },
+      "landmark_not_evaluable": {
+        "bars_elapsed": "not evaluable at any of the 4 landmarks (no variation within a landmark once path completeness is required)",
+        "reclaim_latency_min_if_by_L": "not evaluable at +5m (single possible value)"
+      },
+      "landmark_artifact": "research/V2_PROXY_LANDMARKS.json",
+      "correction_note": "An earlier statement of '24 landmark comparisons' used the NOMINAL maximum 6 features x 4 landmarks. Counted mechanically from the artifact, 19 were actually evaluated. Corrected here.",
+      "status": "DESCRIPTIVE / EXPLORATORY. Not primary hypotheses, never in the Holm family, cannot promote. But they ARE outcome-exposed analyses and must not be collapsed into the single ledger entry '1'."
+    },
+    "descriptive_outcome_summaries": {
+      "status": "Outcome-conditioned SUMMARIES, not hypotheses. Listed for an honest audit trail, deliberately NOT converted into a test count.",
+      "families": [
+        {
+          "family": "Y_H / MFE / MAE / time-to-extreme distribution summaries",
+          "artifact": "research/V2_PROXY_OUTCOME_SUMMARY.json",
+          "unit": "summary"
+        },
+        {
+          "family": "level revisit rate, opposing-liquidity hit rate, VWAP hit rate",
+          "artifact": "research/V2_PROXY_OUTCOME_SUMMARY.json",
+          "unit": "rate"
+        },
+        {
+          "family": "direction split (sell-side / buy-side)",
+          "artifact": "research/V2_PROXY_OUTCOME_SUMMARY.json",
+          "unit": "summary"
+        },
+        {
+          "family": "subperiod effect estimates S1/S2/S3 for all 22 features",
+          "artifact": "research/V2_PROXY_SUBPERIODS.json",
+          "unit": "re-estimate of an already-declared primary test",
+          "note": "the frozen stability procedure applied to already-predeclared hypotheses; not new hypotheses"
+        }
+      ]
+    },
+    "D_validation_inspections": 0,
+    "E_stress_set_inspections": 0,
+    "no_grand_total": "No single grand total is calculated: the entries above do not share a unit.",
+    "superseded_statement": "An earlier closeout reported 'cumulative research history carried forward = 36' (13 + 22 + 1). That summed unlike units AND silently replaced the audited verified-minimum of 50 configurations with the 13 frozen V1 report rows. It is withdrawn.",
+    "final_wording": "Research history is tracked by unit rather than collapsed into one total. The previously audited V1 search history remains at a verified minimum of 50 performance-inspected configurations plus 70 additional historical searches whose exact provenance is unavailable. V2_PROXY added 22 predeclared primary hypothesis tests and the separately recorded secondary/descriptive analyses. Validation and the pristine historical stress set remain uninspected."
+  },
+  "accounting_corrected_at": "2026-09-13",
+  "accounting_correction_supersedes_commit": "0b32312dbd9746be05444454da1bd15d4fa2c370"
 }
