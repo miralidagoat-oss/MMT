@@ -4,7 +4,11 @@ data_po3/
 data_holdout/
 data/
 data_long/
-data_ndx/*.csv          # bars are refetchable; PROVENANCE.json is not
+# Bar files are large and refetchable from a pinned date window; the
+# PROVENANCE.json beside them is neither, so it stays tracked.
+# (gitignore has no inline comments - a trailing # becomes part of the pattern.)
+data_ndx/*.csv
+data_ndx_q/*.csv
 data_nq/*.csv
 
 # ── secrets: never commit credentials or anything that could carry them ─────
