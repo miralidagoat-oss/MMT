@@ -1,0 +1,1351 @@
+{
+  "commit": "96d878120c304ef6d960c0f21cc4feb2f3d850ad",
+  "basis": "data_ndx_q/NDX_5m.csv",
+  "partition": "development",
+  "cost_headline_points": 0.7,
+  "cost_headline_usd_rt": 14.0,
+  "cost_stressed_usd_rt": 24.0,
+  "cost_application": "friction_points / initial risk in points, per trade - identical to $14 / (risk_points x $20)",
+  "frequency_denominator_used": 706,
+  "frequency_denominator_correct": 685,
+  "frequency_defect": "reported trades/day used the loaded span (706 trade days, warm-up included) rather than countable days (685); every frequency figure is understated by ~3%",
+  "rows": [
+    {
+      "hypothesis": "baseline",
+      "config": "CANDIDATE as shipped",
+      "config_hash": "e2adb81d4d4946f3",
+      "n": 1978,
+      "mean_r": 0.013623523309142486,
+      "pf": 1.0200175636851911,
+      "win_rate": 0.2345803842264914,
+      "sd": 1.6510648906268404,
+      "max_drawdown_r": 83.76894147928601,
+      "freq_reported": 2.801699716713881,
+      "freq_corrected": 2.8875912408759126,
+      "headline_ci": [
+        -0.056467853645392585,
+        0.08371490026367756
+      ],
+      "headline_scale": "cr1_day_cluster",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.05913754939692989,
+          0.08638459601521487
+        ],
+        "cr1_day_cluster": [
+          -0.056467853645392585,
+          0.08371490026367756
+        ],
+        "day_block": [
+          -0.054201618512791795,
+          0.0838540044908869
+        ],
+        "stationary_5d": [
+          -0.05582364243898563,
+          0.08179503783944873
+        ],
+        "moving_block_5d": [
+          -0.0563911842790494,
+          0.08163401794523589
+        ],
+        "moving_block_10d": [
+          -0.05742142183456618,
+          0.07968323997570723
+        ],
+        "moving_block_20d": [
+          -0.057315851479230295,
+          0.07586017960441821
+        ]
+      },
+      "failure_reason": "CI spans zero; negative at stressed friction",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H1",
+      "config": "cooldown argmax 8 (40min)",
+      "config_hash": "c6695d28b38dc76e",
+      "n": 1926,
+      "mean_r": 0.016697958952861098,
+      "pf": 1.0245765939112372,
+      "win_rate": 0.235202492211838,
+      "sd": 1.6524525731283173,
+      "max_drawdown_r": 80.796171246404,
+      "freq_reported": 2.728045325779037,
+      "freq_corrected": 2.8116788321167885,
+      "headline_ci": [
+        -0.05500926557204376,
+        0.08840518347776595
+      ],
+      "headline_scale": "cr1_day_cluster",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.0571007827074758,
+          0.09049670061319799
+        ],
+        "cr1_day_cluster": [
+          -0.05500926557204376,
+          0.08840518347776595
+        ],
+        "day_block": [
+          -0.05392232278771637,
+          0.08886471770410699
+        ],
+        "stationary_5d": [
+          -0.05269264632385805,
+          0.08814101882437864
+        ],
+        "moving_block_5d": [
+          -0.05187322043509213,
+          0.0861379794362715
+        ],
+        "moving_block_10d": [
+          -0.05122484674015585,
+          0.08570232073008839
+        ],
+        "moving_block_20d": [
+          -0.050320822307722356,
+          0.08425937016650198
+        ]
+      },
+      "failure_reason": "surface flat - whole grid spans 0.51 SE; argmax is not distinguishable",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 8,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H1",
+      "config": "validity 48 (240min)",
+      "config_hash": "a5f1768bcacedcb5",
+      "n": 1978,
+      "mean_r": 0.013623523309142486,
+      "pf": 1.0200175636851911,
+      "win_rate": 0.2345803842264914,
+      "sd": 1.6510648906268404,
+      "max_drawdown_r": 83.76894147928601,
+      "freq_reported": 2.801699716713881,
+      "freq_corrected": 2.8875912408759126,
+      "headline_ci": [
+        -0.056467853645392585,
+        0.08371490026367756
+      ],
+      "headline_scale": "cr1_day_cluster",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.05913754939692989,
+          0.08638459601521487
+        ],
+        "cr1_day_cluster": [
+          -0.056467853645392585,
+          0.08371490026367756
+        ],
+        "day_block": [
+          -0.054201618512791795,
+          0.0838540044908869
+        ],
+        "stationary_5d": [
+          -0.05582364243898563,
+          0.08179503783944873
+        ],
+        "moving_block_5d": [
+          -0.0563911842790494,
+          0.08163401794523589
+        ],
+        "moving_block_10d": [
+          -0.05742142183456618,
+          0.07968323997570723
+        ],
+        "moving_block_20d": [
+          -0.057315851479230295,
+          0.07586017960441821
+        ]
+      },
+      "failure_reason": "INERT - market entry never consults limit lifetime; spread exactly 0.0000R",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 48,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H2",
+      "config": "max_event_bars argmax 11 (55min)",
+      "config_hash": "8bec860de33f5278",
+      "n": 2929,
+      "mean_r": 0.008563697662195583,
+      "pf": 1.0125875314424053,
+      "win_rate": 0.23250256060088767,
+      "sd": 1.6460912147083127,
+      "max_drawdown_r": 107.19313637875753,
+      "freq_reported": 4.148725212464589,
+      "freq_corrected": 4.275912408759124,
+      "headline_ci": [
+        -0.052132616128028594,
+        0.06926001145241976
+      ],
+      "headline_scale": "cr1_day_cluster",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.05104948456941644,
+          0.06817687989380761
+        ],
+        "cr1_day_cluster": [
+          -0.052132616128028594,
+          0.06926001145241976
+        ],
+        "day_block": [
+          -0.05033884753297606,
+          0.06796267130404288
+        ],
+        "stationary_5d": [
+          -0.04877371004184063,
+          0.06865491207669723
+        ],
+        "moving_block_5d": [
+          -0.0494165684863455,
+          0.06498384174216873
+        ],
+        "moving_block_10d": [
+          -0.04571819963989972,
+          0.06336757702363324
+        ],
+        "moving_block_20d": [
+          -0.044193543064570275,
+          0.06861693916517626
+        ]
+      },
+      "failure_reason": "CI spans zero; no window beats the unconstrained model",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 11,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 24,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H3",
+      "config": "anchor day (Globex 18:00 ET)",
+      "config_hash": "f20a7541f4d80dc4",
+      "n": 2451,
+      "mean_r": -0.0040030522592964255,
+      "pf": 0.9941470404416155,
+      "win_rate": 0.22970216238270094,
+      "sd": 1.6390267400882028,
+      "max_drawdown_r": 109.21432919649412,
+      "freq_reported": 3.471671388101983,
+      "freq_corrected": 3.578102189781022,
+      "headline_ci": [
+        -0.06477350118859472,
+        0.059078213960638885
+      ],
+      "headline_scale": "day_block",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.06889076679719712,
+          0.06088466227860427
+        ],
+        "cr1_day_cluster": [
+          -0.06556363892025562,
+          0.05755753440166276
+        ],
+        "day_block": [
+          -0.06477350118859472,
+          0.059078213960638885
+        ],
+        "stationary_5d": [
+          -0.06367901124697331,
+          0.06013336633482028
+        ],
+        "moving_block_5d": [
+          -0.06684153545093172,
+          0.053700598195632124
+        ],
+        "moving_block_10d": [
+          -0.06473552958982269,
+          0.0527358447941663
+        ],
+        "moving_block_20d": [
+          -0.06339739875371476,
+          0.051212622929721764
+        ]
+      },
+      "failure_reason": "negative; best of the three sanctioned anchors",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "day",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H3",
+      "config": "anchor midnight (00:00 ET)",
+      "config_hash": "5ba9d1471970a15f",
+      "n": 2570,
+      "mean_r": -0.03483830080272298,
+      "pf": 0.9497685599389437,
+      "win_rate": 0.222568093385214,
+      "sd": 1.6229718424992363,
+      "max_drawdown_r": 172.86930278018158,
+      "freq_reported": 3.640226628895184,
+      "freq_corrected": 3.7518248175182483,
+      "headline_ci": [
+        -0.09686088305541389,
+        0.024629344250996877
+      ],
+      "headline_scale": "moving_block_10d",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.09758523598490096,
+          0.02790863437945499
+        ],
+        "cr1_day_cluster": [
+          -0.09242004524845897,
+          0.022743443643013006
+        ],
+        "day_block": [
+          -0.09527229721510076,
+          0.02012084128497369
+        ],
+        "stationary_5d": [
+          -0.09637830574799697,
+          0.024982016145815588
+        ],
+        "moving_block_5d": [
+          -0.09445155883040299,
+          0.023359265880642917
+        ],
+        "moving_block_10d": [
+          -0.09686088305541389,
+          0.024629344250996877
+        ],
+        "moving_block_20d": [
+          -0.09805510007159235,
+          0.022474824004823476
+        ]
+      },
+      "failure_reason": "negative",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "midnight",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H3",
+      "config": "anchor cash (09:30 ET)",
+      "config_hash": "73f89b943477373b",
+      "n": 2216,
+      "mean_r": -0.015239686335303084,
+      "pf": 0.9777602680728905,
+      "win_rate": 0.22608303249097472,
+      "sd": 1.6307540627634234,
+      "max_drawdown_r": 149.3373159819252,
+      "freq_reported": 3.138810198300283,
+      "freq_corrected": 3.235036496350365,
+      "headline_ci": [
+        -0.08314774145818768,
+        0.056411091602976804
+      ],
+      "headline_scale": "stationary_5d",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.08313685830815387,
+          0.052657485637547706
+        ],
+        "cr1_day_cluster": [
+          -0.08008943715684484,
+          0.04961006448623868
+        ],
+        "day_block": [
+          -0.07754270540025394,
+          0.0533421977449228
+        ],
+        "stationary_5d": [
+          -0.08314774145818768,
+          0.056411091602976804
+        ],
+        "moving_block_5d": [
+          -0.07949382008722257,
+          0.05278453494684826
+        ],
+        "moving_block_10d": [
+          -0.08047619793953158,
+          0.052922988962684
+        ],
+        "moving_block_20d": [
+          -0.08284319612144633,
+          0.05140387569432421
+        ]
+      },
+      "failure_reason": "negative",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "cash",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H4",
+      "config": "min_range_atr argmax 0.75",
+      "config_hash": "17fe4036c4c4576a",
+      "n": 1624,
+      "mean_r": 0.02838241784558997,
+      "pf": 1.0420132945748186,
+      "win_rate": 0.2376847290640394,
+      "sd": 1.6581271749809408,
+      "max_drawdown_r": 51.6319917860544,
+      "freq_reported": 2.3002832861189804,
+      "freq_corrected": 2.370802919708029,
+      "headline_ci": [
+        -0.04995085030533776,
+        0.10594277364323483
+      ],
+      "headline_scale": "stationary_5d",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.052261741482979227,
+          0.10902657717415916
+        ],
+        "cr1_day_cluster": [
+          -0.049351393153015496,
+          0.10611622884419543
+        ],
+        "day_block": [
+          -0.04866890249110824,
+          0.10324239613513853
+        ],
+        "stationary_5d": [
+          -0.04995085030533776,
+          0.10594277364323483
+        ],
+        "moving_block_5d": [
+          -0.04999882335380089,
+          0.10506684562870149
+        ],
+        "moving_block_10d": [
+          -0.043825718686095465,
+          0.10154331250456167
+        ],
+        "moving_block_20d": [
+          -0.04348080309207079,
+          0.09287482222660645
+        ]
+      },
+      "failure_reason": "\u00a75 plateau FAILS - needle, longest run within 1 SE is 4 of 5 required",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.75,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H5",
+      "config": "drop T1 prior+session",
+      "config_hash": "8a28835315a35f4d",
+      "n": 1943,
+      "mean_r": 0.010302517216338498,
+      "pf": 1.0150890944701076,
+      "win_rate": 0.2341739577972208,
+      "sd": 1.651044482552552,
+      "max_drawdown_r": 83.65871361275035,
+      "freq_reported": 2.7521246458923514,
+      "freq_corrected": 2.8364963503649636,
+      "headline_ci": [
+        -0.06010405275805854,
+        0.08070908719073554
+      ],
+      "headline_scale": "cr1_day_cluster",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.06311005961285013,
+          0.08371509404552713
+        ],
+        "cr1_day_cluster": [
+          -0.06010405275805854,
+          0.08070908719073554
+        ],
+        "day_block": [
+          -0.059370301904306505,
+          0.08076032162727097
+        ],
+        "stationary_5d": [
+          -0.05714518727631923,
+          0.07955929041233996
+        ],
+        "moving_block_5d": [
+          -0.05847164814196467,
+          0.08192476422886105
+        ],
+        "moving_block_10d": [
+          -0.05435874948057462,
+          0.07741572476044668
+        ],
+        "moving_block_20d": [
+          -0.05654084316740148,
+          0.06973596702615584
+        ]
+      },
+      "failure_reason": "T1 adds value in only 1 of 3 sub-windows - fails the \u00a75 tier test",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H5",
+      "config": "drop T3/T4 swing pivots",
+      "config_hash": "a76d2e6b170b9eb4",
+      "n": 553,
+      "mean_r": -0.07666572092980538,
+      "pf": 0.8877816975357055,
+      "win_rate": 0.20433996383363473,
+      "sd": 1.5678593287751796,
+      "max_drawdown_r": 60.23460283510128,
+      "freq_reported": 0.78328611898017,
+      "freq_corrected": 0.8072992700729927,
+      "headline_ci": [
+        -0.20329030508395235,
+        0.050010479650775375
+      ],
+      "headline_scale": "day_block",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.20734075535759477,
+          0.05400931349798403
+        ],
+        "cr1_day_cluster": [
+          -0.20093458092898353,
+          0.04760313906937279
+        ],
+        "day_block": [
+          -0.20329030508395235,
+          0.050010479650775375
+        ],
+        "stationary_5d": [
+          -0.17743506608907886,
+          0.030961212928626934
+        ],
+        "moving_block_5d": [
+          -0.172695222493208,
+          0.027517313267252343
+        ],
+        "moving_block_10d": [
+          -0.1702552297331553,
+          0.02403556347927326
+        ],
+        "moving_block_20d": [
+          -0.16275144009473627,
+          0.0210808324601428
+        ]
+      },
+      "failure_reason": "removing pivots collapses the model to -0.0767R - they carry it, but to zero",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H6",
+      "config": "5m+15m",
+      "config_hash": "9977acade54e104e",
+      "n": 327,
+      "mean_r": -0.12039964915417699,
+      "pf": 0.8299433206675977,
+      "win_rate": 0.19877675840978593,
+      "sd": 1.5575066340673502,
+      "max_drawdown_r": 55.5468579689091,
+      "freq_reported": 0.4631728045325779,
+      "freq_corrected": 0.47737226277372263,
+      "headline_ci": [
+        -0.3020333765846531,
+        0.06553076034063758
+      ],
+      "headline_scale": "moving_block_10d",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.2892119632598403,
+          0.048412664951486314
+        ],
+        "cr1_day_cluster": [
+          -0.2923066547768507,
+          0.05150735646849673
+        ],
+        "day_block": [
+          -0.2798590291068729,
+          0.059455727842347886
+        ],
+        "stationary_5d": [
+          -0.301529619485499,
+          0.054125468519615985
+        ],
+        "moving_block_5d": [
+          -0.29870963776086606,
+          0.06401098205569349
+        ],
+        "moving_block_10d": [
+          -0.3020333765846531,
+          0.06553076034063758
+        ],
+        "moving_block_20d": [
+          -0.27024844162855255,
+          0.01038400425731211
+        ]
+      },
+      "failure_reason": "negative; removes 83% of trades; fails the \u00a711 frequency floor",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [
+          900
+        ],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H6",
+      "config": "5m+1H",
+      "config_hash": "a35bbd65ac7d42d2",
+      "n": 553,
+      "mean_r": -0.034451214052237236,
+      "pf": 0.9498150827687853,
+      "win_rate": 0.2206148282097649,
+      "sd": 1.6135697491070489,
+      "max_drawdown_r": 68.73510936962424,
+      "freq_reported": 0.78328611898017,
+      "freq_corrected": 0.8072992700729927,
+      "headline_ci": [
+        -0.18275907576871656,
+        0.11354380732553614
+      ],
+      "headline_scale": "stationary_5d",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.1689360359022452,
+          0.10003360779777075
+        ],
+        "cr1_day_cluster": [
+          -0.172528793482652,
+          0.10362636537817753
+        ],
+        "day_block": [
+          -0.1686103403542781,
+          0.10587352784651483
+        ],
+        "stationary_5d": [
+          -0.18275907576871656,
+          0.11354380732553614
+        ],
+        "moving_block_5d": [
+          -0.16717826559545898,
+          0.11585140173302846
+        ],
+        "moving_block_10d": [
+          -0.18393506723660316,
+          0.10624696338660072
+        ],
+        "moving_block_20d": [
+          -0.18880695864729927,
+          0.09979906391386624
+        ]
+      },
+      "failure_reason": "negative; fails the \u00a711 frequency floor",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [
+          3600
+        ],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    },
+    {
+      "hypothesis": "H6",
+      "config": "5m+15m+1H",
+      "config_hash": "043770c3ae946a20",
+      "n": 105,
+      "mean_r": -0.04196557901579418,
+      "pf": 0.9364328329727238,
+      "win_rate": 0.20952380952380953,
+      "sd": 1.5746945046790266,
+      "max_drawdown_r": 18.32867766631766,
+      "freq_reported": 0.14872521246458922,
+      "freq_corrected": 0.15328467153284672,
+      "headline_ci": [
+        -0.3419771103896534,
+        0.2751670283302788
+      ],
+      "headline_scale": "moving_block_10d",
+      "significant": false,
+      "all_scales": {
+        "naive_trade": [
+          -0.34316196520529063,
+          0.2592308071737023
+        ],
+        "cr1_day_cluster": [
+          -0.3457949970641572,
+          0.2618638390325688
+        ],
+        "day_block": [
+          -0.3336953105720097,
+          0.2786712712973516
+        ],
+        "stationary_5d": [
+          -0.3263059813186782,
+          0.2650111208295135
+        ],
+        "moving_block_5d": [
+          -0.3358339186983076,
+          0.26081766969986264
+        ],
+        "moving_block_10d": [
+          -0.3419771103896534,
+          0.2751670283302788
+        ],
+        "moving_block_20d": [
+          -0.3799779742636085,
+          0.22621675752867337
+        ]
+      },
+      "failure_reason": "negative; removes 95% of trades; fails the \u00a711 frequency floor",
+      "params": {
+        "be_at_r": 1.5,
+        "be_to_r": -0.3,
+        "cooldown": 6,
+        "cost_ticks": 0.0,
+        "dev_entry": 2.0,
+        "entry_mode": "reclaim_close",
+        "eq_only": false,
+        "friction_points": 0.0,
+        "htf_confirm": [
+          900,
+          3600
+        ],
+        "longs": true,
+        "max_event_bars": 0,
+        "max_hold": 0,
+        "max_open_bars": 0,
+        "max_risk_atr": 0.0,
+        "max_sweep_atr": 0.0,
+        "min_range_atr": 0.0,
+        "min_sweep_atr": 0.35,
+        "min_target_pts": 0.0,
+        "partial_at_r": 0.0,
+        "partial_frac": 0.5,
+        "pivot_len": 5,
+        "po3_mode": "below_open",
+        "po3_period": "week",
+        "pools": [
+          "pdh",
+          "pdl",
+          "pwh",
+          "pwl",
+          "asiah",
+          "asial",
+          "lonh",
+          "lonl",
+          "ibh",
+          "ibl",
+          "pivot"
+        ],
+        "reclaim_bars": 2,
+        "require_close_dir": true,
+        "rr": 3.0,
+        "session": "all",
+        "shorts": true,
+        "stop_at": "extreme",
+        "stop_buf_atr": 0.5,
+        "tick": 0.25,
+        "tp_mode": "rr",
+        "trail_atr": 1.0,
+        "trail_start_r": 0.0,
+        "use_vwap": false,
+        "validity": 12,
+        "vol_mult": 0.0,
+        "vwap_reclaim": false
+      }
+    }
+  ]
+}
