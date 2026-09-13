@@ -197,7 +197,87 @@ def h2():
                          "vacuous": vac, "vacuity_detail": why})
 
 
-CMDS = {"baseline": baseline, "h1": h1, "h2": h2}
+# ── H5: liquidity hierarchy ablated by tier ───────────────────────────────
+# §10 tiers mapped onto the pools the engine actually implements:
+TIERS = {
+    "T1_prior_and_session": ("pdh", "pdl", "pwh", "pwl",
+                             "asiah", "asial", "lonh", "lonl"),
+    "T2_opening_range":     ("ibh", "ibl"),
+    "T3_T4_swing_pivots":   ("pivot",),
+}
+# NOTE, recorded rather than glossed: §10 separates T3 (significant dynamic
+# swing liquidity) from T4 (minor local pivots). The engine has ONE pivot class
+# whose significance is set globally by pivot_len, so the two cannot be ablated
+# independently without an engine change. They are tested as one tier and the
+# limitation is reported. §10 also places equal-highs/lows in T2; that is the
+# global eq_only flag rather than a pool kind, so it is tested as its own switch.
+
+
+def _by_subwindow(log, bars, k=3):
+    """Split a development run into k chronological sub-windows by trade date.
+
+    Splitting one continuous run is preferable to running k separate
+    partitions: the engine's causal state (pools, VWAP, HTF) stays continuous
+    across the seams, so no sub-window starts cold.
+    """
+    t = bars["t"]
+    rows = sorted(((R.trade_day(t[x["bar"]]), x["r"]) for x in log),
+                  key=lambda z: z[0])
+    days = sorted({d for d, _ in rows})
+    if len(days) < k:
+        return []
+    cut = [days[len(days) * i // k] for i in range(1, k)]
+    out = [[] for _ in range(k)]
+    for d, r in rows:
+        w = sum(1 for c in cut if d >= c)
+        out[w].append(r)
+    return out
+
+
+def h5():
+    print("H5 - liquidity hierarchy ablated by tier\n")
+    print("§5 tiers: a retained tier must show incremental value in >=2 of 3")
+    print("development sub-windows. Ablation is leave-one-tier-out.\n")
+
+    full = tuple(x for tier in TIERS.values() for x in tier)
+    base = replace(CANDIDATE, pools=full)
+    s_full = run(base, label="all tiers")
+    R.render(s_full)
+    log_full, bars = raw(base)
+    w_full = _by_subwindow(log_full, bars)
+    means_full = [sum(w) / len(w) if w else 0.0 for w in w_full]
+    print(f"\n  sub-window means with all tiers: "
+          f"{['%+.4f' % m for m in means_full]}\n")
+
+    res = {"full": s_full, "subwindow_means_full": means_full, "tiers": {}}
+    for name, members in TIERS.items():
+        kept = tuple(x for x in full if x not in members)
+        if not kept:
+            continue
+        print(f"── drop {name} {members}")
+        s = run(replace(base, pools=kept), label=f"without {name}")
+        log_w, _ = raw(replace(base, pools=kept))
+        w_wo = _by_subwindow(log_w, bars)
+        means_wo = [sum(w) / len(w) if w else 0.0 for w in w_wo]
+        ok, detail = PL.tiers(name, means_full, means_wo)
+        print(f"   with    n={s_full['n']:>5}  mean {s_full['mean_r']:+.4f}R")
+        print(f"   without n={s['n']:>5}  mean {s['mean_r']:+.4f}R   "
+              f"delta {s_full['mean_r'] - s['mean_r']:+.4f}R")
+        print(f"   sub-window means without: {['%+.4f' % m for m in means_wo]}")
+        print(f"   §5 tier test: {'KEEP' if ok else 'DROP'} - {detail}\n")
+        res["tiers"][name] = {"members": members, "without": s,
+                              "subwindow_means_without": means_wo,
+                              "keep": ok, "detail": detail}
+
+    print("── equal-highs/lows switch (a §10 T2 element, global flag)")
+    s_eq = run(replace(base, eq_only=True), label="eq_only pivots")
+    print(f"   eq_only=False n={s_full['n']:>5}  mean {s_full['mean_r']:+.4f}R")
+    print(f"   eq_only=True  n={s_eq['n']:>5}  mean {s_eq['mean_r']:+.4f}R")
+    res["eq_only"] = s_eq
+    save("h5_tiers", res)
+
+
+CMDS = {"baseline": baseline, "h1": h1, "h2": h2, "h5": h5}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in CMDS:
