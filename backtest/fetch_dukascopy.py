@@ -25,6 +25,8 @@ import lzma
 import os
 import struct
 import sys
+import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -32,18 +34,33 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (mmt-backtest)"}
 SCALE = 1000.0
 
 
-def fetch_day(inst, d):
+class Unresolved(Exception):
+    """Every retry failed. NOT the same as 'this day has no data' - the caller
+    must record it distinctly, because a transport failure silently filed as an
+    empty day removes real trading sessions from the sample. The first run of
+    this fetcher did exactly that to 422 weekdays (19%), all of which returned
+    data on retry."""
+
+
+def fetch_day(inst, d, attempts=6):
     url = (f"https://datafeed.dukascopy.com/datafeed/{inst}/{d.year}/"
            f"{d.month - 1:02d}/{d.day:02d}/BID_candles_min_1.bi5")
     req = urllib.request.Request(url, headers=HEADERS)
-    for attempt in range(3):
+    for attempt in range(attempts):
         try:
-            with urllib.request.urlopen(req, timeout=45) as r:
+            with urllib.request.urlopen(req, timeout=60) as r:
                 raw = r.read()
             break
-        except Exception:  # noqa: BLE001 - transient transport errors
-            if attempt == 2:
-                return []
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return []          # genuine absence: holiday or before listing
+            if attempt == attempts - 1:
+                raise Unresolved(f"{d} HTTP {e.code}")
+            time.sleep(2 ** attempt * 0.5)
+        except Exception as e:  # noqa: BLE001 - transient transport errors
+            if attempt == attempts - 1:
+                raise Unresolved(f"{d} {type(e).__name__}")
+            time.sleep(2 ** attempt * 0.5)
     if not raw:
         return []
     try:
@@ -115,17 +132,27 @@ def fetch_range(out_dir, inst, tag, start, end, tfs=(5, 15, 60)):
     days = [d0 + datetime.timedelta(days=i)
             for i in range((d1 - d0).days + 1)
             if (d0 + datetime.timedelta(days=i)).weekday() < 5]
-    rows, empty = [], []
-    with ThreadPoolExecutor(max_workers=12) as ex:
-        for i, (d, chunk) in enumerate(
-                zip(days, ex.map(lambda d: fetch_day(inst, d), days))):
-            if chunk:
+    rows, empty, unresolved = [], [], []
+
+    def one(d):
+        try:
+            return d, fetch_day(inst, d), None
+        except Unresolved as e:
+            return d, [], str(e)
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for i, (d, chunk, err) in enumerate(ex.map(one, days)):
+            if err:
+                unresolved.append(d.isoformat())
+            elif chunk:
                 rows.extend(chunk)
             else:
                 empty.append(d.isoformat())
             if i % 200 == 0:
-                print(f"  {tag}: {i}/{len(days)} days, {len(rows)} minutes",
-                      flush=True)
+                print(f"  {tag}: {i}/{len(days)} days, {len(rows)} minutes, "
+                      f"{len(unresolved)} unresolved", flush=True)
+    if unresolved:
+        print(f"  WARNING: {len(unresolved)} days never resolved after retries")
     if not rows:
         sys.exit(f"HALT: {inst} returned no data for {start}..{end}.")
     rows.sort(key=lambda r: r[0])
@@ -147,6 +174,13 @@ def fetch_range(out_dir, inst, tag, start, end, tfs=(5, 15, 60)):
             "weekdays_requested": len(days),
             "weekdays_empty": len(empty),
             "empty_days": empty,
+            "weekdays_unresolved": len(unresolved),
+            "unresolved_days": unresolved,
+            "empty_vs_unresolved": "empty = server returned 404 (holiday or "
+                                   "pre-listing); unresolved = transport failed "
+                                   "every retry. The two are never merged: a "
+                                   "failure filed as an absence deletes real "
+                                   "sessions from the sample.",
             "bars_1m": len(dedup),
             "first_utc": datetime.datetime.utcfromtimestamp(
                 dedup[0][0]).isoformat(),
@@ -202,9 +236,89 @@ def main(out_dir, inst, tag, years, tfs=(5, 15, 60)):
         print(f"  {name}: {len(bars)} bars")
 
 
+def repair(out_dir, inst, tag, tfs=(5, 15, 60)):
+    """Refetch days a previous run failed to resolve, and merge them in.
+
+    The first run of fetch_range recorded 422 weekdays as empty that were in
+    fact transport failures - every sampled one returned data on retry. This
+    re-requests every day currently listed as empty or unresolved, keeps the
+    ones that really are absent (the server 404s), and rewrites the frames and
+    provenance. Days genuinely absent stay absent; nothing is interpolated.
+    """
+    import json
+    prov_path = os.path.join(out_dir, "PROVENANCE.json")
+    with open(prov_path) as f:
+        prov = json.load(f)
+    suspect = [datetime.date.fromisoformat(x)
+               for x in prov.get("empty_days", []) + prov.get("unresolved_days", [])]
+    if not suspect:
+        print("nothing to repair")
+        return prov
+    print(f"re-requesting {len(suspect)} days recorded as empty/unresolved")
+
+    def one(d):
+        try:
+            return d, fetch_day(inst, d), None
+        except Unresolved as e:
+            return d, [], str(e)
+
+    new, still_empty, unresolved = [], [], []
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for i, (d, chunk, err) in enumerate(ex.map(one, suspect)):
+            if err:
+                unresolved.append(d.isoformat())
+            elif chunk:
+                new.extend(chunk)
+            else:
+                still_empty.append(d.isoformat())
+            if i % 100 == 0:
+                print(f"  repair {i}/{len(suspect)}, recovered "
+                      f"{len(new)} minutes", flush=True)
+
+    existing = []
+    with open(os.path.join(out_dir, f"{tag}_1m.csv")) as f:
+        r = csv.reader(f)
+        next(r)
+        for x in r:
+            existing.append((int(x[0]), float(x[1]), float(x[2]),
+                             float(x[3]), float(x[4]), float(x[5])))
+    merged = sorted(existing + new, key=lambda r: r[0])
+    dedup = []
+    for r in merged:
+        if not dedup or r[0] > dedup[-1][0]:
+            dedup.append(r)
+    print(f"  {len(existing):,} existing + {len(new):,} recovered "
+          f"-> {len(dedup):,} unique 1m bars")
+    print(f"  genuinely absent (404): {len(still_empty)}   "
+          f"still unresolved: {len(unresolved)}")
+
+    save(os.path.join(out_dir, f"{tag}_1m.csv"), dedup)
+    prov["files"] = {f"{tag}_1m.csv": len(dedup)}
+    for m in tfs:
+        bars = resample(dedup, m)
+        name = f"{tag}_{m}m.csv" if m < 60 else f"{tag}_{m // 60}h.csv"
+        save(os.path.join(out_dir, name), bars)
+        prov["files"][name] = len(bars)
+        print(f"  {name}: {len(bars)} bars")
+    prov.update(bars_1m=len(dedup),
+                empty_days=still_empty, weekdays_empty=len(still_empty),
+                unresolved_days=unresolved, weekdays_unresolved=len(unresolved),
+                first_utc=datetime.datetime.utcfromtimestamp(dedup[0][0]).isoformat(),
+                last_utc=datetime.datetime.utcfromtimestamp(dedup[-1][0]).isoformat(),
+                repaired_utc=datetime.datetime.utcnow().isoformat(),
+                repair_note=f"{len(suspect)} days re-requested after a "
+                            "concurrency-induced silent-failure defect; "
+                            f"{len(new):,} minutes recovered")
+    with open(prov_path, "w") as f:
+        json.dump(prov, f, indent=2)
+    return prov
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "range":       # out_dir inst tag start end
         fetch_range(*sys.argv[2:7])
+    elif sys.argv[1] == "repair":    # out_dir inst tag
+        repair(*sys.argv[2:5])
     else:
         main(sys.argv[1], sys.argv[2], sys.argv[3],
              float(sys.argv[4]) if len(sys.argv) > 4 else 4.0)
