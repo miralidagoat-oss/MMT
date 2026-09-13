@@ -1,0 +1,133 @@
+{
+  "artifact": "V3_NQ_DATA_INVENTORY",
+  "status": "PRE-RESEARCH AUDIT - no outcome computed",
+  "computed_not_inferred": true,
+  "date": "2026-09-13",
+  "sources": [
+    {
+      "source": "Yahoo Finance v8 chart API",
+      "dir": "data_nq/",
+      "symbol": "NQ=F",
+      "raw_contract_identity": "NONE - front-month continuous, no contract column",
+      "contract_specific": false,
+      "spreads_present": "n/a - no contract data",
+      "continuous_stitching_already_occurred": true,
+      "roll_information": "NONE - Yahoo-internal, undocumented, no roll dates or expiries",
+      "volume_semantics": "CME front-month contract volume, but continuity across rolls unverifiable",
+      "timezone": "timestamps are UTC epoch seconds; provenance records America/New_York display tz",
+      "timestamp_semantics": "bar OPEN",
+      "price_precision": "0.25 tick, 100.00% on-grid (1m/5m/15m)",
+      "files": [
+        {
+          "file": "NQ_1m.csv",
+          "bars": 8880,
+          "range": "2026-09-02 .. 2026-09-11",
+          "cme_trade_days": 7,
+          "dupes": 0,
+          "non_monotonic": 0,
+          "ohlc_impossible": 0,
+          "zero_volume_pct": 0.07,
+          "off_grid_gaps": 12
+        },
+        {
+          "file": "NQ_5m.csv",
+          "bars": 13665,
+          "range": "2026-07-02 .. 2026-09-11",
+          "cme_trade_days": 51,
+          "dupes": 0,
+          "non_monotonic": 0,
+          "ohlc_impossible": 0,
+          "zero_volume_pct": 0.3,
+          "off_grid_gaps": 96
+        },
+        {
+          "file": "NQ_15m.csv",
+          "bars": 4576,
+          "range": "2026-07-02 .. 2026-09-11",
+          "cme_trade_days": 51,
+          "dupes": 0,
+          "non_monotonic": 0,
+          "ohlc_impossible": 0,
+          "zero_volume_pct": 0.0,
+          "off_grid_gaps": 50
+        },
+        {
+          "file": "NQ_1h.csv",
+          "bars": 13748,
+          "range": "2024-04-19 .. 2026-09-11",
+          "cme_trade_days": 618,
+          "dupes": 0,
+          "non_monotonic": 0,
+          "ohlc_impossible": 0,
+          "zero_volume_pct": 3.55,
+          "off_grid_gaps": 629
+        }
+      ]
+    },
+    {
+      "source": "same provider (identical gap signatures and ranges); NO provenance file",
+      "dir": "data_po3/",
+      "symbols": [
+        "NQ",
+        "MNQ",
+        "ES",
+        "RTY",
+        "YM"
+      ],
+      "raw_contract_identity": "NONE",
+      "contract_specific": false,
+      "continuous_stitching_already_occurred": true,
+      "roll_information": "NONE",
+      "files": [
+        {
+          "file": "NQ_1m.csv",
+          "bars": 7664,
+          "cme_trade_days": 7,
+          "range": "2026-08-31 .. 2026-09-09"
+        },
+        {
+          "file": "NQ_5m.csv",
+          "bars": 13696,
+          "cme_trade_days": 52,
+          "range": "2026-06-29 .. 2026-09-09"
+        },
+        {
+          "file": "NQ_1h.csv",
+          "bars": 13702,
+          "cme_trade_days": 618,
+          "range": "2024-04-16 .. 2026-09-09"
+        },
+        {
+          "file": "NQ_1d.csv",
+          "bars": 2514,
+          "cme_trade_days": 2514,
+          "range": "2016-09-08 .. 2026-09-09",
+          "note": "the ONLY decade-length NQ series, but DAILY resolution"
+        }
+      ],
+      "cross_market_sync": {
+        "ES_1h_vs_NQ_1h_shared_timestamps": 13696,
+        "sync_pct": 99.9,
+        "nq_without_es": 6,
+        "es_without_nq": 8
+      }
+    }
+  ],
+  "roll_integrity_finding": "The 1h continuous series contains close-to-open jumps up to 296 bps against a 0.2 bps median (1272x). The two largest sit on quarterly roll boundaries (2024-12-22, 2025-03-21) but others (2025-04-06/13/22) are news gaps. Roll-induced discontinuities are therefore NOT separable from genuine price gaps without contract identity. Approximately 10 quarterly rolls fall inside the 1h coverage window; none is documented.",
+  "sufficiency_verdict": {
+    "sufficient_for_multi_year_v3_intraday_study": false,
+    "reasons": [
+      "1-minute genuine NQ: 7 CME trade days (need multiple years)",
+      "5-minute genuine NQ: 51 CME trade days",
+      "the only multi-year intraday resolution is 1-hour (618 trade days), too coarse for microstructure and still continuous/unrolled",
+      "the only decade-length series is DAILY",
+      "no contract identity, no expiry, no roll log anywhere -> the required architecture (contract-level -> causal roll -> source contract retained) cannot be built from any existing file",
+      "back-adjustment status is unknown and unverifiable, so these prices must not be used for liquidity levels, VWAP, or any tick-exact quantity"
+    ]
+  },
+  "v2_proxy_basis_for_contrast": {
+    "dir": "data_ndx/",
+    "trade_days": 2175,
+    "class": "Dukascopy NDX CFD, broker volume - NOT CME NQ"
+  }
+}

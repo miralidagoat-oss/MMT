@@ -1,0 +1,103 @@
+{
+  "artifact": "V3_ACQUISITION_PLAN",
+  "status": "PLAN ONLY - NOTHING FETCHED, NOTHING PRICED",
+  "billable_calls_made": 0,
+  "api_key_present": false,
+  "gate": "PRICE FIRST. FETCH ONLY after explicit authorization.",
+  "why_needed": "no existing file carries contract identity, expiry or a roll log; genuine NQ intraday coverage is 7 trade days at 1m and 51 at 5m",
+  "target": {
+    "exchange": "CME",
+    "instrument": "E-mini Nasdaq-100 futures (NQ)",
+    "dataset": "GLBX.MDP3",
+    "base_resolution": "1-minute OHLCV (ohlcv-1m)",
+    "escalation_if_candidate_A": "trades or mbp-1 (aggressor side) - far larger and costlier",
+    "history_target": ">= 5 years contract-level, >= 3 years minimum viable"
+  },
+  "existing_tooling": {
+    "script": "backtest/fetch_databento.py",
+    "state": "DORMANT (unfunded)",
+    "already_implements": [
+      "runtime endpoint restriction via exact-match frozenset",
+      "three metadata methods (get_cost, get_record_count, get_billable_size) on ONE identical definition request",
+      "HALT on malformed metadata, naming the failing method, shape-only info",
+      "no 'mode' parameter (absent from Databento's documented signature)",
+      "request-schema contract test asserting 'mode' NOT in the get_cost request",
+      "API key read from DATABENTO_API_KEY, never printed/logged/committed/in exceptions"
+    ]
+  },
+  "safeguards_carried_forward": [
+    "dataset must be GLBX.MDP3 (CME) - never an equity/CFD dataset",
+    "discover contracts from definition/reference data; never fabricate raw symbols",
+    "filter OUTRIGHTS only; exclude calendar spreads (the parent symbol includes them)",
+    "raw symbols are not globally durable economic identities - do not treat them as such",
+    "order contracts by expiration / contract month, NEVER ticker lexicographically",
+    "construct roll decisions CAUSALLY (no future volume peeking)",
+    "CME trade-day-aware volume aggregation, not UTC-day",
+    "retain pre-roll incoming-contract history for causal warm-up",
+    "never carry a price level from one contract into another",
+    "preserve source contract on EVERY bar",
+    "API end times are exclusive where applicable",
+    "metadata price estimation must not trigger billable timeseries retrieval"
+  ],
+  "staged_sequence": [
+    {
+      "stage": 1,
+      "action": "definition/reference discovery of NQ outrights + expirations",
+      "billable": "metadata only",
+      "authorization": "not yet requested"
+    },
+    {
+      "stage": 2,
+      "action": "price discovery: get_cost + get_record_count + get_billable_size on ONE identical query",
+      "billable": "metadata only",
+      "authorization": "not yet requested"
+    },
+    {
+      "stage": 3,
+      "action": "report exact cost to the user and STOP",
+      "billable": "none",
+      "authorization": "USER DECISION POINT"
+    },
+    {
+      "stage": 4,
+      "action": "fetch ohlcv-1m per contract, source contract retained",
+      "billable": "YES",
+      "authorization": "REQUIRES EXPLICIT AUTHORIZATION"
+    },
+    {
+      "stage": 5,
+      "action": "causal roll construction + active-contract research series",
+      "billable": "none",
+      "authorization": "after stage 4"
+    },
+    {
+      "stage": 6,
+      "action": "formal data quality gate (section 5 of the instruction)",
+      "billable": "none",
+      "authorization": "after stage 5"
+    }
+  ],
+  "quality_gate_tests_to_freeze_before_research": [
+    "duplicate timestamps",
+    "non-monotonic timestamps",
+    "OHLC impossibilities",
+    "negative/invalid volume",
+    "missing 1m intervals in expected trading periods",
+    "maintenance-window behaviour",
+    "DST handling",
+    "CME trade-date mapping",
+    "contract expiration ordering",
+    "roll transitions",
+    "active-contract overlap/gaps",
+    "abnormal roll gaps",
+    "volume continuity",
+    "price discontinuities",
+    "source-contract identity preservation"
+  ],
+  "halt_policy": "every failure HALTS or is handled by a rule frozen BEFORE performance research. Questionable data is never silently repaired.",
+  "back_adjustment_policy": "a continuous back-adjusted series may exist for visualization or long-horizon returns ONLY. It must NEVER supply liquidity levels, session highs/lows, VWAP, sweep penetration, stop/target prices, tick calculations or event formation - those come from the actual active contract, so a contract switch cannot make an old price level appear to exist in a new contract.",
+  "known_free_alternatives_considered": {
+    "yahoo_NQ=F": "already held; front-month continuous, undocumented roll, 7d of 1m - INSUFFICIENT",
+    "note": "no free source known to this project provides contract-level CME NQ intraday history"
+  }
+}
