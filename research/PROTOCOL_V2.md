@@ -1,249 +1,358 @@
 # V2 research protocol — event study before strategy
 
-**Status: FROZEN before any V2 result is examined.**
-Supersedes nothing. `PROTOCOL.md` v1.3c remains in force for data, partitions,
-costs, uncertainty and failure criteria. This document governs only what V2 does
-differently.
+**FROZEN before any V2 outcome is computed.**
+
+`PROTOCOL.md` v1.3c remains in force for data provenance, costs and failure
+criteria. This document supersedes it on partitions, uncertainty, and the
+naming of the 2018–2022 block, and governs everything V2 does.
 
 ---
 
-## 0. Research history — carried forward, NEVER reset
+## GATE 5 — walk-forward was never reached, and is not run retroactively
 
-V1's failure is evidence and is part of the multiple-comparison burden. The
-count does not restart because the model class changed.
+V1's correct research history, recorded as fact:
 
-| Generation | Configurations / hypotheses examined |
+1. pooled development evaluation
+2. → no candidate survived
+3. → research generation terminated
+4. → **walk-forward never reached**
+5. → validation never used for candidate confirmation
+6. → sealed historical stress set never opened
+
+§4 of `PROTOCOL.md` specifies 12-month train → 3-month test stepped 3 months,
+which over development + validation yields **11 windows** (W1 train
+2022-09-09→2023-09-09 test →2023-12-09 … W11 train 2025-03-09→2026-03-09 test
+→2026-06-09).
+
+**No walk-forward has ever been run in this project.** V1 will not have one run
+after the fact. A rejected generation does not get retroactive procedural
+completeness, and a walk-forward executed after rejection would be a new search
+over already-rejected specifications, not a validation of them.
+
+---
+
+## GATE 6 — the 2018–2022 block is a SEALED HISTORICAL STRESS SET
+
+**2018-05-31 → 2022-09-08, 1,106 trade days. SEALED. Never loaded.**
+
+It is no longer called a holdout. A holdout implies *prospective* evaluation —
+data arriving after the model was frozen. This block **precedes** the V1/V2
+development data, so the implication is false and the name was misleading.
+
+**What it can establish:** untouched cross-regime historical generalisation —
+whether a frozen architecture survives regimes it was never fitted on, including
+COVID and the 2022 bear market.
+
+**What it cannot establish:** forward prospective performance, future-market
+generalisation, or any conventional train-past/test-future claim.
+
+If V2 ever earns evaluation on it, the result is reported as **untouched
+historical stress/generalisation testing**, never as prospective holdout
+performance. A genuine prospective holdout would require data collected *after*
+a model is frozen, which this project does not yet possess and cannot
+manufacture.
+
+It is not opened during V2 feature discovery, model construction, parameter
+selection, internal walk-forward, or validation. Guards stay in force:
+`partitions.guard()` refuses it unless `MMT_SPEND_HOLDOUT=yes` is set
+deliberately, refusing before reading anything.
+
+---
+
+## GATE 7 — V2 data usage, post-correction
+
+All boundaries below are the corrected, timezone-aware CME sessions from
+`cme_session.py` (GATE 1), verified by `test_cme_session.py`.
+
+| Partition | Trade dates | Eligible days | Opens (ET) | Closes (ET) |
+|---|---|---|---|---|
+| **Development** | 2022-09-09 → 2025-05-05 | **683** | 2022-09-08 18:00 | 2025-05-05 17:00 |
+| **Validation** | 2025-05-07 → 2026-08-31 | **341** | 2025-05-06 18:00 | 2026-08-31 17:00 |
+| **Sealed historical stress set** | 2018-05-31 → 2022-09-08 | 1,106 | — | **SEALED** |
+
+Development warm-up from 2022-08-10, no embargo (no preceding boundary).
+Validation warm-up from 2025-04-06, embargo 2025-05-06, so evaluation opens
+2025-05-07 — which is why 341 eligible days, not the 342 nominal.
+
+**Within development:** feature discovery, event studies, model construction,
+parameter development, internal walk-forward.
+
+**Validation is not a second development set.** Only a small frozen candidate
+architecture is promoted to it. **Every inspection of validation is logged** in
+`RESEARCH_LEDGER.jsonl` with a timestamp and what was looked at. Modifying V2
+after seeing validation performance contaminates validation, and any such
+modification must be disclosed in the ledger and in any result that follows it.
+
+---
+
+## GATE 8 — exact research ledger
+
+`RESEARCH_LEDGER.jsonl` replaces the estimate "~114". Every entry carries
+research_id, generation, timestamp, code commit, config hash, dataset partition,
+hypothesis, parameters, purpose, result location, whether performance was
+inspected, and whether it influenced later decisions.
+
+**VERIFIED MINIMUM COUNT** — enumerable from artifacts in this repository:
+
+| | count |
 |---|---|
-| Pre-V1 (1H selection, cross-market scan) | ~38 configurations |
-| V1 5-minute repair attempts (pre-basis) | 18 configurations |
-| V1 improvement ideas rejected | 9 |
-| V1 H1–H6 on the accepted basis | 1 baseline + 24 (H1) + 5 (H2) + 4 (H3) + 6 (H4) + 5 (H5) + 4 (H6) = **49** |
-| **Running total entering V2** | **~114** |
+| performance-inspected configurations | **50** |
+| distinct hypotheses (H1–H6) | **6** |
+| baseline | 1 |
+| reproducibility corrections | 1 (adds **0** configurations) |
 
-Every V2 result is interpreted against that total. A nominal p = 0.01 found
-after 114 prior examinations is not a discovery.
+**UNKNOWN ADDITIONAL HISTORICAL TESTS** — recorded in `PROTOCOL.md` §0 but
+carrying no commit, hash or artifact, and therefore **not independently
+auditable**: **70 claimed configurations** (38 pre-V1 5m, 4 session variants,
+~12 exit variants, 7 timeframes, 9 rejected improvement ideas).
 
-**V1 conclusion, quoted exactly and not to be widened:**
+These two figures are reported separately and never summed into a single
+confident number. The honest statement is: **at least 50 configurations were
+performance-inspected under artifact-backed conditions, plus approximately 70
+more whose exact count cannot be verified.**
 
-> The tested V1 PO3 + VWAP + liquidity-sweep architecture did not demonstrate a
-> statistically or economically defensible 5-minute NQ edge under the frozen
-> methodology.
+**By partition touched:** development 50 · validation **0** · sealed historical
+stress set **0** · pre-basis 70 (unverifiable).
 
-Explicitly NOT concluded: that PO3 never works, that liquidity sweeps carry no
-predictive information, that multi-timeframe information never works, or that
-displacement is universally harmful. Those exceed the experiment.
-
----
-
-## 1. The workflow is reversed
-
-V1 asked *what entry rule should we trade?* and measured whether it profited.
-V2 asks first:
-
-> **What information exists after a liquidity event?**
-
-and only then, if the answer is non-empty:
-
-> What entry rule should we trade?
-
-**The first V2 question is not profit factor.** It is whether a stable
-conditional difference exists in the forward path of price after a liquidity
-event. If no such difference exists, V2 stops. A strategy is not constructed
-from noise to have something to show.
+From this point the count is exact. Every V2 analysis appends an entry before
+its result is examined. Failed experiments are never deleted.
 
 ---
 
-## 2. Phase 1 — causal event study
+## GATE 9 — uncertainty rule, frozen before V2 results exist
 
-For every qualifying liquidity event, record market state **at the exact moment
-the event becomes known**, never earlier. No PO3 requirement, no displacement
-requirement, no HTF agreement, no trade entry.
+All seven estimators are computed and **reported** for every serious result:
+naive trade-level · day-cluster CR1 · day bootstrap · 5-day moving block ·
+10-day moving block · 20-day moving block · stationary bootstrap.
 
-An event is a penetration of a candidate liquidity level. Reclaim is **recorded
-as an outcome, not required as a filter** — requiring it presupposes V1's answer.
+**The governing estimator is predeclared, not chosen after seeing results:**
 
-### Features (continuous wherever possible)
+> **The primary interval for every V2 decision is the day-cluster CR1
+> interval.** All six others are reported as sensitivity. A V2 finding is
+> declared only if the CR1 interval excludes zero **and** no other
+> dependence-aware estimator contradicts it in sign.
 
-Liquidity: type · age · prior touch count · penetration distance · penetration /
-ATR · wick characteristics · close-back distance · reclaim latency.
+CR1 is chosen in advance because trade-day clustering is the dependence
+structure this data demonstrably has, and because fixing one estimator removes
+the freedom to select whichever interval suits the result — which the V1
+"widest dependence-aware" rule left open, since which estimator is widest varies
+per result.
 
-Location: distance from VWAP · distance from VWAP in σ · VWAP slope · distance
-from session open · distance from weekly open · distance from overnight high/low
-· local structural location · session location · time of day.
-
-Volatility: realized volatility · ATR percentile · local range compression ·
-HTF volatility/regime variables.
-
-Direction is recorded and long/short are analysed **separately** (§6).
-
-**Feature discipline.** No dozens of arbitrary technical indicators. Every
-feature must have a stated plausible relationship to auction or liquidity
-behaviour, written down before it is computed. Adding a feature after seeing
-results is a new hypothesis and increments the history count in §0.
-
----
-
-## 3. Outcome paths, not win/loss labels
-
-Do not assign win/loss. Measure what price actually did.
-
-**Predeclared horizons — fixed now, never chosen after seeing which looks best:**
-**5, 10, 15, 30, 60 minutes.**
-
-At each horizon record: maximum favourable excursion · maximum adverse excursion
-· net forward return · MFE/ATR · MAE/ATR · time to MFE · time to MAE · whether
-opposing liquidity was reached · whether VWAP was reached · whether the swept
-level was revisited.
-
-Reporting a horizon not on this list, or adding one later, is a protocol
-amendment and is logged as such.
+**Language correction, binding.** V1 described its headline as "the most
+conservative interval". That was wrong: in **11 of 15** V1 results the naive
+trade-level interval was wider than the chosen headline. The correct description
+is "the widest **dependence-aware** interval", and that phrasing is used
+retroactively in the V1 artifacts. It changed no V1 conclusion — 0 of 15 results
+excluded zero under *any* estimator, naive included — but the claim was
+overstated and is corrected.
 
 ---
 
-## 4. Carried-forward questions from V1
+## V2.1 — event definition, frozen
 
-These are hypotheses, not conclusions. V1's results motivate them; they do not
-answer them.
+A **liquidity event** is a penetration of an available liquidity level.
+**Reclaim is recorded as an outcome, never required as a filter** — requiring it
+would presuppose V1's answer.
 
-### V2-A — confirmation latency (from H4)
+Four timestamps are maintained separately for every event:
 
-V1 found displacement confirmation carried a **negative** gradient, consistent
-across all three sweep-depth terciles. Two incompatible explanations remain
-open, and V1 cannot distinguish them:
-
-- **A.** Displacement itself carries negative information.
-- **B.** Waiting for displacement simply enters too late, and the information
-  decays with confirmation latency.
-
-> **V2-A:** Some of the predictive information in a liquidity event decays as
-> confirmation latency increases.
-
-Test expectancy as a function of: time since sweep · time since reclaim · bars
-since event · distance travelled before entry. This must **not** be shortcut
-into "trade without confirmation" — that is assuming B.
-
-### V2-B — HTF state, not HTF agreement (from H6)
-
-H6 rejected directional agreement as a permission filter. That says nothing
-about HTF **context**. V2 may test 1H volatility regime · 1H distance from major
-reference · 1H range percentile · 1H extension from fair value · 15m
-compression/expansion state.
-
-**Prohibited:** any rule of the form `5m long == 15m bullish == 1H bullish`. The
-directional-confirmation architecture is rejected and must not be quietly
-reintroduced under a new name.
-
-### V2-C — dynamic vs static liquidity (from H5)
-
-Named T1 levels failed the tier test while the pivot component carried most of
-V1's activity. This does **not** establish that the 5-bar fractal is good.
-
-> **V2-C:** Local dynamically formed liquidity carries more information on
-> 5-minute NQ than static textbook levels.
-
-Characterise dynamic levels by continuous properties — age · touch count ·
-prominence · distance from surrounding structure · ATR-normalised separation ·
-volume/time formed · equal-high/low clustering — rather than hardcoding one
-arbitrary fractal width as the answer.
-
-### V2-D — weekly open is EXPLORATORY ONLY
-
-V1 observed the pre-existing weekly-open variant stayed positive while the three
-sanctioned anchors were negative. It was **already in the research history**, so
-it cannot be treated as an independent discovery and must not be optimised
-around. If multi-day anchoring is tested, predeclare the general form:
-
-> Multi-day reference location carries incremental information beyond intraday
-> session anchoring.
-
-and compare a **small predetermined family** on development data only.
-
----
-
-## 5. Continuous features before boolean filters
-
-V1 leaned on yes/no sweep, yes/no reclaim, yes/no displacement, yes/no HTF
-agreement, discarding magnitude at every step. V2 preserves information:
-
-| Use | Not |
+| Timestamp | Meaning |
 |---|---|
-| `penetration = 0.36 ATR` | `deep_sweep = true` |
-| `vwap_distance = -1.42σ` | `below_vwap = true` |
-| `reclaim_latency = 17 min` | `reclaimed_within_n = true` |
+| `LEVEL_FORMATION_TIME` | when the level economically came into existence |
+| `LEVEL_AVAILABILITY_TIME` | when the algorithm could first know it |
+| `SWEEP_TIME` | first bar whose extreme exceeds the level |
+| `EVENT_CONFIRMATION_TIME` | close of the bar at which the event is fully known |
 
-Discretisation is permitted only **after** evidence of a stable threshold, and
-the evidence is shown.
+**A level may not be used before `LEVEL_AVAILABILITY_TIME`.** A fractal pivot
+requiring *k* confirming bars exists economically at its formation bar but is
+unavailable until those bars have closed. No future-confirmed level is ever
+backdated. The event engine uses availability time; formation time is recorded
+for study only and must never be used as if known at that moment.
 
----
+All features are evaluated at `EVENT_CONFIRMATION_TIME` using only information
+available then.
 
-## 6. Long and short are analysed separately
+## V2.2 — episode de-duplication, frozen before results
 
-No symmetric coefficients or thresholds are imposed. Asymmetry may **not** be
-claimed without sufficient observations in both directions; the minimum is
-declared before the split is examined, and MDE is computed per side.
+One market move must not become dozens of pseudo-independent observations. Both
+`event_id` and `episode_id` are assigned.
 
----
+- Two sweeps belong to the **same episode** when they occur within **60 minutes**
+  and touch levels within **0.5 ATR** of each other in the same direction.
+- A repeated touch of the same level is a **separate event** but the **same
+  episode** unless separated by more than 60 minutes *and* an intervening
+  opposite-direction event.
+- **Nested levels** (a level inside another's 0.5 ATR band) collapse to one
+  episode, keyed on the older level.
 
-## 7. Model complexity is earned, not assumed
+Every report states **number of events**, **number of unique episodes**, and
+**number of unique trade days**. Inference accounts for multiple events per day,
+multiple events per episode, long/short clustering and volatility-regime
+clustering — CR1 clusters on trade day, with episode-level clustering reported
+as sensitivity.
 
-Begin with interpretable statistics: conditional expectancy tables · monotonic
-binning · univariate effect plots · regularised linear/logistic models.
+## V2.3 — predeclared feature dictionary
 
-Nonlinear models are permitted only when compared against these baselines and
-shown to beat them out of sample. No large neural networks, no massive
-gradient-boosted searches, no hundreds of engineered features — each multiplies
-researcher degrees of freedom far faster than it adds insight.
+Every feature needs definition, units, availability timestamp, missing-value
+rule and normalisation. Features are added only as a new ledger entry.
 
----
+| Feature | Units | Available at | Missing rule | Normalisation |
+|---|---|---|---|---|
+| `liquidity_class` | categorical | availability | — | one-hot |
+| `level_kind_dynamic` | bool | availability | — | — |
+| `level_age_min` | minutes | availability | drop | log1p |
+| `touch_count` | count | availability | 0 | raw |
+| `level_prominence_atr` | ATR | availability | drop | raw |
+| `competing_liquidity_atr` | ATR | availability | max-cap | raw |
+| `penetration_pts` | points | sweep | drop | — |
+| `penetration_atr` | ATR | sweep | drop | raw |
+| `reclaim_magnitude_atr` | ATR | confirmation | NaN if none | raw |
+| `reclaim_latency_min` | minutes | confirmation | NaN if none | raw |
+| `wick_body_ratio` | ratio | confirmation | drop | clip 0–10 |
+| `vwap_dist_pts` | points | confirmation | drop | — |
+| `vwap_dist_sigma` | σ | confirmation | drop | raw |
+| `vwap_slope` | σ/bar | confirmation | 0 | closed bars only |
+| `session_location` | categorical | confirmation | — | one-hot |
+| `minutes_since_session_open` | minutes | confirmation | — | raw |
+| `atr_percentile` | 0–1 | confirmation | drop | rolling 252d |
+| `realized_vol_state` | 0–1 | confirmation | drop | rolling 252d |
+| `range_compression` | ratio | confirmation | drop | raw |
+| `dist_session_open_atr` | ATR | confirmation | drop | raw |
+| `dist_weekly_open_atr` | ATR | confirmation | drop | raw |
+| `dist_overnight_high_atr` | ATR | confirmation | drop | raw |
+| `dist_overnight_low_atr` | ATR | confirmation | drop | raw |
+| `htf_15m_compression` | 0–1 | last **closed** 15m | drop | raw |
+| `htf_1h_range_pctile` | 0–1 | last **closed** 1H | drop | raw |
+| `htf_1h_vol_state` | 0–1 | last **closed** 1H | drop | raw |
+| `htf_1h_dist_ref_atr` | ATR | last **closed** 1H | drop | raw |
+| `direction` | ±1 | sweep | — | — |
 
-## 8. Data access — unchanged and absolute
+**Prohibited:** any feature of the form `5m long AND 15m bullish AND 1H bullish`,
+or any mathematical equivalent. H6 rejected directional agreement; it is not
+reintroduced under a new name. HTF enters as **continuous context only**.
 
-Development · validation · walk-forward **only**.
+## V2.4 — continuous before boolean
 
-**The final holdout (2018-05-31 .. 2022-09-08, 1,106 trade days) remains
-SEALED with one use remaining.** It is opened only after a single V2
-architecture is frozen and has survived development, validation **and**
-walk-forward. A negative result never justifies opening it, and neither does a
-positive one that has not been frozen first.
+`penetration_atr = 0.41`, not `deep_sweep = true`. `vwap_dist_sigma = -1.37`,
+not `below_vwap = true`. `reclaim_latency_min = 13`, not
+`reclaim_within_3_bars = true`. `htf_1h_range_pctile = 0.82`, not
+`htf_bullish = true`. Thresholds only after stable evidence, shown.
 
-Guards from v1.3c stay in force: `partitions.guard()` refuses the holdout unless
-`MMT_SPEND_HOLDOUT=yes` is set deliberately, and whole-basis runs require
-`MMT_WHOLE_BASIS=yes`. Both refuse before reading anything.
+## V2.5 — forward outcomes, predeclared
 
-### Outstanding holdout exposure
+**Horizons: 5, 15, 30, 60 minutes.** No others are computed, and none may be
+added after results are seen.
 
-The v1.3c §12 exposure log records one partial exposure (a pooled mean spanning
-the holdout period, from a whole-basis MDE run). It stands as logged. V2 adds no
-further exposure.
+**PRIMARY: 30-minute horizon, ATR-normalised signed forward return,
+direction-normalised.** 5m/15m/60m are secondary temporal-shape diagnostics.
 
----
+At each horizon: signed forward return · ATR-normalised signed return · MFE ·
+MAE · MFE/ATR · MAE/ATR. Also recorded: time to MFE · time to MAE · VWAP
+reached · swept level revisited · opposing liquidity reached.
 
-## 9. Defects inherited from V1, to fix before V2 Phase 1 produces numbers
+**Secondary outcomes are descriptive.** Each is not an independent opportunity
+to declare success; a finding on a secondary outcome alone is not a finding.
 
-Both were found in the V1 accounting audit and are recorded rather than silently
-corrected:
+## V2.6 — direction normalisation
 
-1. **Frequency denominator.** `report_result.summarize()` divides by every trade
-   day in the loaded span, warm-up included (706), rather than countable days
-   (685). All V1 frequencies are understated by ~3%. Direction of error favours
-   no result.
-2. **Partition boundary offsets.** `partitions.load()` uses fixed ±6h/+30h
-   offsets from UTC midnight instead of a timezone-aware 18:00 ET trade-day
-   boundary, leaking one trade day at each edge (685 countable against 683
-   declared).
+Raw direction is always retained. For analysis, orientation is signed so that
+the hypothesised-favourable direction is positive: for a sell-side sweep
+(hypothesised bullish reversal) upward movement is positive; for a buy-side
+sweep, downward movement is positive.
 
-V1's frozen numbers are **not** restated. The fixes apply to V2 onward, and the
-V1 artifact carries both columns so the two are comparable.
+Every result reports **combined direction-normalised**, **long-side only**, and
+**short-side only**. Asymmetry is never hidden, and never claimed without
+adequate events, episodes and days on both sides.
 
----
+## V2.7 — event time vs execution time
 
-## 10. Walk-forward — specified, never yet run
+The event study measures price relative to the confirmed event timestamp / the
+confirmed 5m close. **That is not executable P&L and is never called it.**
 
-§4 of `PROTOCOL.md`: 12-month train → 3-month forward test, stepped 3 months,
-across development + validation only. That yields **11 windows**, W1 train
-2022-09-09→2023-09-09 test →2023-12-09, through W11 train 2025-03-09→2026-03-09
-test →2026-06-09. The holdout appears in no window.
+Any later strategy must enter at the first genuinely tradable price available
+*after* the signal, under the frozen execution assumptions. No result may assume
+execution at a price that existed before confirmation.
 
-**No walk-forward has been run at any point in this project.** V1's H1–H6 were
-pooled single-pass runs over development. Walk-forward is a precondition for
-spending the holdout and remains outstanding work.
+## V2.8 / V2.9 — censoring at boundaries, gaps and rolls
+
+A forward outcome must never cross a partition boundary. An event 30 minutes
+before the development close **cannot** use validation prices for its 60-minute
+outcome: that horizon is **marked censored** and excluded from that horizon's
+statistics, never borrowed.
+
+The same rule applies to data gaps (the 11 known absences, the 17:00–18:00 ET
+maintenance hour, weekends) and to contract rolls.
+
+**Roll status of the current basis:** `USATECHIDXUSD` is a CFD with **no
+contract roll**, so roll censoring is implemented and enforced but never fires
+on this data. If NQ contract data is ever used, a horizon crossing the
+active-contract boundary is censored; MFE/MAE is never computed across two
+contracts; and no liquidity level survives a contract switch.
+
+## V2.10 — the displacement-latency question
+
+Three competing explanations for V1's negative displacement gradient, tested
+separately, none assumed:
+
+- **A** — displacement carries adverse information
+- **B** — the event carries information but waiting for displacement enters
+  after the useful move
+- **C** — neither is stable and the V1 gradient is noise
+
+Forward path is analysed conditional on: time since sweep · time since reclaim ·
+completed 5m bars since event · distance already travelled favourably ·
+displacement magnitude. The question is whether information **decays with
+confirmation latency**. No trading rule is built from this until the
+relationship survives internal validation.
+
+## V2.11–V2.13 — carried-forward constraints
+
+**HTF is context, never agreement** (V2.3 prohibition is binding).
+
+**Dynamic liquidity is studied by characteristics** — age, prominence, touch
+count, separation, clustering, ATR-normalised distance, formation duration — not
+by hardcoding one fractal width. H5 does **not** establish that the existing
+pivot algorithm is good, only that the tested static named-level set did not
+carry V1's signal.
+
+**Weekly open is exploratory only.** It is contaminated by prior research
+exposure and V2 is not constructed around it. If multi-day reference location is
+tested, the hypothesis is framed generically and a **small predetermined
+family** is declared before outcomes are inspected. No large anchor search.
+
+## V2.14–V2.16 — analysis order and multiple testing
+
+Descriptive first: sample counts · missingness · feature distributions · events
+by year, session, direction and volatility regime · event/episode concentration ·
+forward-outcome distributions. **No optimizer, no machine learning, no strategy
+backtest at this stage.**
+
+Then predeclared univariate conditional analyses. Then, only if stable structure
+exists: coarse monotonic bins → regularised model → nonlinear model only if it
+beats simpler baselines on **internal walk-forward within development**.
+
+Every feature/horizon analysis is appended to the ledger. A favourable p-value in
+one bin or one horizon is not a finding. Required instead: effect direction
+consistency · economic magnitude · stability across development subperiods ·
+stability across reasonable feature definitions · dependence-aware uncertainty.
+Any formal multiple-testing correction is declared before results.
+
+## V2.17 — promotion gate
+
+V2 Phase 1 succeeds only with evidence that predeclared market-state information
+produces a **stable and economically meaningful** difference in the post-event
+path. Before any move from event study to strategy design, all of:
+
+- stable sign across development subperiods
+- adequate event, episode and trade-day sample sizes
+- dependence-aware uncertainty (CR1 primary, per GATE 9)
+- no domination by a handful of days
+- no single-year dependency
+- no single-direction dependency unless explicitly modelled
+- no obvious parameter needle
+- no future leakage
+- no contract-roll contamination
+
+**If those do not hold: STOP.** No entry/exit strategy is manufactured. The
+first V2 question is not profit factor — it is whether stable conditional
+information exists at all.
