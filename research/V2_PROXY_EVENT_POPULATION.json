@@ -1,0 +1,374 @@
+{
+  "generation": "V2_PROXY",
+  "basis_class": "PROXY - Dukascopy USATECHIDXUSD BID-quote CFD. NOT CME NQ trades, NOT NQ order flow. Volume is broker-side.",
+  "partition": "development (evaluable)",
+  "window": [
+    "2023-09-01",
+    "2025-05-05"
+  ],
+  "total_detected_events": 16666,
+  "unique_episodes": 10787,
+  "unique_trade_dates": 431,
+  "y30_eligible_events": 16182,
+  "y30_censored_events": 484,
+  "y30_eligible_episodes": 10471,
+  "y30_eligible_trade_dates": 431,
+  "censor_counts_by_reason": {
+    "outside_evaluable": 0,
+    "invalid_confirmation": 0,
+    "invalid_atr0": 0,
+    "missing_endpoint_bar": 484,
+    "path_gap": 0,
+    "partition_boundary": 0,
+    "contract_roll": 0
+  },
+  "eligibility_by": {
+    "session_location": {
+      "overnight": {
+        "events": 3760,
+        "eligible": 3760,
+        "eligibility_rate": 1.0,
+        "clusters": 431,
+        "eligible_clusters": 431
+      },
+      "london": {
+        "events": 4288,
+        "eligible": 4285,
+        "eligibility_rate": 0.9993003731343284,
+        "clusters": 431,
+        "eligible_clusters": 431
+      },
+      "premarket": {
+        "events": 1984,
+        "eligible": 1982,
+        "eligibility_rate": 0.998991935483871,
+        "clusters": 413,
+        "eligible_clusters": 413
+      },
+      "ny_open": {
+        "events": 2111,
+        "eligible": 2111,
+        "eligibility_rate": 1.0,
+        "clusters": 405,
+        "eligible_clusters": 405
+      },
+      "ny_morning": {
+        "events": 1533,
+        "eligible": 1532,
+        "eligibility_rate": 0.9993476842791911,
+        "clusters": 387,
+        "eligible_clusters": 387
+      },
+      "ny_afternoon": {
+        "events": 721,
+        "eligible": 721,
+        "eligibility_rate": 1.0,
+        "clusters": 297,
+        "eligible_clusters": 297
+      },
+      "power_hour": {
+        "events": 746,
+        "eligible": 440,
+        "eligibility_rate": 0.5898123324396782,
+        "clusters": 304,
+        "eligible_clusters": 214
+      },
+      "post": {
+        "events": 166,
+        "eligible": 0,
+        "eligibility_rate": 0.0,
+        "clusters": 80,
+        "eligible_clusters": 0
+      },
+      "midday": {
+        "events": 1357,
+        "eligible": 1351,
+        "eligibility_rate": 0.9955784819454679,
+        "clusters": 388,
+        "eligible_clusters": 385
+      }
+    },
+    "direction": {
+      "-1": {
+        "events": 8307,
+        "eligible": 8031,
+        "eligibility_rate": 0.9667750090285302,
+        "clusters": 431,
+        "eligible_clusters": 431
+      },
+      "1": {
+        "events": 8359,
+        "eligible": 8151,
+        "eligibility_rate": 0.9751166407465007,
+        "clusters": 431,
+        "eligible_clusters": 431
+      }
+    },
+    "liquidity_class": {
+      "pivot": {
+        "events": 13112,
+        "eligible": 12706,
+        "eligibility_rate": 0.9690359975594874,
+        "clusters": 431,
+        "eligible_clusters": 431
+      },
+      "asia_l": {
+        "events": 428,
+        "eligible": 425,
+        "eligibility_rate": 0.9929906542056075,
+        "clusters": 350,
+        "eligible_clusters": 348
+      },
+      "asia_h": {
+        "events": 430,
+        "eligible": 427,
+        "eligibility_rate": 0.9930232558139535,
+        "clusters": 373,
+        "eligible_clusters": 371
+      },
+      "pdh": {
+        "events": 422,
+        "eligible": 407,
+        "eligibility_rate": 0.9644549763033176,
+        "clusters": 241,
+        "eligible_clusters": 236
+      },
+      "lon_h": {
+        "events": 428,
+        "eligible": 423,
+        "eligibility_rate": 0.9883177570093458,
+        "clusters": 340,
+        "eligible_clusters": 338
+      },
+      "lon_l": {
+        "events": 422,
+        "eligible": 420,
+        "eligibility_rate": 0.995260663507109,
+        "clusters": 312,
+        "eligible_clusters": 312
+      },
+      "ib_l": {
+        "events": 419,
+        "eligible": 406,
+        "eligibility_rate": 0.9689737470167065,
+        "clusters": 273,
+        "eligible_clusters": 267
+      },
+      "pdl": {
+        "events": 413,
+        "eligible": 402,
+        "eligibility_rate": 0.9733656174334141,
+        "clusters": 178,
+        "eligible_clusters": 176
+      },
+      "ib_h": {
+        "events": 426,
+        "eligible": 405,
+        "eligibility_rate": 0.9507042253521126,
+        "clusters": 299,
+        "eligible_clusters": 289
+      },
+      "pwl": {
+        "events": 81,
+        "eligible": 81,
+        "eligibility_rate": 1.0,
+        "clusters": 49,
+        "eligible_clusters": 49
+      },
+      "pwh": {
+        "events": 85,
+        "eligible": 80,
+        "eligibility_rate": 0.9411764705882353,
+        "clusters": 69,
+        "eligible_clusters": 66
+      }
+    },
+    "year": {
+      "2023": {
+        "events": 3263,
+        "eligible": 3180,
+        "eligibility_rate": 0.9745632853202574,
+        "clusters": 85,
+        "eligible_clusters": 85
+      },
+      "2024": {
+        "events": 9922,
+        "eligible": 9645,
+        "eligibility_rate": 0.9720822414835718,
+        "clusters": 259,
+        "eligible_clusters": 259
+      },
+      "2025": {
+        "events": 3481,
+        "eligible": 3357,
+        "eligibility_rate": 0.9643780522838264,
+        "clusters": 87,
+        "eligible_clusters": 87
+      }
+    },
+    "hour_et": {
+      "19": {
+        "events": 444,
+        "eligible": 444,
+        "eligibility_rate": 1.0,
+        "clusters": 222,
+        "eligible_clusters": 222
+      },
+      "20": {
+        "events": 625,
+        "eligible": 625,
+        "eligibility_rate": 1.0,
+        "clusters": 303,
+        "eligible_clusters": 303
+      },
+      "2": {
+        "events": 912,
+        "eligible": 912,
+        "eligibility_rate": 1.0,
+        "clusters": 364,
+        "eligible_clusters": 364
+      },
+      "3": {
+        "events": 982,
+        "eligible": 982,
+        "eligibility_rate": 1.0,
+        "clusters": 353,
+        "eligible_clusters": 353
+      },
+      "5": {
+        "events": 484,
+        "eligible": 484,
+        "eligibility_rate": 1.0,
+        "clusters": 252,
+        "eligible_clusters": 252
+      },
+      "7": {
+        "events": 674,
+        "eligible": 671,
+        "eligibility_rate": 0.9955489614243324,
+        "clusters": 321,
+        "eligible_clusters": 320
+      },
+      "8": {
+        "events": 1543,
+        "eligible": 1543,
+        "eligibility_rate": 1.0,
+        "clusters": 379,
+        "eligible_clusters": 379
+      },
+      "9": {
+        "events": 1734,
+        "eligible": 1732,
+        "eligibility_rate": 0.9988465974625144,
+        "clusters": 395,
+        "eligible_clusters": 394
+      },
+      "11": {
+        "events": 778,
+        "eligible": 778,
+        "eligibility_rate": 1.0,
+        "clusters": 273,
+        "eligible_clusters": 273
+      },
+      "14": {
+        "events": 726,
+        "eligible": 726,
+        "eligibility_rate": 1.0,
+        "clusters": 300,
+        "eligible_clusters": 300
+      },
+      "15": {
+        "events": 670,
+        "eligible": 481,
+        "eligibility_rate": 0.7179104477611941,
+        "clusters": 288,
+        "eligible_clusters": 228
+      },
+      "16": {
+        "events": 283,
+        "eligible": 0,
+        "eligibility_rate": 0.0,
+        "clusters": 138,
+        "eligible_clusters": 0
+      },
+      "21": {
+        "events": 416,
+        "eligible": 416,
+        "eligibility_rate": 1.0,
+        "clusters": 264,
+        "eligible_clusters": 264
+      },
+      "22": {
+        "events": 409,
+        "eligible": 409,
+        "eligibility_rate": 1.0,
+        "clusters": 258,
+        "eligible_clusters": 258
+      },
+      "0": {
+        "events": 471,
+        "eligible": 471,
+        "eligibility_rate": 1.0,
+        "clusters": 288,
+        "eligible_clusters": 288
+      },
+      "1": {
+        "events": 632,
+        "eligible": 632,
+        "eligibility_rate": 1.0,
+        "clusters": 326,
+        "eligible_clusters": 326
+      },
+      "4": {
+        "events": 667,
+        "eligible": 667,
+        "eligibility_rate": 1.0,
+        "clusters": 289,
+        "eligible_clusters": 289
+      },
+      "6": {
+        "events": 577,
+        "eligible": 577,
+        "eligibility_rate": 1.0,
+        "clusters": 298,
+        "eligible_clusters": 298
+      },
+      "10": {
+        "events": 1565,
+        "eligible": 1565,
+        "eligibility_rate": 1.0,
+        "clusters": 369,
+        "eligible_clusters": 369
+      },
+      "23": {
+        "events": 431,
+        "eligible": 431,
+        "eligibility_rate": 1.0,
+        "clusters": 269,
+        "eligible_clusters": 269
+      },
+      "12": {
+        "events": 629,
+        "eligible": 623,
+        "eligibility_rate": 0.9904610492845787,
+        "clusters": 273,
+        "eligible_clusters": 270
+      },
+      "13": {
+        "events": 725,
+        "eligible": 724,
+        "eligibility_rate": 0.9986206896551724,
+        "clusters": 302,
+        "eligible_clusters": 301
+      },
+      "18": {
+        "events": 289,
+        "eligible": 289,
+        "eligibility_rate": 1.0,
+        "clusters": 122,
+        "eligible_clusters": 122
+      }
+    }
+  },
+  "note": "AVAILABILITY ONLY. Records whether Y_30 exists; inspects no sign, magnitude, MFE, MAE or performance."
+}

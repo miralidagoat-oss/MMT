@@ -17,7 +17,7 @@ instead of real 1H Wilder ATR, invented formation timestamps, silently
 equal-weighted VWAP when volume was absent, and omitted 6 of the 22
 confirmatory features entirely.
 """
-import bisect, csv, math, os, sys
+import bisect, csv, datetime as dt, math, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cme_session as S, v2_events as V
@@ -343,7 +343,21 @@ EVENT_FIELDS = (
     "htf_15m_compression", "htf_1h_range_pctile", "htf_1h_vol_state",
     "htf_1h_dist_ref_atr")
 
+# Outcome-SUPPORT fields. These are NOT features and NOT outcomes: they are the
+# frozen references the outcome layer requires (protocol section 5 - "use the
+# level identity and price frozen at event confirmation"; a level formed later
+# can never retroactively become a target). Adding them changes no feature
+# value; the 29-field checksum is identical before and after.
+SUPPORT_FIELDS = ("bar_index", "level_price", "level_side", "atr0", "c0",
+                  "vwap_at_t0", "gapped", "opposing_level_id",
+                  "opposing_level_price", "episode_id", "confirmation_valid",
+                  "roll_crossed", "event_id", "hour_et", "year")
+
 WIN = {"asia": (0, 480), "lon": (480, 840), "ib": (930, 990)}
+
+
+def _hour_et(ts):
+    return dt.datetime.fromtimestamp(ts, S.ET).hour
 
 
 def _clip(x, lo, hi):
@@ -410,6 +424,7 @@ def compute_events(bars, st=None, trace=None):
     unswept = {1: _SortedLevels(), -1: _SortedLevels()}      # not yet consumed
     pivots = []                                              # live pivot objects
     rows = []
+    episodes = V.EpisodeTracker()
     cur_day = cur_wk = None
     day_h = day_l = day_h_ts = day_l_ts = None
     prev = None
@@ -495,11 +510,16 @@ def compute_events(bars, st=None, trace=None):
         hit.sort(key=lambda x: (x[0]["available_ts"], x[0]["level_id"]))
         t0 = t[i] + BAR
         for lv, direction in hit:
-            rows.append(_row(lv, direction, i, t0, d, m, bars, st, a0,
+            r = _row(lv, direction, i, t0, d, m, bars, st, a0,
                              vwap, vsig, vnbar, vsid, tr, rv,
                              atr_hist, rv_hist, rng_hist, vol_hist,
                              ser15, end15, ser1h, end1h, atr1h, first1h,
-                             avail_side, day_open, wk_open, on_hi, on_lo, iso))
+                     avail_side, day_open, wk_open, on_hi, on_lo, iso)
+            r["event_id"] = f"EV{len(rows)+1:07d}"
+            ep = episodes.assign(direction, t0, lv["price"], a0,
+                                 lv["level_id"], r["event_id"])
+            r["episode_id"] = ep["episode_id"]
+            rows.append(r)
 
         # ── E. touch/current-bar state updates, AFTER emission ───────────
         for side in (1, -1):
@@ -565,6 +585,8 @@ def compute_events(bars, st=None, trace=None):
                     acc[k][0], acc[k][1] = h[i], t[i]
                 if acc[k][2] is None or l[i] < acc[k][2]:
                     acc[k][2], acc[k][3] = l[i], t[i]
+    if trace is not None:
+        trace["episodes"] = episodes.episodes
     return rows
 
 
@@ -588,6 +610,21 @@ def _row(lv, direction, i, t0, d, m, bars, st, a0, vwap, vsig, vnbar, vsid,
 
     nb = avail_side[lv["side"]].nearest_other(price, lv)
     comp = (nb / a0) if nb is not None else 10.0
+    # opposing liquidity: the nearest AVAILABLE opposite-side level AT t0, with
+    # its id and price frozen here. A level formed later can never become the
+    # target retrospectively.
+    opp = None
+    other = avail_side[-lv["side"]]
+    if other.lv:
+        j = bisect.bisect_left(other.p, price)
+        best = None
+        for k in (j-1, j, j+1):
+            if 0 <= k < len(other.lv):
+                dd = abs(other.lv[k]["price"] - price)
+                if best is None or dd < best[0]:
+                    best = (dd, other.lv[k])
+        if best:
+            opp = (best[1]["level_id"], best[1]["price"])
 
     # VWAP slope: t-12 must be in the SAME VWAP session, which needs 13
     # observations including t, not 12
@@ -671,6 +708,20 @@ def _row(lv, direction, i, t0, d, m, bars, st, a0, vwap, vsig, vnbar, vsid,
         "htf_1h_range_pctile": rngp,
         "htf_1h_vol_state": volp,
         "htf_1h_dist_ref_atr": h1,
+        # ── outcome-support (frozen at t0), not features ──────────────────
+        "bar_index": i,
+        "level_price": price,
+        "level_side": lv["side"],
+        "atr0": a0,
+        "c0": c[i],
+        "vwap_at_t0": vwap[i],
+        "gapped": V.is_gapped(direction, price, h[i], l[i]),
+        "opposing_level_id": opp[0] if opp else None,
+        "opposing_level_price": opp[1] if opp else None,
+        "confirmation_valid": True,
+        "roll_crossed": False,
+        "hour_et": _hour_et(t0),
+        "year": d.year,
     }
 
 

@@ -1,0 +1,861 @@
+{
+  "coverage": {
+    "liquidity_class": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true,
+      "admissible_categories": [
+        "asia_h",
+        "asia_l",
+        "ib_h",
+        "ib_l",
+        "lon_h",
+        "lon_l",
+        "pdh",
+        "pdl",
+        "pivot",
+        "pwh",
+        "pwl"
+      ],
+      "dropped_categories_for_sample_availability": {}
+    },
+    "level_age_min": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "touch_count": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "level_prominence_atr": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "competing_liquidity_atr": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "penetration_atr": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "close_vs_level_atr": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "wick_body_ratio": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "vwap_dist_sigma": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 15862,
+      "unique_episodes": 10286,
+      "unique_trade_dates": 431,
+      "missing_n": 320,
+      "missing_pct": 1.98,
+      "missingness_gate_pass": true
+    },
+    "vwap_slope_sigma_per_bar": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 15643,
+      "unique_episodes": 10156,
+      "unique_trade_dates": 431,
+      "missing_n": 539,
+      "missing_pct": 3.33,
+      "missingness_gate_pass": true
+    },
+    "session_location": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true,
+      "admissible_categories": [
+        "london",
+        "midday",
+        "ny_afternoon",
+        "ny_morning",
+        "ny_open",
+        "overnight",
+        "power_hour",
+        "premarket"
+      ],
+      "dropped_categories_for_sample_availability": {}
+    },
+    "minutes_since_session_open": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "atr_percentile": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16078,
+      "unique_episodes": 10404,
+      "unique_trade_dates": 431,
+      "missing_n": 104,
+      "missing_pct": 0.64,
+      "missingness_gate_pass": true
+    },
+    "realized_vol_state": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16074,
+      "unique_episodes": 10401,
+      "unique_trade_dates": 431,
+      "missing_n": 108,
+      "missing_pct": 0.67,
+      "missingness_gate_pass": true
+    },
+    "range_compression": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "dist_session_open_atr": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "dist_overnight_high_atr": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 6155,
+      "unique_episodes": 3519,
+      "unique_trade_dates": 430,
+      "missing_n": 10027,
+      "missing_pct": 61.96,
+      "missingness_gate_pass": false
+    },
+    "dist_overnight_low_atr": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 6155,
+      "unique_episodes": 3519,
+      "unique_trade_dates": 430,
+      "missing_n": 10027,
+      "missing_pct": 61.96,
+      "missingness_gate_pass": false
+    },
+    "htf_15m_compression": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    },
+    "htf_1h_range_pctile": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16056,
+      "unique_episodes": 10387,
+      "unique_trade_dates": 431,
+      "missing_n": 126,
+      "missing_pct": 0.78,
+      "missingness_gate_pass": true
+    },
+    "htf_1h_vol_state": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16044,
+      "unique_episodes": 10377,
+      "unique_trade_dates": 431,
+      "missing_n": 138,
+      "missing_pct": 0.85,
+      "missingness_gate_pass": true
+    },
+    "htf_1h_dist_ref_atr": {
+      "y30_eligible_before_missingness": 16182,
+      "feature_valid_events": 16182,
+      "unique_episodes": 10471,
+      "unique_trade_dates": 431,
+      "missing_n": 0,
+      "missing_pct": 0.0,
+      "missingness_gate_pass": true
+    }
+  },
+  "primary": {
+    "liquidity_class": {
+      "testable": true,
+      "kind": "categorical_omnibus",
+      "beta": null,
+      "ci95": null,
+      "raw_p": 0.557757860271041,
+      "rho_descriptive": null,
+      "wald_F": 0.873898951571484,
+      "q": 10,
+      "N": 16182,
+      "G": 431,
+      "levels": [
+        "asia_h",
+        "asia_l",
+        "ib_h",
+        "ib_l",
+        "lon_h",
+        "lon_l",
+        "pdh",
+        "pdl",
+        "pivot",
+        "pwh",
+        "pwl"
+      ],
+      "category_betas": {
+        "asia_l": 753.1118032786915,
+        "ib_h": 186.60538352558888,
+        "ib_l": 163.93884761365257,
+        "lon_h": 337.626555051728,
+        "lon_l": 37.38823185012802,
+        "pdh": 31.931606718499324,
+        "pdl": 464.231853029881,
+        "pivot": 237.88523945062548,
+        "pwh": 134.07930327869644,
+        "pwl": 369.2325440194363
+      },
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "level_age_min": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.0026445457010315643,
+      "ci95": [
+        -0.031037087753286084,
+        0.025747996351222956
+      ],
+      "raw_p": 0.8548287771356716,
+      "rho_descriptive": -0.002643311189563401,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "touch_count": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.0014845568312740198,
+      "ci95": [
+        -0.042138239293706234,
+        0.039169125631158194
+      ],
+      "raw_p": 0.9428148730545951,
+      "rho_descriptive": -0.0006658861775878731,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "level_prominence_atr": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.0058885291277674945,
+      "ci95": [
+        -0.013633881843046532,
+        0.02541094009858152
+      ],
+      "raw_p": 0.5535925021643844,
+      "rho_descriptive": 0.005888527851804551,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "competing_liquidity_atr": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.018487094772103863,
+      "ci95": [
+        -0.04250350204497966,
+        0.005529312500771936
+      ],
+      "raw_p": 0.13101965841498775,
+      "rho_descriptive": -0.018195251889385023,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": true,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "penetration_atr": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.011500477199230641,
+      "ci95": [
+        -0.013763067917978135,
+        0.03676402231643942
+      ],
+      "raw_p": 0.37143002383401424,
+      "rho_descriptive": 0.011500475133226199,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": true,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "close_vs_level_atr": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.01221378704548659,
+      "ci95": [
+        -0.03744361135593858,
+        0.013016037264965398
+      ],
+      "raw_p": 0.341885650357602,
+      "rho_descriptive": -0.012213785932350691,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "wick_body_ratio": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.0060955347524260795,
+      "ci95": [
+        -0.032148874069813996,
+        0.019957804564961837
+      ],
+      "raw_p": 0.6458529426427575,
+      "rho_descriptive": -0.006095382133343875,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "vwap_dist_sigma": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.02677772256508515,
+      "ci95": [
+        -0.06354785017682557,
+        0.009992405046655273
+      ],
+      "raw_p": 0.1530517225555953,
+      "rho_descriptive": -0.02677772117747585,
+      "wald_F": null,
+      "q": null,
+      "N": 15862,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": true,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "vwap_slope_sigma_per_bar": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.008115154351710618,
+      "ci95": [
+        -0.03970902483740471,
+        0.023478716133983474
+      ],
+      "raw_p": 0.6139197222692687,
+      "rho_descriptive": -0.008115151713882596,
+      "wald_F": null,
+      "q": null,
+      "N": 15643,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "session_location": {
+      "testable": true,
+      "kind": "categorical_omnibus",
+      "beta": null,
+      "ci95": null,
+      "raw_p": 0.9318492077219683,
+      "rho_descriptive": null,
+      "wald_F": 0.346948542040037,
+      "q": 7,
+      "N": 16182,
+      "G": 431,
+      "levels": [
+        "london",
+        "midday",
+        "ny_afternoon",
+        "ny_morning",
+        "ny_open",
+        "overnight",
+        "power_hour",
+        "premarket"
+      ],
+      "category_betas": {
+        "midday": -241.7739512716721,
+        "ny_afternoon": -337.0879437835115,
+        "ny_morning": 99.5705049187909,
+        "ny_open": -106.96560396257291,
+        "overnight": -15.60119665334014,
+        "power_hour": -298.8602392065345,
+        "premarket": -196.37378612883913
+      },
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "minutes_since_session_open": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.014735347816980937,
+      "ci95": [
+        -0.04429791184763887,
+        0.014827216213677
+      ],
+      "raw_p": 0.3277879987959764,
+      "rho_descriptive": -0.014734418483972321,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "atr_percentile": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.013494616135925064,
+      "ci95": [
+        -0.020366860356925087,
+        0.047356092628775215
+      ],
+      "raw_p": 0.43388351669055625,
+      "rho_descriptive": 0.013494286834210695,
+      "wald_F": null,
+      "q": null,
+      "N": 16078,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "realized_vol_state": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.010585689405962828,
+      "ci95": [
+        -0.022618588327508647,
+        0.0437899671394343
+      ],
+      "raw_p": 0.5312474306247708,
+      "rho_descriptive": 0.01058556124094855,
+      "wald_F": null,
+      "q": null,
+      "N": 16074,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": true,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "range_compression": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.008140541437322124,
+      "ci95": [
+        -0.037807965717837,
+        0.021526882843192752
+      ],
+      "raw_p": 0.5899459522915287,
+      "rho_descriptive": -0.008140540573033138,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "dist_session_open_atr": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.011309607014261758,
+      "ci95": [
+        -0.044252849913134676,
+        0.02163363588461116
+      ],
+      "raw_p": 0.5001868966466343,
+      "rho_descriptive": -0.011309604308400802,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "dist_overnight_high_atr": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.013034366619368853,
+      "ci95": [
+        -0.04580434385564664,
+        0.07187307709438434
+      ],
+      "raw_p": 0.663481321791971,
+      "rho_descriptive": 0.013034366046512626,
+      "wald_F": null,
+      "q": null,
+      "N": 6155,
+      "G": 430,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": false,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": true,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "dist_overnight_low_atr": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.004377569032205653,
+      "ci95": [
+        -0.05304258450385182,
+        0.06179772256826312
+      ],
+      "raw_p": 0.8809569288453362,
+      "rho_descriptive": 0.004377566500351059,
+      "wald_F": null,
+      "q": null,
+      "N": 6155,
+      "G": 430,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": false,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "htf_15m_compression": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": -0.003102593286086197,
+      "ci95": [
+        -0.03159830578792511,
+        0.025393119215752716
+      ],
+      "raw_p": 0.8306470499571414,
+      "rho_descriptive": -0.0031025931061785454,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "htf_1h_range_pctile": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.018252796954537853,
+      "ci95": [
+        -0.01342884916382861,
+        0.049934443072904316
+      ],
+      "raw_p": 0.25810389257841326,
+      "rho_descriptive": 0.01825262397411065,
+      "wald_F": null,
+      "q": null,
+      "N": 16056,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "htf_1h_vol_state": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.016469754514530255,
+      "ci95": [
+        -0.014497028597698108,
+        0.04743653762675862
+      ],
+      "raw_p": 0.2964468292758973,
+      "rho_descriptive": 0.016469577238706675,
+      "wald_F": null,
+      "q": null,
+      "N": 16044,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": true,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    },
+    "htf_1h_dist_ref_atr": {
+      "testable": true,
+      "kind": "continuous_rank",
+      "beta": 0.005951580936215173,
+      "ci95": [
+        -0.025369326000331503,
+        0.03727248787276185
+      ],
+      "raw_p": 0.7089734509895075,
+      "rho_descriptive": 0.005951579396548149,
+      "wald_F": null,
+      "q": null,
+      "N": 16182,
+      "G": 431,
+      "levels": null,
+      "category_betas": null,
+      "gates": {
+        "in_frozen_family": true,
+        "missingness_le_20pct": true,
+        "min_clusters_met": true,
+        "valid_primary_test": true,
+        "holm_adjusted_p_le_alpha": false,
+        "subperiod_rule_met": false,
+        "no_integrity_failure": true
+      },
+      "PROMOTED_PHASE1": false
+    }
+  },
+  "promoted": [],
+  "winsorization_source": "research/WINSORIZATION_FREEZE_V2.json",
+  "population": "development evaluable, master Y30-eligible",
+  "note": "PROXY EVIDENCE - Dukascopy Nasdaq CFD, not CME NQ."
+}

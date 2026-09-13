@@ -1,0 +1,8 @@
+{
+  "applies_to": "features surviving the frozen primary statistical stage",
+  "qualifying_features": [],
+  "seed": 20260913,
+  "resamples": 5000,
+  "features": {},
+  "note": "Diagnostics never alter Holm, promotion or family size. With no feature surviving the primary stage there is nothing to diagnose; running them anyway would be an undeclared test."
+}

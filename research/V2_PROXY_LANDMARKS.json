@@ -1,0 +1,176 @@
+{
+  "origin": "EVENT_CONFIRMATION_TIME",
+  "landmarks_min": [
+    5,
+    10,
+    15,
+    30
+  ],
+  "remaining_horizon_min": 30,
+  "atr": "ATR0 for all landmarks (frozen denominator)",
+  "status": "PREDECLARED SECONDARY ANALYSIS - not a route around Y_30",
+  "landmarks": {
+    "+5m": {
+      "events_with_remaining_return": 16137,
+      "trade_dates": 431,
+      "features": {
+        "reclaim_occurred_by_L": {
+          "beta": -0.015452038644988342,
+          "raw_p_descriptive": 0.2596784586940729,
+          "rho": -0.013351464062406917,
+          "N": 16137,
+          "G": 431
+        },
+        "reclaim_latency_min_if_by_L": null,
+        "reclaim_magnitude_atr_if_by_L": {
+          "beta": -0.04269457360650364,
+          "raw_p_descriptive": 0.011437084842637625,
+          "rho": -0.042694575333392853,
+          "N": 7525,
+          "G": 431
+        },
+        "distance_travelled_atr_by_L": {
+          "beta": -0.03648855593297107,
+          "raw_p_descriptive": 0.009864419351584507,
+          "rho": -0.036488555861854274,
+          "N": 16137,
+          "G": 431
+        },
+        "displacement_observed_atr_by_L": {
+          "beta": -0.02094418228956041,
+          "raw_p_descriptive": 0.150613540020198,
+          "rho": -0.019648622730352592,
+          "N": 16137,
+          "G": 431
+        },
+        "bars_elapsed": null
+      }
+    },
+    "+10m": {
+      "events_with_remaining_return": 16071,
+      "trade_dates": 431,
+      "features": {
+        "reclaim_occurred_by_L": {
+          "beta": -0.00835713687711781,
+          "raw_p_descriptive": 0.5511693209042076,
+          "rho": -0.0071731013341560556,
+          "N": 16071,
+          "G": 431
+        },
+        "reclaim_latency_min_if_by_L": {
+          "beta": 0.01610034651482195,
+          "raw_p_descriptive": 0.45963767320781035,
+          "rho": 0.01065487877451191,
+          "N": 9105,
+          "G": 431
+        },
+        "reclaim_magnitude_atr_if_by_L": {
+          "beta": -0.03309037284992744,
+          "raw_p_descriptive": 0.03506092927955897,
+          "rho": -0.0330903738282852,
+          "N": 9105,
+          "G": 431
+        },
+        "distance_travelled_atr_by_L": {
+          "beta": -0.0306488490564103,
+          "raw_p_descriptive": 0.026059443663720816,
+          "rho": -0.0306488489960692,
+          "N": 16071,
+          "G": 431
+        },
+        "displacement_observed_atr_by_L": {
+          "beta": -0.012268999290227622,
+          "raw_p_descriptive": 0.38507118960850095,
+          "rho": -0.011940063241443971,
+          "N": 16071,
+          "G": 431
+        },
+        "bars_elapsed": null
+      }
+    },
+    "+15m": {
+      "events_with_remaining_return": 16028,
+      "trade_dates": 431,
+      "features": {
+        "reclaim_occurred_by_L": {
+          "beta": -0.020230691325357597,
+          "raw_p_descriptive": 0.14498061760619685,
+          "rho": -0.016963103902357664,
+          "N": 16028,
+          "G": 431
+        },
+        "reclaim_latency_min_if_by_L": {
+          "beta": 0.020927456490705154,
+          "raw_p_descriptive": 0.24950915659394735,
+          "rho": 0.015954509353373232,
+          "N": 10019,
+          "G": 431
+        },
+        "reclaim_magnitude_atr_if_by_L": {
+          "beta": -0.047364534095013955,
+          "raw_p_descriptive": 0.0011124577315152638,
+          "rho": -0.047364535294255806,
+          "N": 10019,
+          "G": 431
+        },
+        "distance_travelled_atr_by_L": {
+          "beta": -0.01833071940480302,
+          "raw_p_descriptive": 0.18178777213179165,
+          "rho": -0.018330719368422545,
+          "N": 16028,
+          "G": 431
+        },
+        "displacement_observed_atr_by_L": {
+          "beta": -0.012424887106877058,
+          "raw_p_descriptive": 0.372957924628907,
+          "rho": -0.012229149264003565,
+          "N": 16028,
+          "G": 431
+        },
+        "bars_elapsed": null
+      }
+    },
+    "+30m": {
+      "events_with_remaining_return": 15898,
+      "trade_dates": 431,
+      "features": {
+        "reclaim_occurred_by_L": {
+          "beta": 0.0014548249802075475,
+          "raw_p_descriptive": 0.9308603605983989,
+          "rho": 0.0011432994371654412,
+          "N": 15898,
+          "G": 431
+        },
+        "reclaim_latency_min_if_by_L": {
+          "beta": 0.01416493199106661,
+          "raw_p_descriptive": 0.3628491498301817,
+          "rho": 0.011967542496324472,
+          "N": 11289,
+          "G": 431
+        },
+        "reclaim_magnitude_atr_if_by_L": {
+          "beta": -0.033340049531758176,
+          "raw_p_descriptive": 0.011549487914755949,
+          "rho": -0.0333400502400469,
+          "N": 11289,
+          "G": 431
+        },
+        "distance_travelled_atr_by_L": {
+          "beta": -0.01659306387061399,
+          "raw_p_descriptive": 0.23749895577741642,
+          "rho": -0.016593063836880067,
+          "N": 15898,
+          "G": 431
+        },
+        "displacement_observed_atr_by_L": {
+          "beta": 0.0032413516740255055,
+          "raw_p_descriptive": 0.8283582364524531,
+          "rho": 0.003221937199752473,
+          "N": 15898,
+          "G": 431
+        },
+        "bars_elapsed": null
+      }
+    }
+  }
+}

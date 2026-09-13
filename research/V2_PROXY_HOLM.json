@@ -1,0 +1,184 @@
+{
+  "family_size": 22,
+  "alpha": 0.05,
+  "tested": 22,
+  "not_testable": 0,
+  "results": [
+    {
+      "feature": "competing_liquidity_atr",
+      "p": 0.13101965841498775,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 22
+    },
+    {
+      "feature": "vwap_dist_sigma",
+      "p": 0.1530517225555953,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 21
+    },
+    {
+      "feature": "htf_1h_range_pctile",
+      "p": 0.25810389257841326,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 20
+    },
+    {
+      "feature": "htf_1h_vol_state",
+      "p": 0.2964468292758973,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 19
+    },
+    {
+      "feature": "minutes_since_session_open",
+      "p": 0.3277879987959764,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 18
+    },
+    {
+      "feature": "close_vs_level_atr",
+      "p": 0.341885650357602,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 17
+    },
+    {
+      "feature": "penetration_atr",
+      "p": 0.37143002383401424,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 16
+    },
+    {
+      "feature": "atr_percentile",
+      "p": 0.43388351669055625,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 15
+    },
+    {
+      "feature": "dist_session_open_atr",
+      "p": 0.5001868966466343,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 14
+    },
+    {
+      "feature": "realized_vol_state",
+      "p": 0.5312474306247708,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 13
+    },
+    {
+      "feature": "level_prominence_atr",
+      "p": 0.5535925021643844,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 12
+    },
+    {
+      "feature": "liquidity_class",
+      "p": 0.557757860271041,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 11
+    },
+    {
+      "feature": "range_compression",
+      "p": 0.5899459522915287,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 10
+    },
+    {
+      "feature": "vwap_slope_sigma_per_bar",
+      "p": 0.6139197222692687,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 9
+    },
+    {
+      "feature": "wick_body_ratio",
+      "p": 0.6458529426427575,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 8
+    },
+    {
+      "feature": "dist_overnight_high_atr",
+      "p": 0.663481321791971,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 7
+    },
+    {
+      "feature": "htf_1h_dist_ref_atr",
+      "p": 0.7089734509895075,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 6
+    },
+    {
+      "feature": "htf_15m_compression",
+      "p": 0.8306470499571414,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 5
+    },
+    {
+      "feature": "level_age_min",
+      "p": 0.8548287771356716,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 4
+    },
+    {
+      "feature": "dist_overnight_low_atr",
+      "p": 0.8809569288453362,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 3
+    },
+    {
+      "feature": "session_location",
+      "p": 0.9318492077219683,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 2
+    },
+    {
+      "feature": "touch_count",
+      "p": 0.9428148730545951,
+      "p_holm": 1.0,
+      "reject": false,
+      "testable": true,
+      "multiplier": 1
+    }
+  ]
+}
