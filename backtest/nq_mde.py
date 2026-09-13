@@ -17,14 +17,39 @@ K = Z_A + Z_P                       # 2.802
 # PROTOCOL §8: MDE is recomputed from the data actually ingested, never carried
 # forward from an earlier sample. Path and friction are arguments so the same
 # script serves both bases; friction is in price points per §3 / §12.
-CSV      = sys.argv[1] if len(sys.argv) > 1 else "data_nq/NQ_5m.csv"
-FRICTION = float(sys.argv[2]) if len(sys.argv) > 2 else 0.70
+CSV       = sys.argv[1] if len(sys.argv) > 1 else "data_nq/NQ_5m.csv"
+FRICTION  = float(sys.argv[2]) if len(sys.argv) > 2 else 0.70
+PARTITION = sys.argv[3] if len(sys.argv) > 3 else None
 print(f"basis    {CSV}")
-print(f"friction {FRICTION:.2f} price points round trip\n")
+print(f"friction {FRICTION:.2f} price points round trip")
 
-bars = E.load_csv(CSV); ctx = E.build_context(bars)
+if PARTITION:
+    import partitions as P
+    P.guard(PARTITION)
+    bars, countable_from = P.load(CSV, PARTITION)
+    print(f"partition {PARTITION}: {len(bars['t']):,} bars incl. warm-up\n")
+else:
+    # No partition means the WHOLE file, holdout included. Refuse unless the
+    # caller says so: an earlier run of this script did exactly that and
+    # reported a pooled mean spanning the holdout period.
+    if os.environ.get("MMT_WHOLE_BASIS") != "yes":
+        sys.exit("HALT: no partition given, which would run over the entire "
+                 "basis including the holdout.\n"
+                 "  Pass a partition name (development / validation), or set "
+                 "MMT_WHOLE_BASIS=yes if that is genuinely what you want.\n"
+                 "  Nothing was read.")
+    bars = E.load_csv(CSV)
+    countable_from = None
+    print("partition NONE - whole basis, holdout included\n")
+
+ctx = E.build_context(bars)
 log = []
 E.run(bars, ctx, replace(CANDIDATE, friction_points=FRICTION), outcome_log=log)
+if countable_from is not None:
+    import partitions as P
+    before = len(log)
+    log = P.countable(log, bars, countable_from)
+    print(f"dropped {before - len(log)} trades entering in warm-up/embargo\n")
 t = bars["t"]
 
 def trade_day(ts):

@@ -1,4 +1,4 @@
-# NQ 5-minute research protocol — v1.3b, FROZEN 2026-09-12
+# NQ 5-minute research protocol — v1.3c, FROZEN 2026-09-13
 
 Supersedes v1.0. Declared **before** the multi-year NQ dataset exists and before
 any paid data request. No strategy result was produced while writing this
@@ -397,6 +397,20 @@ lows up would shrink every range and bias sweep detection the other way, which
 is not more honest for being conservative. Measured effect at 5m: invariant
 repair needed on 0.00% of bars, mean bar range 17.537 -> 17.539 points.
 
+### Holdout exposure log — every read, disclosed
+
+The holdout has one permitted use. Any earlier exposure, accidental or not, is
+recorded here rather than left to memory.
+
+| When | What was seen | Severity |
+|---|---|---|
+| v1.3b, MDE run | `nq_mde.py` was pointed at the whole basis file, so the engine ran across all partitions and printed a pooled mean of **-0.021R** over 2018-05..2026-08 with the pre-existing `CANDIDATE` config. | Partial. One config's aggregate sign over a span that includes the holdout. `CANDIDATE` is not a variant under selection in H1-H6, and no parameter was chosen from it. Not a full spend. |
+
+Tooling was changed so this cannot recur by omission rather than by intent:
+`partitions.py` requires a partition name, `guard()` refuses the holdout unless
+`MMT_SPEND_HOLDOUT=yes` is set deliberately, and running a whole basis file
+requires `MMT_WHOLE_BASIS=yes`. Both refuse before reading anything.
+
 ### Claim limits — binding
 
 - Results on this basis may be stated as: *this rule survives across regimes in
@@ -412,6 +426,12 @@ repair needed on 0.00% of bars, mean bar range 17.537 -> 17.539 points.
 
 ## Changelog
 
+- **1.3c — 2026-09-13** — basis accepted after two gate rejections (truncated
+  2018-01..04 sessions; a stub final trade day), research window fixed at
+  2018-05-01..2026-08-31T22:00Z. Partitions frozen. MDE recomputed on the
+  development partition: **0.10R**, down from 0.34R on the 72-day NQ sample.
+  Holdout exposure logged and partition guards added. No strategy result
+  produced during this revision.
 - **1.3b — 2026-09-12** — §4a added after discovering that the window §4
   designates as holdout had already been searched over 18+ configurations by
   prior research. The holdout moves to the never-fetched 2018-01-01..2022-09-08
