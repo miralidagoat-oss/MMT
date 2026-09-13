@@ -1,0 +1,50 @@
+{
+  "basis": "data_ndx_q/NDX_5m.csv",
+  "generated_utc": "2026-09-13T05:20:37.214484",
+  "protocol": "v1.3b \u00a74a - untouched-block holdout",
+  "design": "Holdout is the block no prior run has touched (before 2022-09-09), NOT the latest 25%. Prior research searched 18+ configurations over 2022-09-09..2026-09-08, so a recent holdout would be development data wearing a holdout label.",
+  "holdout_direction": "EARLIER than the fitting data. The test runs backwards in time. This is unconventional and is disclosed with every holdout number.",
+  "contaminated_block": "2022-09-09 onward",
+  "trade_days_total": 2153,
+  "warmup_calendar_days": 30,
+  "embargo_trade_days": 1,
+  "rule_entry_bar": "a trade belongs to the partition containing its entry bar; exits may cross the boundary",
+  "holdout_uses_remaining": 1,
+  "partitions": [
+    {
+      "name": "development",
+      "use": "debugging, hypothesis formation, free exploration",
+      "start": "2022-09-09",
+      "end": "2025-05-05",
+      "trade_days": 683,
+      "warmup_from": "2022-08-10",
+      "embargoed_days": [],
+      "first_tradeable_day": "2022-09-09",
+      "share_pct": 31.7
+    },
+    {
+      "name": "validation",
+      "use": "selecting among predeclared variants only",
+      "start": "2025-05-06",
+      "end": "2026-08-31",
+      "trade_days": 342,
+      "warmup_from": "2025-04-06",
+      "embargoed_days": [
+        "2025-05-06"
+      ],
+      "first_tradeable_day": "2025-05-07",
+      "share_pct": 15.9
+    },
+    {
+      "name": "holdout",
+      "use": "ONE run, after freeze",
+      "start": "2018-05-31",
+      "end": "2022-09-08",
+      "trade_days": 1106,
+      "warmup_from": "2018-05-01",
+      "embargoed_days": [],
+      "first_tradeable_day": "2018-05-31",
+      "share_pct": 51.4
+    }
+  ]
+}

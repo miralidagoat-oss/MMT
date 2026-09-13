@@ -26,10 +26,21 @@ sweep detection in the opposite direction, which is no more honest for being
 conservative.
 """
 import csv
+import datetime as dt
 import os
 import sys
 
 GRID = float(sys.argv[3]) if len(sys.argv) > 3 else 0.25
+# Research window. Bars outside it are dropped from the research copy; the raw
+# files keep everything. 2018-01..2018-04 returns ~14h days (median 167 bars vs
+# 267), which would silently corrupt every Asia-session and overnight
+# liquidity-pool feature - the same defect that excludes 2015-2017.
+START = sys.argv[4] if len(sys.argv) > 4 else None
+END = sys.argv[5] if len(sys.argv) > 5 else None
+_t0 = int(dt.datetime.fromisoformat(START).replace(tzinfo=dt.timezone.utc)
+          .timestamp()) if START else None
+_t1 = int(dt.datetime.fromisoformat(END).replace(tzinfo=dt.timezone.utc)
+          .timestamp()) if END else None
 SRC = sys.argv[1] if len(sys.argv) > 1 else "data_ndx"
 DST = sys.argv[2] if len(sys.argv) > 2 else "data_ndx_q"
 
@@ -45,8 +56,13 @@ def convert(name):
         rows = list(r)
     out = []
     moved = 0
+    dropped = 0
     rng_before = rng_after = 0.0
     for t, o, h, l, c, v in rows:
+        ts = int(t)
+        if (_t0 is not None and ts < _t0) or (_t1 is not None and ts >= _t1):
+            dropped += 1
+            continue
         o, h, l, c = float(o), float(h), float(l), float(c)
         rng_before += h - l
         qo, qh, ql, qc = q(o), q(h), q(l), q(c)
@@ -62,9 +78,10 @@ def convert(name):
         w.writerow(head)
         w.writerows(out)
     n = len(rows)
-    print(f"  {name:<16} {n:>9,} bars   invariant repaired on {moved:,} "
-          f"({100*moved/max(n,1):.2f}%)   mean range "
-          f"{rng_before/max(n,1):.3f} -> {rng_after/max(n,1):.3f} pts")
+    print(f"  {name:<16} {len(out):>9,} kept / {n:,} bars   "
+          f"{dropped:,} outside window   repaired {moved:,} "
+          f"   mean range {rng_before/max(len(out),1):.3f} -> "
+          f"{rng_after/max(len(out),1):.3f} pts")
     return n
 
 
@@ -85,6 +102,11 @@ if __name__ == "__main__":
                              "quantize_basis.py; OHLC invariant re-derived from "
                              "the rounded values. Raw files retained in " + SRC)
         p["derived_from"] = SRC
+        p["research_window"] = {"start": START, "end": END,
+                                "reason": "2018-01..2018-04 returns ~14h "
+                                          "sessions (median 167 bars/day vs "
+                                          "267); truncated days corrupt "
+                                          "Asia-session and overnight features"}
         with open(os.path.join(DST, "PROVENANCE.json"), "w") as f:
             json.dump(p, f, indent=2)
         print(f"  PROVENANCE.json carried forward with the quantization noted")

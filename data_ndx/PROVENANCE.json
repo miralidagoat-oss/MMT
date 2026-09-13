@@ -22,21 +22,19 @@
     "2025-04-18",
     "2026-04-03"
   ],
-  "bars_1m": 2883855,
+  "bars_1m": 2885070,
   "first_utc": "2018-01-02T07:05:00",
   "last_utc": "2026-09-01T23:59:00",
   "fetched_utc": "2026-09-13T00:02:01.416819",
   "adjustment": "none - CFD has no roll and no back-adjustment",
   "files": {
-    "NDX_1m.csv": 2883855,
-    "NDX_5m.csv": 577170,
-    "NDX_15m.csv": 192511,
-    "NDX_1h.csv": 49733
+    "NDX_1m.csv": 2885070,
+    "NDX_5m.csv": 577413,
+    "NDX_15m.csv": 192592,
+    "NDX_1h.csv": 49754
   },
-  "unresolved_days": [
-    "2022-10-07"
-  ],
-  "weekdays_unresolved": 1,
-  "repaired_utc": "2026-09-13T02:55:17.312628",
-  "repair_note": "22 days re-requested after a concurrency-induced silent-failure defect; 13,107 minutes recovered"
+  "unresolved_days": [],
+  "weekdays_unresolved": 0,
+  "repaired_utc": "2026-09-13T02:58:37.046449",
+  "repair_note": "12 days re-requested after a concurrency-induced silent-failure defect; 1,215 minutes recovered"
 }

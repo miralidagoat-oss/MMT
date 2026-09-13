@@ -59,20 +59,31 @@ bad = [r for r in rows if not (r[3] <= r[1] <= r[2] and r[3] <= r[4] <= r[2])]
 ok(not bad, f"OHLC self-consistent ({len(bad)} violations)")
 ok(all(r[5] >= 0 for r in rows), "no negative volume")
 
-# ── 2. session coverage per year - the check that excludes 2015-2017 ───────
-print("\n2. Session coverage by year (hours of the ET day seen)")
-per_year = collections.defaultdict(set)
+# ── 2. session coverage per MONTH ──────────────────────────────────────────
+# Deliberately month-granular. A year-level version of this check passed 2018
+# because May-December was complete, concealing four truncated months at the
+# start of the year - exactly the defect the check exists to catch.
+print("\n2. Session coverage by month (median bars per trade day; 276 = full 23h)")
 per_day = collections.Counter()
 for r in rows:
-    t = dt.datetime.fromtimestamp(r[0], dt.timezone.utc).astimezone(ET)
-    per_year[t.year].add(t.hour)
     per_day[trade_day(r[0])] += 1
-for y in sorted(per_year):
-    h = len(per_year[y])
-    flag = "" if h >= 22 else "   <-- TRUNCATED"
-    print(f"   {y}  {h:2d}/23 ET hours present{flag}")
-ok(all(len(v) >= 22 for v in per_year.values()),
-   "every year carries a full ~23h session (truncated years excluded)")
+by_month = collections.defaultdict(list)
+for d, c in per_day.items():
+    by_month[(d.year, d.month)].append(c)
+med = {k: statistics.median(v) for k, v in by_month.items()}
+FULL = 250
+short = sorted(k for k, m in med.items() if m < FULL)
+prev = None
+for k in sorted(med):
+    full = med[k] >= FULL
+    if full != prev:
+        print(f"   {k[0]}-{k[1]:02d}  median {med[k]:5.0f}  "
+              f"{'FULL' if full else 'TRUNCATED'}   <-- change")
+        prev = full
+ok(not short, f"every month carries a full session "
+              f"({len(short)} truncated: "
+              f"{', '.join(f'{y}-{m:02d}' for y, m in short[:6])}"
+              f"{'...' if len(short) > 6 else ''})")
 
 # ── 3. per-trade-day bar counts ────────────────────────────────────────────
 print("\n3. Bars per CME trade day")
