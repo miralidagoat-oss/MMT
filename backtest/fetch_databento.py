@@ -117,10 +117,14 @@ def _numeric_meta(method, k, **f):
     function exits the process rather than returning a sentinel a caller might
     misread as zero."""
     # Every field sent must be one Databento documents for these methods:
-    # dataset, symbols, stype_in, schema, start, end, limit. No `mode` - the
-    # published unit-price categories (historical, historical-streaming, live)
-    # are a price list, not evidence that `mode` is a valid query parameter.
-    # All three methods therefore receive the identical query.
+    # dataset, symbols, stype_in, schema, start, end, limit.
+    #
+    # CORRECTION (verified against databento 0.86.0): `mode` DOES exist on
+    # metadata.get_cost. An earlier note here claimed it was not a valid query
+    # parameter; that was wrong. It is still never sent, for a different and
+    # better reason: `mode` is absent from get_record_count and
+    # get_billable_size, and all three methods must describe ONE identical
+    # query or the three numbers would not describe the same purchase.
     v = _meta(method, dict(dataset=DATASET, **f), k)
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         return float(v)
