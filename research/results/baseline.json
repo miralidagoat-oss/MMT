@@ -1,0 +1,127 @@
+{
+  "headline": {
+    "label": "development",
+    "n": 1978,
+    "mean_r": 0.013623523309142486,
+    "sd": 1.6510648906268404,
+    "pf": 1.0200175636851911,
+    "win_rate": 0.2345803842264914,
+    "trade_days_in_span": 706,
+    "trade_days_with_trades": 659,
+    "freq_per_trade_day": 2.801699716713881,
+    "rth_trades": 680,
+    "freq_rth_per_trade_day": 0.9631728045325779,
+    "buckets": {
+      "overnight": 489,
+      "london": 493,
+      "premarket": 293,
+      "ny_open": 225,
+      "ny_morning": 141,
+      "midday": 131,
+      "ny_afternoon": 80,
+      "power_hour": 103,
+      "post": 23
+    },
+    "scales": {
+      "naive_trade": [
+        -0.05913754939692989,
+        0.08638459601521487
+      ],
+      "cr1_day_cluster": [
+        -0.056467853645392585,
+        0.08371490026367756
+      ],
+      "day_block": [
+        -0.054201618512791795,
+        0.0838540044908869
+      ],
+      "stationary_5d": [
+        -0.05582364243898563,
+        0.08179503783944873
+      ],
+      "moving_block_5d": [
+        -0.0563911842790494,
+        0.08163401794523589
+      ],
+      "moving_block_10d": [
+        -0.05742142183456618,
+        0.07968323997570723
+      ],
+      "moving_block_20d": [
+        -0.057315851479230295,
+        0.07586017960441821
+      ]
+    },
+    "headline_scale": "cr1_day_cluster",
+    "headline_ci": [
+      -0.056467853645392585,
+      0.08371490026367756
+    ],
+    "significant": false
+  },
+  "stressed": {
+    "label": "stressed friction $24 RT",
+    "n": 1978,
+    "mean_r": -0.015501375901646287,
+    "sd": 1.6518380719708772,
+    "pf": 0.9779462191312058,
+    "win_rate": 0.2345803842264914,
+    "trade_days_in_span": 706,
+    "trade_days_with_trades": 659,
+    "freq_per_trade_day": 2.801699716713881,
+    "rth_trades": 680,
+    "freq_rth_per_trade_day": 0.9631728045325779,
+    "buckets": {
+      "overnight": 489,
+      "london": 493,
+      "premarket": 293,
+      "ny_open": 225,
+      "ny_morning": 141,
+      "midday": 131,
+      "ny_afternoon": 80,
+      "power_hour": 103,
+      "post": 23
+    },
+    "scales": {
+      "naive_trade": [
+        -0.08829652207406624,
+        0.057293770270773675
+      ],
+      "cr1_day_cluster": [
+        -0.08564620042258653,
+        0.05464344861929396
+      ],
+      "day_block": [
+        -0.08401583123437303,
+        0.05431903664055023
+      ],
+      "stationary_5d": [
+        -0.08441766824203607,
+        0.053423722663781995
+      ],
+      "moving_block_5d": [
+        -0.08626481354472215,
+        0.053523133231217976
+      ],
+      "moving_block_10d": [
+        -0.0881198424131116,
+        0.050450936585511724
+      ],
+      "moving_block_20d": [
+        -0.08760432325925678,
+        0.04738374791648374
+      ]
+    },
+    "headline_scale": "cr1_day_cluster",
+    "headline_ci": [
+      -0.08564620042258653,
+      0.05464344861929396
+    ],
+    "significant": false
+  },
+  "verdict": "REJECT",
+  "why": [
+    "most conservative interval (cr1_day_cluster) includes zero",
+    "negative at stressed friction (-0.0155R)"
+  ]
+}
