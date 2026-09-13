@@ -28,14 +28,31 @@ coefficient or threshold is assumed to transfer.
   on 0.25. **V2 does not round them.**
 - `data_ndx_q/NDX_5m.csv` was **irreversibly rounded to 0.25** for V1 and is
   retained only for V1 reproducibility. V2 does not use it.
-- `PROXY_SWEEP_PENETRATION_POINTS = 0.25` is an NQ-like **minimum penetration
-  threshold**, never called the CFD's tick.
+**Four separately named research constants** (values coincide at 0.25; they are
+deliberately **not** one symbol, so changing one never silently changes another):
 
-### Coverage limitation
+| Constant | Purpose |
+|---|---|
+| `PROXY_SWEEP_PENETRATION_POINTS` | minimum penetration to call a sweep |
+| `PROXY_TOUCH_TOLERANCE_POINTS` | half-width of the touch band (`touch_count`) |
+| `PROXY_BODY_FLOOR_POINTS` | minimum body denominator (`wick_body_ratio`) |
+| `PROXY_PIVOT_DUP_TOLERANCE_PTS` | duplicate-pivot merge band |
+
+None is a property of the Dukascopy instrument. **None is a tick.**
+`assert_v2_basis()` refuses the V1 quantized file at every load site.
+
+### Coverage limitation and PROXY level semantics — binding
 
 The CFD's last bar opens ~16:10 ET and it reopens 18:00 ET, so it does **not**
-cover 16:15–18:00 ET, of which 16:15–17:00 is genuine CME time. The `post`
-bucket is sparse on this basis by construction.
+cover 16:15–18:00 ET, of which **16:15–17:00 is genuine CME trading time**.
+
+Therefore `pdh`, `pdl`, `pwh`, `pwl` and every session extremum are
+**PROXY-OBSERVED extrema**, *not* true CME NQ highs and lows, and may differ
+from the real NQ level. The CME trade-date calendar still partitions time; only
+the **prices** come from observed proxy bars. The missing interval is **never**
+filled synthetically. The `post` bucket is sparse by construction.
+
+**Every V2_PROXY report header must state this.**
 
 ## 2. Time semantics
 
@@ -107,6 +124,36 @@ initialised V1 state; it is permanently excluded from that claim. Neither is
 opened without `MMT_SPEND_STRESS_SET=yes`. Even if opened, the result is
 **historical stress/generalisation evidence, never prospective performance** —
 the block precedes the development data.
+
+## 4a. Primary-outcome population — settled BEFORE any feature test
+
+One **master primary population** is built first, for all features at once:
+
+> **A** in the V2-evaluable development period · **B** confirmation valid ·
+> **C** `ATR0` valid · **D** the exact `C_30` endpoint bar exists · **E** no gap
+> interrupts the path · **F** the horizon does not cross a partition boundary ·
+> **G** no contract roll crossed · **H** all other frozen censoring rules met.
+
+Any failure → **PRIMARY-OUTCOME-INELIGIBLE**, with the reason recorded.
+
+**Eligibility is determined first; feature availability second.** A feature test
+may narrow the population only through *that feature's own* missingness.
+
+Reported globally: total detected events · primary-Y30 eligible · censored ·
+censoring-reason counts. Per feature: Y30-eligible · feature-nonmissing ·
+episodes · trade days · missing %.
+
+### Censoring audit — availability only
+
+Before any confirmatory test, eligibility **rate** is reported by
+`session_location`, hour, `direction`, `liquidity_class` and year. This audit may
+read whether an outcome is present; it may **never** read its value or sign, and
+`censoring_audit()` raises if handed an event carrying one.
+
+**A categorical level joins the confirmatory design only with ≥ 30 distinct CME
+trade-date clusters carrying primary-eligible events.** Below that it is excluded
+from inference and reported as insufficient coverage. This is sample
+availability, never an outcome-performance decision, and is frozen now.
 
 ## 5. Outcomes
 
@@ -205,7 +252,7 @@ c     = (G/(G-1)) · ((N-1)/(N-K))
 
 | | |
 |---|---|
-| continuous | `rank(Y_30) = α + β·rank(X)`; β's clustered p enters Holm |
+| continuous | `rank(Y_30) = α + β·rank(X)`; β's clustered p enters Holm. Also report `rho` = Pearson on the same ranks — **descriptive effect size only, supplying no p-value** |
 | boolean | `Y_30 = α + β·B`; β's clustered p |
 | categorical | `rank(Y_30)` on K−1 dummies; **one** clustered omnibus Wald (H0: all K−1 zero) → F(q, G−1); that single p enters Holm |
 | critical dist. | **Student-t(G−1)**; Wald referred to F(q, G−1) |
@@ -218,32 +265,68 @@ c     = (G/(G-1)) · ((N-1)/(N-K))
 any of these. Naive Spearman/Kruskal–Wallis p-values are never combined with
 a clustered interval.
 
-Categorical features have **no single sign**; individual category
-coefficients are descriptive. Their stability rule is the rank-correlation of
-the category-effect vector across the three development subperiods,
-predeclared here, required **positive in both S1↔S2 and S2↔S3 comparisons**.
+Categorical features have **no single sign**; individual category coefficients
+are descriptive.
+
+**Categorical stability, reference-invariant.** For each subperiod compute the
+fitted mean rank outcome for every eligible category, then centre by the
+**unweighted** mean across eligible categories. Centring makes the vector
+independent of which dummy was the regression reference. The **same category
+set** must be present in S1, S2 and S3 and must meet the minimum-cluster rule in
+each; the common set is used. **Fewer than 3 common categories → INCONCLUSIVE
+and non-promotable.** Otherwise Spearman rho of the centred vectors for S1↔S2
+and S2↔S3 must **both be > 0**. A category is dropped only for sample
+availability, never for performing poorly.
+
+**Holm family size is permanently 22.** A predeclared feature that cannot
+produce a valid test for a pre-outcome reason is reported **NOT TESTABLE / NOT
+PROMOTABLE**. It is never replaced, and `m` is never reduced — power must not be
+gained because a predeclared test failed to become usable.
 
 Day clustering does **not** solve multi-day regime dependence and is not
 claimed to; the block/stationary bootstraps remain sensitivity checks.
 
-## 9. Promotion gate
+## 9. Promotion — mechanical gates only
 
-A feature is statistically supported only if **all** hold:
+**These seven are the ONLY hard Phase-1 gates**, evaluated by `promote()`:
 
-1. Holm-adjusted primary test survives at α = 0.05
-2. CR1 interval supports the same direction
-3. no dependence-aware sensitivity gives a materially contradictory sign
-4. **continuous:** full-development sign reproduced in **all three** subperiod
-   point estimates (individual subperiod significance NOT required);
-   **categorical:** the predeclared stability rule above
-5. no domination by a handful of days · no single-year dependency · no
-   single-direction dependency unless modelled · no parameter needle · no
-   future leakage · no roll contamination
+1. feature is in the frozen 22-feature family
+2. feature missingness ≤ 20%
+3. minimum-cluster requirement satisfied
+4. a valid primary CR1 test exists
+5. Holm-adjusted p ≤ 0.05
+6. **continuous:** the full-development CR1 effect direction is reproduced by
+   the point estimate in S1, S2 **and** S3 (individual subperiod significance
+   NOT required); **categorical:** the frozen stability rule above
+7. no timestamp / leakage / integrity test failed
 
-**"Economically nontrivial" is NOT a Phase-1 pass/fail criterion.** Effect
-magnitude is reported; whether it survives entry timing, spread, slippage,
-stops and targets is a separate later question. No arbitrary ATR threshold is
-invented to make this look quantitative.
+**Removed as gates**, because they were not mechanical and created post-result
+discretion: *"no domination by a handful of days"*, *"no single-year
+dependency"*, *"no parameter needle"*, *"no materially contradictory sensitivity
+sign"*, *"economically nontrivial"*.
+
+`promote()` **raises** if a diagnostic is passed in as a gate, and raises if any
+hard gate is absent. That is how those phrases stop being discretionary vetoes
+applied after the numbers are visible.
+
+## 9a. Robustness diagnostics — reported, never gates
+
+Frozen now so they cannot be chosen opportunistically. For every feature
+surviving Holm:
+
+- **year** — effect by calendar year where sample permits
+- **direction** — sell-side and buy-side separately
+- **day concentration** — descriptive effect after excluding the top 1% of trade
+  dates by absolute contribution to the association statistic
+- **block dependence** — moving block at **5, 10, 20** trade days plus a
+  stationary bootstrap at mean block **5**, **5000 resamples, seed 20260913**.
+  Block lengths are predeclared and never searched.
+- **gapped events** — gapped events are **INCLUDED** in the primary analysis; a
+  gap-excluded rerun is descriptive only
+
+None adds a Holm hypothesis. None can change `promoted`. A later strategy stage
+may formalise any of them only with thresholds frozen before that stage's
+results.
 
 ## 10. Missingness, winsorization, gaps
 

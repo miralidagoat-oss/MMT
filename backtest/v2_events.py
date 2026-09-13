@@ -19,9 +19,28 @@ import cme_session as S
 # only ~2% of raw highs land on 0.25. V2 reads the RAW file and does not round
 # it. 0.25 is applied only as an NQ-LIKE MINIMUM PENETRATION THRESHOLD, and is
 # never described as the CFD's native tick.
-PROXY_SWEEP_PENETRATION_POINTS = 0.25
-RAW_BASIS = "data_ndx/NDX_5m.csv"        # V2 reads this
-QUANTIZED_BASIS = "data_ndx_q/NDX_5m.csv"  # V1 only; irreversibly rounded
+# FOUR SEPARATE RESEARCH CONSTANTS. Their numeric values coincide at 0.25, but
+# they are deliberately NOT one shared symbol: changing the sweep threshold must
+# never silently change touch counting, pivot de-duplication or wick geometry.
+# None of them is a property of the Dukascopy instrument.
+PROXY_SWEEP_PENETRATION_POINTS = 0.25   # minimum penetration to call a sweep
+PROXY_TOUCH_TOLERANCE_POINTS   = 0.25   # half-width of the touch band
+PROXY_BODY_FLOOR_POINTS        = 0.25   # minimum body denominator, wick geometry
+PROXY_PIVOT_DUP_TOLERANCE_PTS  = 0.25   # duplicate-pivot merge band
+
+RAW_BASIS = "data_ndx/NDX_5m.csv"        # V2 reads ONLY this
+QUANTIZED_BASIS = "data_ndx_q/NDX_5m.csv"  # V1 only; irreversibly rounded.
+# V2 must never load it. assert_v2_basis() enforces that at every load site.
+
+
+def assert_v2_basis(path):
+    """Refuse the V1 quantized file, and refuse any rounding of raw quotes."""
+    if "data_ndx_q" in str(path):
+        raise ValueError(
+            f"V2 must not read {path!r}: that file was irreversibly rounded to "
+            "0.25 for V1. V2 reads RAW unquantized CFD quotes from "
+            f"{RAW_BASIS!r}.")
+    return True
 
 BAR_SECONDS = 300
 # Stored stamps are BAR_OPEN_TIME (proven in test_v2_causality.py: 18:00 ET
@@ -48,7 +67,7 @@ EPISODE_ATR_MULT = 0.5
 # ── pivot economics, separated from storage (audit item 15) ───────────────
 PIVOT_LEN = 5                # frozen explicitly, no symbolic reference
 MAX_ACTIVE_POOLS = 20000     # SAFETY CEILING ONLY - never an economic rule
-PIVOT_DUP_TOLERANCE_POINTS = PROXY_SWEEP_PENETRATION_POINTS
+
 
 
 class PoolCeilingExceeded(Exception):
@@ -103,6 +122,21 @@ def merge_duplicate_pivots(existing, new):
 # by the state machine below; no level's characteristics are discarded.
 
 
+def touch(level, bar_high, bar_low):
+    """A prior touch: the bar's range intersects the level's tolerance band.
+    Uses PROXY_TOUCH_TOLERANCE_POINTS, NOT the sweep constant."""
+    return (bar_low <= level + PROXY_TOUCH_TOLERANCE_POINTS
+            and bar_high >= level - PROXY_TOUCH_TOLERANCE_POINTS)
+
+
+def wick_body_ratio(direction, o, h, l, c):
+    """Wick/body geometry. The denominator floor is PROXY_BODY_FLOOR_POINTS,
+    NOT the sweep constant."""
+    body = max(abs(c - o), PROXY_BODY_FLOOR_POINTS)
+    wick = (min(o, c) - l) if direction == 1 else (h - max(o, c))
+    return max(0.0, min(10.0, wick / body))
+
+
 def is_sweep(direction, level, bar_high, bar_low):
     """Exact sweep test on RAW quotes. +1 sell-side, -1 buy-side."""
     if direction == 1:
@@ -125,24 +159,35 @@ def is_gapped(direction, level, bar_high, bar_low):
 # Reused from V1's engine machinery at the commit recorded in PROTOCOL_V2.md;
 # each dynamic construction beyond `pivot` is a NEW hypothesis family and must
 # enter the ledger before its result is seen.
+# PROXY SEMANTICS, binding: the CFD's last bar opens ~16:10 ET and it reopens
+# 18:00 ET, so it does NOT observe ~16:15-18:00 ET - including 16:15-17:00 ET
+# when CME NQ is still trading. Every extremum below is therefore a
+# PROXY-OBSERVED extremum, NOT a true CME NQ high or low, and may differ from
+# the real NQ level. The CME trade-date calendar still partitions time; only the
+# prices come from observed proxy bars. The missing interval is NEVER filled
+# synthetically.
+PROXY_LEVEL_CAVEAT = ("PROXY-observed extremum from Dukascopy CFD bars. The "
+                      "feed omits ~16:15-18:00 ET, so this may differ from the "
+                      "true CME NQ level. Not an NQ high/low.")
+
 LEVEL_UNIVERSE = {
-    "pdh": dict(formation="high of the previous CME trade day",
+    "pdh": dict(formation="PROXY-observed high of the previous CME trade day",
                 availability="18:00 ET session open of the current trade day",
                 expiration="end of the current trade day", price="high",
                 timeframe="5m", touch_update="none - price fixed at formation",
                 invalidated="never; expires only", duplicates="n/a - one per day",
                 survives_session=False, side=-1),
-    "pdl": dict(formation="low of the previous CME trade day",
+    "pdl": dict(formation="PROXY-observed low of the previous CME trade day",
                 availability="18:00 ET session open of the current trade day",
                 expiration="end of the current trade day", price="low",
                 timeframe="5m", touch_update="none", invalidated="never",
                 duplicates="n/a", survives_session=False, side=1),
-    "pwh": dict(formation="high of the previous CME trade week",
+    "pwh": dict(formation="PROXY-observed high of the previous CME trade week",
                 availability="Sunday 18:00 ET open of the current week",
                 expiration="end of the current trade week", price="high",
                 timeframe="5m", touch_update="none", invalidated="never",
                 duplicates="n/a", survives_session=True, side=-1),
-    "pwl": dict(formation="low of the previous CME trade week",
+    "pwl": dict(formation="PROXY-observed low of the previous CME trade week",
                 availability="Sunday 18:00 ET open of the current week",
                 expiration="end of the current trade week", price="low",
                 timeframe="5m", touch_update="none", invalidated="never",
@@ -187,7 +232,7 @@ LEVEL_UNIVERSE = {
                   price="high or low of bar k", timeframe="5m",
                   touch_update="touch_count increments; price never moves",
                   invalidated="removed once swept and reclaimed",
-                  duplicates="within PIVOT_DUP_TOLERANCE_POINTS merge via "
+                  duplicates="within PROXY_PIVOT_DUP_TOLERANCE_PTS merge via "
                              "merge_duplicate_pivots(): price, level_id, "
                              "formation and availability all survive from the "
                              "OLDER level; touch counts sum",

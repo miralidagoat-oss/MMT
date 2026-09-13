@@ -1,7 +1,6 @@
 {
-  "spec_version": "V2.1-canonical",
+  "spec_version": "V2.2-locked",
   "basis_class": "PROXY - Dukascopy USATECHIDXUSD BID-quote CFD. NOT CME NQ trades, NOT NQ order flow. Volume is broker-side.",
-  "tick": 0.25,
   "bar_timeframe_seconds": 300,
   "global": {
     "ATR": {
@@ -13,8 +12,8 @@
       "min_periods": 14,
       "note": "identical to po3_engine.wilder_atr; one definition only"
     },
-    "price_fields": "OHLC of the quantized 5m bar; BID side only (no ask)",
-    "availability": "every feature evaluated at EVENT_CONFIRMATION_TIME = close of the sweep bar, using only bars with close_time <= that"
+    "price_fields": "RAW unquantized 5-minute BID OHLC from data_ndx/NDX_5m.csv. No rounding is applied. The V1 file data_ndx_q was irreversibly rounded to 0.25 and is NEVER read by V2.",
+    "availability": "every event-time feature is evaluated at EVENT_CONFIRMATION_TIME (t0) = sweep bar open + 300s, using only bars whose close <= t0"
   },
   "event_time_features": {
     "liquidity_class": {
@@ -46,9 +45,9 @@
     "level_age_min": {
       "type": "float",
       "units": "minutes",
-      "formula": "(SWEEP_TIME - LEVEL_AVAILABILITY_TIME)/60",
-      "note": "age from AVAILABILITY, not formation - formation is unknowable to the algorithm at that moment",
-      "available": "sweep",
+      "formula": "(EVENT_CONFIRMATION_TIME - LEVEL_AVAILABILITY_TIME)/60",
+      "note": "age at CONFIRMATION, not at the sweep bar open - every baseline predictor row is the information set at t0",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible",
       "transform": "log1p"
     },
@@ -62,10 +61,10 @@
     },
     "touch_count": {
       "type": "int",
-      "formula": "count of prior bars whose [low,high] intersected [level-TICK, level+TICK] strictly between LEVEL_AVAILABILITY_TIME and SWEEP_TIME",
+      "formula": "count of prior bars whose [low,high] intersects [level - PROXY_TOUCH_TOLERANCE_POINTS, level + PROXY_TOUCH_TOLERANCE_POINTS] strictly between LEVEL_AVAILABILITY_TIME and the sweep bar's open",
       "includes_this_sweep": false,
       "reset": "never; level dies on expiration",
-      "available": "sweep",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "0"
     },
     "level_prominence_atr": {
@@ -81,20 +80,20 @@
       "formula": "min over all OTHER available levels of |other.price - level| / ATR_at_sweep; SAME SIDE only",
       "cap": 10.0,
       "missing": "cap (10.0) when no other same-side level exists",
-      "available": "sweep"
+      "available": "EVENT_CONFIRMATION_TIME (t0)"
     },
     "penetration_pts": {
       "type": "float",
       "units": "points",
       "formula": "sell-side: level - low_of_sweep_bar ; buy-side: high_of_sweep_bar - level",
-      "available": "sweep",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never"
     },
     "penetration_atr": {
       "type": "float",
       "units": "ATR",
       "formula": "penetration_pts / ATR_at_sweep",
-      "available": "sweep",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible"
     },
     "close_vs_level_atr": {
@@ -102,39 +101,39 @@
       "units": "ATR",
       "formula": "sell-side: (close_of_sweep_bar - level)/ATR ; buy-side: (level - close_of_sweep_bar)/ATR",
       "note": "REPLACES reclaim_magnitude_atr at event time. Positive = the sweep bar already closed back through the level BEFORE confirmation.",
-      "available": "sweep bar CLOSE",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never"
     },
     "same_bar_reclaim": {
       "type": "bool",
       "formula": "close_vs_level_atr > 0",
       "note": "the only reclaim information knowable at EVENT_CONFIRMATION_TIME",
-      "available": "sweep bar CLOSE",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never"
     },
     "wick_body_ratio": {
       "type": "float",
-      "formula": "sell-side: (min(o,c) - l) / max(|c-o|, TICK) ; buy-side: (h - max(o,c)) / max(|c-o|, TICK)",
-      "zero_body": "denominator floored at one TICK (0.25)",
+      "formula": "sell-side: (min(o,c) - l) / max(|c-o|, PROXY_BODY_FLOOR_POINTS) ; buy-side: (h - max(o,c)) / same denominator",
+      "zero_body": "denominator floored at PROXY_BODY_FLOOR_POINTS",
       "clip": [
         0.0,
         10.0
       ],
-      "available": "sweep bar CLOSE",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never"
     },
     "vwap_dist_pts": {
       "type": "float",
       "units": "points",
       "formula": "close_of_sweep_bar - VWAP",
-      "available": "sweep bar CLOSE",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible"
     },
     "vwap_dist_sigma": {
       "type": "float",
       "units": "sigma",
       "formula": "(close - VWAP) / VWAP_SIGMA",
-      "available": "sweep bar CLOSE",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible"
     },
     "vwap_slope_sigma_per_bar": {
@@ -143,7 +142,7 @@
       "formula": "(VWAP_t - VWAP_{t-12}) / (12 * VWAP_SIGMA_t)",
       "lookback_bars": 12,
       "note": "12 closed 5m bars = 60 min",
-      "available": "sweep bar CLOSE",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "0.0 when fewer than 12 bars since anchor"
     },
     "session_location": {
@@ -192,37 +191,39 @@
         ]
       },
       "half_open": true,
-      "available": "sweep",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never",
       "encode": "one-hot"
     },
     "minutes_since_session_open": {
       "type": "float",
       "units": "minutes",
-      "formula": "(SWEEP_TIME - session_open_utc)/60",
-      "available": "sweep",
+      "formula": "(EVENT_CONFIRMATION_TIME - session_open_utc)/60",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never"
     },
     "atr_percentile": {
       "type": "float",
       "units": "0-1",
-      "formula": "rank of ATR_at_sweep among the ATR values at the CLOSE of each of the previous 252 eligible CME trade dates, divided by 252",
+      "formula": "rank of ATR0 among the reference distribution, /252. REFERENCE: one value per each of the previous 252 eligible CME trade dates, each being the FINAL observable 5m Wilder ATR(14) value of that proxy trade date (the ATR at that date's last observed bar close).",
       "ties": "average rank",
       "min_periods": 252,
       "on_insufficient": "EVENT IS INELIGIBLE - never computed on partial history",
-      "available": "sweep",
-      "missing": "ineligible"
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
+      "missing": "ineligible",
+      "comparator_causality": "every reference timestamp is strictly earlier than t0; enforced by require_prior_comparators()"
     },
     "realized_vol_state": {
       "type": "float",
       "units": "0-1",
-      "formula": "percentile (same 252-day construction) of sqrt(sum of squared 5m log returns over the preceding 78 bars)",
+      "formula": "percentile of RV0 = sqrt(sum of squared 5m log returns over the 78 CLOSED bars ending at t0). REFERENCE: one value per each of the previous 252 eligible trade dates, each computed over the 78 closed bars ending at THAT date's last observed bar close - the same end-of-proxy-day timestamp used by atr_percentile.",
       "return": "log(close_t/close_{t-1}) on 5m bars",
       "window_bars": 78,
       "annualization": "NONE",
       "min_periods": 252,
       "on_insufficient": "EVENT IS INELIGIBLE",
-      "available": "sweep"
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
+      "comparator_causality": "every reference timestamp is strictly earlier than t0; enforced by require_prior_comparators()"
     },
     "range_compression": {
       "type": "float",
@@ -235,21 +236,21 @@
         0.1,
         5.0
       ],
-      "available": "sweep",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible"
     },
     "dist_session_open_atr": {
       "type": "float",
       "units": "ATR",
       "formula": "(close - open of the first bar of this CME trade day) / ATR",
-      "available": "sweep",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible"
     },
     "dist_weekly_open_atr": {
       "type": "float",
       "units": "ATR",
       "formula": "(close - open of the first bar of the CME trade week, week starting with the Sunday 18:00 ET open) / ATR",
-      "available": "sweep",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "ineligible"
     },
     "dist_overnight_high_atr": {
@@ -257,7 +258,7 @@
       "units": "ATR",
       "formula": "(close - max high over [18:00 ET, 09:30 ET) of this trade day) / ATR",
       "window": "18:00-09:30 ET, half-open",
-      "available": "only after 09:30 ET",
+      "available": "EVENT_CONFIRMATION_TIME (t0), and only when t0 >= 09:30 ET",
       "missing": "ineligible before 09:30 ET"
     },
     "dist_overnight_low_atr": {
@@ -265,7 +266,7 @@
       "units": "ATR",
       "formula": "(close - min low over [18:00 ET, 09:30 ET) of this trade day) / ATR",
       "window": "18:00-09:30 ET, half-open",
-      "available": "only after 09:30 ET",
+      "available": "EVENT_CONFIRMATION_TIME (t0), and only when t0 >= 09:30 ET",
       "missing": "ineligible before 09:30 ET"
     },
     "htf_15m_compression": {
@@ -276,24 +277,26 @@
         0.1,
         5.0
       ],
-      "available": "last closed 15m",
+      "available": "last closed 15m as of t0",
       "missing": "ineligible"
     },
     "htf_1h_range_pctile": {
       "type": "float",
       "units": "0-1",
-      "formula": "percentile of (high-low) of the last CLOSED 1H bar among the previous 252 eligible trade dates' same statistic",
+      "formula": "percentile of the range (high-low) of the newest fully CLOSED 1H bucket at t0. REFERENCE: the SAME bucket-of-trade-day from each of the previous 252 eligible trade dates where that bucket exists and is complete. An overnight bucket is compared only with overnight buckets. If fewer than 252 prior dates carry that bucket, the event is INELIGIBLE.",
       "min_periods": 252,
       "on_insufficient": "EVENT IS INELIGIBLE",
-      "available": "last closed 1H"
+      "available": "last closed 1H as of t0",
+      "comparator_causality": "every reference timestamp is strictly earlier than t0; enforced by require_prior_comparators()"
     },
     "htf_1h_vol_state": {
       "type": "float",
       "units": "0-1",
-      "formula": "percentile (252-day) of sqrt(sum of squared 1H log returns over the last 24 CLOSED 1H bars)",
+      "formula": "percentile of sqrt(sum of squared 1H log returns over the 24 CLOSED 1H bars ending at t0). REFERENCE: same bucket-of-trade-day comparator as htf_1h_range_pctile - one value per prior eligible trade date at the SAME bucket, never an arbitrary end-of-day bucket.",
       "min_periods": 252,
       "on_insufficient": "EVENT IS INELIGIBLE",
-      "available": "last closed 1H"
+      "available": "last closed 1H as of t0",
+      "comparator_causality": "every reference timestamp is strictly earlier than t0; enforced by require_prior_comparators()"
     },
     "htf_1h_dist_ref_atr": {
       "type": "float",
@@ -301,7 +304,7 @@
       "formula": "(close_of_last_CLOSED_1H_bar - REFERENCE) / ATR_1H, where REFERENCE is EXACTLY the open of the current CME trade day's first 1H bar",
       "reference": "current CME trade-day 1H open - no other reference permitted",
       "atr_1h": "Wilder RMA(14) of 1H true range",
-      "available": "last closed 1H",
+      "available": "last closed 1H as of t0",
       "missing": "ineligible"
     },
     "direction": {
@@ -311,7 +314,7 @@
         -1
       ],
       "formula": "+1 sell-side sweep (hypothesised bullish reversal), -1 buy-side",
-      "available": "sweep",
+      "available": "EVENT_CONFIRMATION_TIME (t0)",
       "missing": "never"
     }
   },
@@ -484,7 +487,19 @@
     "continuous_test": "rank(Y_30) = a + b*rank(X), CR1 by CME trade date; b's clustered two-sided p enters Holm",
     "boolean_test": "Y_30 = a + b*B, CR1; b's clustered p",
     "categorical_test": "rank(Y_30) on K-1 dummies, ONE clustered omnibus Wald (H0: all K-1 coefficients zero); that single p enters Holm. Individual category coefficients are DESCRIPTIVE only.",
-    "frozen_before_outcomes": true
+    "frozen_before_outcomes": true,
+    "continuous_reporting": [
+      "CR1 beta",
+      "CR1 CI",
+      "CR1 p",
+      "rank rho (descriptive)",
+      "N",
+      "G",
+      "missingness %"
+    ],
+    "rho_note": "rho is DESCRIPTIVE effect size only; it supplies no p-value",
+    "categorical_stability": "centred category-effect vector (fitted mean rank outcome per category minus the UNWEIGHTED grand mean across eligible categories) - reference-invariant. Spearman rho of S1vsS2 and S2vsS3 both > 0. Same category set required in all three subperiods; <3 common -> INCONCLUSIVE and non-promotable. Categories are dropped only for sample availability.",
+    "family_size_is_fixed": "m = 22 ALWAYS. A predeclared feature that cannot produce a valid test is NOT TESTABLE / NOT PROMOTABLE; it is never replaced and m is never reduced - power must not be gained because a predeclared test failed to become usable."
   },
   "winsorization": {
     "liquidity_class": {
@@ -698,5 +713,89 @@
       "winsorize": false,
       "reason": "naturally bounded / boolean / categorical / count"
     }
+  },
+  "research_constants": {
+    "PROXY_SWEEP_PENETRATION_POINTS": 0.25,
+    "PROXY_TOUCH_TOLERANCE_POINTS": 0.25,
+    "PROXY_BODY_FLOOR_POINTS": 0.25,
+    "PROXY_PIVOT_DUP_TOLERANCE_PTS": 0.25,
+    "note": "FOUR separately named research constants imposed on the proxy. Their values coincide but they are NOT one symbol: changing sweep penetration must not silently change touch counting, wick geometry or pivot de-duplication. None is a property of the Dukascopy instrument, and none is a tick."
+  },
+  "proxy_level_semantics": "pdh/pdl/pwh/pwl and every session extremum are PROXY-OBSERVED extrema from Dukascopy CFD bars, NOT true CME NQ highs/lows. The feed omits ~16:15-18:00 ET, including 16:15-17:00 ET when NQ still trades, so a proxy extremum may differ from the real NQ level. The CME trade-date calendar partitions time; only prices come from observed proxy bars. The missing interval is NEVER filled synthetically. Every V2_PROXY report header must state this.",
+  "primary_population": {
+    "rule": "PRIMARY OUTCOME ELIGIBILITY is determined ONCE for all features, BEFORE any feature test. Feature availability is applied second.",
+    "conditions": [
+      "A in V2-evaluable development period",
+      "B EVENT_CONFIRMATION_TIME valid",
+      "C ATR0 valid",
+      "D exact C_30 endpoint bar exists",
+      "E no data gap on the path",
+      "F horizon does not cross a partition boundary",
+      "G no contract roll crossed",
+      "H all other frozen censoring rules satisfied"
+    ],
+    "report_global": [
+      "total detected events",
+      "primary-Y30 eligible",
+      "censored",
+      "censoring reason counts"
+    ],
+    "report_per_feature": [
+      "Y30-eligible events",
+      "feature-nonmissing events",
+      "episodes",
+      "trade days",
+      "missing %"
+    ]
+  },
+  "censoring_audit": {
+    "strata": [
+      "session_location",
+      "hour_et",
+      "direction",
+      "liquidity_class",
+      "year"
+    ],
+    "reads": "OUTCOME AVAILABILITY ONLY - never the value or sign of Y_30",
+    "min_clusters_per_category": 30,
+    "rule": "a categorical level joins the confirmatory design only with >=30 distinct CME trade-date clusters carrying primary-eligible events; otherwise excluded from inference and reported as insufficient coverage. Sample availability, never outcome performance."
+  },
+  "promotion": {
+    "hard_gates": [
+      "in frozen 22-feature family",
+      "missingness <= 20%",
+      "minimum clusters satisfied",
+      "valid primary CR1 test exists",
+      "Holm-adjusted p <= 0.05",
+      "continuous: full-development CR1 sign reproduced by the point estimate in S1, S2 AND S3; categorical: frozen stability rule",
+      "no timestamp/leakage/integrity test failed"
+    ],
+    "removed_subjective_gates": [
+      "no domination by a handful of days",
+      "no single-year dependency",
+      "no parameter needle",
+      "no materially contradictory sensitivity sign",
+      "economically nontrivial"
+    ],
+    "note": "those phrases were not mechanical and created post-result discretion"
+  },
+  "robustness_diagnostics": {
+    "status": "REPORTED, never a Phase-1 pass/fail gate",
+    "year": "CR1/rank effect by calendar year where sample permits",
+    "direction": "sell-side and buy-side separately",
+    "day_concentration": "descriptive effect after excluding the top 1% of trade dates by absolute contribution to the association statistic",
+    "block_dependence": {
+      "moving_block_days": [
+        5,
+        10,
+        20
+      ],
+      "stationary_mean_block_days": 5,
+      "resamples": 5000,
+      "seed": 20260913,
+      "note": "block lengths predeclared, never searched"
+    },
+    "gapped_events": "gap-excluded rerun is descriptive only; gapped events are INCLUDED in the primary analysis",
+    "adds_no_holm_hypothesis": true
   }
 }

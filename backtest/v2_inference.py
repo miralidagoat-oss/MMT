@@ -257,8 +257,72 @@ def continuous_test(x, y, clusters, alpha=0.05):
     out = cr1_ols(ry, [[v] for v in rx], [k[2] for k in keep], alpha)
     out.update(kind="continuous_rank", beta_of_interest=out["beta"][1],
                p_of_interest=out["p"][1], ci_of_interest=out["ci"][1],
-               dropped_pre=dropped)
+               dropped_pre=dropped,
+               # descriptive effect size on the SAME retained sample
+               rho=rank_correlation([k[0] for k in keep], [k[1] for k in keep]))
     return out
+
+
+def rank_correlation(x, y):
+    """Descriptive Spearman rho = Pearson on average ranks (item 6).
+
+    EFFECT SIZE ONLY. It supplies no p-value. The confirmatory p-value is
+    always the CR1 rank-regression slope test, because rho's own p-value would
+    assume independence this data does not have. rho is reported because the
+    raw rank-regression beta is not comparable across features when N and tie
+    structure differ.
+    """
+    rx, ry = average_ranks(list(x)), average_ranks(list(y))
+    n = len(rx)
+    mx, my = sum(rx) / n, sum(ry) / n
+    sxy = sum((a - mx) * (b - my) for a, b in zip(rx, ry))
+    sxx = sum((a - mx) ** 2 for a in rx)
+    syy = sum((b - my) ** 2 for b in ry)
+    return sxy / math.sqrt(sxx * syy) if sxx > 0 and syy > 0 else float("nan")
+
+
+def category_effect_vector(cat, y, categories):
+    """Item 7. Fitted mean rank outcome per category, centred by the UNWEIGHTED
+    mean across eligible categories.
+
+    Centring makes the vector invariant to which dummy served as the regression
+    reference, so stability cannot depend on an arbitrary coding choice. The
+    unweighted mean is the frozen choice.
+    """
+    ry = average_ranks(list(y))
+    means = {}
+    for c, r in zip(cat, ry):
+        if c in categories:
+            means.setdefault(c, []).append(r)
+    fitted = {c: (sum(v) / len(v)) for c, v in means.items() if v}
+    if len(fitted) < 2:
+        return {}
+    grand = sum(fitted.values()) / len(fitted)       # UNWEIGHTED, frozen
+    return {c: fitted[c] - grand for c in sorted(fitted)}
+
+
+def categorical_stability(vec_s1, vec_s2, vec_s3, min_categories=3):
+    """Item 7. Spearman rank correlation of centred category-effect vectors,
+    S1 vs S2 and S2 vs S3. Both must be > 0.
+
+    The SAME category set must be present in all three subperiods; the common
+    set is used. Fewer than `min_categories` in common -> INCONCLUSIVE, and the
+    feature cannot be promoted. A category is never dropped for performing
+    poorly - only for sample availability.
+    """
+    common = sorted(set(vec_s1) & set(vec_s2) & set(vec_s3))
+    if len(common) < min_categories:
+        return {"stable": False, "status": "INCONCLUSIVE",
+                "common_categories": common,
+                "reason": f"only {len(common)} categories common to S1/S2/S3; "
+                          f"{min_categories} required"}
+    a = [vec_s1[c] for c in common]
+    b = [vec_s2[c] for c in common]
+    c_ = [vec_s3[c] for c in common]
+    r12 = rank_correlation(a, b)
+    r23 = rank_correlation(b, c_)
+    return {"stable": bool(r12 > 0 and r23 > 0), "status": "EVALUATED",
+            "common_categories": common, "rho_S1_S2": r12, "rho_S2_S3": r23}
 
 
 def boolean_test(b, y, clusters, alpha=0.05):
