@@ -20,10 +20,37 @@ plateau test failed rather than only that it did.
 """
 
 MIN_CONTIGUOUS = 5          # §5 continuous
+VACUOUS_SPREAD_SE = 0.5     # see vacuous() - a surface flatter than this says
+                            # nothing, and a plateau test on it passes for the
+                            # wrong reason
 NEIGHBOUR_SE_DROP = 2.0     # operationalized "must not collapse"
 TEMPORAL_RATIO = 2.0        # §5 temporal: stable region spans >= 2x
 MIN_SUBWINDOWS = 3          # §5 categorical
 TIER_WINDOWS_REQUIRED = 2   # §5 tiers: >= 2 of 3
+
+
+def vacuous(means, ses):
+    """Is this 'plateau' just a flat nothing?
+
+    §5 exists to catch a needle: a value that works alone. It cannot
+    distinguish a genuine broad plateau from a surface where the parameter has
+    no effect at all, because both look flat. On a null surface every value
+    sits within 1 SE of every other and the test passes for entirely the wrong
+    reason.
+
+    So a PASS is reported as VACUOUS when the whole swept range spans less than
+    VACUOUS_SPREAD_SE standard errors: the parameter is not robust, it is inert,
+    and the distinction matters when deciding what a passing test licenses.
+    """
+    if not means or not ses:
+        return False, ""
+    spread = max(means) - min(means)
+    se = min(s for s in ses if s > 0) if any(s > 0 for s in ses) else float("inf")
+    if spread < VACUOUS_SPREAD_SE * se:
+        return True, (f"spread across the whole grid is {spread:.4f} = "
+                      f"{spread / se:.2f} SE; the parameter is inert here, so a "
+                      f"passing plateau test carries no information")
+    return False, ""
 
 
 def _contiguous_runs(flags):

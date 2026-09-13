@@ -303,7 +303,13 @@ class Params:
     # --- sweep geometry (ATR-normalised, so it travels across TFs/symbols) ---
     min_sweep_atr: float = 0.05   # min depth beyond the level to count as a raid
     max_sweep_atr: float = 0.0    # deeper than this is a breakout (0 = no cap)
-    reclaim_bars: int = 2         # bars allowed between the raid and the reclaim
+    reclaim_bars: int = 2         # bars allowed since the raid last EXTENDED
+    max_event_bars: int = 0       # cap on TOTAL event duration, first
+                                  # penetration -> reclaim (0 = off).
+                                  # Distinct from reclaim_bars: a raid that
+                                  # keeps extending can run far longer than
+                                  # reclaim_bars, so only this bounds the
+                                  # manipulation event itself (§10 H2).
     # --- pool selection ---
     pools: tuple = ("pdh", "pdl", "pwh", "pwl", "asiah", "asial",
                     "lonh", "lonl", "ibh", "ibl", "pivot")
@@ -702,6 +708,8 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
                 continue                                # ran too far: breakout
             if i - r.bar > p.reclaim_bars:           # never reclaimed in time
                 continue
+            if p.max_event_bars and i - r.first_bar > p.max_event_bars:
+                continue                                # event ran too long
             reclaimed = c[i] > r.level if bull else c[i] < r.level
             if not reclaimed:
                 still.append(r)

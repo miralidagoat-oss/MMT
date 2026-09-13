@@ -36,13 +36,18 @@ def bars_for(part=PART):
     return _cache[part]
 
 
-def run(params, part=PART, friction=FRICTION, label=""):
+def raw(params, part=PART, friction=FRICTION):
+    """Countable trade log plus the bars it refers to."""
     bars, countable_from = bars_for(part)
     ctx = E.build_context(bars)
     log = []
     E.run(bars, ctx, replace(params, friction_points=friction,
                              cost_ticks=0.0, tick=0.25), outcome_log=log)
-    log = P.countable(log, bars, countable_from)
+    return P.countable(log, bars, countable_from), bars
+
+
+def run(params, part=PART, friction=FRICTION, label=""):
+    log, bars = raw(params, part, friction)
     return R.summarize(log, bars, label or part)
 
 
@@ -125,7 +130,74 @@ def h1():
     save("h1_temporal", res)
 
 
-CMDS = {"baseline": baseline, "h1": h1}
+# ── H2: multi-bar manipulation event model ────────────────────────────────
+def h2():
+    print("H2 - manipulation event duration\n")
+    print("§10 requires the EMPIRICAL duration distribution to be examined")
+    print("before any candidate window is declared. So the first pass runs a")
+    print("deliberately permissive reclaim window and just looks.\n")
+    print("The engine already records `lag`: bars from the first bar of the")
+    print("raid to the reclaim bar - penetration begins -> reclaim.\n")
+
+    PERMISSIVE = 24                      # 2 hours; wide enough not to censor
+    log, bars = raw(replace(CANDIDATE, reclaim_bars=PERMISSIVE))
+    lags = [x["lag"] for x in log]
+    n = len(lags)
+    print(f"── observed distribution (reclaim_bars={PERMISSIVE} = "
+          f"{PERMISSIVE*BAR_MIN}min cap, n={n:,})")
+    by = {}
+    for x in log:
+        by.setdefault(x["lag"], []).append(x["r"])
+    cum = 0
+    dist = []
+    for lag in sorted(by):
+        k = len(by[lag])
+        cum += k
+        m = sum(by[lag]) / k
+        dist.append({"lag": lag, "minutes": lag * BAR_MIN, "n": k,
+                     "share": k / n, "cum_share": cum / n, "mean_r": m})
+        bar = "#" * int(60 * k / max(len(v) for v in by.values()))
+        print(f"   lag {lag:>2} ({lag*BAR_MIN:>3}min)  n={k:>5}  "
+              f"{100*k/n:5.1f}%  cum {100*cum/n:5.1f}%  "
+              f"mean {m:+.4f}R  {bar}")
+
+    # windows are declared FROM the distribution just printed, in coarse
+    # economically reasonable ranges - not swept to find a winner
+    q = {}
+    cum = 0
+    for d in dist:
+        cum += d["n"]
+        for pct in (50, 80, 90, 95):
+            if pct not in q and cum / n >= pct / 100:
+                q[pct] = d["lag"]
+    print(f"\n   mass: 50% within {q.get(50)} bars, 80% within {q.get(80)}, "
+          f"90% within {q.get(90)}, 95% within {q.get(95)}")
+
+    # The window must cap TOTAL event duration, which is what the distribution
+    # above measures. reclaim_bars caps something else - bars since the raid
+    # last extended - so a raid that keeps extending runs far past it, which is
+    # why lags of 146 appear under a 24-bar reclaim cap. max_event_bars is the
+    # gate that corresponds to this distribution.
+    windows = sorted({q.get(50, 3), q.get(80, 11), q.get(90, 20),
+                      q.get(95, 30), 60})
+    print(f"\n── candidate windows declared from the distribution: {windows}")
+    print("   applied to max_event_bars (total duration), NOT reclaim_bars\n")
+    rows = sweep("h2", "max_event_bars",
+                 windows, base=replace(CANDIDATE, reclaim_bars=PERMISSIVE))
+    ses = [r["se"] for r in rows]
+    means = [r["mean"] for r in rows]
+    vac, why = PL.vacuous(means, ses)
+    best = max(range(len(rows)), key=lambda i: means[i])
+    print(f"\n  argmax window {windows[best]} "
+          f"({windows[best]*BAR_MIN}min, {means[best]:+.4f}R)")
+    print(f"  vacuity: {'VACUOUS - ' + why if vac else 'informative surface'}")
+    save("h2_duration", {"permissive_cap": PERMISSIVE, "gate": "max_event_bars",
+                         "distribution": dist,
+                         "quantiles": q, "windows": windows, "rows": rows,
+                         "vacuous": vac, "vacuity_detail": why})
+
+
+CMDS = {"baseline": baseline, "h1": h1, "h2": h2}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in CMDS:
