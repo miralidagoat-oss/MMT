@@ -17,15 +17,12 @@ import datetime as dt
 import json
 import os
 import sys
-from zoneinfo import ZoneInfo
 
-ET = ZoneInfo("America/New_York")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cme_session as S
+
+ET = S.ET
 MANIFEST = "research/PARTITIONS.json"
-
-
-def _utc(d, hour=0):
-    return int(dt.datetime.fromisoformat(d).replace(
-        tzinfo=dt.timezone.utc).timestamp()) + hour * 3600
 
 
 def spec(name, manifest=MANIFEST):
@@ -41,33 +38,54 @@ def spec(name, manifest=MANIFEST):
 def load(csv_path, partition, manifest=MANIFEST, engine=None):
     """Bars for one partition, with warm-up prepended.
 
-    Returns (bars, countable_from_ts). Pass the engine module to get its
-    native bars dict; otherwise a plain dict of lists is returned.
+    Returns (bars, countable_from_ts, eligible_dates).
+
+    GATE 1: every boundary comes from cme_session, which builds ET-local
+    wall-clock times and converts once the boundary is known. The previous
+    implementation treated a date as UTC midnight and applied fixed -6h/+30h
+    offsets, which leaked one trade day at each edge.
+
+    GATE 2: eligible_dates is the set of CME trade dates that actually contain
+    evaluation-eligible bars - after warm-up, embargo and partition bounds. It
+    is the ONLY correct frequency denominator, and it is returned alongside the
+    bars so a caller cannot accidentally substitute the loaded span.
     """
     p, _ = spec(partition, manifest)
-    warm_ts = _utc(p["warmup_from"])
-    # a CME trade day opens at 18:00 ET the previous calendar day; end the
-    # partition at the close of its last trade day
-    end_ts = _utc(p["end"]) + 30 * 3600
-    countable = _utc(p["first_tradeable_day"]) - 6 * 3600
+    first_eval = dt.date.fromisoformat(p["first_tradeable_day"])
+    last_eval = dt.date.fromisoformat(p["end"])
+    warm_from = dt.date.fromisoformat(p["warmup_from"])
+
+    load_start, _ = S.span_epoch(warm_from, last_eval)   # warm-up included
+    _, load_end = S.span_epoch(warm_from, last_eval)     # exclusive close
+    countable, _ = S.span_epoch(first_eval, last_eval)   # evaluation opens here
 
     cols = {k: [] for k in ("t", "o", "h", "l", "c", "v")}
+    eligible = set()
+    for x in _rows(csv_path):
+        ts = int(x[0])
+        if ts < load_start or ts >= load_end:
+            continue
+        cols["t"].append(ts)
+        cols["o"].append(float(x[1]))
+        cols["h"].append(float(x[2]))
+        cols["l"].append(float(x[3]))
+        cols["c"].append(float(x[4]))
+        cols["v"].append(float(x[5]))
+        if ts >= countable:
+            d = S.trade_date(ts)
+            if d is not None:
+                eligible.add(d)
+    if not cols["t"]:
+        sys.exit(f"HALT: no bars for partition {partition!r} in {csv_path}")
+    return cols, countable, eligible
+
+
+def _rows(csv_path):
     with open(csv_path) as f:
         r = csv.reader(f)
         next(r)
         for x in r:
-            ts = int(x[0])
-            if ts < warm_ts or ts >= end_ts:
-                continue
-            cols["t"].append(ts)
-            cols["o"].append(float(x[1]))
-            cols["h"].append(float(x[2]))
-            cols["l"].append(float(x[3]))
-            cols["c"].append(float(x[4]))
-            cols["v"].append(float(x[5]))
-    if not cols["t"]:
-        sys.exit(f"HALT: no bars for partition {partition!r} in {csv_path}")
-    return cols, countable
+            yield x
 
 
 def countable(log, bars, countable_from):

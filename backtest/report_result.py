@@ -119,7 +119,7 @@ def stationary_bootstrap(ordered_days, days, mean_block, rng, reps=N_BOOT):
     return _pct(out) if out else (float("nan"), float("nan"))
 
 
-def summarize(log, bars, label="", seed=20260913):
+def summarize(log, bars, label="", seed=20260913, eligible_days=None):
     """One headline block. `log` is the engine's outcome_log; `bars` supplies
     timestamps so trades can be placed on trade days and in buckets."""
     t = bars["t"]
@@ -135,12 +135,20 @@ def summarize(log, bars, label="", seed=20260913):
     for d, _, r, _ in rows:
         days.setdefault(d, []).append(r)
     ordered = sorted(days)
-    # denominator is every trade day in the sample, including those with no
-    # trade - otherwise frequency is conditioned on having traded
-    span_days = set()
-    for ts in t:
-        span_days.add(trade_day(ts))
-    n_days = len(span_days)
+    # GATE 2: the denominator is the set of trade dates that actually contain
+    # evaluation-eligible bars, supplied by partitions.load(). Numerator and
+    # denominator must describe the same population.
+    #
+    # The V1 defect: this counted every trade day among the LOADED bars, warm-up
+    # included (706 rather than 685), so trades were divided by days on which no
+    # trade could be evaluated. Every V1 frequency was understated by ~3%.
+    if eligible_days is None:
+        raise ValueError(
+            "summarize() requires eligible_days (GATE 2). Pass the third value "
+            "from partitions.load(); deriving it from the loaded bars silently "
+            "includes warm-up days and understates frequency.")
+    n_days = len(eligible_days) if not isinstance(eligible_days, int) \
+        else eligible_days
 
     rng = random.Random(seed)
     naive_se = sd / math.sqrt(n) if n > 1 else float("nan")

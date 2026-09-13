@@ -31,6 +31,8 @@ _cache = {}
 
 
 def bars_for(part=PART):
+    """(bars, countable_from, eligible_dates) - GATE 2: the eligible set is
+    carried with the bars so no caller can substitute the loaded span."""
     if part not in _cache:
         _cache[part] = P.load(BASIS, part)
     return _cache[part]
@@ -38,7 +40,7 @@ def bars_for(part=PART):
 
 def raw(params, part=PART, friction=FRICTION):
     """Countable trade log plus the bars it refers to."""
-    bars, countable_from = bars_for(part)
+    bars, countable_from, _ = bars_for(part)
     ctx = E.build_context(bars)
     log = []
     E.run(bars, ctx, replace(params, friction_points=friction,
@@ -48,7 +50,8 @@ def raw(params, part=PART, friction=FRICTION):
 
 def run(params, part=PART, friction=FRICTION, label=""):
     log, bars = raw(params, part, friction)
-    return R.summarize(log, bars, label or part)
+    _, _, eligible = bars_for(part)
+    return R.summarize(log, bars, label or part, eligible_days=eligible)
 
 
 def sweep(name, field, values, base=None, unit="bars"):
