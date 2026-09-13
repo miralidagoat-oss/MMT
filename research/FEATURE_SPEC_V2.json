@@ -1,5 +1,5 @@
 {
-  "spec_version": "V2.3-locked",
+  "spec_version": "V2.4-LOCKED",
   "basis_class": "PROXY - Dukascopy USATECHIDXUSD BID-quote CFD. NOT CME NQ trades, NOT NQ order flow. Volume is broker-side.",
   "bar_timeframe_seconds": 300,
   "global": {
@@ -537,19 +537,29 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 5.0,
+      "frozen_upper": 49608.25000000019,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "level_formation_lag_min": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 0.016666666666666666,
+      "frozen_upper": 135.0,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "touch_count": {
       "winsorize": false,
@@ -559,46 +569,71 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 0.3103756487629749,
+      "frozen_upper": 6.182653722682918,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "competing_liquidity_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 0.0,
+      "frozen_upper": 13.30107947686638,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "penetration_pts": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 0.3999999999996362,
+      "frozen_upper": 207.12409999999952,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "penetration_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 0.029526073344925314,
+      "frozen_upper": 6.1654027295549705,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "close_vs_level_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -5.506759128974385,
+      "frozen_upper": 1.8506118423541866,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "same_bar_reclaim": {
       "winsorize": false,
@@ -608,37 +643,57 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 0.0,
+      "frozen_upper": 10.0,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "vwap_dist_pts": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -267.49640371974965,
+      "frozen_upper": 327.8175873485998,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "vwap_dist_sigma": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -6.933625644630628,
+      "frozen_upper": 6.8837813797221505,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5782,
+      "burn_in_missing_n": 93,
+      "burn_in_missing_pct": 1.58,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "vwap_slope_sigma_per_bar": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -0.07496812722026705,
+      "frozen_upper": 0.07727126348633444,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5715,
+      "burn_in_missing_n": 160,
+      "burn_in_missing_pct": 2.72,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "session_location": {
       "winsorize": false,
@@ -648,10 +703,15 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 5.0,
+      "frozen_upper": 1325.0,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "atr_percentile": {
       "winsorize": false,
@@ -665,55 +725,85 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 0.2962450815864113,
+      "frozen_upper": 2.958583287138247,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "dist_session_open_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -16.172814642809143,
+      "frozen_upper": 17.474038852478163,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "dist_weekly_open_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -68.9134585945097,
+      "frozen_upper": 96.56898684630735,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5875,
+      "burn_in_missing_n": 0,
+      "burn_in_missing_pct": 0.0,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "dist_overnight_high_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -18.571977173144834,
+      "frozen_upper": 13.769041338611109,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 2233,
+      "burn_in_missing_n": 3642,
+      "burn_in_missing_pct": 61.99,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "dist_overnight_low_atr": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -9.619623915018767,
+      "frozen_upper": 24.434487554729202,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 2233,
+      "burn_in_missing_n": 3642,
+      "burn_in_missing_pct": 61.99,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "htf_15m_compression": {
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": 0.30352668198793187,
+      "frozen_upper": 2.473987135791713,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 5763,
+      "burn_in_missing_n": 112,
+      "burn_in_missing_pct": 1.91,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "htf_1h_range_pctile": {
       "winsorize": false,
@@ -727,10 +817,15 @@
       "winsorize": true,
       "lower_quantile": 0.005,
       "upper_quantile": 0.995,
-      "frozen_lower": null,
-      "frozen_upper": null,
+      "frozen_lower": -5.058053140152742,
+      "frozen_upper": 4.903809755453719,
       "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
-      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible.",
+      "burn_in_valid_n": 4712,
+      "burn_in_missing_n": 1163,
+      "burn_in_missing_pct": 19.8,
+      "status": "FROZEN",
+      "artifact": "research/WINSORIZATION_FREEZE.json"
     },
     "direction": {
       "winsorize": false,
@@ -832,5 +927,6 @@
     "min_valid_observations": 100,
     "on_insufficient": "HALT and report before outcomes - no arbitrary constant",
     "immutable_after_freeze": "never recomputed from evaluable-development, validation, stress-set or outcome data"
-  }
+  },
+  "event_sweep_rule": "A level emits AT MOST ONE sweep event: its FIRST penetration after availability. Without this a level price simply sits beyond re-fires every bar (measured 16.8 events/bar; pdl events carried a median age of 865 minutes, the same event counted 939 times). This is the reading the frozen spec already presupposes - touch_count counts bars 'strictly between availability and THE sweep bar's open', level_revisited exists as an OUTCOME, and the pivot rule already treats being swept as a state change. Measured effect: 70,694 -> 404 events on a 16-day sample, 25.2 per trade day."
 }

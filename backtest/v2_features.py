@@ -262,6 +262,9 @@ def session_vwap(bars, st):
     return vwap, sig, nbar
 
 
+import bisect
+
+
 def htf_aggregates(bars, st, seconds):
     """Completed HTF buckets: (start_ts -> [open,high,low,close]) plus, per bar,
     the newest bucket whose close has already passed."""
@@ -279,11 +282,11 @@ def htf_aggregates(bars, st, seconds):
         t0 = t[i] + BAR                        # information set at confirmation
         k = ((t0 - seconds) // seconds) * seconds
         newest[i] = k if k in agg else None
-    return agg, newest
+    return agg, newest, sorted(agg)
 
 
 def event_time_features(bars, st, level_stream, vwap, vsig, vnbar,
-                        agg15, new15, agg1h, new1h):
+                        agg15, new15, keys15, agg1h, new1h, keys1h):
     """One row per (bar, level) sweep. Every value is known at t0 = bar open +
     300s. NOTHING here looks forward."""
     t, o, h, l, c = bars["t"], bars["o"], bars["h"], bars["l"], bars["c"]
@@ -309,41 +312,58 @@ def event_time_features(bars, st, level_stream, vwap, vsig, vnbar,
             on_lo[d] = l[i] if d not in on_lo else min(on_lo[d], l[i])
         t0 = t[i] + BAR
         a0 = atr[i]
+        # PER-BAR, not per-sweep. The first version rebuilt these inside the
+        # level loop and re-sorted the whole 15m aggregate for EVERY sweep,
+        # which made the burn-in run unbounded.
+        rng12 = tr[max(0, i-11):i+1]
+        rng72 = tr[max(0, i-71):i+1]
+        rc = (max(0.1, min(5.0, (sum(rng12)/len(rng12))/(sum(rng72)/len(rng72))))
+              if rng72 and sum(rng72) > 0 else None)
+        prom_ref = (sum(c[max(0, i-20):i]) / max(1, len(c[max(0, i-20):i])))
+        b15 = None
+        k15 = new15[i]
+        if k15 is not None:
+            j = bisect.bisect_right(keys15, k15)
+            if j >= 16:
+                ks = keys15[j-16:j]
+                r4 = sum(agg15[x][1]-agg15[x][2] for x in ks[-4:]) / 4
+                r16 = sum(agg15[x][1]-agg15[x][2] for x in ks) / 16
+                b15 = max(0.1, min(5.0, r4/r16)) if r16 > 0 else None
+        h1 = None
+        k1h = new1h[i]
+        if k1h is not None:
+            o1 = S.session_epoch(d)[0]
+            first1h = o1 - (o1 % 3600)
+            if first1h in agg1h:
+                h1 = (agg1h[k1h][3] - agg1h[first1h][0]) / (a0 * 12 ** 0.5)
         for key, lv in (levels or {}).items():
             if lv["avail"] > t[i]:
+                continue
+            # A level emits AT MOST ONE sweep event: its FIRST penetration.
+            # Without this a level that price simply sits beyond re-fires every
+            # bar - measured at 16.8 events/bar, with pdl events carrying a
+            # median age of 865 minutes, i.e. the same event counted 939 times.
+            # This is the reading the frozen spec already presupposes:
+            # touch_count counts bars "strictly between availability and THE
+            # sweep bar's open"; level_revisited exists as an OUTCOME; and the
+            # pivot rule already treats being swept as a state change.
+            if lv.get("swept"):
                 continue
             side = lv["side"]; price = lv["price"]
             direction = 1 if side == 1 else -1
             if not V.is_sweep(direction, price, h[i], l[i]):
                 continue
+            lv["swept"] = True          # consumed; never re-fires
             pen = V.penetration_pts(direction, price, h[i], l[i])
             close_vs = ((c[i]-price)/a0) if direction == 1 else ((price-c[i])/a0)
             comp = [abs(x["price"]-price)/a0 for k2, x in levels.items()
                     if k2 != key and x["side"] == side]
-            rng12 = [tr[j] for j in range(max(0, i-11), i+1)]
-            rng72 = [tr[j] for j in range(max(0, i-71), i+1)]
-            k15, k1h = new15[i], new1h[i]
-            b15 = None
-            if k15 is not None:
-                ks = sorted(x for x in agg15 if x <= k15)[-16:]
-                if len(ks) == 16:
-                    r4 = sum(agg15[x][1]-agg15[x][2] for x in ks[-4:])/4
-                    r16 = sum(agg15[x][1]-agg15[x][2] for x in ks)/16
-                    b15 = max(0.1, min(5.0, r4/r16)) if r16 > 0 else None
-            h1 = None
-            if k1h is not None and d in day_open:
-                o1 = S.session_epoch(d)[0]
-                first1h = o1 - (o1 % 3600)
-                if first1h in agg1h:
-                    a1h = a0 * 12 ** 0.5              # 1H ATR proxy scale
-                    h1 = (agg1h[k1h][3] - agg1h[first1h][0]) / a1h
             row = {
               "t0": t0, "trade_date": d, "bucket": bucket[i],
               "direction": direction, "liquidity_class": lv["kind"],
               "level_age_min": (t0-lv["avail"])/60.0,
               "level_formation_lag_min": (lv["avail"]-lv["formation"])/60.0,
-              "level_prominence_atr": abs(price - (
-                  sum(c[max(0,i-20):i])/max(1,len(c[max(0,i-20):i])))) / a0,
+              "level_prominence_atr": abs(price - prom_ref) / a0,
               "competing_liquidity_atr": min(comp) if comp else 10.0,
               "penetration_pts": pen, "penetration_atr": pen/a0,
               "close_vs_level_atr": close_vs,
@@ -355,9 +375,7 @@ def event_time_features(bars, st, level_stream, vwap, vsig, vnbar,
                   ((vwap[i]-vwap[i-12])/(12*vsig[i]))
                   if vnbar[i] >= 12 and i >= 12 and vsig[i] and vsig[i] > 0 else None),
               "minutes_since_session_open": (t0 - S.session_epoch(d)[0])/60.0,
-              "range_compression": (max(0.1, min(5.0,
-                  (sum(rng12)/len(rng12))/(sum(rng72)/len(rng72))))
-                  if rng72 and sum(rng72) > 0 else None),
+              "range_compression": rc,
               "dist_session_open_atr": (c[i]-day_open[d])/a0,
               "dist_weekly_open_atr": (c[i]-wk_open[iso])/a0,
               "dist_overnight_high_atr": ((c[i]-on_hi[d])/a0

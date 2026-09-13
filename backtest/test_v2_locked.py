@@ -156,15 +156,24 @@ ok(abs(full["results"][0]["p_holm"]-0.022)<1e-12,
 print("\nJ/K. 252-day comparators are causally prior and bucket-matched")
 for f in ("atr_percentile","realized_vol_state","htf_1h_range_pctile","htf_1h_vol_state"):
     spec=FS["event_time_features"][f]
-    ok("strictly earlier than t0" in spec["comparator_causality"], f"{f} comparator is prior to t0")
+    # case-insensitive: the same-bucket rewrite uppercased STRICTLY for
+    # emphasis, which a case-sensitive match read as the property vanishing
+    ok("strictly earlier than t0" in spec["comparator_causality"].lower(),
+       f"{f} comparator is prior to t0")
+    ok("no nearest-bucket substitution" in spec["comparator_causality"].lower(),
+       f"{f} forbids nearest-bucket substitution")
     ok("REFERENCE" in spec["formula"], f"{f} names its reference distribution explicitly")
 ok("SAME bucket-of-trade-day" in FS["event_time_features"]["htf_1h_range_pctile"]["formula"],
    "1H range percentile compares the SAME bucket-of-day, not arbitrary end-of-day ranges")
 ok("same bucket-of-trade-day comparator" in
    FS["event_time_features"]["htf_1h_vol_state"]["formula"].lower(),
    "1H vol state uses the same bucket comparator - choice made, not left open")
-ok("FINAL observable" in FS["event_time_features"]["atr_percentile"]["formula"],
-   "atr_percentile names which value represents a historical date")
+# "FINAL observable" was end-of-day language; the same-bucket rule replaced it
+# with a stricter identification of the comparator value.
+_af=FS["event_time_features"]["atr_percentile"]["formula"]
+ok("Wilder ATR(14) value at that SAME 5m bucket" in _af
+   and "Not end-of-day ATR" in _af,
+   "atr_percentile names exactly which value represents a historical date")
 
 print()
 if FAILS:

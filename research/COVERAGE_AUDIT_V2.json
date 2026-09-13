@@ -1,0 +1,21 @@
+{
+  "scope": "development evaluable window",
+  "note": "AVAILABILITY ONLY - no outcome, no return, no performance was computed.",
+  "evaluable_trade_dates": 431,
+  "first": "2023-09-01",
+  "last": "2025-05-05",
+  "buckets_total": 267,
+  "features_governed": [
+    "atr_percentile",
+    "realized_vol_state",
+    "htf_1h_range_pctile",
+    "htf_1h_vol_state"
+  ],
+  "requirement": "252 prior eligible trade dates carrying the SAME bucket",
+  "first_date_any_bucket_available": "2023-09-01",
+  "first_date_all_buckets_available": "2023-11-27",
+  "mean_bucket_coverage_pct": 98.6,
+  "coverage_day1_pct": 59.93,
+  "coverage_final_day_pct": 100.0,
+  "days_below_90pct_coverage": 9
+}

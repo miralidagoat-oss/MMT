@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Final lock tests (item 17 A-R). Computes NO outcome of any kind."""
-import glob, json, math, os, random, re, sys
+import ast, datetime as dt, glob, json, math, os, random, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import v2_inference as I, v2_population as POP, v2_events as V, v2_features as FE
 
@@ -9,6 +9,40 @@ def ok(c,m):
     print(("  PASS  " if c else "  FAIL  ")+m)
     if not c: FAILS.append(m)
 FS=json.load(open("research/FEATURE_SPEC_V2.json"))
+
+# --- semantic scanners (replace substring greps) -------------------------
+# A raw substring scan over source text is unsound in BOTH directions: it
+# flagged the docstring "NO forward return, NO MFE, NO MAE" - a file saying it
+# computes no outcome - and in test R it flagged this file's own search
+# pattern. These walk the AST instead, so comments and docstrings cannot
+# trigger or suppress a finding.
+_OUT = re.compile(r"^(y_\d+|mfe|mae|(mfe|mae)_\w+|forward_\w*|ret_\d+|"
+                  r"signed_return|time_to_(mfe|mae)|remaining_return)$", re.I)
+
+def outcome_symbols(path):
+    """Identifiers through which an outcome could be computed or read:
+    bound names, attributes, string subscripts, keyword arguments."""
+    t = ast.parse(open(path).read()); hit = []
+    for n in ast.walk(t):
+        if isinstance(n, ast.Name) and _OUT.match(n.id): hit.append(n.id)
+        elif isinstance(n, ast.Attribute) and _OUT.match(n.attr): hit.append(n.attr)
+        elif isinstance(n, ast.keyword) and n.arg and _OUT.match(n.arg): hit.append(n.arg)
+        elif isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Constant) \
+                and isinstance(n.slice.value, str) and _OUT.match(n.slice.value):
+            hit.append(n.slice.value)
+    return sorted(set(hit))
+
+def date_literals(path):
+    """Every dt.date(y,m,d) the module can construct, as date objects."""
+    t = ast.parse(open(path).read()); out = []
+    for n in ast.walk(t):
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "date" and len(n.args) == 3
+                and all(isinstance(a, ast.Constant) for a in n.args)):
+            out.append(dt.date(*[a.value for a in n.args]))
+    return out
+
+
 
 # A/B. exactly ONE Holm implementation, always m=22
 print("A/B. One authoritative Holm")
@@ -109,12 +143,19 @@ ok(W["basis"]==V.RAW_BASIS, "computed from the RAW basis")
 for x,q,exp in (([1,2,3,4,5],0.005,1.02),([1,2,3,4,5],0.995,4.98),
                 ([0,10],0.5,5.0),([7],0.5,7.0),([1,2,3,4],0.25,1.75)):
     ok(abs(FE.quantile(sorted(x),q)-exp)<1e-9, f"quantile({x},{q}) = {exp}")
-fsrc=open("backtest/freeze_winsorization.py").read()
-ok("2023-08-31" in fsrc and "2025-05-05" not in fsrc and "2026" not in fsrc,
-   "freeze script reads burn-in only - no evaluable/validation/stress dates")
-ok("data_ndx_q" not in fsrc, "freeze script never names the quantized file")
-for bad in ("y_30","mfe","mae","forward"):
-    ok(bad not in fsrc.lower(), f"freeze script computes no {bad}")
+FZ="backtest/freeze_winsorization.py"; fsrc=open(FZ).read()
+# burn-in only, established from the dates the module can actually construct
+# rather than from how a date happens to be spelled in the source text
+dls=date_literals(FZ)
+ok(dls and min(dls)==dt.date(2022,9,9) and max(dls)==dt.date(2023,8,31),
+   f"freeze script reads burn-in only - no evaluable/validation/stress dates {dls}")
+ok(W["source_period"]=="2022-09-09..2023-08-31" and
+   all(dt.date.fromisoformat(x)in dls for x in W["source_period"].split("..")),
+   "the artifact's source period is the span the script actually read")
+ok("data_ndx_q" not in re.sub(r"unquantized","",fsrc),
+   "freeze script never names the quantized file")
+osyms=outcome_symbols(FZ)
+ok(not osyms, f"freeze script computes no outcome symbol {osyms}")
 
 # L. VWAP slope missing, never 0
 print("\nL. VWAP slope insufficient history -> MISSING")
@@ -150,9 +191,40 @@ ok(FE.same_bucket_percentile(1.0,mixed,t0) is None,
 
 # R. no outcome computed anywhere in these tests
 print("\nR. This suite computes no outcome")
-tsrc=open(__file__).read()
-ok("Y_30 =" not in tsrc and "mfe =" not in tsrc and "mae =" not in tsrc,
-   "no outcome variable is assigned in this test file")
+# An outcome symbol DOES appear here, deliberately: test D plants a fake y_30
+# to prove the guard fires, which a guard test cannot do otherwise. So the
+# property to establish is not absence of the token but that every such symbol
+# is a hard-coded SENTINEL - bound to a literal, never to an expression that
+# could read a price. That is the claim "this suite computes no outcome".
+def sentinel_only(path):
+    t=ast.parse(open(path).read()); bad=[]
+    for n in ast.walk(t):
+        tgts=[]
+        if isinstance(n,ast.Assign): tgts=[(x,n.value) for x in n.targets]
+        elif isinstance(n,(ast.AugAssign,ast.AnnAssign)) and n.value:
+            tgts=[(n.target,n.value)]
+        for tg,val in tgts:
+            nm=(tg.id if isinstance(tg,ast.Name) else
+                tg.attr if isinstance(tg,ast.Attribute) else
+                tg.slice.value if (isinstance(tg,ast.Subscript)
+                    and isinstance(tg.slice,ast.Constant)
+                    and isinstance(tg.slice.value,str)) else None)
+            if isinstance(nm,str) and _OUT.match(nm) and not isinstance(val,ast.Constant):
+                bad.append(ast.unparse(n))
+    return bad
+nonlit=sentinel_only(__file__)
+ok(not nonlit, f"every outcome symbol here is a hard-coded sentinel {nonlit}")
+ok(outcome_symbols(__file__)==["y_30"],
+   f"exactly one outcome symbol appears, the guard sentinel: {outcome_symbols(__file__)}")
+# by AST, not by grep: a text scan matches the names inside this very check
+_LOADERS={"load_raw","load_v2","iter_levels","build_state","event_time_features"}
+_called={n.func.attr if isinstance(n.func,ast.Attribute) else
+         getattr(n.func,"id",None)
+         for n in ast.walk(ast.parse(open(__file__).read()))
+         if isinstance(n,ast.Call)}
+ok(not (_called & _LOADERS),
+   f"this suite never loads bar data, so no outcome could be derived "
+   f"{sorted(_called & _LOADERS)}")
 ok(not os.path.exists("research/V2_RESULTS.json"), "no V2 results artifact exists")
 
 print()

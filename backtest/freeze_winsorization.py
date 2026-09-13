@@ -28,10 +28,10 @@ bars["v"] = vol
 st = FE.build_state(bars)
 stream = FE.iter_levels(bars, st)
 vwap, vsig, vnbar = FE.session_vwap(bars, st)
-agg15, new15 = FE.htf_aggregates(bars, st, 900)
-agg1h, new1h = FE.htf_aggregates(bars, st, 3600)
+agg15, new15, keys15 = FE.htf_aggregates(bars, st, 900)
+agg1h, new1h, keys1h = FE.htf_aggregates(bars, st, 3600)
 rows = FE.event_time_features(bars, st, stream, vwap, vsig, vnbar,
-                              agg15, new15, agg1h, new1h)
+                              agg15, new15, keys15, agg1h, new1h, keys1h)
 print(f"burn-in events {len(rows):,}   trade dates "
       f"{len({r['trade_date'] for r in rows})}")
 
