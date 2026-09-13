@@ -109,7 +109,10 @@ def guard(partition):
     exactly that misreading. The legacy name still works so older scripts do not
     silently bypass the guard, but it warns.
     """
-    if partition not in ("stress_set", "holdout"):
+    # Match by PREFIX, not by an exact name list. The V2 rename to
+    # stress_set_pristine / stress_set_contaminated_tail slipped past an exact
+    # match and left both blocks unguarded - caught by test K.
+    if not (str(partition).startswith("stress_set") or partition == "holdout"):
         return
     if os.environ.get(SPEND_VAR) == "yes":
         return

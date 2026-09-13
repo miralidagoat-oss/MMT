@@ -1,35 +1,68 @@
 {
-  "basis": "data_ndx_q/NDX_5m.csv",
+  "basis": "data_ndx/NDX_5m.csv  (RAW, unquantized)",
   "generation": "V2_PROXY",
-  "protocol": "PROTOCOL_V2.md (post-audit)",
-  "basis_class": "PROXY - Dukascopy USATECHIDXUSD CFD, NOT CME NQ futures",
+  "protocol": "PROTOCOL_V2_CANONICAL.md",
+  "basis_class": "PROXY - BID-quote CFD, broker volume, not CME NQ",
   "partitions": [
     {
       "name": "development",
       "start": "2022-09-09",
       "end": "2025-05-05",
+      "state_init": "from its own first trade date; no earlier bar is read",
       "burn_in_days": 252,
       "burn_in_start": "2022-09-09",
       "burn_in_end": "2023-08-31",
       "first_evaluable": "2023-09-01",
       "eligible_days_total": 683,
       "evaluable_days": 431,
-      "note": "No bar before 2022-09-09 is read. State initializes causally from the partition's own first day, so the sealed stress set is untouched."
+      "subperiods": [
+        {
+          "name": "S1",
+          "start": "2023-09-01",
+          "end": "2024-03-21",
+          "days": 143
+        },
+        {
+          "name": "S2",
+          "start": "2024-03-22",
+          "end": "2024-10-10",
+          "days": 144
+        },
+        {
+          "name": "S3",
+          "start": "2024-10-11",
+          "end": "2025-05-05",
+          "days": 144
+        }
+      ]
     },
     {
       "name": "validation",
       "start": "2025-05-07",
       "end": "2026-08-31",
-      "burn_in_days": 252,
-      "note": "Burn-in applies here too; evaluable span computed at load time. ONE promoted architecture, ONE primary evaluation (GATE M)."
+      "state_init": "the 252 eligible trade dates IMMEDIATELY PRECEDING validation, i.e. development history through 2025-05-05 plus the state-only embargo day 2025-05-06. Past data initializing rolling predictors does not inspect validation outcomes.",
+      "burn_in_days": 0,
+      "first_evaluable": "2025-05-07",
+      "embargo_state_only": "2025-05-06",
+      "evaluable_days": 341,
+      "frozen_from_development": "all feature parameters and winsorization constants; nothing re-estimated on validation",
+      "budget": "ONE promoted architecture, ONE primary evaluation"
     },
     {
-      "name": "stress_set",
+      "name": "stress_set_pristine",
       "start": "2018-05-31",
-      "end": "2022-09-08",
-      "burn_in_days": 0,
+      "end": "2022-08-09",
+      "trade_days": 1084,
       "sealed": true,
-      "note": "SEALED HISTORICAL STRESS SET. Precedes development. Cannot support a prospective-holdout claim."
+      "note": "PRISTINE. Never read by any run. The only block that can support an untouched historical stress claim."
+    },
+    {
+      "name": "stress_set_contaminated_tail",
+      "start": "2022-08-10",
+      "end": "2022-09-08",
+      "trade_days": 22,
+      "sealed": true,
+      "note": "CONTAMINATED. V1 read these bars as development warm-up and they initialized V1 causal state. Excluded from any untouched-stress claim, permanently."
     }
   ],
   "stress_set_uses_remaining": 1,

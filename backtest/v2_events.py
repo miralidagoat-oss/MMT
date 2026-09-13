@@ -14,22 +14,81 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cme_session as S
 
-TICK = 0.25                 # NQ minimum tick; the basis is quantized to it
+# ── proxy price grid (audit item 16) ──────────────────────────────────────
+# The basis is a Dukascopy BID-quote CFD. Its quotes are NOT on an NQ tick grid:
+# only ~2% of raw highs land on 0.25. V2 reads the RAW file and does not round
+# it. 0.25 is applied only as an NQ-LIKE MINIMUM PENETRATION THRESHOLD, and is
+# never described as the CFD's native tick.
+PROXY_SWEEP_PENETRATION_POINTS = 0.25
+RAW_BASIS = "data_ndx/NDX_5m.csv"        # V2 reads this
+QUANTIZED_BASIS = "data_ndx_q/NDX_5m.csv"  # V1 only; irreversibly rounded
+
+BAR_SECONDS = 300
+# Stored stamps are BAR_OPEN_TIME (proven in test_v2_causality.py: 18:00 ET
+# stamps exist, and a bar CLOSING at 18:00 would span the maintenance halt).
+def event_confirmation_time(sweep_bar_open_ts):
+    """The event is causally known no earlier than the sweep bar's CLOSE.
+    5-minute OHLC never reveals the intrabar crossing instant, so nothing here
+    pretends to know it."""
+    return sweep_bar_open_ts + BAR_SECONDS
+
+
+def landmark_time(t0, minutes):
+    """Landmarks run from EVENT_CONFIRMATION_TIME, not the bar open."""
+    return t0 + minutes * 60
+
+
+LANDMARKS_MIN = (5, 10, 15, 30)
+LANDMARK_REMAINING_HORIZON_MIN = 30    # SAME for every landmark, frozen
+LANDMARK_ATR = "ATR0"                  # frozen: the ATR known at t0
+
 EPISODE_WINDOW_MIN = 60     # measured from EPISODE START, never chained
 EPISODE_ATR_MULT = 0.5
+
+# ── pivot economics, separated from storage (audit item 15) ───────────────
+PIVOT_LEN = 5                # frozen explicitly, no symbolic reference
+MAX_ACTIVE_POOLS = 20000     # SAFETY CEILING ONLY - never an economic rule
+PIVOT_DUP_TOLERANCE_POINTS = PROXY_SWEEP_PENETRATION_POINTS
+
+
+class PoolCeilingExceeded(Exception):
+    """The computational ceiling would bind. A resource limit must never decide
+    whether a liquidity level economically exists, so this HALTS rather than
+    silently pruning a valid level."""
+
+
+def merge_duplicate_pivots(existing, new):
+    """Duplicate pivots within one tolerance band. Every survivor is explicit:
+
+        price            -> the OLDER level's price (it defined the band first)
+        level_id         -> the OLDER level's id
+        formation time   -> the OLDER level's formation time
+        availability     -> the OLDER level's availability time
+        touch_count      -> summed, so the merged level keeps both histories
+
+    'Older' means the earlier AVAILABILITY time, since that is when the
+    algorithm could first act on it.
+    """
+    a, b = (existing, new) if existing["available_ts"] <= new["available_ts"] \
+        else (new, existing)
+    return {"level_id": a["level_id"], "price": a["price"],
+            "formation_ts": a["formation_ts"], "available_ts": a["available_ts"],
+            "touch_count": a.get("touch_count", 0) + b.get("touch_count", 0),
+            "merged_from": sorted({a["level_id"], b["level_id"]})}
 
 # ── G. sweep definition, frozen ────────────────────────────────────────────
 #
 #   SELL-SIDE SWEEP  (direction +1, hypothesised bullish reversal)
-#       low_of_bar  <=  level - TICK
+#       raw_low  <=  level - PROXY_SWEEP_PENETRATION_POINTS
 #   BUY-SIDE SWEEP   (direction -1, hypothesised bearish reversal)
-#       high_of_bar >=  level + TICK
+#       raw_high >=  level + PROXY_SWEEP_PENETRATION_POINTS
 #
-# One full tick of penetration is REQUIRED. A touch exactly equal to the level
-# (low == level, or high == level) is NOT a sweep - predeclared here, not after
-# observing outcome differences. Rationale: on a 0.25-tick instrument, resting
-# liquidity at a level is not demonstrably taken until price trades through it;
-# equality is consistent with the level holding.
+# The full 0.25-point penetration is REQUIRED. A touch exactly equal to the
+# level is NOT a sweep - predeclared here, not after observing outcome
+# differences. Rationale: resting liquidity at a level is not demonstrably taken
+# until price trades through it; equality is consistent with the level holding.
+# The threshold is an NQ-LIKE minimum applied to RAW CFD quotes, not the CFD's
+# native tick - the raw series is never rounded to imitate NQ.
 #
 # Trigger fields: LOW for sell-side, HIGH for buy-side. Close is not used to
 # trigger; it is used only for close_vs_level_atr at the same bar's close.
@@ -45,10 +104,10 @@ EPISODE_ATR_MULT = 0.5
 
 
 def is_sweep(direction, level, bar_high, bar_low):
-    """Exact sweep test. direction +1 = sell-side, -1 = buy-side."""
+    """Exact sweep test on RAW quotes. +1 sell-side, -1 buy-side."""
     if direction == 1:
-        return bar_low <= level - TICK
-    return bar_high >= level + TICK
+        return bar_low <= level - PROXY_SWEEP_PENETRATION_POINTS
+    return bar_high >= level + PROXY_SWEEP_PENETRATION_POINTS
 
 
 def penetration_pts(direction, level, bar_high, bar_low):
@@ -121,12 +180,17 @@ LEVEL_UNIVERSE = {
     "pivot": dict(formation="bar k whose high is the max (or low the min) of "
                             "[k-PIVOT_LEN, k+PIVOT_LEN]",
                   availability="close of bar k+PIVOT_LEN - NEVER backdated to k",
-                  expiration="MAX_POOLS cap, oldest swept pruned first",
+                  expiration="NONE from storage pressure. Economic lifetime "
+                             "runs from availability until structural "
+                             "invalidation (swept AND reclaimed). A pivot never "
+                             "expires merely because newer pivots formed.",
                   price="high or low of bar k", timeframe="5m",
                   touch_update="touch_count increments; price never moves",
                   invalidated="removed once swept and reclaimed",
-                  duplicates="levels within one TICK merge, keeping the OLDER "
-                             "availability time",
+                  duplicates="within PIVOT_DUP_TOLERANCE_POINTS merge via "
+                             "merge_duplicate_pivots(): price, level_id, "
+                             "formation and availability all survive from the "
+                             "OLDER level; touch counts sum",
                   survives_session=True, side="both"),
 }
 

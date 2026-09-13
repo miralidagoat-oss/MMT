@@ -1,6 +1,6 @@
 {
-  "spec_version": "V2.0",
-  "basis_class": "PROXY (Dukascopy USATECHIDXUSD CFD) - NOT CME NQ",
+  "spec_version": "V2.1-canonical",
+  "basis_class": "PROXY - Dukascopy USATECHIDXUSD BID-quote CFD. NOT CME NQ trades, NOT NQ order flow. Volume is broker-side.",
   "tick": 0.25,
   "bar_timeframe_seconds": 300,
   "global": {
@@ -14,8 +14,7 @@
       "note": "identical to po3_engine.wilder_atr; one definition only"
     },
     "price_fields": "OHLC of the quantized 5m bar; BID side only (no ask)",
-    "availability": "every feature evaluated at EVENT_CONFIRMATION_TIME = close of the sweep bar, using only bars with close_time <= that",
-    "clip_default": "winsorize at [p0.5, p99.5] computed on the DEVELOPMENT BURN-IN ONLY (2022-09-09..2023-08-31); constants frozen there and reused unchanged everywhere else"
+    "availability": "every feature evaluated at EVENT_CONFIRMATION_TIME = close of the sweep bar, using only bars with close_time <= that"
   },
   "event_time_features": {
     "liquidity_class": {
@@ -157,10 +156,10 @@
         ],
         "london": [
           480,
-          780
+          840
         ],
         "premarket": [
-          780,
+          840,
           930
         ],
         "ny_open": [
@@ -185,6 +184,10 @@
         ],
         "post": [
           1320,
+          1380
+        ],
+        "_maintenance_not_a_bucket": [
+          1380,
           1440
         ]
       },
@@ -320,13 +323,18 @@
     "htf_directional_agreement": "H6 rejected it; prohibited under any name"
   },
   "landmark_features": {
+    "origin": "EVENT_CONFIRMATION_TIME (t0), NOT the sweep bar open",
     "landmarks_min": [
       5,
       10,
       15,
       30
     ],
-    "rule": "at landmark L, only information with timestamp <= SWEEP_TIME + L is usable",
+    "TL": "t0 + L",
+    "rule": "at landmark L only information timestamped <= TL is usable",
+    "remaining_horizon": "FIXED 30 minutes from TL for EVERY landmark",
+    "remaining_return": "direction * (close at TL+30m - close at TL) / ATR0",
+    "atr_choice": "ATR0 (the ATR known at t0) for ALL landmarks - frozen so the denominator cannot drift between landmarks",
     "features": [
       "reclaim_occurred_by_L",
       "reclaim_latency_min_if_by_L",
@@ -339,31 +347,356 @@
       "ultimate MFE",
       "ultimate MAE",
       "any reclaim after L",
-      "future displacement"
+      "future displacement",
+      "any horizon other than 30m from TL"
     ]
   },
   "outcomes": {
+    "t0": "EVENT_CONFIRMATION_TIME",
+    "C0": "close of the confirmed sweep bar",
+    "ATR0": "5m Wilder ATR(14) known at t0",
     "horizons_min": [
       5,
       15,
       30,
       60
     ],
-    "primary": "30m ATR-normalised signed forward return, direction-normalised",
-    "secondary_are_descriptive": true,
-    "measures": [
-      "signed_return",
-      "signed_return_atr",
-      "mfe",
-      "mae",
-      "mfe_atr",
-      "mae_atr",
-      "time_to_mfe",
-      "time_to_mae",
-      "vwap_reached",
-      "level_revisited",
-      "opposing_liquidity_reached"
+    "primary": "Y_30",
+    "Y_H": "direction * (C_H - C0) / ATR0, where C_H is the close of the bar whose CLOSE timestamp is EXACTLY t0 + H (stored open stamp + 300s)",
+    "direction": "+1 sell-side sweep (bullish orientation), -1 buy-side",
+    "MFE_MAE": {
+      "bars_used": "ONLY bars whose interval lies strictly AFTER t0 and whose close is <= t0+H. The sweep bar is EXCLUDED - its high/low may contain pre-confirmation movement.",
+      "dir_+1": {
+        "MFE_H": "max(future_high) - C0",
+        "MAE_H": "C0 - min(future_low)"
+      },
+      "dir_-1": {
+        "MFE_H": "C0 - min(future_low)",
+        "MAE_H": "max(future_high) - C0"
+      },
+      "normalised": "MFE_ATR = MFE_H/ATR0 ; MAE_ATR = MAE_H/ATR0",
+      "time_to": "measured from EVENT_CONFIRMATION_TIME",
+      "no_post_bar": "CENSORED"
+    },
+    "secondary": {
+      "vwap_reached": "a post-confirmation bar's [low,high] contains the VWAP value FROZEN at t0. The future-drifting VWAP is never the target.",
+      "level_revisited": "a post-confirmation bar's [low,high] contains the original swept level price",
+      "opposing_liquidity_reached": "at t0 identify the nearest AVAILABLE opposite-side level under the frozen universe; freeze its id and price; outcome is whether post-confirmation price reaches that frozen price. A level formed later can NEVER retroactively become the target. None available -> N/A."
+    },
+    "censoring": "data gap, maintenance hour, partition boundary or contract roll -> CENSORED. Never nearest-bar, previous-bar, next-available or interpolated substitution."
+  },
+  "price_grid": {
+    "raw_file": "data_ndx/NDX_5m.csv - UNALTERED CFD quotes (only ~2% land on a 0.25 grid, i.e. genuinely unquantized)",
+    "quantized_file": "data_ndx_q/NDX_5m.csv - IRREVERSIBLY rounded to 0.25 by quantize_basis.py for V1. Retained for V1 reproducibility.",
+    "V2_USES": "data_ndx/NDX_5m.csv (RAW). V2 does NOT round CFD quotes to imitate an NQ tick grid.",
+    "PROXY_SWEEP_PENETRATION_POINTS": 0.25,
+    "note": "0.25 is an NQ-like MINIMUM PENETRATION THRESHOLD applied to raw quotes. It is not the CFD's native tick and is never described as one."
+  },
+  "timestamp_semantics": {
+    "stored": "BAR_OPEN_TIME",
+    "bar_seconds": 300,
+    "evidence": "18:00 ET stamps exist; a bar CLOSING at 18:00 would span 17:55-18:00, entirely inside the maintenance halt. Proven in test_v2_causality.py.",
+    "SWEEP_BAR_OPEN_TIME": "the stored stamp of the sweep bar",
+    "EVENT_CONFIRMATION_TIME": "SWEEP_BAR_OPEN_TIME + 300s",
+    "SWEEP_TIME": "DEPRECATED as a time. Structural bar identifier only; it is NOT the intrabar crossing instant, which 5m OHLC cannot reveal.",
+    "all_event_time_features_stamped_at": "EVENT_CONFIRMATION_TIME"
+  },
+  "proxy_coverage_limitation": "The CFD feed's last bar opens ~16:10 ET and it reopens 18:00 ET, so it does NOT cover 16:15-18:00 ET - of which 16:15-17:00 is genuine CME session time. The 'post' bucket is therefore sparse on this basis by construction.",
+  "session_buckets_mspo": {
+    "overnight": [
+      0,
+      480
     ],
-    "censoring": "horizon crossing a partition boundary, a data gap, the maintenance hour, or a contract roll is marked CENSORED and excluded from that horizon; never borrowed across"
+    "london": [
+      480,
+      840
+    ],
+    "premarket": [
+      840,
+      930
+    ],
+    "ny_open": [
+      930,
+      990
+    ],
+    "ny_morning": [
+      990,
+      1080
+    ],
+    "midday": [
+      1080,
+      1200
+    ],
+    "ny_afternoon": [
+      1200,
+      1260
+    ],
+    "power_hour": [
+      1260,
+      1320
+    ],
+    "post": [
+      1320,
+      1380
+    ],
+    "_maintenance_not_a_bucket": [
+      1380,
+      1440
+    ]
+  },
+  "confirmatory_family": [
+    "liquidity_class",
+    "level_age_min",
+    "touch_count",
+    "level_prominence_atr",
+    "competing_liquidity_atr",
+    "penetration_atr",
+    "close_vs_level_atr",
+    "wick_body_ratio",
+    "vwap_dist_sigma",
+    "vwap_slope_sigma_per_bar",
+    "session_location",
+    "minutes_since_session_open",
+    "atr_percentile",
+    "realized_vol_state",
+    "range_compression",
+    "dist_session_open_atr",
+    "dist_overnight_high_atr",
+    "dist_overnight_low_atr",
+    "htf_15m_compression",
+    "htf_1h_range_pctile",
+    "htf_1h_vol_state",
+    "htf_1h_dist_ref_atr"
+  ],
+  "excluded_from_confirmatory": {
+    "level_formation_lag_min": "diagnostic only",
+    "level_kind_dynamic": "deterministic function of liquidity_class",
+    "penetration_pts": "raw-scale duplicate of penetration_atr",
+    "same_bar_reclaim": "deterministic thresholding of close_vs_level_atr",
+    "vwap_dist_pts": "raw-scale duplicate of vwap_dist_sigma",
+    "dist_weekly_open_atr": "exploratory - weekly-open information is contaminated by prior research exposure",
+    "direction": "stratification/orientation variable, not an ordinary predictor"
+  },
+  "holm": {
+    "m": 22,
+    "alpha": 0.05,
+    "procedure": "Holm step-down FWER",
+    "continuous_test": "rank(Y_30) = a + b*rank(X), CR1 by CME trade date; b's clustered two-sided p enters Holm",
+    "boolean_test": "Y_30 = a + b*B, CR1; b's clustered p",
+    "categorical_test": "rank(Y_30) on K-1 dummies, ONE clustered omnibus Wald (H0: all K-1 coefficients zero); that single p enters Holm. Individual category coefficients are DESCRIPTIVE only.",
+    "frozen_before_outcomes": true
+  },
+  "winsorization": {
+    "liquidity_class": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "level_kind_dynamic": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "level_age_min": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "level_formation_lag_min": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "touch_count": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "level_prominence_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "competing_liquidity_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "penetration_pts": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "penetration_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "close_vs_level_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "same_bar_reclaim": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "wick_body_ratio": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "vwap_dist_pts": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "vwap_dist_sigma": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "vwap_slope_sigma_per_bar": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "session_location": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "minutes_since_session_open": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "atr_percentile": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "realized_vol_state": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "range_compression": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "dist_session_open_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "dist_weekly_open_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "dist_overnight_high_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "dist_overnight_low_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "htf_15m_compression": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "htf_1h_range_pctile": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "htf_1h_vol_state": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    },
+    "htf_1h_dist_ref_atr": {
+      "winsorize": true,
+      "lower_quantile": 0.005,
+      "upper_quantile": 0.995,
+      "frozen_lower": null,
+      "frozen_upper": null,
+      "source_period": "DEVELOPMENT BURN-IN 2022-09-09..2023-08-31",
+      "note": "constants computed on the burn-in and frozen there. 252-day percentile features are excluded above, so no constant is ever required from a period in which that feature is not yet eligible."
+    },
+    "direction": {
+      "winsorize": false,
+      "reason": "naturally bounded / boolean / categorical / count"
+    }
   }
 }
