@@ -277,7 +277,53 @@ def h5():
     save("h5_tiers", res)
 
 
-CMDS = {"baseline": baseline, "h1": h1, "h2": h2, "h5": h5}
+# ── H3: session-anchored PO3 ──────────────────────────────────────────────
+# §10 sanctions exactly three anchors and no other start times.
+H3_ANCHORS = {"day": "Globex trade-day open 18:00 ET",
+              "midnight": "NY midnight 00:00 ET",
+              "cash": "09:30 ET cash open"}
+
+
+def h3():
+    print("H3 - session-anchored PO3, three sanctioned anchors\n")
+    print("§10: Globex trade-day open, NY midnight, 09:30 cash open. No other")
+    print("start times. CANDIDATE currently uses po3_period='week', which is")
+    print("NOT one of the three - so the shipped config is outside H3's own")
+    print("constraint and 'week' is carried here only as a reference column.\n")
+    print("§5 categorical: rank stability across >=3 development sub-windows;")
+    print("the winner must not depend on one window.\n")
+
+    _, bars = raw(CANDIDATE)
+    per_window = [{} for _ in range(3)]
+    res = {}
+    for anchor, desc in list(H3_ANCHORS.items()) + [("week", "NOT sanctioned")]:
+        s_a = run(replace(CANDIDATE, po3_period=anchor), label=f"po3={anchor}")
+        log_a, _ = raw(replace(CANDIDATE, po3_period=anchor))
+        wins = _by_subwindow(log_a, bars)
+        means = [sum(w) / len(w) if w else 0.0 for w in wins]
+        if anchor != "week":
+            for k, m in enumerate(means):
+                per_window[k][anchor] = m
+        print(f"  {anchor:<9} {desc:<28} n={s_a['n']:>5}  "
+              f"mean {s_a['mean_r']:+.4f}R  "
+              f"CI [{s_a['headline_ci'][0]:+.4f},{s_a['headline_ci'][1]:+.4f}]  "
+              f"freq {s_a['freq_per_trade_day']:.2f}/day")
+        print(f"  {'':<9} sub-windows {['%+.4f' % m for m in means]}")
+        res[anchor] = {"desc": desc, "summary": s_a, "subwindows": means}
+
+    opts = list(H3_ANCHORS)
+    best = max(opts, key=lambda a: res[a]["summary"]["mean_r"])
+    ok, detail = PL.categorical(opts, per_window, best)
+    print(f"\n  best sanctioned anchor: {best} ({H3_ANCHORS[best]})")
+    print(f"  §5 categorical: {'PASS' if ok else 'FAIL'} - {detail}")
+    sig = [a for a in opts if res[a]["summary"]["significant"]]
+    print(f"  anchors with an interval excluding zero: {sig or 'NONE'}")
+    save("h3_anchors", {"results": res, "best": best,
+                        "categorical_ok": ok, "categorical_detail": detail,
+                        "significant": sig})
+
+
+CMDS = {"baseline": baseline, "h1": h1, "h2": h2, "h3": h3, "h5": h5}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in CMDS:

@@ -1,0 +1,280 @@
+{
+  "results": {
+    "day": {
+      "desc": "Globex trade-day open 18:00 ET",
+      "summary": {
+        "label": "po3=day",
+        "n": 2451,
+        "mean_r": -0.0040030522592964255,
+        "sd": 1.6390267400882028,
+        "pf": 0.9941470404416155,
+        "win_rate": 0.22970216238270094,
+        "trade_days_in_span": 706,
+        "trade_days_with_trades": 669,
+        "freq_per_trade_day": 3.471671388101983,
+        "rth_trades": 822,
+        "freq_rth_per_trade_day": 1.1643059490084986,
+        "buckets": {
+          "overnight": 631,
+          "london": 603,
+          "premarket": 370,
+          "ny_open": 265,
+          "ny_morning": 179,
+          "midday": 159,
+          "ny_afternoon": 97,
+          "power_hour": 122,
+          "post": 25
+        },
+        "scales": {
+          "naive_trade": [
+            -0.06889076679719712,
+            0.06088466227860427
+          ],
+          "cr1_day_cluster": [
+            -0.06556363892025562,
+            0.05755753440166276
+          ],
+          "day_block": [
+            -0.06477350118859472,
+            0.059078213960638885
+          ],
+          "stationary_5d": [
+            -0.06367901124697331,
+            0.06013336633482028
+          ],
+          "moving_block_5d": [
+            -0.06684153545093172,
+            0.053700598195632124
+          ],
+          "moving_block_10d": [
+            -0.06473552958982269,
+            0.0527358447941663
+          ],
+          "moving_block_20d": [
+            -0.06339739875371476,
+            0.051212622929721764
+          ]
+        },
+        "headline_scale": "day_block",
+        "headline_ci": [
+          -0.06477350118859472,
+          0.059078213960638885
+        ],
+        "significant": false
+      },
+      "subwindows": [
+        0.011299838113164,
+        -0.04313639594572301,
+        0.019104758423083148
+      ]
+    },
+    "midnight": {
+      "desc": "NY midnight 00:00 ET",
+      "summary": {
+        "label": "po3=midnight",
+        "n": 2570,
+        "mean_r": -0.03483830080272298,
+        "sd": 1.6229718424992363,
+        "pf": 0.9497685599389437,
+        "win_rate": 0.222568093385214,
+        "trade_days_in_span": 706,
+        "trade_days_with_trades": 673,
+        "freq_per_trade_day": 3.640226628895184,
+        "rth_trades": 847,
+        "freq_rth_per_trade_day": 1.1997167138810199,
+        "buckets": {
+          "overnight": 612,
+          "london": 713,
+          "premarket": 375,
+          "ny_open": 274,
+          "ny_morning": 190,
+          "midday": 163,
+          "ny_afternoon": 100,
+          "power_hour": 120,
+          "post": 23
+        },
+        "scales": {
+          "naive_trade": [
+            -0.09758523598490096,
+            0.02790863437945499
+          ],
+          "cr1_day_cluster": [
+            -0.09242004524845897,
+            0.022743443643013006
+          ],
+          "day_block": [
+            -0.09527229721510076,
+            0.02012084128497369
+          ],
+          "stationary_5d": [
+            -0.09637830574799697,
+            0.024982016145815588
+          ],
+          "moving_block_5d": [
+            -0.09445155883040299,
+            0.023359265880642917
+          ],
+          "moving_block_10d": [
+            -0.09686088305541389,
+            0.024629344250996877
+          ],
+          "moving_block_20d": [
+            -0.09805510007159235,
+            0.022474824004823476
+          ]
+        },
+        "headline_scale": "moving_block_10d",
+        "headline_ci": [
+          -0.09686088305541389,
+          0.024629344250996877
+        ],
+        "significant": false
+      },
+      "subwindows": [
+        -0.03728268316216917,
+        -0.05448967542546744,
+        -0.013154813016122783
+      ]
+    },
+    "cash": {
+      "desc": "09:30 ET cash open",
+      "summary": {
+        "label": "po3=cash",
+        "n": 2216,
+        "mean_r": -0.015239686335303084,
+        "sd": 1.6307540627634234,
+        "pf": 0.9777602680728905,
+        "win_rate": 0.22608303249097472,
+        "trade_days_in_span": 706,
+        "trade_days_with_trades": 666,
+        "freq_per_trade_day": 3.138810198300283,
+        "rth_trades": 937,
+        "freq_rth_per_trade_day": 1.3271954674220963,
+        "buckets": {
+          "overnight": 488,
+          "london": 468,
+          "premarket": 302,
+          "ny_open": 333,
+          "ny_morning": 209,
+          "midday": 170,
+          "ny_afternoon": 104,
+          "power_hour": 121,
+          "post": 21
+        },
+        "scales": {
+          "naive_trade": [
+            -0.08313685830815387,
+            0.052657485637547706
+          ],
+          "cr1_day_cluster": [
+            -0.08008943715684484,
+            0.04961006448623868
+          ],
+          "day_block": [
+            -0.07754270540025394,
+            0.0533421977449228
+          ],
+          "stationary_5d": [
+            -0.08314774145818768,
+            0.056411091602976804
+          ],
+          "moving_block_5d": [
+            -0.07949382008722257,
+            0.05278453494684826
+          ],
+          "moving_block_10d": [
+            -0.08047619793953158,
+            0.052922988962684
+          ],
+          "moving_block_20d": [
+            -0.08284319612144633,
+            0.05140387569432421
+          ]
+        },
+        "headline_scale": "stationary_5d",
+        "headline_ci": [
+          -0.08314774145818768,
+          0.056411091602976804
+        ],
+        "significant": false
+      },
+      "subwindows": [
+        0.007278835555507957,
+        -0.12194487467703871,
+        0.0671518726780582
+      ]
+    },
+    "week": {
+      "desc": "NOT sanctioned",
+      "summary": {
+        "label": "po3=week",
+        "n": 1978,
+        "mean_r": 0.013623523309142486,
+        "sd": 1.6510648906268404,
+        "pf": 1.0200175636851911,
+        "win_rate": 0.2345803842264914,
+        "trade_days_in_span": 706,
+        "trade_days_with_trades": 659,
+        "freq_per_trade_day": 2.801699716713881,
+        "rth_trades": 680,
+        "freq_rth_per_trade_day": 0.9631728045325779,
+        "buckets": {
+          "overnight": 489,
+          "london": 493,
+          "premarket": 293,
+          "ny_open": 225,
+          "ny_morning": 141,
+          "midday": 131,
+          "ny_afternoon": 80,
+          "power_hour": 103,
+          "post": 23
+        },
+        "scales": {
+          "naive_trade": [
+            -0.05913754939692989,
+            0.08638459601521487
+          ],
+          "cr1_day_cluster": [
+            -0.056467853645392585,
+            0.08371490026367756
+          ],
+          "day_block": [
+            -0.054201618512791795,
+            0.0838540044908869
+          ],
+          "stationary_5d": [
+            -0.05582364243898563,
+            0.08179503783944873
+          ],
+          "moving_block_5d": [
+            -0.0563911842790494,
+            0.08163401794523589
+          ],
+          "moving_block_10d": [
+            -0.05742142183456618,
+            0.07968323997570723
+          ],
+          "moving_block_20d": [
+            -0.057315851479230295,
+            0.07586017960441821
+          ]
+        },
+        "headline_scale": "cr1_day_cluster",
+        "headline_ci": [
+          -0.056467853645392585,
+          0.08371490026367756
+        ],
+        "significant": false
+      },
+      "subwindows": [
+        0.054074350269685476,
+        -0.028192633218697343,
+        0.01217409560599628
+      ]
+    }
+  },
+  "best": "day",
+  "categorical_ok": true,
+  "categorical_detail": "day wins 2/3 sub-windows, ranks [1, 1, 2]",
+  "significant": []
+}

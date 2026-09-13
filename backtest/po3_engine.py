@@ -38,6 +38,7 @@ EQ_TOL_ATR = 0.10      # two pivots within 0.10 ATR are "relatively equal"
 # minutes-since-18:00-ET markers for the CME trade day
 M_ASIA_END = 480       # 02:00 ET
 M_LON_END = 840        # 08:00 ET
+M_NY_MIDNIGHT = 360    # 00:00 ET, in minutes since the 18:00 ET open
 M_RTH_OPEN = 930       # 09:30 ET
 M_IB_END = M_RTH_OPEN + IB_MINUTES
 M_RTH_CLOSE = 1320     # 16:00 ET
@@ -321,7 +322,13 @@ class Params:
     vwap_reclaim: bool = False    # reclaim bar must also close back across VWAP
     # --- PO3 context ---
     po3_mode: str = "below_open"  # off | below_open | reclaim_open
-    po3_period: str = "day"       # day | week
+    po3_period: str = "day"       # day | week | midnight | cash
+    # §10 H3 sanctions exactly three anchors and no other start times:
+    #   "day"      Globex trade-day open, 18:00 ET
+    #   "midnight" NY midnight, 00:00 ET
+    #   "cash"     09:30 ET cash open
+    # "week" predates H3 and is NOT one of the three; it is retained only so
+    # earlier runs stay reproducible.
     # --- confirmation quality ---
     require_close_dir: bool = True   # reclaim bar must close in the trade's direction
     vol_mult: float = 0.0            # reclaim bar volume vs its 20-bar average (0 = off)
@@ -628,6 +635,18 @@ def run(bars, ctx, p: Params, lo_i=0, hi_i=None, extreme_horizon=20,
             wk_h, wk_l = max(wk_h, h[i]), min(wk_l, l[i])
 
         m = mspos[i]
+
+        # ── session-anchored PO3 (§10 H3) ───────────────────────────────────
+        # Anchored on the first bar at or after the anchor minute, detected by
+        # crossing so a missing bar cannot skip the anchor entirely. Causal:
+        # the open used is this bar's own open, never a later one.
+        if p.po3_period in ("midnight", "cash"):
+            anchor = M_NY_MIDNIGHT if p.po3_period == "midnight" else M_RTH_OPEN
+            prev_m = mspos[i - 1] if i > 0 else None
+            if new_day and m >= anchor:
+                period_open, period_open_bar = o[i], i
+            elif prev_m is not None and prev_m < anchor <= m:
+                period_open, period_open_bar = o[i], i
         if m < M_ASIA_END:
             asia_h = h[i] if asia_h is None else max(asia_h, h[i])
             asia_l = l[i] if asia_l is None else min(asia_l, l[i])
