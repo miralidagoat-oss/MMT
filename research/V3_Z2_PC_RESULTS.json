@@ -1,0 +1,69 @@
+{
+  "first_outcome_inspection_utc": "2026-09-14T17:16:29+00:00",
+  "code_commit": "5f65d88b65ca70ed9ec37f79ae599ea62913c2bb",
+  "rows": 7806,
+  "clusters": 367,
+  "design": {
+    "k": 9,
+    "rank": 9,
+    "condition_number": 8.526205522788095
+  },
+  "A1": {
+    "beta_short": 0.44795507686239366,
+    "cr1_se": 0.044557438326767854,
+    "t": 10.053429768050309,
+    "raw_p": 3.698258323224295e-21,
+    "ci95": [
+      0.36033435715368517,
+      0.5355757965711021
+    ],
+    "df": 366,
+    "beta_day": 0.29995177795809225,
+    "t_day": 6.2537484477548615,
+    "beta_week": 0.298158279957137,
+    "t_week": 6.645860999905852,
+    "joint_wald_F": 297.8351562374157,
+    "joint_wald_p": 7.779079802407323e-98,
+    "gate_positive": true,
+    "gate_t": true,
+    "gate_wald": true,
+    "gate_mde": true,
+    "PASS": true
+  },
+  "A2": {
+    "permutations": 1000,
+    "seed": 20260914,
+    "alpha": 0.05,
+    "rejections": 171,
+    "rejection_rate": 0.171,
+    "band": [
+      0.025,
+      0.08
+    ],
+    "mean_abs_t": 1.1850568550725782,
+    "PASS": false
+  },
+  "VERDICT": "INSTRUMENT CHECK FAILED",
+  "performance_inspected": true,
+  "outcomes_inspected": true,
+  "development_run": true,
+  "prospective_holdout_inspected": false,
+  "data_cost_usd": 0,
+  "scalers": {
+    "rv_short": {
+      "mean": -13.019442543569832,
+      "sd": 1.5101818007798593,
+      "n": 7834
+    },
+    "rv_day": {
+      "mean": -12.466631800072411,
+      "sd": 1.0546360283711411,
+      "n": 7834
+    },
+    "rv_week": {
+      "mean": -12.23187277147983,
+      "sd": 0.8046177290024539,
+      "n": 7834
+    }
+  }
+}

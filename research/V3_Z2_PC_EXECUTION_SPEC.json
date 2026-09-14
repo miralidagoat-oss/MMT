@@ -1,0 +1,49 @@
+{
+  "artifact": "V3_Z2_PC_EXECUTION_SPEC",
+  "version": 1,
+  "frozen_utc": "2026-09-14T17:16:21+00:00",
+  "status": "FROZEN",
+  "purpose": "instrument check, not an edge hunt",
+  "A1": {
+    "model": "Y_vol = a + b_s*rv_short + b_d*rv_day + b_w*rv_week + session FE",
+    "estimator": "OLS",
+    "inference": "CR1 clustered by CME trade date, Student-t(G-1)",
+    "gates": [
+      "b_s > 0",
+      "|t(b_s)| >= 4.0",
+      "joint Wald of the 3 HAR coefficients p < 1e-4",
+      "|b_s| >= 0.0698 (the design MDE)"
+    ],
+    "all_required": true
+  },
+  "A2": {
+    "null": "block permutation pairing each trade date's design rows with another date's outcome rows, truncated to the shorter block - within-date dependence preserved on BOTH sides, X-Y link destroyed",
+    "permutations": 1000,
+    "seed": 20260914,
+    "alpha": 0.05,
+    "recorded": "empirical rejection rate for b_s",
+    "pass_band": [
+      0.025,
+      0.08
+    ]
+  },
+  "sample": {
+    "rows": 7834,
+    "clusters": 368,
+    "cond": 8.53
+  },
+  "verdict_rule": "INSTRUMENT VALIDATED only if A1 PASS and A2 PASS",
+  "not_authorized": [
+    "promotion",
+    "replication",
+    "prospective access",
+    "strategy work"
+  ],
+  "protected_hashes": {
+    "backtest/z1_panel.py": "24259e15e3de9f704fe7859ab3e66b258c655c7a048238567827555ad03733a8",
+    "backtest/z1_design.py": "0a884b8d834bf05e947df982eaecd6a4dd93e52377d7e8cccaa7359c8e8fd428",
+    "backtest/z2_control.py": "c653a12d26f4a661cbc018deb1404e436bb14552102ee00cd081dc3a9c94b037",
+    "research/V3_Z2_PC_PREREGISTRATION.json": "18ac40c84a7dd4d0bcd3aa5497cc1516bb45fb02b02d12878afa9700e79a69ae",
+    "research/V3_Z1_DATA_MANIFEST.json": "a8f82dc864607241ba00eea97d00644a1632bb8e2be971327adf55fd926aa1a3"
+  }
+}
