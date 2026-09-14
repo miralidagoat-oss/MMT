@@ -1,0 +1,235 @@
+{
+  "first_outcome_inspection_utc": "2026-09-14T04:08:58+00:00",
+  "code_commit": "9fffc86e5db93760ca30af79948c44a4efe0d0ea",
+  "spec_hashes": {
+    "research/V3_Z1_PREREGISTRATION.json": "a979a8ca4ddccc0f995b6b5cfe3ff5c02841a8daf6350879abc159a565fad98a",
+    "research/V3_Z1_PREREGISTRATION_AMENDMENT_01.md": "48a92a0c3ef695468cf3f08c49dc0972a22b263711ed38c7dfb6cd7c52d9b843",
+    "research/V3_Z1_DATA_MANIFEST.json": "a8f82dc864607241ba00eea97d00644a1632bb8e2be971327adf55fd926aa1a3",
+    "backtest/z1_panel.py": "24259e15e3de9f704fe7859ab3e66b258c655c7a048238567827555ad03733a8",
+    "backtest/z1_design.py": "0a884b8d834bf05e947df982eaecd6a4dd93e52377d7e8cccaa7359c8e8fd428"
+  },
+  "performance_inspected": true,
+  "outcomes_inspected": true,
+  "development_run": true,
+  "prospective_holdout_inspected": false,
+  "data_cost_usd": 0,
+  "development": {
+    "divergence_1h": {
+      "rows": 7586,
+      "trade_dates": 360,
+      "beta": 0.015409840459045771,
+      "cr1_se": 0.025191174204735437,
+      "t": 0.611715846740841,
+      "df": 359,
+      "raw_p_two_sided": 0.5411129610496306,
+      "ci95": [
+        -0.03413097001725053,
+        0.06495065093534207
+      ],
+      "expected_sign": -1,
+      "observed_sign": 1,
+      "abs_standardized_beta": 0.015409840459045771,
+      "design_rank": 10,
+      "design_k": 10,
+      "condition_number": 6.5910373035674885,
+      "condition_warning": false,
+      "G": 360,
+      "N": 7586
+    },
+    "divergence_session": {
+      "rows": 7227,
+      "trade_dates": 360,
+      "beta": 0.008932736632568952,
+      "cr1_se": 0.01748217068371843,
+      "t": 0.5109626712939158,
+      "df": 359,
+      "raw_p_two_sided": 0.6096912721059708,
+      "ci95": [
+        -0.025447594253061305,
+        0.04331306751819921
+      ],
+      "expected_sign": -1,
+      "observed_sign": 1,
+      "abs_standardized_beta": 0.008932736632568952,
+      "design_rank": 10,
+      "design_k": 10,
+      "condition_number": 6.191285552657542,
+      "condition_warning": false,
+      "G": 360,
+      "N": 7227
+    }
+  },
+  "holm": {
+    "m": 2,
+    "alpha": 0.05,
+    "results": [
+      {
+        "feature": "divergence_1h",
+        "raw_p": 0.5411129610496306,
+        "rank": 1,
+        "multiplier": 2,
+        "holm_threshold": 0.025,
+        "p_holm": 1.0,
+        "reject": false
+      },
+      {
+        "feature": "divergence_session",
+        "raw_p": 0.6096912721059708,
+        "rank": 2,
+        "multiplier": 1,
+        "holm_threshold": 0.05,
+        "p_holm": 1.0,
+        "reject": false
+      }
+    ]
+  },
+  "concentration": {
+    "divergence_1h": {
+      "full_beta": 0.015409840459045724,
+      "full_abs_beta": 0.015409840459045724,
+      "leave_one_decile_out_betas": [
+        0.01832793789783039,
+        0.0020582361049951287,
+        0.014846304004652111,
+        0.022590378976301118,
+        0.0046972956353331565,
+        0.0215587933643065,
+        0.01358546830900364,
+        0.009384946979936842,
+        0.02341442921842069,
+        0.022704595571952226
+      ],
+      "n_retaining_expected_sign": 0,
+      "largest_opposite_sign_abs": 0.02341442921842069,
+      "median_loo_abs_beta": 0.01658712095124125,
+      "median_over_full_ratio": 1.0763979676054627,
+      "cond_a_9of10_sign": false,
+      "cond_b_no_reversal_exceeds_full": "False",
+      "cond_c_median_ge_50pct": "True",
+      "PASS": false
+    },
+    "divergence_session": {
+      "full_beta": 0.008932736632568957,
+      "full_abs_beta": 0.008932736632568957,
+      "leave_one_decile_out_betas": [
+        0.011972424038913906,
+        -0.01359964002356708,
+        0.015465689070831456,
+        0.006082863694194894,
+        0.015683349805198418,
+        0.0077649381427275545,
+        0.010858952881068567,
+        0.011337909607014227,
+        0.01250553882868195,
+        0.007471989474056586
+      ],
+      "n_retaining_expected_sign": 1,
+      "largest_opposite_sign_abs": 0.015683349805198418,
+      "median_loo_abs_beta": 0.011655166822964066,
+      "median_over_full_ratio": 1.304770005248903,
+      "cond_a_9of10_sign": false,
+      "cond_b_no_reversal_exceeds_full": "False",
+      "cond_c_median_ge_50pct": "True",
+      "PASS": false
+    }
+  },
+  "bootstrap": {
+    "divergence_1h": {
+      "L5": {
+        "block_length": 5,
+        "resamples": 5000,
+        "seed": 20260914,
+        "median_beta": 0.01388212315042237,
+        "pct_2_5": -0.03290079932536906,
+        "pct_97_5": 0.06264482374768551,
+        "fraction_in_expected_direction": 0.2936,
+        "PASS": false
+      },
+      "L10": {
+        "block_length": 10,
+        "resamples": 5000,
+        "seed": 20260914,
+        "median_beta": 0.01337398973906828,
+        "pct_2_5": -0.03312010520752736,
+        "pct_97_5": 0.06009648235071998,
+        "fraction_in_expected_direction": 0.283,
+        "PASS": false
+      },
+      "L20": {
+        "block_length": 20,
+        "resamples": 5000,
+        "seed": 20260914,
+        "median_beta": 0.015252524414257682,
+        "pct_2_5": -0.02902373130494252,
+        "pct_97_5": 0.056353000053314506,
+        "fraction_in_expected_direction": 0.2472,
+        "PASS": false
+      }
+    },
+    "divergence_session": {
+      "L5": {
+        "block_length": 5,
+        "resamples": 5000,
+        "seed": 20260914,
+        "median_beta": 0.008916257222418332,
+        "pct_2_5": -0.025056154261578797,
+        "pct_97_5": 0.040283166012532026,
+        "fraction_in_expected_direction": 0.3002,
+        "PASS": false
+      },
+      "L10": {
+        "block_length": 10,
+        "resamples": 5000,
+        "seed": 20260914,
+        "median_beta": 0.008573161126828276,
+        "pct_2_5": -0.027653064953146605,
+        "pct_97_5": 0.04107790020647473,
+        "fraction_in_expected_direction": 0.3218,
+        "PASS": false
+      },
+      "L20": {
+        "block_length": 20,
+        "resamples": 5000,
+        "seed": 20260914,
+        "median_beta": 0.009179682379506785,
+        "pct_2_5": -0.030823472707142547,
+        "pct_97_5": 0.04440283000846112,
+        "fraction_in_expected_direction": 0.329,
+        "PASS": false
+      }
+    }
+  },
+  "gates": {
+    "divergence_1h": {
+      "1_holm_p_le_alpha": false,
+      "2_sign_matches": false,
+      "3_abs_beta_ge_0.03": false,
+      "4_concentration": false,
+      "5_bootstrap_L5": false,
+      "6_bootstrap_L10": false,
+      "7_bootstrap_L20": false,
+      "8_full_baseline_model": true,
+      "9_rank_conditioning": true,
+      "FINAL_DEVELOPMENT_PROMOTION": false
+    },
+    "divergence_session": {
+      "1_holm_p_le_alpha": false,
+      "2_sign_matches": false,
+      "3_abs_beta_ge_0.03": false,
+      "4_concentration": false,
+      "5_bootstrap_L5": false,
+      "6_bootstrap_L10": false,
+      "7_bootstrap_L20": false,
+      "8_full_baseline_model": true,
+      "9_rank_conditioning": true,
+      "FINAL_DEVELOPMENT_PROMOTION": false
+    }
+  },
+  "replication": {
+    "run": false,
+    "reason": "no hypothesis passed Stage 1; replication remains OUTCOME-UNINSPECTED"
+  },
+  "stage1_survivors": [],
+  "replication_run": false,
+  "classification": "V3-Z1 NEGATIVE - DEVELOPMENT"
+}
