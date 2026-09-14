@@ -1,0 +1,322 @@
+{
+  "artifact": "V3_Z1_EXECUTION_SPEC",
+  "version": 1,
+  "frozen_utc": "2026-09-14",
+  "status": "FROZEN - NOT EXECUTED",
+  "performance_inspected": false,
+  "outcomes_inspected": false,
+  "development_run": false,
+  "replication_run": false,
+  "prospective_holdout_inspected": false,
+  "data_cost_usd": 0,
+  "no_further_methodology_change": "after this spec passes, no methodology change is permitted unless an objective implementation or data-engineering defect is discovered",
+  "primary_regression": {
+    "equation": "Y(t) = alpha + beta_j*Z1_j(t) + gamma1*nq_z(t) + gamma2*nq_vol_state(t) + SUM_b delta_b*session_b(t) + gamma3*prev_day_nq_return(t) + eps(t)",
+    "one_model_per_hypothesis": true,
+    "beta_j": "the ONLY coefficient used for hypothesis j's primary test",
+    "intercept": true,
+    "estimator": "OLS",
+    "development_inference": "CR1 cluster-robust covariance clustered by CME trade date, Student-t(G-1)",
+    "development_test": "TWO-SIDED coefficient test",
+    "sign_handling": "the expected sign is NOT used to make the development test one-sided; it is a SEPARATE promotion gate",
+    "standardization": "all continuous predictors are standardized with FROZEN development constants. beta_j is invariant to rescaling of the OTHER regressors, so this affects conditioning only, not the primary test.",
+    "forbidden": [
+      "interaction terms",
+      "nonlinear transformations",
+      "polynomial terms",
+      "thresholding",
+      "winsorization (none was preregistered for Z1)",
+      "automatic feature selection",
+      "stepwise anything",
+      "any model choice made after outcomes"
+    ]
+  },
+  "session_coding": {
+    "definition": "hso = hours since the 18:00 ET CME session open, 0..22",
+    "timezone": "ET wall clock via cme_session.session_epoch, so the boundaries are DST-correct by construction and never a fixed UTC offset",
+    "categories": [
+      {
+        "name": "asia",
+        "hso": [
+          0,
+          6
+        ],
+        "et": "18:00-00:00"
+      },
+      {
+        "name": "europe",
+        "hso": [
+          6,
+          12
+        ],
+        "et": "00:00-06:00"
+      },
+      {
+        "name": "premarket",
+        "hso": [
+          12,
+          15
+        ],
+        "et": "06:00-09:00"
+      },
+      {
+        "name": "us_open",
+        "hso": [
+          15,
+          17
+        ],
+        "et": "09:00-11:00, the 09:30 cash open sits in hso 15"
+      },
+      {
+        "name": "us_midday",
+        "hso": [
+          17,
+          20
+        ],
+        "et": "11:00-14:00"
+      },
+      {
+        "name": "us_close",
+        "hso": [
+          20,
+          23
+        ],
+        "et": "14:00-17:00"
+      }
+    ],
+    "reference_omitted": "asia",
+    "reference_chosen": "chronologically first, FROZEN before outcomes",
+    "reference_irrelevance": "beta_j is mathematically invariant to which dummy is omitted - the dummies span the same space - and a test proves it",
+    "coding": "reference-omitted 0/1 dummies, fixed column order",
+    "absent_category_rule": "FAIL CLEARLY via DesignError; never silently recode",
+    "all_six_present_in_both_partitions": true
+  },
+  "complete_case_rule": {
+    "per_hypothesis": true,
+    "requires": [
+      "primary outcome PRESENT (presence predicate only)",
+      "that hypothesis's predictor present",
+      "all baseline variables present",
+      "session bucket resolvable",
+      "eligible non-roll-excluded CME trade date",
+      "partition membership"
+    ],
+    "forbidden": [
+      "imputation",
+      "forward fill",
+      "backward fill",
+      "switching to the H1/H2 intersection after results are known"
+    ],
+    "counts": {
+      "h1_development_rows": 7586,
+      "h1_development_trade_dates": 360,
+      "h2_development_rows": 7227,
+      "h2_development_trade_dates": 360,
+      "h1_replication_rows": 3267,
+      "h1_replication_trade_dates": 155,
+      "h2_replication_rows": 3112,
+      "h2_replication_trade_dates": 155
+    },
+    "counts_are": "ELIGIBILITY ONLY - no outcome statistic"
+  },
+  "development_test_statistic": {
+    "steps": [
+      "fit the frozen model",
+      "extract beta_j",
+      "extract the CR1 standard error",
+      "t = beta_j / se",
+      "two-sided p from Student-t(G-1)"
+    ],
+    "multiplicity": "Holm FWER, m = 2, alpha = 0.05",
+    "fail_rule": "Holm-adjusted development p > 0.05 -> Stage 1 FAIL"
+  },
+  "block_bootstrap": {
+    "type": "chronological MOVING-BLOCK bootstrap over CME trade dates",
+    "cluster": "the CME trade date is the indivisible unit",
+    "block_lengths": [
+      5,
+      10,
+      20
+    ],
+    "resamples": 5000,
+    "seed": 20260914,
+    "procedure": [
+      "draw contiguous blocks of block_len consecutive development trade dates WITH REPLACEMENT from all start positions",
+      "append blocks until at least the original number of development trade dates is collected",
+      "truncate to exactly that many WHOLE trade-date clusters",
+      "include ALL eligible hourly rows of every selected date, preserving within-date structure",
+      "refit the SAME frozen regression in every replicate",
+      "do NOT refit scalers - use the frozen development constants",
+      "record the distribution of beta_j"
+    ],
+    "interval": "95% percentile interval of beta_j"
+  },
+  "bootstrap_pass_rule": {
+    "requirement": "for EACH of L = 5, 10 and 20 the 95% percentile interval for beta_j must exclude zero in the PREREGISTERED direction",
+    "negative_hypotheses": "the UPPER endpoint of the 95% interval must be < 0",
+    "all_three_required": true,
+    "any_failure": "bootstrap robustness gate = FAIL",
+    "forbidden": [
+      "substituting another interval after results",
+      "choosing the block length that looks best"
+    ]
+  },
+  "concentration_rule": {
+    "groups": "DEVELOPMENT trade dates split chronologically into 10 contiguous, approximately equal-count groups D1..D10",
+    "group_sizes": [
+      36,
+      36,
+      36,
+      36,
+      36,
+      36,
+      36,
+      36,
+      36,
+      36
+    ],
+    "frozen_before_outcomes": true,
+    "procedure": "10 leave-one-decile-out refits of the identical frozen model; NO scaler refitting",
+    "pass_requires_all": [
+      "at least 9 of 10 leave-one-decile-out beta estimates retain the preregistered sign",
+      "no sign reversal has absolute magnitude greater than the full-development |beta|",
+      "the median leave-one-decile-out |beta| is at least 50% of the full-development |beta|"
+    ],
+    "is": "a robustness gate, NOT a new significance test",
+    "no_p_values": "no p-value is computed from these ten models for promotion purposes"
+  },
+  "effect_size_gate": {
+    "threshold": 0.03,
+    "applies_to": "|standardized beta_j| from the FULL development regression",
+    "is_only": "a minimum standardized predictive-information magnitude",
+    "must_not_be": [
+      "converted into P&L",
+      "converted into ticks",
+      "called expected strategy return"
+    ]
+  },
+  "design_quality": {
+    "computed_before_fitting": true,
+    "checks": [
+      "matrix rank",
+      "column count",
+      "condition number (SVD)"
+    ],
+    "rank_deficient": "FAIL CLOSED (DesignError)",
+    "condition_number_warn": 30.0,
+    "condition_number_fail": 100.0,
+    "threshold_frozen_before_outputs": true,
+    "measured_dry_run": {
+      "divergence_1h": {
+        "n": 7586,
+        "k": 10,
+        "rank": 10,
+        "condition_number": 6.5910373035674885
+      },
+      "divergence_session": {
+        "n": 7227,
+        "k": 10,
+        "rank": 10,
+        "condition_number": 6.191285552657542
+      }
+    }
+  },
+  "stage_1_promotion": {
+    "all_nine_required": [
+      "1 Holm-adjusted development p <= 0.05",
+      "2 beta sign matches preregistration (NEGATIVE for both)",
+      "3 |standardized beta| >= 0.03",
+      "4 concentration robustness PASS",
+      "5 moving-block bootstrap PASS for L=5",
+      "6 moving-block bootstrap PASS for L=10",
+      "7 moving-block bootstrap PASS for L=20",
+      "8 the coefficient is estimated in the full frozen baseline model",
+      "9 the design matrix passes rank and conditioning checks"
+    ],
+    "any_failure": "the feature does NOT enter replication"
+  },
+  "stage_2_replication": {
+    "entrants": "ONLY Stage-1 survivors",
+    "identical": [
+      "model equation",
+      "baseline",
+      "session coding",
+      "development scaling constants",
+      "feature definition",
+      "outcome",
+      "missing-data rule"
+    ],
+    "no_refitting_of_design": true,
+    "test": "ONE-SIDED in the preregistered NEGATIVE direction",
+    "alpha": 0.1,
+    "one_survivor": "p_one_sided <= 0.10",
+    "two_survivors": "Holm correction across the two replication p-values at family alpha = 0.10",
+    "also_requires": "beta_replication < 0",
+    "no_effect_size_ratio_required": true,
+    "shrinkage": "reported DESCRIPTIVELY; never converted into a gate after outcomes"
+  },
+  "replication_firewall": {
+    "rule": "replication coefficients, p-values, correlations, plots and directional summaries are NOT computed for a hypothesis that failed Stage 1. Failed hypotheses remain outcome-uninspected in replication.",
+    "both_fail": "V3-Z1 closes NEGATIVE immediately"
+  },
+  "prospective_firewall": {
+    "sealed": true,
+    "opens_only_after": "126 ELIGIBLE CME trade dates under the frozen eligibility rule",
+    "forbidden": [
+      "early peeking",
+      "interim performance chart",
+      "running coefficient",
+      "running p-value"
+    ]
+  },
+  "development_scaling_constants": {
+    "divergence_1h": {
+      "mean": -0.003350560333590229,
+      "sd": 0.6700007252159803,
+      "n": 8102
+    },
+    "divergence_session": {
+      "mean": 0.01035340719844257,
+      "sd": 0.4741273409940371,
+      "n": 7734
+    },
+    "nq_z": {
+      "mean": -0.0016279658969023465,
+      "sd": 1.0664378384885969,
+      "n": 8102
+    },
+    "nq_vol_state": {
+      "mean": -6.113859093648303,
+      "sd": 0.3998839802870991,
+      "n": 8205
+    },
+    "prev_day_nq_return": {
+      "mean": 0.0003064214889722642,
+      "sd": 0.013716047380085607,
+      "n": 8050
+    }
+  },
+  "design_columns": [
+    "intercept",
+    "Z1",
+    "nq_z",
+    "nq_vol_state",
+    "session[europe]",
+    "session[premarket]",
+    "session[us_open]",
+    "session[us_midday]",
+    "session[us_close]",
+    "prev_day_nq_return"
+  ],
+  "runner": "backtest/run_z1_dev.py",
+  "firewall": "--dry-run replaces the outcome VALUE function with a poisoned stub that raises; only the bool presence predicate is reachable. --execute additionally requires --i-authorize-outcome-inspection and is disabled in this build.",
+  "protected_hashes": {
+    "research/V3_Z1_PREREGISTRATION.json": "a979a8ca4ddccc0f995b6b5cfe3ff5c02841a8daf6350879abc159a565fad98a",
+    "research/V3_Z1_PREREGISTRATION_AMENDMENT_01.md": "48a92a0c3ef695468cf3f08c49dc0972a22b263711ed38c7dfb6cd7c52d9b843",
+    "research/V3_Z1_DATA_MANIFEST.json": "a8f82dc864607241ba00eea97d00644a1632bb8e2be971327adf55fd926aa1a3",
+    "backtest/z1_panel.py": "24259e15e3de9f704fe7859ab3e66b258c655c7a048238567827555ad03733a8",
+    "backtest/z1_design.py": "0a884b8d834bf05e947df982eaecd6a4dd93e52377d7e8cccaa7359c8e8fd428"
+  },
+  "hash_verification": "the runner verifies these before reading any real outcome; any mismatch HALTS",
+  "spec_markdown_sha256": "750ce987679eb143dc183ee13e4faa1b60eea860947b82878eae7fb312def1b1"
+}
