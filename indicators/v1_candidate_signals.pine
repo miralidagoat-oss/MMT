@@ -610,11 +610,15 @@ if showPanel and barstate.islast
     prow("closed", str.tostring(closed), chart.fg_color)
     prow("win / loss / scratch", str.tostring(nWin) + " / " + str.tostring(nLoss) + " / " + str.tostring(nScr), chart.fg_color)
     prow("win rate", f2(wr, "#.#") + "%", chart.fg_color)
+    // PF reads "inf" while nothing has lost yet, and "-" before the first
+    // close, rather than the bare "na" that looked like a broken field.
+    string pfTxt = closed == 0 ? "-" : (grossL > 0 ? str.tostring(pf, "#.###") : "inf")
+    prow("PROFIT FACTOR", pfTxt,
+         closed == 0 ? chart.fg_color : (grossL == 0 or pf >= 1 ? #2F6B4F : #8C3A3A))
     prow("net R", f2(netR, "#.##"), netR >= 0 ? #2F6B4F : #8C3A3A)
     prow("expectancy / trade", f2(expR, "#.####") + " R",
          na(expR) ? chart.fg_color : (expR >= 0 ? #2F6B4F : #8C3A3A))
-    prow("profit factor", f2(pf, "#.###"),
-         na(pf) ? chart.fg_color : (pf >= 1 ? #2F6B4F : #8C3A3A))
+    prow("  gross won / lost", f2(grossW, "#.#") + " / " + f2(grossL, "#.#") + " R", chart.fg_color)
     prow("max drawdown", f2(ddR, "#.#") + " R", chart.fg_color)
     prow("friction applied", f2(costPoints, "#.##") + " pts r/t",
          costPoints > 0 ? chart.fg_color : #B03A3A)
