@@ -1,4 +1,214 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Trading Research
+
+Two Pine Script v6 indicators, both of which **grade their own historical
+signals on your chart** instead of asking you to trust a screenshot.
+
+| Script | What it trades |
+|---|---|
+| `indicators/mmt_ict_precision_model.pine` | **MMT ICT Precision Model** — the full ICT Module-1 stack: liquidity raid → displacement/MSS → PD-array entry → draw on liquidity, one A+ setup per killzone (Asia / London / NY AM) |
+| `indicators/alpha_predictive_limit_matrix.pine` | Alpha Predictive Limit Matrix v3.2 — a single-bar liquidity-sweep rejection model with an EWMA-volatility stop, validated on MNQ 1H |
+
+Supporting code: `backtest/ict_engine.py` + `backtest/ict_backtest.py` (offline
+port of the ICT model with self-tests and walk-forward), `backtest/backtest.py`
+and friends (the Alpha Matrix study), `tools/pinelint.py` (static checks for
+the Pine sources).
+
+---
+
+# 1 · MMT ICT Precision Model
+
+`indicators/mmt_ict_precision_model.pine`
+
+An ICT intraday model that only takes the sequence it can define, posts a limit
+order at a PD array, targets the next pool of liquidity, and then keeps score of
+itself honestly — win rate, profit factor, expectancy, net R, drawdown, setups
+per day, and a breakdown by killzone and by entry-array type.
+
+## The trade, in four beats
+
+Nothing fires unless all four print in order, inside an enabled killzone:
+
+1. **RAID** — price sweeps a *documented* liquidity pool by at least
+   `sweepATR × ATR` and closes back inside it. Documented means the model put
+   that level on the chart earlier: PDH/PDL, prior settlement, PWH/PWL, the
+   Asia or London session high/low, equal highs/lows, a swing PH/PL, the close
+   of the swing candle (PHC/PLC), or an NDOG/NWOG edge.
+2. **DISPLACEMENT → MSS** — a candle with a body of at least `dispATR × ATR`
+   closes through the nearest unbroken swing on the other side of the raid, and
+   the leg leaves a **fair value gap**. No FVG, no displacement, no trade. A
+   three-candle FVG can only be confirmed on the candle *after* the
+   displacement, so the shift and the gap are two separate beats: the model
+   marks the MSS, then waits up to `fvgWindow` bars for the gap to print.
+3. **E&R ENTRY** — a limit is posted on the retracement into the PD array of
+   that leg. Type 1 **FVG** (the IOFED entry), Type 2 **Order Block / Breaker**
+   mean threshold, Type 3 **Rejection Block** from the sweep candle's wick. The
+   model takes the array price will touch *first* that still keeps risk inside
+   the cap, and the level has to sit inside the allowed quadrant of the raid →
+   MSS dealing range.
+4. **DOL** — the target is the next untapped pool of liquidity, not a round
+   multiple. If no pool pays `minRR`, the setup is discarded (or falls back to a
+   fixed R:R, if you set `fallbackRR`).
+
+Stop goes beyond the raid extreme plus a buffer — the swept low/high is the one
+level the algorithm has already proven it wanted.
+
+## Every Module-1 concept, and where it lives
+
+| Concept | Implementation |
+|---|---|
+| **DOL** (draw on liquidity) | Target selection: nearest untapped pool that pays `minRR`; live draw shown on the dashboard |
+| **Ticks & contract size** | `f_contracts()` — tick value = `syminfo.pointvalue × syminfo.mintick` (MNQ ⇒ $0.50, NQ ⇒ $5.00); contracts = account × risk% ÷ (stop ticks × tick value), printed on the label and in the alert |
+| **Range settlement** | Prior daily close tracked as a `SETTLE` pool, drawn as a level, and used as half the bias test |
+| **Range indicator** | Asia and London session-range boxes, projected forward, plus dealing-range quadrants |
+| **PLC / PHC** | The *close* of the candle that made the swing, stored as its own pool |
+| **PL / PH** | Confirmed pivot swings → pools and structure levels |
+| **E&R, 3 types** | Type 1 FVG · Type 2 OB/Breaker · Type 3 Rejection Block — selectable, and tallied separately on the dashboard so you can see which type actually pays |
+| **Market structure 1–4** | Unbroken-swing tracking, BOS vs MSS (a break *against* the prevailing structure), displacement requirement, order-flow state on the dashboard |
+| **RB / iRB** | Rejection block built from the sweep candle's wick; flips polarity when closed through |
+| **FVG / iFVG** | Three-candle gap ≥ `fvgATR × ATR`; a gap closed through inverts and works the other way |
+| **OB** | The last opposing candle before the displacement leg; entry at its mean threshold |
+| **Breaker** | An order block that gets closed through — the inverted OB, labelled `BRK` |
+| **Quadrants** | 25 / 50 / 75 of the dealing range drawn on every setup; the entry quadrant is a hard gate and a true discount/premium fill scores a point |
+| **IOFED** | The FVG entry: limit at the consequent encroachment of the displacement gap |
+| **Opening price** | Midnight, 08:30 and 09:30 ET opens captured and drawn; the midnight open is half the bias test |
+| **FP** (fair price) | Equilibrium of the dealing range — the CE fallback entry, and the discount/premium score |
+| **SSA** | Premium/discount array selection: longs only work bullish arrays below equilibrium, shorts the mirror |
+| **SMT** | `request.security` on the sibling index (NQ↔ES, YM/RTY→ES, auto-detected); a divergence at the raid scores a point |
+| **Seek and destroy** | Both sides of *major* liquidity raided repeatedly in one session day ⇒ the model stands down for the rest of the day |
+| **MMXM** | Consolidation → raid → MSS → retrace → draw; the consolidation stage before the raid scores a point |
+| **NWOG / NDOG** | The session-break gap, detected from the bar-time discontinuity, drawn as a box with its CE and added as pools |
+| **HRL / LRLR** | Obstacles between entry and draw (untapped pools + unmitigated opposing arrays); above `hrlMax` the setup is rejected, zero obstacles scores a point |
+| **8:30 fibs** | The 08:30–09:00 ET range; an entry in its CE band or 0.62–0.79 OTE band scores a point |
+
+Two honest notes on the mapping: **FP** and **SSA** are not universal ICT
+acronyms, so they are interpreted here as *fair price (equilibrium / CE)* and
+*sellside–buyside array selection (the PD array matrix)*. If your module means
+something else by them, they are the only two items that would need rewiring —
+everything else maps one-to-one.
+
+## Hard gates vs scored confluence
+
+**Hard gates** (any one fails ⇒ no setup): inside an enabled killzone · the
+four-beat sequence · entry inside the allowed quadrant · risk between
+`minRiskATR` and `maxRiskATR` · a draw that pays `minRR` · obstacles ≤ `hrlMax`
+· not a seek-and-destroy day · killzone and daily quotas not spent.
+
+**Score** (0–9, needs `minScore`, default 3): SMT divergence · raid took major
+liquidity (grade ≥ 2) · opening price *and* settlement agree with the direction
+· zero obstacles to the draw (LRLR) · MMXM consolidation before the raid · a
+real PD array rather than the CE fallback · 08:30 fib confluence · NDOG/NWOG
+interaction · filled in true discount/premium.
+
+`minScore` is the selectivity dial: raise it for fewer, cleaner setups; lower it
+for more.
+
+## Three setups a day, by construction
+
+`maxPerKz = 1` and `maxPerDay = 3` with Asia, London and NY AM enabled means the
+model takes at most one A+ setup per killzone — three a day, Asia and New York
+carrying the workload, London available. Defaults are ET: Asia `2000-0000`,
+London `0200-0500`, NY AM `0830-1130`, NY PM off. If a limit never fills, it
+frees its killzone slot (`freeOnExp`), so a missed retracement doesn't cost you
+the session. Open trades are flattened at 16:00 ET.
+
+## Management
+
+Stop to breakeven at +1R by default (this is what turned losses into scratches
+in the MNQ study behind the other indicator in this repo), optional partial at a
+configurable R, optional time stop, and the end-of-day flatten. Scratches are
+tracked separately: they are excluded from the win rate and included in
+expectancy.
+
+## The dashboard
+
+Live state (bias, draw on liquidity, current killzone and quota, day profile,
+setups used) over self-audit stats: signals, fill rate, target hits, stop outs,
+breakeven scratches, expired and flattened, win rate against the breakeven rate
+implied by the average winner, profit factor, net R, expectancy, max drawdown in
+R, setups per day, net R split by killzone, and a win-loss record by entry-array
+type. Every number is computed by the same pessimistic accounting described
+below — it is the model marking its own homework in public.
+
+**Fill model (deliberately pessimistic — OHLC bars hide the intrabar path):** a
+limit fills only on a bar *after* the one that posted it; a fill bar that also
+trades the stop books the loss immediately; the target is never credited on the
+fill bar; if stop and target print inside one bar the stop wins; breakeven and
+partials arm only on bars with no exit and take effect the next bar.
+
+## Validation status — read this before you size up
+
+**No market data was reachable from the session that wrote this code.** Yahoo,
+Binance, stooq and Polygon were all refused at the network policy (403 on
+CONNECT), so there is **no walk-forward study of this model on MNQ/NQ bars**,
+and the shipped defaults are *structural* — derived from the ICT rules and from
+risk sanity — not fitted to any market. I can't hand you a profit factor I did
+not measure.
+
+What **was** verified, by `python3 backtest/ict_backtest.py selftest`:
+
+- **The model detects the pattern it claims to trade.** A hand-built textbook
+  sequence (quiet range → sweep of a swing low → displacement clearing the
+  short-term high with an FVG → retrace → expansion) produces exactly one long,
+  entry between stop and target, 6.1R to the draw, booked as a win.
+- **The accounting balances.** Net R equals the sum of booked trades, gross win
+  minus gross loss equals net R, and the closed count matches the outcome
+  tallies, across thousands of synthetic bars.
+- **No look-ahead.** On six random walks the model averages **−0.04R per trade**
+  — noise pays nothing, which is exactly what an honest engine does on noise. A
+  materially positive expectancy on random data would have meant the engine was
+  peeking at the future.
+- **No trade ever exits on the bar that posted it**, and the killzone/daily
+  quotas are never exceeded.
+
+The walk-forward tool is honest about itself too: tuned on the first 60% of a
+random walk it reports PF 2.13, and the untouched last 40% gives PF 0.11. That
+is the tool refusing to flatter noise — which is the behaviour you want when you
+point it at real bars.
+
+## Validating and tuning it on your own market
+
+```bash
+python3 backtest/fetch_yahoo.py data MNQ=F     # 60 days of 5m/15m, 2 years of 1h
+python3 backtest/ict_backtest.py selftest      # engine checks, no data needed
+python3 backtest/ict_backtest.py run  data                      # every CSV
+python3 backtest/ict_backtest.py run  data/MNQ_5m.csv '{"min_score": 4}'
+python3 backtest/ict_backtest.py wf   data/MNQ_5m.csv           # 60/40 split
+```
+
+`ict_engine.py` is a faithful port of the Pine logic — same rules, same
+pessimistic fill model — so whatever the `wf` run validates can be typed
+straight into the indicator's inputs. Known differences: the Pine script reads
+PDH/PDL/settlement from TradingView's daily bars while the port aggregates the
+intraday series into CME trading days (18:00–17:00 ET), and SMT needs a second
+CSV offline (it is automatic in Pine). Pass the instrument's tick size when it
+is not a Nasdaq future — `'{"tick": 0.25}'` is the default, ES/MES is also 0.25,
+gold 0.1, most FX 0.00001.
+
+**Frequency dials**, in the order worth trying: `minScore` (3 → 2 loosens,
+3 → 4 tightens) · `hrlMax` · `fallbackRR` (set 2.0 to trade when no pool pays,
+0 to skip) · `sweepATR` and `dispATR` (lower = more raids and softer
+displacement) · the killzone windows themselves · `entryValid` (how long a limit
+waits for its retracement).
+
+## Honest limitations
+
+- This is an indicator-side simulation, not a `strategy()` backtest: no
+  commission, slippage or position sizing in the R tally. Limits earn maker
+  fills on futures, but the fill assumption is still optimistic in fast markets.
+- The dashboard numbers are the model's record *on the chart you are looking
+  at*. Change symbol, timeframe or inputs and they change with it — that is the
+  point of it grading itself rather than quoting me.
+- Designed for 1m–15m intraday charts; 5m is the reference. On higher
+  timeframes the killzone logic stops meaning anything.
+- SMT needs the sibling contract to exist on your data feed. If it can't
+  resolve, that confluence point is simply never awarded — the script does not
+  break.
+- Three setups a day is a *ceiling*, not a promise. On quiet days the sequence
+  does not print and the correct number of trades is zero.
+
+---
+
+# 2 · Alpha Predictive Limit Matrix
 
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
