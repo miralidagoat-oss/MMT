@@ -160,10 +160,60 @@ def rolling_sigma(ret, i, lookback=VOL_LOOKBACK, min_obs=VOL_MIN_OBS):
 #
 # sigma uses the window ending at t-1 (STRICTLY prior to the return it scales),
 # so the normalizer can never be contaminated by the bar it normalizes.
-FEATURES = ("divergence_1h", "divergence_session", "basket_z")
-EXPECTED_SIGN = {"divergence_1h": -1, "divergence_session": -1, "basket_z": +1}
+# AMENDMENT 01 (pre-outcome): basket_z was REMOVED from the confirmatory family.
+#
+# The baseline contains nq_z = z_NQ(t). Conditional on it,
+#     span{nq_z, divergence_1h} = span{nq_z, nq_z - z_B} = span{nq_z, z_B}
+# so
+#     Y = a + b1*nq_z + c*(nq_z - z_B)  ==  a + (b1+c)*nq_z + (-c)*z_B.
+# Fitted values, residuals and standard errors are identical; only the
+# parameterization differs. Measured on a synthetic design matrix: the two
+# coefficients satisfy c_basket = -c_divergence to machine precision and the
+# p-values agree to 14 decimals. They are ONE test written twice.
+#
+# Worse, the preregistered signs were NEGATIVE for divergence_1h and POSITIVE
+# for basket_z. Because c_basket = -c_divergence, those two expectations would
+# have been confirmed or refuted SIMULTANEOUSLY AND AUTOMATICALLY - a built-in
+# guaranteed agreement that would have read as independent support.
+#
+# Removed BEFORE any outcome was inspected, for algebraic equivalence, NOT
+# because of an observed result. The slot is NOT refilled: m drops 3 -> 2.
+FEATURES = ("divergence_1h", "divergence_session")
+EXPECTED_SIGN = {"divergence_1h": -1, "divergence_session": -1}
+
+# Retained ONLY as a component of the divergence equation and as a reported
+# diagnostic. It is never independently tested and can never be promoted.
+DIAGNOSTIC_ONLY = ("basket_z",)
 
 BASELINE = ("nq_z", "nq_vol_state", "session_bucket", "prev_day_nq_return")
+
+# ── frozen standardization (AMENDMENT 01) ─────────────────────────────────
+# Only the PREDICTOR is standardized. Y is already sigma-normalized by its own
+# definition and receives NO further scaling. Scale parameters are estimated
+# from DEVELOPMENT predictor values ONLY, never using any outcome, and never
+# using replication or prospective data. They are then frozen: replication and
+# prospective observations are transformed with the development constants.
+
+
+def fit_scaler(values):
+    """mean and sample std of the non-missing DEVELOPMENT predictor values.
+    Reads no outcome. A degenerate (zero/NaN) scale returns None -> the feature
+    is not testable rather than silently rescaled."""
+    v = [x for x in values if x is not None and x == x]
+    if len(v) < 2:
+        return None
+    mu = sum(v) / len(v)
+    sd = statistics.stdev(v)
+    if not (sd > 0 and sd == sd and sd != float("inf")):
+        return None
+    return {"mean": mu, "sd": sd, "n": len(v)}
+
+
+def apply_scaler(x, sc):
+    """Centered and scaled with FROZEN development constants."""
+    if x is None or sc is None or x != x:
+        return None
+    return (x - sc["mean"]) / sc["sd"]
 
 
 def z_scores(rows, rets, i):
@@ -231,3 +281,70 @@ def primary_outcome(rows, rets, i, horizon=PRIMARY_HORIZON_HOURS):
     if a <= 0 or b <= 0:
         return None
     return math.log(b / a) / s
+
+
+# ── baseline: prev_day_nq_return, exact and non-bridging (AMENDMENT 01) ───
+def session_bounds_rows(rows):
+    """trade_date -> (first_index, last_index) in the panel."""
+    out = {}
+    for i, r in enumerate(rows):
+        d = r["trade_date"]
+        if d not in out:
+            out[d] = [i, i]
+        else:
+            out[d][1] = i
+    return {k: tuple(v) for k, v in out.items()}
+
+
+def prev_day_nq_return(rows, bounds, ordered_dates, date_pos, d, excluded):
+    """The OPEN-TO-CLOSE return of the IMMEDIATELY PRECEDING eligible CME trade
+    date, known in full before the current session opens.
+
+    Frozen rules, all of which yield MISSING rather than a substitute:
+      * the required day is the IMMEDIATELY preceding trade date in the panel's
+        own date sequence. If it is invalid we do NOT walk further back until a
+        convenient valid day appears.
+      * if that day is roll-excluded -> MISSING (never bridges the roll window).
+      * if that day is absent from the panel (holiday, missing session)
+        -> MISSING.
+      * open-to-close WITHIN one completed trade date, so it can never be a
+        multi-day change wearing a one-day label.
+      * the previous session closes at 17:00 ET, before the current session
+        opens at 18:00 ET, so the value is fully available at every hour of d.
+    """
+    k = date_pos.get(d)
+    if k is None or k == 0:
+        return None
+    p = ordered_dates[k - 1]
+    if p in excluded or p not in bounds:
+        return None
+    a, b = bounds[p]
+    o = rows[a]["NQ"][1]           # open of that day's FIRST panel bar
+    c = rows[b]["NQ"][4]           # close of that day's LAST panel bar
+    if o <= 0 or c <= 0:
+        return None
+    return math.log(c / o)
+
+
+# ── prospective accumulation: ELIGIBLE trade dates only (AMENDMENT 01) ────
+PROSPECTIVE_REQUIRED_ELIGIBLE_DATES = 126
+MIN_ROWS_FOR_ELIGIBLE_DATE = 20     # of the 23-hour modal session
+
+
+def eligible_prospective_dates(rows, excluded, freeze_epoch):
+    """Calendar time after the freeze is NOT the requirement; ELIGIBLE observed
+    trade dates are. A date counts only if every condition holds:
+        * all of its bars are timestamped after the freeze instant
+        * it is not roll-excluded (the September window can overlap the start
+          of prospective collection)
+        * it is not partial - at least MIN_ROWS_FOR_ELIGIBLE_DATE panel rows
+    Roll-excluded, missing and partial dates count for NOTHING.
+    """
+    per = {}
+    for r in rows:
+        if r["ts"] <= freeze_epoch:
+            continue
+        per.setdefault(r["trade_date"], 0)
+        per[r["trade_date"]] += 1
+    return sorted(d for d, n in per.items()
+                  if d not in excluded and n >= MIN_ROWS_FOR_ELIGIBLE_DATE)

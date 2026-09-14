@@ -1,5 +1,7 @@
 # V3-Z1 — CROSS-MARKET MARKET-STATE PREREGISTRATION
 
+> **AMENDED — see `V3_Z1_PREREGISTRATION_AMENDMENT_01.md`.** Two corrections supersede the text below, both made BEFORE any outcome was inspected: `basket_z` is removed from the confirmatory family for algebraic redundancy (**m = 3 → 2**), and the NQ tick arithmetic in the effect-floor rationale was wrong. Original wording is retained here as the audit trail.
+
 **Frozen 2026-09-14T02:44:06+00:00. PREREGISTERED, NOT EXECUTED.**
 
 > Selection of Z1 is NOT a claim that Z1 has an edge. It is the next candidate for preregistration and engineering only.
@@ -94,13 +96,13 @@ z_m(t) = r_m(t)/sigma_m(t-1). The sigma window ends at t-1, STRICTLY before the 
 
 the basket is EQUALLY weighted by declaration. No ES/YM/RTY weight, lookback, lag or threshold is optimized against NQ outcomes.
 
-**m = 3** (maximum allowed 6; fewer is preferred).
+~~**m = 3**~~ → **m = 2** per Amendment 01 (maximum allowed 6).
 
 | feature | equation | expected sign | availability | overlaps V1/V2 |
 |---|---|---|---|---|
 | `divergence_1h` | z_NQ(t) - z_B(t) | **NEGATIVE** | 97.79% | False |
 | `divergence_session` | sum of (z_NQ - z_B) since the 18:00 ET session open through t, divided by sqrt(n hours) | **NEGATIVE** | 93.36% | False |
-| `basket_z` | z_B(t) | **POSITIVE** | 97.79% | False |
+| ~~`basket_z`~~ | ~~z_B(t)~~ | ~~POSITIVE~~ | — | **REMOVED — Amendment 01 (algebraic redundancy)** |
 
 - **`divergence_1h`** — an NQ move the broad complex does not confirm is more likely transient idiosyncratic flow than broad repricing, so it should partly revert.
 - **`divergence_session`** — session-scale positioning imbalance rather than a single-hour innovation. *Related:* divergence_1h - same sign expectation at a different time scale. Declared as ONE family; Holm accounts for the correlation.
@@ -163,7 +165,7 @@ Primary inference: OLS with CR1 covariance clustered on CME trade date, Student-
 6 survives the predeclared block-bootstrap dependence sensitivity
 7 remains incremental to the NQ-only + Z2 baseline
 
-**Economic threshold, frozen now:** 0.03 standardized units is frozen NOW, before any result. NQ's hourly sigma is roughly 0.35%%, so 0.03 sigma is about 1 basis point, near 3 index points at current levels - comparable to a round-trip cost of one tick plus commission. Below that an effect cannot plausibly survive execution costs even before slippage, so it would not be worth carrying into a strategy phase.
+**Economic threshold, frozen now:** ~~0.03 standardized units... comparable to a round-trip cost of one tick plus commission~~ **SUPERSEDED BY AMENDMENT 01 (A3/A4).** That statement was factually wrong: NQ tick size is 0.25 index points at $5/tick ($20/point), so 3 index points = **12 NQ ticks** = about $60 per contract, several times a round trip, not comparable to one. The 0.03 floor is retained but re-justified as a predeclared minimum standardized INFORMATION effect, explicitly not a trade-expectancy or cost calculation.
 
 **On failure:** V3-Z1 closes NEGATIVE. No repair search, no threshold tweaking, no horizon switching, no mining the replication segment.
 
