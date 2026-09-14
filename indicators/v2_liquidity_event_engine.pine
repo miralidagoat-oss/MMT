@@ -928,112 +928,109 @@ plot(showVwap and not volMissing ? vwapV : na, "Session VWAP",
 
 
 // ── panel ──────────────────────────────────────────────────────────────────
+//  Four columns, because a number on its own is not information:
+//    field | value now | frozen development range | what it actually tested
+//
+//  The RANGE column is the p0.5-p99.5 winsorization interval frozen on the
+//  sealed 252-day burn-in (9,723 events) BEFORE any outcome existed
+//  (research/WINSORIZATION_FREEZE_V2.json). A live value outside it is marked
+//  OUT: this event is unlike anything the development sample contained. That
+//  is a statement about rarity, NOT a signal.
+//
+//  The p COLUMN is that feature's own confirmatory result against the next 30
+//  minutes, on 16,182 eligible events across 431 trade dates
+//  (research/V2_PROXY_FROZEN_NEGATIVE_RESULT.json). Every Holm-adjusted value
+//  in the family of 22 is 1.0000, so only the raw p is shown. The smallest
+//  raw p in the entire family is 0.1310. None was promoted.
+// ═══════════════════════════════════════════════════════════════════════════
 fmt(float x, string f) => na(x) ? "na" : str.tostring(x, f)
+outq(float v, float lo, float hi) => not na(v) and (v < lo or v > hi)
 
-var table tp = table.new(position.top_right, 2, 44, border_color = color.new(color.gray, 70),
+var table tp = table.new(position.top_right, 4, 46, border_color = color.new(color.gray, 70),
      border_width = 1)
 
-if showPanel and barstate.islast
-    array<string> ks = array.new<string>()
-    array<string> vs = array.new<string>()
+// Pine requires function declarations at global scope, so the row buffers live
+// here and are cleared each time the panel is rebuilt.
+var array<string> ks = array.new<string>()
+var array<string> vs = array.new<string>()
+var array<string> rs = array.new<string>()
+var array<string> ps = array.new<string>()
+var array<bool>   os = array.new<bool>()
 
-    array.push(ks, "V2 EVENT ENGINE")
-    array.push(vs, "DESCRIPTIVE")
-    array.push(ks, "directional edge")
-    array.push(vs, "NONE ESTABLISHED")
-    array.push(ks, "hypotheses promoted")
-    array.push(vs, "0 of 24")
-    array.push(ks, "events on this chart")
-    array.push(vs, str.tostring(array.get(evtBox, 0)))
-    array.push(ks, "live levels")
-    array.push(vs, str.tostring(array.size(lvlHi) + array.size(lvlLo)) + (degraded ? "  DEGRADED" : ""))
-    array.push(ks, "timeframe")
-    array.push(vs, timeframe.period + (timeframe.period == "5" ? "  frozen" : "  NOT FROZEN"))
-    array.push(ks, "volume")
-    array.push(vs, volMissing ? "MISSING - VWAP INVALID" : "ok")
+row(string k, string v, string r, string pp, bool o) =>
+    array.push(ks, k)
+    array.push(vs, v)
+    array.push(rs, r)
+    array.push(ps, pp)
+    array.push(os, o)
+
+if showPanel and barstate.islast
+    array.clear(ks)
+    array.clear(vs)
+    array.clear(rs)
+    array.clear(ps)
+    array.clear(os)
+
+    row("V2 EVENT ENGINE", "DESCRIPTIVE", "frozen dev range", "raw p", false)
+    row("directional edge", "NONE ESTABLISHED", "", "", false)
+    row("hypotheses promoted", "0 of 24", "", "", false)
+    row("events on this chart", str.tostring(array.get(evtBox, 0)), "", "", false)
+    row("live levels", str.tostring(array.size(lvlHi) + array.size(lvlLo)) + (degraded ? "  DEGRADED" : ""), "", "", degraded)
+    row("timeframe", timeframe.period + (timeframe.period == "5" ? "  frozen" : "  NOT FROZEN"), "", "", timeframe.period != "5")
+    row("volume", volMissing ? "MISSING - VWAP INVALID" : "ok", "", "", volMissing)
 
     if array.get(evtBox, 0) > 0
-        array.push(ks, "──  last event  ──")
-        array.push(vs, "")
-        array.push(ks, "level_id")
-        array.push(vs, fLevelId)
-        array.push(ks, "direction")
-        array.push(vs, fDir == 1 ? "+1  sell-side" : "-1  buy-side")
-        array.push(ks, "liquidity_class")
-        array.push(vs, fClass)
-        array.push(ks, "level_kind_dynamic")
-        array.push(vs, fDyn ? "true" : "false")
-        array.push(ks, "session_location")
-        array.push(vs, fSess)
-        array.push(ks, "level_age_min")
-        array.push(vs, fmt(fAge, "#.#"))
-        array.push(ks, "level_formation_lag_min")
-        array.push(vs, fmt(fLag, "#.#"))
-        array.push(ks, "touch_count")
-        array.push(vs, str.tostring(fTouch))
-        array.push(ks, "level_prominence_atr")
-        array.push(vs, fmt(fProm, "#.###"))
-        array.push(ks, "competing_liquidity_atr")
-        array.push(vs, fmt(fComp, "#.###"))
-        array.push(ks, "penetration_pts")
-        array.push(vs, fmt(fPenP, "#.##"))
-        array.push(ks, "penetration_atr")
-        array.push(vs, fmt(fPenA, "#.###"))
-        array.push(ks, "close_vs_level_atr")
-        array.push(vs, fmt(fCvl, "#.###"))
-        array.push(ks, "same_bar_reclaim")
-        array.push(vs, fReclaim ? "true" : "false")
-        array.push(ks, "wick_body_ratio")
-        array.push(vs, fmt(fWick, "#.###"))
-        array.push(ks, "vwap_dist_pts")
-        array.push(vs, fmt(fVdP, "#.##"))
-        array.push(ks, "vwap_dist_sigma")
-        array.push(vs, fmt(fVdS, "#.###"))
-        array.push(ks, "vwap_slope_sigma_per_bar")
-        array.push(vs, fmt(fVsl, "#.####"))
-        array.push(ks, "minutes_since_session_open")
-        array.push(vs, fmt(fMspo, "#.#"))
-        array.push(ks, "atr_percentile")
-        array.push(vs, fmt(fAtrP, "#.###"))
-        array.push(ks, "realized_vol_state")
-        array.push(vs, fmt(fRvP, "#.###"))
-        array.push(ks, "range_compression")
-        array.push(vs, fmt(fRc, "#.###"))
-        array.push(ks, "dist_session_open_atr")
-        array.push(vs, fmt(fDso, "#.###"))
-        array.push(ks, "dist_weekly_open_atr")
-        array.push(vs, fmt(fDwo, "#.###"))
-        array.push(ks, "dist_overnight_high_atr")
-        array.push(vs, fmt(fDoh, "#.###"))
-        array.push(ks, "dist_overnight_low_atr")
-        array.push(vs, fmt(fDol, "#.###"))
-        array.push(ks, "htf_15m_compression")
-        array.push(vs, fmt(fH15, "#.###"))
-        array.push(ks, "htf_1h_range_pctile")
-        array.push(vs, fmt(fH1r, "#.###"))
-        array.push(ks, "htf_1h_vol_state")
-        array.push(vs, fmt(fH1v, "#.###"))
-        array.push(ks, "htf_1h_dist_ref_atr")
-        array.push(vs, fmt(fH1d, "#.###"))
-        array.push(ks, "gapped")
-        array.push(vs, fGapped ? "true" : "false")
-        array.push(ks, "opposing_level_price")
-        array.push(vs, fmt(fOppPx, format.mintick))
+        row("──  last event  ──", "", "", "", false)
+        row("level_id",     fLevelId, "", "", false)
+        row("direction",    fDir == 1 ? "+1  sell-side" : "-1  buy-side", "", "", false)
+        row("liquidity_class", fClass, "categorical", "0.5578", false)
+        row("level_kind_dynamic", fDyn ? "true" : "false", "", "", false)
+        row("session_location", fSess, "categorical", "0.9318", false)
+        row("level_age_min", fmt(fAge, "#.#"), "5.0 .. 70860", "0.8548", outq(fAge, 5.0, 70860.5))
+        row("level_formation_lag_min", fmt(fLag, "#.#"), "5.0 .. 4806", "", outq(fLag, 5.0, 4805.85))
+        row("touch_count", str.tostring(fTouch), "count", "0.9428", false)
+        row("level_prominence_atr", fmt(fProm, "#.###"), "0.346 .. 17.92", "0.5536", outq(fProm, 0.3459266, 17.918347))
+        row("competing_liquidity_atr", fmt(fComp, "#.###"), "0.0 .. 5.958", "0.1310  <- smallest", outq(fComp, 0.0, 5.9582493))
+        row("penetration_pts", fmt(fPenP, "#.##"), "0.29 .. 158.3", "", outq(fPenP, 0.29, 158.30088))
+        row("penetration_atr", fmt(fPenA, "#.###"), "0.019 .. 5.436", "0.3714", outq(fPenA, 0.01946548, 5.4364136))
+        row("close_vs_level_atr", fmt(fCvl, "#.###"), "-4.574 .. 3.161", "0.3419", outq(fCvl, -4.573647, 3.1611893))
+        row("same_bar_reclaim", fReclaim ? "true" : "false", "", "", false)
+        row("wick_body_ratio", fmt(fWick, "#.###"), "0.0 .. 10.0", "0.6459", outq(fWick, 0.0, 10.0))
+        row("vwap_dist_pts", fmt(fVdP, "#.##"), "-267.5 .. 327.8", "", outq(fVdP, -267.4964, 327.81759))
+        row("vwap_dist_sigma", fmt(fVdS, "#.###"), "-6.934 .. 6.389", "0.1531", outq(fVdS, -6.9336256, 6.3889135))
+        row("vwap_slope_sigma_per_bar", fmt(fVsl, "#.####"), "-0.0764 .. 0.0758", "0.6139", outq(fVsl, -0.07641757, 0.07584387))
+        row("minutes_since_session_open", fmt(fMspo, "#.#"), "5.0 .. 1325", "0.3278", outq(fMspo, 5.0, 1325.0))
+        row("atr_percentile", fmt(fAtrP, "#.###"), "0 .. 1", "0.4339", false)
+        row("realized_vol_state", fmt(fRvP, "#.###"), "0 .. 1", "0.5312", false)
+        row("range_compression", fmt(fRc, "#.###"), "0.290 .. 2.959", "0.5899", outq(fRc, 0.28995191, 2.9585833))
+        row("dist_session_open_atr", fmt(fDso, "#.###"), "-16.20 .. 19.68", "0.5002", outq(fDso, -16.197053, 19.678931))
+        row("dist_weekly_open_atr", fmt(fDwo, "#.###"), "-68.78 .. 94.84", "", outq(fDwo, -68.782772, 94.838257))
+        row("dist_overnight_high_atr", fmt(fDoh, "#.###"), "-20.30 .. 16.48", "0.6635  (62% missing)", outq(fDoh, -20.303724, 16.478076))
+        row("dist_overnight_low_atr", fmt(fDol, "#.###"), "-10.85 .. 25.29", "0.8810  (62% missing)", outq(fDol, -10.847083, 25.286671))
+        row("htf_15m_compression", fmt(fH15, "#.###"), "0.292 .. 2.489", "0.8306", outq(fH15, 0.29212759, 2.4894536))
+        row("htf_1h_range_pctile", fmt(fH1r, "#.###"), "0 .. 1", "0.2581", false)
+        row("htf_1h_vol_state", fmt(fH1v, "#.###"), "0 .. 1", "0.2964", false)
+        row("htf_1h_dist_ref_atr", fmt(fH1d, "#.###"), "-5.645 .. 6.012", "0.7090", outq(fH1d, -5.6451679, 6.0117754))
+        row("gapped", fGapped ? "true" : "false", "", "", false)
+        row("opposing_level_price", fmt(fOppPx, format.mintick), "", "", false)
+        row("── every Holm-adj p ──", "1.0000", "", "0 of 22 promoted", false)
 
-    table.clear(tp, 0, 0, 1, 43)
-    int rows = math.min(array.size(ks), 44)
+    table.clear(tp, 0, 0, 3, 45)
+    int rows = math.min(array.size(ks), 46)
     for r = 0 to rows - 1
         color fg = chart.fg_color
         if r == 1 or r == 2
             fg := #B03A3A
         if r == 0
             fg := #8A6A1F
-        if r == 4 and degraded
-            fg := #B03A3A
-        if r == 6 and volMissing
-            fg := #B03A3A
+        if array.get(os, r)
+            fg := #8A6A1F
+        color bg = color.new(chart.bg_color, 15)
         table.cell(tp, 0, r, array.get(ks, r), text_color = color.new(chart.fg_color, 25),
-             text_size = size.tiny, text_halign = text.align_left,
-             bgcolor = color.new(chart.bg_color, 15))
-        table.cell(tp, 1, r, array.get(vs, r), text_color = fg, text_size = size.tiny,
-             text_halign = text.align_right, bgcolor = color.new(chart.bg_color, 15))
+             text_size = size.tiny, text_halign = text.align_left, bgcolor = bg)
+        table.cell(tp, 1, r, array.get(vs, r) + (array.get(os, r) ? "  OUT" : ""),
+             text_color = fg, text_size = size.tiny, text_halign = text.align_right, bgcolor = bg)
+        table.cell(tp, 2, r, array.get(rs, r), text_color = color.new(chart.fg_color, 55),
+             text_size = size.tiny, text_halign = text.align_right, bgcolor = bg)
+        table.cell(tp, 3, r, array.get(ps, r), text_color = color.new(chart.fg_color, 45),
+             text_size = size.tiny, text_halign = text.align_right, bgcolor = bg)
