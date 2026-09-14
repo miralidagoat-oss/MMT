@@ -1,0 +1,639 @@
+//@version=6
+indicator("PO3 Sweep Reclaim Signals", "PO3-SIG", overlay = true,
+     max_lines_count = 500, max_labels_count = 500, max_bars_back = 500)
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PO3 SWEEP-RECLAIM  —  BUY / SELL SIGNALS
+//  The V1 CANDIDATE configuration, config_hash e2adb81d4d4946f3, ported from
+//  backtest/po3_engine.py exactly as it was audited. Every default below is
+//  the frozen value; nothing here was invented for this script.
+//
+//  THE IDEA
+//  Price raids a liquidity pool (previous day/week extreme, Asia or London
+//  high/low, the initial balance, or an unswept fractal pivot), fails, and
+//  CLOSES back through the level within 2 bars. The raid extreme must sit
+//  beyond the WEEKLY open, so the leg reads as manipulation rather than
+//  trend. Entry is the reclaim close, stop is the raid extreme plus half an
+//  ATR, target is 3R, and the stop moves to -0.3R once +1.5R trades.
+//
+//  ── WHAT IT ACTUALLY EARNED, AUDITED ─────────────────────────────────────
+//  research/V1_FROZEN.json, row "CANDIDATE as shipped":
+//
+//        trades                1,978
+//        expectancy        +0.0136 R per trade
+//        profit factor        1.02
+//        win rate            23.5%
+//        max drawdown        83.8 R
+//        95% CI        [-0.0565, +0.0837]   <-- STRADDLES ZERO
+//        frozen verdict  "CI spans zero; negative at stressed friction"
+//
+//  Seven estimators were applied - naive trade-level, day-clustered CR1, day
+//  bootstrap, moving blocks at 5/10/20 days, and a stationary bootstrap. NOT
+//  ONE excluded zero. The point estimate is positive; the uncertainty around
+//  it is roughly six times larger than the estimate itself.
+//
+//  Read that honestly: this is a coin whose bias, if it has one, is too small
+//  to measure in 1,978 trades. It is NOT a demonstrated edge. The expectancy
+//  above is also quoted at ZERO friction - the audit's headline cost was 0.70
+//  points ($14 round trip on NQ at $20/point) and the frozen note records the
+//  result going NEGATIVE at stressed friction ($24). The cost input below
+//  therefore defaults to 0.70 so the on-chart tally is not free money.
+//
+//  Two later generations hunted the same effect from different angles and
+//  found nothing. Across V1, V2_PROXY and V3: 24 predeclared primary
+//  hypotheses, 0 promoted.
+//
+//  So this is a faithful implementation of a setup that was NOT shown to be
+//  profitable. Paper-trade it, or size it like the uncertain thing it is. The
+//  live R tally in the panel exists so you can watch what it does on YOUR
+//  instrument rather than trusting me or the backtest.
+//
+//  NON-REPAINTING: every signal is evaluated on its bar's CLOSE and never
+//  revised. Entry is that close, as a market fill. Nothing fires intrabar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+
+// ── frozen CANDIDATE parameters ────────────────────────────────────────────
+grpS = "Signal  (frozen CANDIDATE defaults)"
+minSweepAtr  = input.float(0.35, "Min raid depth (ATR)", minval = 0.0, step = 0.05, group = grpS,
+     tooltip = "Frozen 0.35. Holdout pool argmax; positive on 4 of 4 symbols.")
+reclaimBars  = input.int(2, "Reclaim within N bars", minval = 0, maxval = 20, group = grpS,
+     tooltip = "Frozen 2. Same-bar-only (0) was clearly worse.")
+reqCloseDir  = input.bool(true, "Reclaim bar must close in trade direction", group = grpS)
+usePo3       = input.bool(true, "PO3: raid extreme beyond the weekly open", group = grpS,
+     tooltip = "Frozen on, anchored to the WEEKLY open, which beat the daily open on both panels.")
+cooldownBars = input.int(6, "Cooldown between signals, per side", minval = 0, group = grpS)
+pivotLen     = input.int(5, "Fractal pivot length", minval = 2, group = grpS)
+allowLongs   = input.bool(true, "Longs",  group = grpS)
+allowShorts  = input.bool(true, "Shorts", group = grpS)
+
+grpR = "Risk  (frozen CANDIDATE defaults)"
+stopBufAtr = input.float(0.50, "Stop buffer beyond raid extreme (ATR)", minval = 0.0, step = 0.05, group = grpR,
+     tooltip = "Frozen 0.50. Flat across 0.35-0.75 on the holdout; this is the middle.")
+rrTarget   = input.float(3.0, "Target (R)", minval = 0.5, step = 0.5, group = grpR)
+beAtR      = input.float(1.5, "Move stop at (R)", minval = 0.0, step = 0.1, group = grpR,
+     tooltip = "Frozen 1.5. Expectancy is FLAT from 0R to 2R - every value sits inside one " +
+               "standard error of every other - so this is a VARIANCE dial, not a returns dial. " +
+               "1.5R is the middle of the low-scratch plateau: 17% of trades end managed, not 67%.")
+beToR      = input.float(-0.30, "Move stop to (R from entry)", step = 0.05, group = grpR,
+     tooltip = "Frozen -0.30. Exact breakeven scratches too many trades out on noise.")
+costPoints = input.float(0.70, "Round-trip friction (index points)", minval = 0.0, step = 0.05, group = grpR,
+     tooltip = "The audit's HEADLINE cost: 0.70 points = $14 round trip on NQ. The frozen note " +
+               "records the result turning NEGATIVE at stressed friction ($24 = 1.20 pts). " +
+               "Set 0 only to reproduce the zero-friction backtest figure.")
+
+grpP = "Pools"
+useDayWeek = input.bool(true, "Previous day / week extremes", group = grpP)
+useSession = input.bool(true, "Asia / London / Initial Balance", group = grpP)
+usePivot   = input.bool(true, "Fractal pivots", group = grpP)
+
+grpD = "Display"
+showPools  = input.bool(true, "Draw liquidity pools", group = grpD)
+showTrades = input.bool(true, "Draw entry / stop / target", group = grpD)
+showPanel  = input.bool(true, "Panel", group = grpD)
+
+const int    ATR_LEN     = 14
+const string TZ          = "America/New_York"
+const int    M_ASIA_END  = 480      // 02:00 ET
+const int    M_LON_END   = 840      // 08:00 ET
+const int    M_RTH_OPEN  = 930      // 09:30 ET
+const int    M_IB_END    = 990      // 10:30 ET
+const int    MAX_POOLS   = 220
+
+
+// ── types ──────────────────────────────────────────────────────────────────
+type Pool
+    float  price
+    int    side        // +1 buy-side (a HIGH, above)  -1 sell-side (a LOW)
+    string kind
+    bool   swept = false
+    line   ln    = na
+
+type Raid
+    float  level
+    int    side        // -1 sell-side raid = LONG setup   +1 = SHORT setup
+    int    bar
+    float  extreme
+    string kind
+    int    firstBar
+    bool   active = false
+
+type Trd
+    int   dir          // +1 long, -1 short
+    float entry
+    float stop
+    float tp
+    float risk
+    int   fillBar
+    bool  be   = false
+    bool  open = true
+    line  lnE  = na
+    line  lnS  = na
+    line  lnT  = na
+
+
+// ── CME trade day. Shifting +6h maps the whole session onto one ET calendar
+//    date, which IS the trade date. US DST flips at 02:00 local, strictly
+//    inside the shifted day, so this needs no hardcoded offset. ────────────
+int shifted    = time + 6 * 60 * 60 * 1000
+int tdY        = year(shifted, TZ)
+int tdM        = month(shifted, TZ)
+int tdD        = dayofmonth(shifted, TZ)
+int tdKey      = tdY * 10000 + tdM * 100 + tdD
+int wkKey      = tdY * 100 + weekofyear(shifted, TZ)
+int sessOpenMs = timestamp(TZ, tdY, tdM, tdD, 0, 0) - 6 * 60 * 60 * 1000
+int mspo       = math.floor((time - sessOpenMs) / 60000)
+bool isMaint   = hour(time, TZ) == 17
+bool inSess    = not isMaint and mspo >= 0 and mspo < 1380
+bool newDay    = tdKey != nz(tdKey[1], -1)
+bool newWeek   = wkKey != nz(wkKey[1], -1)
+
+float atrV = ta.atr(ATR_LEN)
+
+
+// ── state ──────────────────────────────────────────────────────────────────
+var array<Pool> pools  = array.new<Pool>()
+var array<Trd>  trades = array.new<Trd>()
+var Raid raidLong  = Raid.new(na, -1, -1, na, "", -1, false)
+var Raid raidShort = Raid.new(na,  1, -1, na, "",  1, false)
+
+var float dayH = na
+var float dayL = na
+var float wkH  = na
+var float wkL  = na
+var float asiaH = na
+var float asiaL = na
+var float lonH  = na
+var float lonL  = na
+var float ibH   = na
+var float ibL   = na
+var bool  asiaDone = false
+var bool  lonDone  = false
+var bool  ibDone   = false
+var float periodOpen = na            // the WEEKLY open: the PO3 anchor
+var int   lastSigLong  = -1000000
+var int   lastSigShort = -1000000
+
+var int   nSig   = 0
+var int   nWin   = 0
+var int   nLoss  = 0
+var int   nScr   = 0
+var float netR   = 0.0
+var float grossW = 0.0
+var float grossL = 0.0
+var int   nLong  = 0
+var int   nShort = 0
+var float peakR  = 0.0
+var float ddR    = 0.0
+
+var int    sigDir   = 0
+var string sigKind  = ""
+var float  sigEntry = na
+var float  sigStop  = na
+var float  sigTp    = na
+var float  sigDepth = na
+var int    sigBar   = -1
+
+
+// ── pool helpers. These mutate ARRAYS and OBJECT FIELDS only; Pine functions
+//    may do that, but may never reassign an outer scalar. ──────────────────
+poolColor(int side, bool dotted) =>
+    side == 1 ? color.new(#B03A3A, dotted ? 55 : 35) : color.new(#2F6B8C, dotted ? 55 : 35)
+
+setNamed(string kind, float price, int side) =>
+    if not na(price)
+        int idx = -1
+        if array.size(pools) > 0
+            for k = 0 to array.size(pools) - 1
+                if array.get(pools, k).kind == kind
+                    idx := k
+        if idx >= 0
+            Pool old = array.get(pools, idx)
+            if not na(old.ln)
+                line.delete(old.ln)
+            array.remove(pools, idx)
+        Pool np = Pool.new(price, side, kind, false, na)
+        if showPools
+            np.ln := line.new(time, price, time_close, price, xloc = xloc.bar_time,
+                 extend = extend.right, width = 1, color = poolColor(side, false))
+        array.push(pools, np)
+
+// Prune only SWEPT pools, oldest first, so a resource limit can never decide
+// that a live economic level stops existing.
+prunePools() =>
+    if array.size(pools) > MAX_POOLS
+        int guard = array.size(pools) - MAX_POOLS
+        for g = 1 to guard
+            int idx = -1
+            if array.size(pools) > 0
+                for k = 0 to array.size(pools) - 1
+                    if idx < 0 and array.get(pools, k).swept
+                        idx := k
+            if idx >= 0
+                Pool p0 = array.get(pools, idx)
+                if not na(p0.ln)
+                    line.delete(p0.ln)
+                array.remove(pools, idx)
+
+addPivot(float price, int side) =>
+    Pool np = Pool.new(price, side, "pivot", false, na)
+    if showPools
+        np.ln := line.new(time[pivotLen], price, time_close, price, xloc = xloc.bar_time,
+             extend = extend.right, width = 1, style = line.style_dotted,
+             color = poolColor(side, true))
+    array.push(pools, np)
+    prunePools()
+
+closeTradeLines(Trd t) =>
+    if not na(t.lnE)
+        line.set_x2(t.lnE, time)
+        line.set_extend(t.lnE, extend.none)
+    if not na(t.lnS)
+        line.set_x2(t.lnS, time)
+        line.set_extend(t.lnS, extend.none)
+    if not na(t.lnT)
+        line.set_x2(t.lnT, time)
+        line.set_extend(t.lnT, extend.none)
+
+
+// ══ per-bar engine, in the frozen order ════════════════════════════════════
+//   1 manage open trades (created STRICTLY before this bar)
+//   2 roll period / session state, publish named pools
+//   3 fractal pivots
+//   4 sweeps -> raids
+//   5 reclaim -> signal
+//  Every exit check precedes every stop adjustment, so a breakeven move can
+//  never take effect on the bar that triggered it. That pessimism is the
+//  audited behaviour, not a stylistic choice.
+// ═══════════════════════════════════════════════════════════════════════════
+bool firedLong  = false
+bool firedShort = false
+
+if barstate.isconfirmed
+
+    // ── 1. manage open trades ────────────────────────────────────────────
+    if array.size(trades) > 0
+        for k = 0 to array.size(trades) - 1
+            Trd t = array.get(trades, k)
+            if t.open and t.fillBar < bar_index
+                bool bull  = t.dir == 1
+                float costR = t.risk > 0 ? costPoints / t.risk : 0.0
+                bool stopHit = bull ? low  <= t.stop : high >= t.stop
+                bool tpHit   = bull ? high >= t.tp   : low  <= t.tp
+                string outcome = ""
+                if stopHit                      // stop wins ties inside a bar
+                    outcome := t.be ? "scratch" : "loss"
+                else if tpHit
+                    outcome := "win"
+
+                if outcome == ""
+                    if beAtR > 0 and not t.be
+                        float lvl = bull ? t.entry + beAtR * t.risk : t.entry - beAtR * t.risk
+                        if (bull ? high >= lvl : low <= lvl)
+                            t.be := true
+                            float moved = bull ? t.entry + beToR * t.risk : t.entry - beToR * t.risk
+                            t.stop := bull ? math.max(t.stop, moved) : math.min(t.stop, moved)
+                            if not na(t.lnS)
+                                line.set_y1(t.lnS, t.stop)
+                                line.set_y2(t.lnS, t.stop)
+                else
+                    t.open := false
+                    float r = outcome == "win" ? rrTarget : (outcome == "loss" ? -1.0 : beToR)
+                    float booked = r - costR
+                    netR += booked
+                    if booked > 0
+                        grossW += booked
+                    else
+                        grossL += -booked
+                    if netR > peakR
+                        peakR := netR
+                    if peakR - netR > ddR
+                        ddR := peakR - netR
+                    if outcome == "win"
+                        nWin += 1
+                    else if outcome == "loss"
+                        nLoss += 1
+                    else
+                        nScr += 1
+                    closeTradeLines(t)
+                    if showTrades
+                        label.new(time, outcome == "win" ? t.tp : t.stop,
+                             outcome == "win" ? "+" + str.tostring(rrTarget, "#.#") + "R"
+                             : (outcome == "loss" ? "-1R" : str.tostring(beToR, "#.##") + "R"),
+                             xloc = xloc.bar_time, size = size.tiny,
+                             style = label.style_label_left,
+                             color = color.new(outcome == "win" ? #2F6B4F : #8C3A3A, 25),
+                             textcolor = color.white)
+
+    // purge closed trades. Pine has no `break`, so this rebuilds in place.
+    if array.size(trades) > 0
+        int w = 0
+        int nT = array.size(trades)
+        for k = 0 to nT - 1
+            Trd t = array.get(trades, k)
+            if t.open
+                array.set(trades, w, t)
+                w += 1
+        while array.size(trades) > w
+            array.pop(trades)
+
+    if inSess
+        // ── 2. roll period / session state ───────────────────────────────
+        if newDay
+            if useDayWeek and not na(dayH)
+                setNamed("pdh", dayH,  1)
+                setNamed("pdl", dayL, -1)
+            dayH := high
+            dayL := low
+            asiaH := na
+            asiaL := na
+            lonH  := na
+            lonL  := na
+            ibH   := na
+            ibL   := na
+            asiaDone := false
+            lonDone  := false
+            ibDone   := false
+        else
+            dayH := na(dayH) ? high : math.max(dayH, high)
+            dayL := na(dayL) ? low  : math.min(dayL, low)
+
+        if newWeek
+            if useDayWeek and not na(wkH)
+                setNamed("pwh", wkH,  1)
+                setNamed("pwl", wkL, -1)
+            wkH := high
+            wkL := low
+            periodOpen := open
+        else
+            wkH := na(wkH) ? high : math.max(wkH, high)
+            wkL := na(wkL) ? low  : math.min(wkL, low)
+
+        if mspo < M_ASIA_END
+            asiaH := na(asiaH) ? high : math.max(asiaH, high)
+            asiaL := na(asiaL) ? low  : math.min(asiaL, low)
+        else if not asiaDone
+            asiaDone := true
+            if useSession and not na(asiaH)
+                setNamed("asiah", asiaH,  1)
+                setNamed("asial", asiaL, -1)
+
+        if mspo >= M_ASIA_END and mspo < M_LON_END
+            lonH := na(lonH) ? high : math.max(lonH, high)
+            lonL := na(lonL) ? low  : math.min(lonL, low)
+        else if mspo >= M_LON_END and not lonDone
+            lonDone := true
+            if useSession and not na(lonH)
+                setNamed("lonh", lonH,  1)
+                setNamed("lonl", lonL, -1)
+
+        if mspo >= M_RTH_OPEN and mspo < M_IB_END
+            ibH := na(ibH) ? high : math.max(ibH, high)
+            ibL := na(ibL) ? low  : math.min(ibL, low)
+        else if mspo >= M_IB_END and not ibDone
+            ibDone := true
+            if useSession and not na(ibH)
+                setNamed("ibh", ibH,  1)
+                setNamed("ibl", ibL, -1)
+
+        // ── 3. fractal pivots, visible only pivotLen bars late ────────────
+        if usePivot and bar_index >= 2 * pivotLen and not na(atrV)
+            float ph = high[pivotLen]
+            float pl = low[pivotLen]
+            if ph == ta.highest(high, 2 * pivotLen + 1) and ta.highest(high, pivotLen) < ph
+                addPivot(ph, 1)
+            if pl == ta.lowest(low, 2 * pivotLen + 1) and ta.lowest(low, pivotLen) > pl
+                addPivot(pl, -1)
+
+        if not na(atrV) and bar_index > 0
+            // ── 4. sweeps -> raids ───────────────────────────────────────
+            // STRICT penetration, exactly as V1: high > price / low < price.
+            float bestBsl = na
+            float bestSsl = na
+            string kindBsl = ""
+            string kindSsl = ""
+            if array.size(pools) > 0
+                for k = 0 to array.size(pools) - 1
+                    Pool p = array.get(pools, k)
+                    if not p.swept
+                        bool tookBsl = p.side ==  1 and high > p.price
+                        bool tookSsl = p.side == -1 and low  < p.price
+                        if tookBsl
+                            p.swept := true
+                            // nearest swept level beyond the extreme = LOWEST
+                            bestBsl := na(bestBsl) ? p.price : math.min(bestBsl, p.price)
+                            kindBsl := kindBsl == "" ? p.kind
+                                 : (str.contains(kindBsl, p.kind) ? kindBsl : kindBsl + "+" + p.kind)
+                        if tookSsl
+                            p.swept := true
+                            // nearest swept level beyond the extreme = HIGHEST
+                            bestSsl := na(bestSsl) ? p.price : math.max(bestSsl, p.price)
+                            kindSsl := kindSsl == "" ? p.kind
+                                 : (str.contains(kindSsl, p.kind) ? kindSsl : kindSsl + "+" + p.kind)
+                        if (tookBsl or tookSsl) and not na(p.ln)
+                            line.set_color(p.ln, color.new(color.gray, 72))
+                            line.set_style(p.ln, line.style_dotted)
+
+            // one raid per side: EXTEND a running raid rather than spawning a
+            // second, near-duplicate setup on the same leg
+            if not na(bestSsl)
+                if raidLong.active
+                    raidLong.level := math.max(raidLong.level, bestSsl)
+                    raidLong.bar   := bar_index
+                    raidLong.kind  := kindSsl
+                else
+                    raidLong := Raid.new(bestSsl, -1, bar_index, low, kindSsl, bar_index, true)
+            if not na(bestBsl)
+                if raidShort.active
+                    raidShort.level := math.min(raidShort.level, bestBsl)
+                    raidShort.bar   := bar_index
+                    raidShort.kind  := kindBsl
+                else
+                    raidShort := Raid.new(bestBsl, 1, bar_index, high, kindBsl, bar_index, true)
+
+            // ── 5. reclaim -> signal ─────────────────────────────────────
+            // Both sides run the identical block. Written out twice rather
+            // than selected by a ternary, because a ternary that returns a
+            // user-defined type is not something to rely on.
+            if raidLong.active
+                raidLong.extreme := math.min(raidLong.extreme, low)
+                float depth = raidLong.level - raidLong.extreme
+                bool kill = false
+                if bar_index - raidLong.bar > reclaimBars
+                    kill := true                       // never reclaimed in time
+                else if close > raidLong.level
+                    kill := true                       // consumed either way
+                    bool ok = depth >= minSweepAtr * atrV
+                    ok := ok and allowLongs
+                    ok := ok and (bar_index - lastSigLong) >= cooldownBars
+                    if ok and reqCloseDir
+                        ok := close > open
+                    if ok and usePo3 and not na(periodOpen)
+                        ok := raidLong.extreme < periodOpen
+                    if ok
+                        float entry = close
+                        float stopP = raidLong.extreme - stopBufAtr * atrV
+                        float risk  = entry - stopP
+                        if risk >= 2 * syminfo.mintick
+                            float tpP = entry + rrTarget * risk
+                            Trd t = Trd.new(1, entry, stopP, tpP, risk, bar_index,
+                                 false, true, na, na, na)
+                            if showTrades
+                                t.lnE := line.new(time, entry, time_close, entry,
+                                     xloc = xloc.bar_time, extend = extend.right,
+                                     color = color.new(#8A6A1F, 20), width = 1)
+                                t.lnS := line.new(time, stopP, time_close, stopP,
+                                     xloc = xloc.bar_time, extend = extend.right,
+                                     color = color.new(#8C3A3A, 20), width = 1,
+                                     style = line.style_dashed)
+                                t.lnT := line.new(time, tpP, time_close, tpP,
+                                     xloc = xloc.bar_time, extend = extend.right,
+                                     color = color.new(#2F6B4F, 20), width = 1,
+                                     style = line.style_dashed)
+                            array.push(trades, t)
+                            nSig  += 1
+                            nLong += 1
+                            lastSigLong := bar_index
+                            sigDir   := 1
+                            sigKind  := raidLong.kind
+                            sigEntry := entry
+                            sigStop  := stopP
+                            sigTp    := tpP
+                            sigDepth := depth / atrV
+                            sigBar   := bar_index
+                            firedLong := true
+                if kill
+                    raidLong.active := false
+
+            if raidShort.active
+                raidShort.extreme := math.max(raidShort.extreme, high)
+                float depth = raidShort.extreme - raidShort.level
+                bool kill = false
+                if bar_index - raidShort.bar > reclaimBars
+                    kill := true
+                else if close < raidShort.level
+                    kill := true
+                    bool ok = depth >= minSweepAtr * atrV
+                    ok := ok and allowShorts
+                    ok := ok and (bar_index - lastSigShort) >= cooldownBars
+                    if ok and reqCloseDir
+                        ok := close < open
+                    if ok and usePo3 and not na(periodOpen)
+                        ok := raidShort.extreme > periodOpen
+                    if ok
+                        float entry = close
+                        float stopP = raidShort.extreme + stopBufAtr * atrV
+                        float risk  = stopP - entry
+                        if risk >= 2 * syminfo.mintick
+                            float tpP = entry - rrTarget * risk
+                            Trd t = Trd.new(-1, entry, stopP, tpP, risk, bar_index,
+                                 false, true, na, na, na)
+                            if showTrades
+                                t.lnE := line.new(time, entry, time_close, entry,
+                                     xloc = xloc.bar_time, extend = extend.right,
+                                     color = color.new(#8A6A1F, 20), width = 1)
+                                t.lnS := line.new(time, stopP, time_close, stopP,
+                                     xloc = xloc.bar_time, extend = extend.right,
+                                     color = color.new(#8C3A3A, 20), width = 1,
+                                     style = line.style_dashed)
+                                t.lnT := line.new(time, tpP, time_close, tpP,
+                                     xloc = xloc.bar_time, extend = extend.right,
+                                     color = color.new(#2F6B4F, 20), width = 1,
+                                     style = line.style_dashed)
+                            array.push(trades, t)
+                            nSig   += 1
+                            nShort += 1
+                            lastSigShort := bar_index
+                            sigDir   := -1
+                            sigKind  := raidShort.kind
+                            sigEntry := entry
+                            sigStop  := stopP
+                            sigTp    := tpP
+                            sigDepth := depth / atrV
+                            sigBar   := bar_index
+                            firedShort := true
+                if kill
+                    raidShort.active := false
+
+
+// ── signals ────────────────────────────────────────────────────────────────
+plotshape(firedLong,  "BUY",  shape.labelup,   location.belowbar,
+     color.new(#2F6B4F, 0), text = "BUY",  textcolor = color.white, size = size.small)
+plotshape(firedShort, "SELL", shape.labeldown, location.abovebar,
+     color.new(#8C3A3A, 0), text = "SELL", textcolor = color.white, size = size.small)
+
+alertcondition(firedLong,  "PO3 BUY",  "PO3 sweep-reclaim BUY")
+alertcondition(firedShort, "PO3 SELL", "PO3 sweep-reclaim SELL")
+
+if firedLong or firedShort
+    alert(str.format("PO3 {0}  {1}  entry {2}  stop {3}  target {4}  depth {5} ATR",
+         firedLong ? "BUY" : "SELL", sigKind,
+         str.tostring(sigEntry, format.mintick), str.tostring(sigStop, format.mintick),
+         str.tostring(sigTp, format.mintick), str.tostring(sigDepth, "#.##")),
+         alert.freq_once_per_bar_close)
+
+
+// ── panel ──────────────────────────────────────────────────────────────────
+// Buffers and the row helper live at global scope: Pine does not allow a
+// function to be declared inside a local block.
+f2(float x, string f) => na(x) ? "na" : str.tostring(x, f)
+
+var array<string> ks = array.new<string>()
+var array<string> vls = array.new<string>()
+var array<color>  cs = array.new<color>()
+
+prow(string k, string v, color c) =>
+    array.push(ks, k)
+    array.push(vls, v)
+    array.push(cs, c)
+
+var table tb = table.new(position.top_right, 2, 22,
+     border_color = color.new(color.gray, 70), border_width = 1)
+
+if showPanel and barstate.islast
+    array.clear(ks)
+    array.clear(vls)
+    array.clear(cs)
+
+    int closed = nWin + nLoss + nScr
+    float expR = closed > 0 ? netR / closed : na
+    float pf   = grossL > 0 ? grossW / grossL : na
+    float wr   = closed > 0 ? 100.0 * nWin / closed : na
+
+    prow("PO3 SWEEP-RECLAIM", "V1 CANDIDATE", #8A6A1F)
+    prow("audited expectancy", "+0.0136 R", chart.fg_color)
+    prow("audited 95% CI", "-0.057 .. +0.084", #B03A3A)
+    prow("audited verdict", "SPANS ZERO", #B03A3A)
+    prow("audited n / PF / WR", "1978 / 1.02 / 23.5%", chart.fg_color)
+    prow("──  this chart  ──", "", chart.fg_color)
+    prow("signals", str.tostring(nSig) + "   " + str.tostring(nLong) + "L / " + str.tostring(nShort) + "S", chart.fg_color)
+    prow("closed", str.tostring(closed), chart.fg_color)
+    prow("win / loss / scratch", str.tostring(nWin) + " / " + str.tostring(nLoss) + " / " + str.tostring(nScr), chart.fg_color)
+    prow("win rate", f2(wr, "#.#") + "%", chart.fg_color)
+    prow("net R", f2(netR, "#.##"), netR >= 0 ? #2F6B4F : #8C3A3A)
+    prow("expectancy / trade", f2(expR, "#.####") + " R",
+         na(expR) ? chart.fg_color : (expR >= 0 ? #2F6B4F : #8C3A3A))
+    prow("profit factor", f2(pf, "#.###"),
+         na(pf) ? chart.fg_color : (pf >= 1 ? #2F6B4F : #8C3A3A))
+    prow("max drawdown", f2(ddR, "#.#") + " R", chart.fg_color)
+    prow("friction applied", f2(costPoints, "#.##") + " pts r/t",
+         costPoints > 0 ? chart.fg_color : #B03A3A)
+    prow("open trades", str.tostring(array.size(trades)), chart.fg_color)
+    if nSig > 0
+        prow("last signal", (sigDir == 1 ? "BUY   " : "SELL   ") + sigKind, chart.fg_color)
+        prow("  entry / stop / target",
+             f2(sigEntry, format.mintick) + " / " + f2(sigStop, format.mintick) + " / " + f2(sigTp, format.mintick),
+             chart.fg_color)
+        prow("  raid depth", f2(sigDepth, "#.##") + " ATR", chart.fg_color)
+    prow("a chart-sized sample", "IS NOT EVIDENCE", #B03A3A)
+
+    table.clear(tb, 0, 0, 1, 21)
+    int nR = math.min(array.size(ks), 22)
+    if nR > 0
+        for r = 0 to nR - 1
+            table.cell(tb, 0, r, array.get(ks, r), text_color = color.new(chart.fg_color, 25),
+                 text_size = size.tiny, text_halign = text.align_left,
+                 bgcolor = color.new(chart.bg_color, 15))
+            table.cell(tb, 1, r, array.get(vls, r), text_color = array.get(cs, r),
+                 text_size = size.tiny, text_halign = text.align_right,
+                 bgcolor = color.new(chart.bg_color, 15))
