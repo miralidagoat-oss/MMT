@@ -1,0 +1,1039 @@
+//@version=6
+indicator("V2 Liquidity Event Engine", "V2-EVENT", overlay = true,
+     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500,
+     max_bars_back = 500)
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  V2 LIQUIDITY EVENT ENGINE
+//  A faithful port of the frozen V2_PROXY event-time feature engine
+//  (backtest/v2_features.py, conformance-repaired lock).
+//
+//  ── READ THIS BEFORE YOU TRADE ANYTHING ON IT ────────────────────────────
+//  THIS INDICATOR DOES NOT PREDICT DIRECTION. It is not built to, and that is
+//  a finding rather than an omission.
+//
+//  Three research generations asked whether these events carry directional
+//  information. 24 predeclared primary hypotheses; 0 promoted.
+//  V2_PROXY tested all 22 of these features against the next 30 minutes on
+//  16,182 eligible events across 431 CME trade dates:
+//        smallest raw p       = 0.1310   (competing_liquidity_atr)
+//        smallest Holm-adj p  = 1.0000
+//        promoted             = 0 of 22
+//  Both categorical features were SIGN-UNSTABLE across adjacent development
+//  subperiods (rank correlation +0.10, then -0.51). That is what noise looks
+//  like, not a weak edge.
+//
+//  The pipeline that returned those nulls was then put on trial against a
+//  known-true effect. It detects volatility persistence at t = +10.05, and on
+//  the identical design it rejects a true null 5.40% of the time against a
+//  nominal 5%. The tests are correctly sized. The nulls are evidence about
+//  the market, not artifacts of the code.
+//
+//  ── SO WHAT IS THIS ──────────────────────────────────────────────────────
+//  The measurement instrument itself, drawn on your chart. It maps the frozen
+//  liquidity-level universe, marks the exact bar each level is FIRST
+//  penetrated, and computes the frozen event-time fields to the same formulas
+//  that were audited against an independent naive reference engine (exact
+//  agreement on 1,286 events across 5 fixtures).
+//
+//  It tells you WHAT JUST HAPPENED, precisely and causally. It does not tell
+//  you what happens next. There are no buy/sell arrows because none were
+//  earned. Whatever you do with these events afterwards is discretionary and
+//  is NOT supported by this research.
+//
+//  ── FIDELITY NOTES: where a chart cannot be the engine ───────────────────
+//  1. HISTORY. Levels exist only from the chart's loaded window. The Python
+//     engine saw 431 trade dates; your chart sees what TradingView loads.
+//  2. PERCENTILE FEATURES. atr_percentile, realized_vol_state,
+//     htf_1h_range_pctile and htf_1h_vol_state each require 252 STRICTLY
+//     PRIOR same-bucket comparators - roughly 252 trade days of 5m history.
+//     Below that the frozen rule returns MISSING: never a partial window,
+//     never a neighbouring bucket standing in. This port does the same and
+//     shows "na". OFF by default because holding them is memory-expensive.
+//  3. LEVEL CEILING. The research engine HALTS rather than prune a valid
+//     economic level. A chart cannot halt, so when the ceiling binds this
+//     port prunes the OLDEST level and raises a visible DEGRADED badge. While
+//     that badge is lit the event stream is NOT spec-exact. It is never
+//     silent about it.
+//  4. NON-REPAINTING. An event is confirmed at the sweep bar's CLOSE
+//     (t0 = bar open + 300s), exactly as frozen. Nothing is emitted intrabar,
+//     so a level that is penetrated and reclaimed inside one bar still emits
+//     at that bar's close and never disappears afterwards.
+//  5. BASIS. The frozen research ran on a Dukascopy NDX CFD proxy, not CME
+//     NQ. The 0.25-point penetration threshold is an NQ-LIKE MINIMUM applied
+//     to that proxy. On real NQ 0.25 IS the tick: $5/tick, $20/point.
+//
+//  Built for 5-minute charts, the frozen bar size. On any other timeframe the
+//  engine still runs but the frozen constants no longer mean what they meant,
+//  and the panel says so.
+// ═══════════════════════════════════════════════════════════════════════════
+
+
+// ── frozen research constants ──────────────────────────────────────────────
+// FOUR SEPARATE CONSTANTS. Their values coincide at 0.25 but they are
+// deliberately not one shared symbol: changing the sweep threshold must never
+// silently change touch counting, pivot merging or wick geometry.
+const float SWEEP_PENETRATION_POINTS = 0.25   // minimum penetration for a sweep
+const float TOUCH_TOLERANCE_POINTS   = 0.25   // half-width of the touch band
+const float BODY_FLOOR_POINTS        = 0.25   // wick geometry denominator floor
+const float PIVOT_DUP_TOLERANCE_PTS  = 0.25   // duplicate-pivot merge band
+
+const int    ATR_LEN         = 14
+const int    PIVOT_LEN       = 5
+const int    MIN_COMPARATORS = 252
+const int    RV_LEN          = 78      // 78 x 5m realized-vol window
+const string TZ              = "America/New_York"
+
+
+// ── inputs ─────────────────────────────────────────────────────────────────
+grpE = "Engine"
+maxLive     = input.int(300, "Max live levels", minval = 20, maxval = 460, group = grpE,
+     tooltip = "Chart-rendering ceiling only, never an economic rule. When it binds, the " +
+               "oldest level is pruned and the DEGRADED badge lights. The research engine " +
+               "halts instead; a chart cannot.")
+usePivots   = input.bool(true,  "Fractal pivots (len 5)", group = grpE)
+useDayWeek  = input.bool(true,  "Previous day / week extremes", group = grpE)
+useSessions = input.bool(true,  "Asia / London / Initial Balance extremes", group = grpE)
+usePctl     = input.bool(false, "Same-bucket percentile features", group = grpE,
+     tooltip = "atr_percentile, realized_vol_state, htf_1h_range_pctile, htf_1h_vol_state. " +
+               "Each needs 252 strictly-prior same-bucket comparators (~252 trade days of " +
+               "5m history). Below that the frozen rule returns MISSING, and so does this.")
+
+grpD = "Display"
+showLevels  = input.bool(true, "Draw levels",       group = grpD)
+showSwept   = input.bool(true, "Keep swept levels", group = grpD)
+showMarkers = input.bool(true, "Mark sweep events", group = grpD)
+showPanel   = input.bool(true, "Event panel",       group = grpD)
+showVwap    = input.bool(true, "Session VWAP",      group = grpD)
+maxMarkers  = input.int(60, "Max event markers", minval = 5, maxval = 400, group = grpD)
+labelDetail = input.string("compact", "Marker detail", options = ["compact", "full", "none"], group = grpD)
+
+grpC = "Colour"
+cHigh = input.color(color.new(#B03A3A, 0),  "Buy-side level (a high)",  group = grpC)
+cLow  = input.color(color.new(#2F6B8C, 0),  "Sell-side level (a low)",  group = grpC)
+cDead = input.color(color.new(#8A8F98, 55), "Swept",                    group = grpC)
+cMark = input.color(color.new(#8A6A1F, 0),  "Event marker",             group = grpC)
+
+
+// ── types ──────────────────────────────────────────────────────────────────
+type Lvl
+    int    uid
+    string id
+    string kind
+    int    side               // +1 sell-side (a LOW)   -1 buy-side (a HIGH)
+    float  price
+    int    formTs
+    int    availTs
+    int    touches  = 0
+    bool   swept    = false
+    bool   alive    = true
+    float  atrAvail = na
+    float  promMed  = na
+    line   ln       = na
+
+type Hist
+    array<float> v
+
+type Bkt                      // one completed trade-day-anchored HTF bucket
+    int   idx
+    int   endTs
+    float o
+    float h
+    float l
+    float c
+    float tr  = na
+    float lr  = na
+    float vol = na
+
+
+// ── primitives ─────────────────────────────────────────────────────────────
+// Lower/upper bound on a sorted-ascending float array. Written out rather than
+// leaning on binary_search_* so the tie semantics are unambiguous.
+lowerBound(array<float> a, float x) =>
+    int lo = 0
+    int hi = array.size(a)
+    while lo < hi
+        int mid = (lo + hi) / 2
+        if array.get(a, mid) < x
+            lo := mid + 1
+        else
+            hi := mid
+    lo
+
+upperBound(array<float> a, float x) =>
+    int lo = 0
+    int hi = array.size(a)
+    while lo < hi
+        int mid = (lo + hi) / 2
+        if array.get(a, mid) <= x
+            lo := mid + 1
+        else
+            hi := mid
+    lo
+
+clipv(float x, float lo, float hi) =>
+    na(x) ? float(na) : math.max(lo, math.min(hi, x))
+
+// FROZEN: percentile of `value` among EXACTLY the most recent 252 comparators,
+// every one strictly earlier than t0. Fewer than 252 returns MISSING.
+pctlOf(float value, array<float> hist) =>
+    float res = na
+    if not na(value) and not na(hist)
+        int n = array.size(hist)
+        if n >= MIN_COMPARATORS
+            float below = 0.0
+            float ties  = 0.0
+            for k = n - MIN_COMPARATORS to n - 1
+                float x = array.get(hist, k)
+                if x < value
+                    below += 1.0
+                else if x == value
+                    ties += 1.0
+            res := (below + 0.5 * ties) / MIN_COMPARATORS
+    res
+
+pushHist(map<int, Hist> m, int key, float v) =>
+    if not na(v)
+        if not map.contains(m, key)
+            map.put(m, key, Hist.new(array.new<float>()))
+        Hist hh = map.get(m, key)
+        array.push(hh.v, v)
+        if array.size(hh.v) > MIN_COMPARATORS
+            array.shift(hh.v)
+
+histOf(map<int, Hist> m, int key) =>
+    array<float> res = array.new<float>()
+    if map.contains(m, key)
+        res := map.get(m, key).v
+    res
+
+
+// ── CME trade day ──────────────────────────────────────────────────────────
+// A trade day labelled D opens 18:00 ET on D-1 and closes 17:00 ET on D, as a
+// HALF-OPEN interval. The 17:00-18:00 ET maintenance hour belongs to NEITHER
+// session and is excluded, never silently attached to one.
+//
+// Shifting the instant forward by 6h maps the entire session onto a single ET
+// calendar date, and that date IS the trade date. US DST transitions occur at
+// 02:00 local, strictly inside the shifted day, so this is DST-correct without
+// a single hardcoded offset.
+int etHour  = hour(time, TZ)
+bool isMaint = etHour == 17
+
+int shifted = time + 6 * 60 * 60 * 1000
+int tdY = year(shifted, TZ)
+int tdM = month(shifted, TZ)
+int tdD = dayofmonth(shifted, TZ)
+int tdKey = tdY * 10000 + tdM * 100 + tdD
+int wkKey = tdY * 100 + weekofyear(shifted, TZ)
+
+// 18:00 ET of D-1, built on the ET wall clock and converted exactly once.
+int sessOpenMs = timestamp(TZ, tdY, tdM, tdD, 0, 0) - 6 * 60 * 60 * 1000
+int mspo     = math.floor((time - sessOpenMs) / 60000)
+int tfMin    = math.max(1, timeframe.in_seconds() / 60)
+int bucketId = math.floor(mspo / tfMin)
+
+bool inSession = not isMaint and mspo >= 0 and mspo < 1380
+bool newTD = tdKey != nz(tdKey[1], -1)
+bool newWK = wkKey != nz(wkKey[1], -1)
+
+// frozen mspo buckets. 1380-1440 is the maintenance hour and is NOT a bucket.
+sessionLoc(int m) =>
+    m <  0    ? "na"           :
+     m < 480  ? "overnight"    :
+     m < 840  ? "london"       :
+     m < 930  ? "premarket"    :
+     m < 990  ? "ny_open"      :
+     m < 1080 ? "ny_morning"   :
+     m < 1200 ? "midday"       :
+     m < 1260 ? "ny_afternoon" :
+     m < 1320 ? "power_hour"   :
+     m < 1380 ? "post"         : "na"
+
+
+// ── per-bar causal state ───────────────────────────────────────────────────
+float tr5  = ta.tr(true)
+float atr5 = ta.rma(tr5, ATR_LEN)                    // Wilder, SMA-seeded
+float lr5  = close > 0 and close[1] > 0 ? math.log(close / close[1]) : na
+float rvRaw = math.sqrt(math.sum(lr5 * lr5, RV_LEN))
+float rv78 = bar_index < RV_LEN ? na : rvRaw
+
+// range_compression: FULL 12 / 72 windows of closed true ranges. A partial
+// window is never accepted. Frozen clip [0.1, 5.0].
+float r12 = ta.sma(tr5, 12)
+float r72 = ta.sma(tr5, 72)
+float rangeComp = bar_index >= 71 and r72 > 0 ? clipv(r12 / r72, 0.1, 5.0) : na
+
+
+// ── session-anchored VWAP (volume-weighted, FAILS CLOSED) ──────────────────
+// Session VWAP is volume weighted BY SPECIFICATION. If volume is absent it
+// must NOT silently degrade into an equal-weighted typical-price average,
+// which is a different statistic wearing the same name.
+var float pv    = 0.0
+var float pvv   = 0.0
+var float pvol  = 0.0
+var int   vnbar = 0
+var int   vsid  = -1
+var bool  volMissing = false
+
+if barstate.isconfirmed
+    if na(volume) or volume < 0
+        volMissing := true
+
+if barstate.isconfirmed and inSession
+    if newTD
+        pv    := 0.0
+        pvv   := 0.0
+        pvol  := 0.0
+        vnbar := 0
+    float tp = (high + low + close) / 3.0
+    float w  = nz(volume, 0.0)
+    pv    += tp * w
+    pvv   += tp * tp * w
+    pvol  += w
+    vnbar += 1
+    vsid  := tdKey
+
+float vwapV = pvol > 0 ? pv / pvol : na
+float vwapS = pvol > 0 ? math.sqrt(math.max(0.0, pvv / pvol - vwapV * vwapV)) : na
+
+// VWAP slope: t-12 must be in the SAME VWAP session, which needs 13
+// observations including t, not 12.
+float vwapSlope = na
+if not na(vwapV) and not na(vwapV[12]) and vnbar >= 13 and vsid == nz(vsid[12], -1) and not na(vwapS) and vwapS > 0
+    vwapSlope := (vwapV - vwapV[12]) / (12 * vwapS)
+
+
+// ── trade-day-anchored HTF buckets, built natively from the chart bars ─────
+// Anchored to the CME trade day, NOT wall-clock UTC, because every comparator
+// in the spec is "the SAME bucket of the trade day". Built from chart bars
+// rather than request.security, so there is no lookahead surface at all.
+var array<Bkt> ser15 = array.new<Bkt>()
+var array<Bkt> ser1h = array.new<Bkt>()
+var float rma1hAtr  = na
+var int   n1hSeed   = 0
+var float sum1hSeed = 0.0
+var float firstHourOpen = na
+
+var map<int, Hist> atrHist = map.new<int, Hist>()
+var map<int, Hist> rvHist  = map.new<int, Hist>()
+var map<int, Hist> rngHist = map.new<int, Hist>()
+var map<int, Hist> volHist = map.new<int, Hist>()
+
+int idx15 = math.floor(mspo / 15)
+int idx1h = math.floor(mspo / 60)
+bool new15 = newTD or idx15 != nz(idx15[1], -1)
+bool new1h = newTD or idx1h != nz(idx1h[1], -1)
+
+// close out a bucket: true range against the PREVIOUS bucket's close
+sealBucket(array<Bkt> ser) =>
+    int n = array.size(ser)
+    if n >= 1
+        Bkt p = array.get(ser, n - 1)
+        if n >= 2
+            Bkt q = array.get(ser, n - 2)
+            p.tr := math.max(p.h - p.l, math.max(math.abs(p.h - q.c), math.abs(p.l - q.c)))
+            p.lr := q.c > 0 and p.c > 0 ? math.log(p.c / q.c) : na
+        else
+            p.tr := p.h - p.l
+            p.lr := na
+
+if barstate.isconfirmed and inSession
+    if new15
+        sealBucket(ser15)
+        array.push(ser15, Bkt.new(idx15, time_close, open, high, low, close))
+        if array.size(ser15) > 400
+            array.shift(ser15)
+    else
+        int n = array.size(ser15)
+        if n > 0
+            Bkt b = array.get(ser15, n - 1)
+            b.h := math.max(b.h, high)
+            b.l := math.min(b.l, low)
+            b.c := close
+            b.endTs := time_close
+
+    if new1h
+        sealBucket(ser1h)
+        int n = array.size(ser1h)
+        if n >= 1
+            Bkt p = array.get(ser1h, n - 1)
+            // Wilder ATR over completed 1H true ranges, SMA-seeded at 14
+            if not na(p.tr)
+                if n1hSeed < ATR_LEN
+                    sum1hSeed += p.tr
+                    n1hSeed   += 1
+                    if n1hSeed == ATR_LEN
+                        rma1hAtr := sum1hSeed / ATR_LEN
+                else
+                    rma1hAtr := (rma1hAtr * (ATR_LEN - 1) + p.tr) / ATR_LEN
+            // 24-bucket realized vol for htf_1h_vol_state
+            if n >= 24
+                float s = 0.0
+                bool ok = true
+                for k = n - 24 to n - 1
+                    float x = array.get(ser1h, k).lr
+                    if na(x)
+                        ok := false
+                    else
+                        s += x * x
+                p.vol := ok ? math.sqrt(s) : na
+            if usePctl
+                pushHist(rngHist, p.idx, p.h - p.l)
+                pushHist(volHist, p.idx, p.vol)
+        array.push(ser1h, Bkt.new(idx1h, time_close, open, high, low, close))
+        if array.size(ser1h) > 1200
+            array.shift(ser1h)
+    else
+        int n = array.size(ser1h)
+        if n > 0
+            Bkt b = array.get(ser1h, n - 1)
+            b.h := math.max(b.h, high)
+            b.l := math.min(b.l, low)
+            b.c := close
+            b.endTs := time_close
+
+// most recent CLOSED bucket of a series
+lastClosed(array<Bkt> ser) =>
+    Bkt res = na
+    if array.size(ser) >= 2
+        res := array.get(ser, array.size(ser) - 2)
+    res
+
+
+// ── level store: one price-sorted array per side ───────────────────────────
+var array<Lvl>   lvlHi = array.new<Lvl>()      // side -1, price ascending
+var array<float> priHi = array.new<float>()
+var array<Lvl>   lvlLo = array.new<Lvl>()      // side +1, price ascending
+var array<float> priLo = array.new<float>()
+// Pine functions cannot reassign outer scalars, so the uid counter lives in a
+// one-element array, which they CAN mutate.
+var array<int> uidBox   = array.new_int(1, 0)
+var array<int> evtBox   = array.new_int(1, 0)
+var bool degraded = false
+
+addLevel(Lvl lv) =>
+    array<Lvl>   la = lv.side == -1 ? lvlHi : lvlLo
+    array<float> pa = lv.side == -1 ? priHi : priLo
+    int j = lowerBound(pa, lv.price)
+    array.insert(pa, j, lv.price)
+    array.insert(la, j, lv)
+
+removeLevel(Lvl lv) =>
+    array<Lvl>   la = lv.side == -1 ? lvlHi : lvlLo
+    array<float> pa = lv.side == -1 ? priHi : priLo
+    int j = lowerBound(pa, lv.price)
+    bool done = false
+    while not done and j < array.size(pa) and array.get(pa, j) == lv.price
+        if array.get(la, j).uid == lv.uid
+            array.remove(pa, j)
+            array.remove(la, j)
+            done := true
+        else
+            j += 1
+    if not na(lv.ln)
+        line.delete(lv.ln)
+    done
+
+// Metadata frozen AT AVAILABILITY so the feature cannot drift with sweep
+// timing: the MEDIAN of the 20 closes preceding availability, over the ATR
+// known at availability. `off` is the bar offset of the last bar whose close
+// is at or before availability.
+publish(string kind, int side, float price, int formTs, int availTs, int off) =>
+    array.set(uidBox, 0, array.get(uidBox, 0) + 1)
+    int uid = array.get(uidBox, 0)
+    Lvl lv = Lvl.new(uid, kind + "-" + str.tostring(uid), kind, side, price, formTs, availTs)
+    if bar_index >= off + 20 and not na(atr5[off]) and atr5[off] > 0
+        array<float> t = array.new<float>()
+        for k = off to off + 19
+            array.push(t, close[k])
+        array.sort(t, order.ascending)
+        lv.promMed  := 0.5 * (array.get(t, 9) + array.get(t, 10))
+        lv.atrAvail := atr5[off]
+    if showLevels
+        lv.ln := line.new(availTs, price, time_close, price, xloc = xloc.bar_time,
+             extend = extend.right, color = side == -1 ? cHigh : cLow, width = 1)
+    addLevel(lv)
+    lv
+
+
+// ── running extremes, with TRUE formation timestamps ───────────────────────
+var float dH  = na
+var int   dHt = na
+var float dL  = na
+var int   dLt = na
+var float pdH = na
+var int   pdHt = na
+var float pdL = na
+var int   pdLt = na
+var float wH  = na
+var int   wHt = na
+var float wL  = na
+var int   wLt = na
+var float pwH = na
+var int   pwHt = na
+var float pwL = na
+var int   pwLt = na
+var float aH  = na
+var int   aHt = na
+var float aL  = na
+var int   aLt = na
+var float lgH = na
+var int   lgHt = na
+var float lgL = na
+var int   lgLt = na
+var float ibH = na
+var int   ibHt = na
+var float ibL = na
+var int   ibLt = na
+var bool  madeAsia = false
+var bool  madeLon  = false
+var bool  madeIB   = false
+var float dayOpen = na
+var float wkOpen  = na
+var float onHi    = na
+var float onLo    = na
+
+// last-event fields, held for the panel and the alert payload
+var string fLevelId = ""
+var int    fDir  = na
+var string fClass = ""
+var bool   fDyn = false
+var string fSess = ""
+var float  fAge = na
+var float  fLag = na
+var int    fTouch = na
+var float  fProm = na
+var float  fComp = na
+var float  fPenP = na
+var float  fPenA = na
+var float  fCvl = na
+var bool   fReclaim = false
+var float  fWick = na
+var float  fVdP = na
+var float  fVdS = na
+var float  fVsl = na
+var float  fMspo = na
+var float  fAtrP = na
+var float  fRvP = na
+var float  fRc = na
+var float  fDso = na
+var float  fDwo = na
+var float  fDoh = na
+var float  fDol = na
+var float  fH15 = na
+var float  fH1r = na
+var float  fH1v = na
+var float  fH1d = na
+var bool   fGapped = false
+var float  fOppPx = na
+
+var array<Lvl>   fired   = array.new<Lvl>()
+var array<label> markers = array.new<label>()
+
+
+// ══ THE ENGINE ═════════════════════════════════════════════════════════════
+//  Order is load-bearing and matches the frozen sequence:
+//    A availability -> B/C/D sweep + emit -> E touches -> F invalidation
+//    -> G pivots -> running extremes -> comparator histories.
+//  Emission strictly precedes every state update the emitted row could
+//  otherwise observe. That ordering is the whole causality guarantee.
+// ═══════════════════════════════════════════════════════════════════════════
+if barstate.isconfirmed and inSession
+
+    // ── A. levels that become available now, from strictly earlier bars ──
+    if newTD
+        if useDayWeek and not na(pdH)
+            publish("pdh", -1, pdH, pdHt, sessOpenMs, 1)
+            publish("pdl",  1, pdL, pdLt, sessOpenMs, 1)
+        if useDayWeek and newWK and not na(pwH)
+            publish("pwh", -1, pwH, pwHt, sessOpenMs, 1)
+            publish("pwl",  1, pwL, pwLt, sessOpenMs, 1)
+        pdH  := dH
+        pdHt := dHt
+        pdL  := dL
+        pdLt := dLt
+        dH := na
+        dHt := na
+        dL := na
+        dLt := na
+        madeAsia := false
+        madeLon  := false
+        madeIB   := false
+        aH := na
+        aL := na
+        lgH := na
+        lgL := na
+        ibH := na
+        ibL := na
+        dayOpen := open
+        onHi := na
+        onLo := na
+        firstHourOpen := open
+        if newWK
+            pwH  := wH
+            pwHt := wHt
+            pwL  := wL
+            pwLt := wLt
+            wH := na
+            wHt := na
+            wL := na
+            wLt := na
+            wkOpen := open
+
+    // session-window levels publish when the window ENDS
+    if useSessions
+        if mspo >= 480 and not madeAsia and not na(aH)
+            madeAsia := true
+            publish("asia_h", -1, aH, aHt, time, 1)
+            publish("asia_l",  1, aL, aLt, time, 1)
+        if mspo >= 840 and not madeLon and not na(lgH)
+            madeLon := true
+            publish("lon_h", -1, lgH, lgHt, time, 1)
+            publish("lon_l",  1, lgL, lgLt, time, 1)
+        if mspo >= 990 and not madeIB and not na(ibH)
+            madeIB := true
+            publish("ib_h", -1, ibH, ibHt, time, 1)
+            publish("ib_l",  1, ibL, ibLt, time, 1)
+
+    // ── B/C/D. FIRST QUALIFYING PENETRATIONS on this bar, then emit ──────
+    // State machine: AVAILABLE -> SWEPT -> CONSUMED, irreversible. A level
+    // emits at most ONE event in its entire life. Marking precedes emission
+    // so a row can never observe a second penetration of its own level.
+    array.clear(fired)
+    if not na(atr5) and atr5 > 0
+        // side +1: a LOW is swept when low <= price - PEN  <=>  price >= low + PEN
+        int nLo = array.size(priLo)
+        if nLo > 0
+            int a = lowerBound(priLo, low + SWEEP_PENETRATION_POINTS)
+            if a < nLo
+                for k = a to nLo - 1
+                    Lvl lv = array.get(lvlLo, k)
+                    if not lv.swept and lv.availTs <= time
+                        lv.swept := true
+                        array.push(fired, lv)
+        // side -1: a HIGH is swept when high >= price + PEN <=> price <= high - PEN
+        int nHi = array.size(priHi)
+        if nHi > 0
+            int b = upperBound(priHi, high - SWEEP_PENETRATION_POINTS)
+            if b > 0
+                for k = 0 to b - 1
+                    Lvl lv = array.get(lvlHi, k)
+                    if not lv.swept and lv.availTs <= time
+                        lv.swept := true
+                        array.push(fired, lv)
+
+    int nFired = array.size(fired)
+    if nFired > 0
+        int t0 = time_close
+        float a0 = atr5
+        for k = 0 to nFired - 1
+            Lvl lv = array.get(fired, k)
+            int dir = lv.side
+            float px = lv.price
+
+            float pen  = dir == 1 ? px - low : high - px
+            float cvl  = dir == 1 ? (close - px) / a0 : (px - close) / a0
+            float body = math.max(math.abs(close - open), BODY_FLOOR_POINTS)
+            float wick = dir == 1 ? math.min(open, close) - low : high - math.max(open, close)
+
+            // competing liquidity: distance to the closest OTHER level on the
+            // SAME side. No neighbour at all is the frozen sentinel 10.0.
+            array<float> pa = dir == -1 ? priHi : priLo
+            array<Lvl>   la = dir == -1 ? lvlHi : lvlLo
+            float best = na
+            int nSame = array.size(la)
+            if nSame > 1
+                int j = lowerBound(pa, px)
+                int q0 = math.max(0, j - 1)
+                int q1 = math.min(nSame - 1, j + 1)
+                if q1 >= q0
+                    for q = q0 to q1
+                        if array.get(la, q).uid != lv.uid
+                            float dd = math.abs(array.get(la, q).price - px)
+                            best := na(best) ? dd : math.min(best, dd)
+            float comp = na(best) ? 10.0 : best / a0
+
+            // opposing liquidity: the nearest AVAILABLE opposite-side level AT
+            // t0, its price FROZEN here. A level formed later can never
+            // retroactively become the target.
+            array<float> op = dir == -1 ? priLo : priHi
+            array<Lvl>   ol = dir == -1 ? lvlLo : lvlHi
+            float obest = na
+            float opx = na
+            int nOpp = array.size(ol)
+            if nOpp > 0
+                int oj = lowerBound(op, px)
+                int q0 = math.max(0, oj - 1)
+                int q1 = math.min(nOpp - 1, oj + 1)
+                if q1 >= q0
+                    for q = q0 to q1
+                        float dd = math.abs(array.get(ol, q).price - px)
+                        if na(obest) or dd < obest
+                            obest := dd
+                            opx   := array.get(ol, q).price
+
+            // htf_15m_compression: TRUE RANGE, all 16 CLOSED buckets required
+            float b15 = na
+            int n15 = array.size(ser15)
+            if n15 >= 17
+                float m4  = 0.0
+                float m16 = 0.0
+                bool ok = true
+                for q = n15 - 17 to n15 - 2
+                    float x = array.get(ser15, q).tr
+                    if na(x)
+                        ok := false
+                    else
+                        m16 += x
+                        if q >= n15 - 5
+                            m4 += x
+                if ok and m16 > 0
+                    b15 := clipv((m4 / 4.0) / (m16 / 16.0), 0.1, 5.0)
+
+            // 1H features off ACTUAL closed 1H buckets
+            Bkt nb1 = lastClosed(ser1h)
+            float h1d = na
+            float h1r = na
+            float h1v = na
+            if not na(nb1)
+                if not na(firstHourOpen) and not na(rma1hAtr) and rma1hAtr > 0
+                    h1d := (nb1.c - firstHourOpen) / rma1hAtr
+                if usePctl
+                    h1r := pctlOf(nb1.h - nb1.l, histOf(rngHist, nb1.idx))
+                    h1v := pctlOf(nb1.vol,       histOf(volHist, nb1.idx))
+
+            float atrP = usePctl ? pctlOf(a0,   histOf(atrHist, bucketId)) : na
+            float rvP  = usePctl ? pctlOf(rv78, histOf(rvHist,  bucketId)) : na
+
+            // ── the frozen event-time fields ─────────────────────────────
+            fLevelId := lv.id
+            fDir     := dir
+            fClass   := lv.kind
+            fDyn     := lv.kind == "pivot"
+            fSess    := sessionLoc(mspo)
+            fAge     := (t0 - lv.availTs) / 60000.0
+            fLag     := (lv.availTs - lv.formTs) / 60000.0
+            fTouch   := lv.touches
+            fProm    := na(lv.promMed) ? na : math.abs(px - lv.promMed) / lv.atrAvail
+            fComp    := comp
+            fPenP    := pen
+            fPenA    := pen / a0
+            fCvl     := cvl
+            fReclaim := cvl > 0
+            fWick    := clipv(math.max(0.0, wick / body), 0.0, 10.0)
+            fVdP     := na(vwapV) ? na : close - vwapV
+            fVdS     := na(vwapV) or na(vwapS) or vwapS <= 0 ? na : (close - vwapV) / vwapS
+            fVsl     := vwapSlope
+            fMspo    := (t0 - sessOpenMs) / 60000.0
+            fAtrP    := atrP
+            fRvP     := rvP
+            fRc      := rangeComp
+            fDso     := na(dayOpen) ? na : (close - dayOpen) / a0
+            fDwo     := na(wkOpen)  ? na : (close - wkOpen)  / a0
+            fDoh     := mspo >= 930 and not na(onHi) ? (close - onHi) / a0 : na
+            fDol     := mspo >= 930 and not na(onLo) ? (close - onLo) / a0 : na
+            fH15     := b15
+            fH1r     := h1r
+            fH1v     := h1v
+            fH1d     := h1d
+            fGapped  := dir == 1 ? high < px : low > px
+            fOppPx   := opx
+            array.set(evtBox, 0, array.get(evtBox, 0) + 1)
+
+            // freeze the level's line at the sweep bar
+            if not na(lv.ln)
+                if showSwept
+                    line.set_extend(lv.ln, extend.none)
+                    line.set_x2(lv.ln, t0)
+                    line.set_color(lv.ln, cDead)
+                    line.set_style(lv.ln, line.style_dotted)
+                else
+                    line.delete(lv.ln)
+                    lv.ln := na
+
+            if showMarkers and labelDetail != "none"
+                string txt = ""
+                if labelDetail == "compact"
+                    txt := str.format("{0}  pen {1} ATR", fClass, str.tostring(fPenA, "#.##"))
+                else
+                    txt := str.format(
+                       "{0}   {1}\npenetration  {2} ATR  ({3} pt)\nclose_vs_level  {4} ATR\nreclaim {5}    gapped {6}\nprominence {7}   competing {8}\ntouches {9}    age {10} min\nvwap_dist {11} sigma\n{12}",
+                       fClass, fLevelId, str.tostring(fPenA, "#.###"), str.tostring(fPenP, "#.##"),
+                       str.tostring(fCvl, "#.###"), fReclaim ? "yes" : "no", fGapped ? "yes" : "no",
+                       na(fProm) ? "na" : str.tostring(fProm, "#.##"), str.tostring(fComp, "#.##"),
+                       str.tostring(fTouch), str.tostring(fAge, "#"),
+                       na(fVdS) ? "na" : str.tostring(fVdS, "#.##"), fSess)
+                label m = label.new(t0, px, txt, xloc = xloc.bar_time,
+                     style = dir == 1 ? label.style_label_up : label.style_label_down,
+                     color = color.new(cMark, 82), textcolor = chart.fg_color,
+                     size = size.tiny, textalign = text.align_left)
+                array.push(markers, m)
+                if array.size(markers) > maxMarkers
+                    label.delete(array.shift(markers))
+
+        alert("V2-EVENT " + str.format(
+             "{0}|dir {1}|{2}|pen_atr {3}|cvl_atr {4}|reclaim {5}|gapped {6}|prom {7}|comp {8}|touch {9}|age {10}|vwap_sig {11}|{12}",
+             fLevelId, fDir, fClass, str.tostring(fPenA, "#.###"), str.tostring(fCvl, "#.###"),
+             fReclaim ? "1" : "0", fGapped ? "1" : "0",
+             na(fProm) ? "na" : str.tostring(fProm, "#.###"), str.tostring(fComp, "#.###"),
+             str.tostring(fTouch), str.tostring(fAge, "#.#"),
+             na(fVdS) ? "na" : str.tostring(fVdS, "#.###"), fSess),
+             alert.freq_once_per_bar_close)
+
+    // ── E. touch counting, STRICTLY AFTER emission ───────────────────────
+    int nLo2 = array.size(priLo)
+    if nLo2 > 0
+        int ta1 = lowerBound(priLo, low - TOUCH_TOLERANCE_POINTS)
+        int tb1 = upperBound(priLo, high + TOUCH_TOLERANCE_POINTS)
+        if tb1 > ta1
+            for k = ta1 to tb1 - 1
+                Lvl lv = array.get(lvlLo, k)
+                if not lv.swept and lv.availTs <= time
+                    lv.touches += 1
+    int nHi2 = array.size(priHi)
+    if nHi2 > 0
+        int ta2 = lowerBound(priHi, low - TOUCH_TOLERANCE_POINTS)
+        int tb2 = upperBound(priHi, high + TOUCH_TOLERANCE_POINTS)
+        if tb2 > ta2
+            for k = ta2 to tb2 - 1
+                Lvl lv = array.get(lvlHi, k)
+                if not lv.swept and lv.availTs <= time
+                    lv.touches += 1
+
+    // ── F. structural invalidation of pivots, only now, for LATER bars ───
+    // A side +1 pivot dies when price penetrates it but CLOSES back above;
+    // a side -1 pivot when price penetrates it but CLOSES back below. Both
+    // conditions bound the price band, so only that band is scanned.
+    if usePivots
+        array<Lvl> dead = array.new<Lvl>()
+        int nL = array.size(priLo)
+        if nL > 0
+            int j0 = lowerBound(priLo, low + SWEEP_PENETRATION_POINTS)
+            int j1 = lowerBound(priLo, close)
+            if j1 > j0
+                for k = j0 to j1 - 1
+                    Lvl lv = array.get(lvlLo, k)
+                    if lv.kind == "pivot" and lv.alive and lv.availTs <= time
+                        array.push(dead, lv)
+        int nH = array.size(priHi)
+        if nH > 0
+            int j0 = upperBound(priHi, close)
+            int j1 = upperBound(priHi, high - SWEEP_PENETRATION_POINTS)
+            if j1 > j0
+                for k = j0 to j1 - 1
+                    Lvl lv = array.get(lvlHi, k)
+                    if lv.kind == "pivot" and lv.alive and lv.availTs <= time
+                        array.push(dead, lv)
+        int nD = array.size(dead)
+        if nD > 0
+            for k = 0 to nD - 1
+                Lvl lv = array.get(dead, k)
+                lv.alive := false
+                removeLevel(lv)
+
+    // ── G. pivots confirmed by this bar, AVAILABLE from the next ─────────
+    if usePivots and bar_index >= 2 * PIVOT_LEN
+        float ph = high[PIVOT_LEN]
+        float pl = low[PIVOT_LEN]
+        bool okH = ph == ta.highest(high, 2 * PIVOT_LEN + 1) and ta.highest(high, PIVOT_LEN) < ph
+        bool okL = pl == ta.lowest(low,  2 * PIVOT_LEN + 1) and ta.lowest(low,  PIVOT_LEN) > pl
+        if okH
+            // duplicate band: the OLDER availability survives ENTIRELY
+            bool dupe = false
+            if array.size(priHi) > 0
+                int j = lowerBound(priHi, ph - PIVOT_DUP_TOLERANCE_PTS)
+                int e = upperBound(priHi, ph + PIVOT_DUP_TOLERANCE_PTS)
+                if e > j
+                    for q = j to e - 1
+                        if array.get(lvlHi, q).kind == "pivot" and array.get(lvlHi, q).alive
+                            dupe := true
+            if not dupe
+                publish("pivot", -1, ph, time[PIVOT_LEN], time_close, 0)
+        if okL
+            bool dupe = false
+            if array.size(priLo) > 0
+                int j = lowerBound(priLo, pl - PIVOT_DUP_TOLERANCE_PTS)
+                int e = upperBound(priLo, pl + PIVOT_DUP_TOLERANCE_PTS)
+                if e > j
+                    for q = j to e - 1
+                        if array.get(lvlLo, q).kind == "pivot" and array.get(lvlLo, q).alive
+                            dupe := true
+            if not dupe
+                publish("pivot", 1, pl, time[PIVOT_LEN], time_close, 0)
+
+    // ── CEILING. The research engine HALTS rather than prune a valid level.
+    //    A chart cannot halt, so it prunes the OLDEST and says so, loudly.
+    while array.size(lvlHi) + array.size(lvlLo) > maxLive
+        degraded := true
+        array<Lvl> la = array.size(lvlHi) >= array.size(lvlLo) ? lvlHi : lvlLo
+        Lvl old = array.get(la, 0)
+        for k = 0 to array.size(la) - 1
+            if array.get(la, k).availTs < old.availTs
+                old := array.get(la, k)
+        removeLevel(old)
+
+    // ── running extremes, with TRUE formation timestamps ─────────────────
+    if na(dH) or high > dH
+        dH := high
+        dHt := time
+    if na(dL) or low < dL
+        dL := low
+        dLt := time
+    if na(wH) or high > wH
+        wH := high
+        wHt := time
+    if na(wL) or low < wL
+        wL := low
+        wLt := time
+    if mspo < 480
+        if na(aH) or high > aH
+            aH := high
+            aHt := time
+        if na(aL) or low < aL
+            aL := low
+            aLt := time
+    if mspo >= 480 and mspo < 840
+        if na(lgH) or high > lgH
+            lgH := high
+            lgHt := time
+        if na(lgL) or low < lgL
+            lgL := low
+            lgLt := time
+    if mspo >= 930 and mspo < 990
+        if na(ibH) or high > ibH
+            ibH := high
+            ibHt := time
+        if na(ibL) or low < ibL
+            ibL := low
+            ibLt := time
+    if mspo < 930
+        onHi := na(onHi) ? high : math.max(onHi, high)
+        onLo := na(onLo) ? low  : math.min(onLo, low)
+    if na(dayOpen)
+        dayOpen := open
+    if na(wkOpen)
+        wkOpen := open
+
+    // ── comparator histories, appended AFTER use, so the current bar is
+    //    never its own comparator (frozen: every comparator strictly < t0) ─
+    if usePctl
+        pushHist(atrHist, bucketId, atr5)
+        pushHist(rvHist,  bucketId, rv78)
+
+
+// ── plots ──────────────────────────────────────────────────────────────────
+plot(showVwap and not volMissing ? vwapV : na, "Session VWAP",
+     color = color.new(#7A7F8A, 25), linewidth = 1)
+
+
+// ── panel ──────────────────────────────────────────────────────────────────
+fmt(float x, string f) => na(x) ? "na" : str.tostring(x, f)
+
+var table tp = table.new(position.top_right, 2, 44, border_color = color.new(color.gray, 70),
+     border_width = 1)
+
+if showPanel and barstate.islast
+    array<string> ks = array.new<string>()
+    array<string> vs = array.new<string>()
+
+    array.push(ks, "V2 EVENT ENGINE")
+    array.push(vs, "DESCRIPTIVE")
+    array.push(ks, "directional edge")
+    array.push(vs, "NONE ESTABLISHED")
+    array.push(ks, "hypotheses promoted")
+    array.push(vs, "0 of 24")
+    array.push(ks, "events on this chart")
+    array.push(vs, str.tostring(array.get(evtBox, 0)))
+    array.push(ks, "live levels")
+    array.push(vs, str.tostring(array.size(lvlHi) + array.size(lvlLo)) + (degraded ? "  DEGRADED" : ""))
+    array.push(ks, "timeframe")
+    array.push(vs, timeframe.period + (timeframe.period == "5" ? "  frozen" : "  NOT FROZEN"))
+    array.push(ks, "volume")
+    array.push(vs, volMissing ? "MISSING - VWAP INVALID" : "ok")
+
+    if array.get(evtBox, 0) > 0
+        array.push(ks, "──  last event  ──")
+        array.push(vs, "")
+        array.push(ks, "level_id")
+        array.push(vs, fLevelId)
+        array.push(ks, "direction")
+        array.push(vs, fDir == 1 ? "+1  sell-side" : "-1  buy-side")
+        array.push(ks, "liquidity_class")
+        array.push(vs, fClass)
+        array.push(ks, "level_kind_dynamic")
+        array.push(vs, fDyn ? "true" : "false")
+        array.push(ks, "session_location")
+        array.push(vs, fSess)
+        array.push(ks, "level_age_min")
+        array.push(vs, fmt(fAge, "#.#"))
+        array.push(ks, "level_formation_lag_min")
+        array.push(vs, fmt(fLag, "#.#"))
+        array.push(ks, "touch_count")
+        array.push(vs, str.tostring(fTouch))
+        array.push(ks, "level_prominence_atr")
+        array.push(vs, fmt(fProm, "#.###"))
+        array.push(ks, "competing_liquidity_atr")
+        array.push(vs, fmt(fComp, "#.###"))
+        array.push(ks, "penetration_pts")
+        array.push(vs, fmt(fPenP, "#.##"))
+        array.push(ks, "penetration_atr")
+        array.push(vs, fmt(fPenA, "#.###"))
+        array.push(ks, "close_vs_level_atr")
+        array.push(vs, fmt(fCvl, "#.###"))
+        array.push(ks, "same_bar_reclaim")
+        array.push(vs, fReclaim ? "true" : "false")
+        array.push(ks, "wick_body_ratio")
+        array.push(vs, fmt(fWick, "#.###"))
+        array.push(ks, "vwap_dist_pts")
+        array.push(vs, fmt(fVdP, "#.##"))
+        array.push(ks, "vwap_dist_sigma")
+        array.push(vs, fmt(fVdS, "#.###"))
+        array.push(ks, "vwap_slope_sigma_per_bar")
+        array.push(vs, fmt(fVsl, "#.####"))
+        array.push(ks, "minutes_since_session_open")
+        array.push(vs, fmt(fMspo, "#.#"))
+        array.push(ks, "atr_percentile")
+        array.push(vs, fmt(fAtrP, "#.###"))
+        array.push(ks, "realized_vol_state")
+        array.push(vs, fmt(fRvP, "#.###"))
+        array.push(ks, "range_compression")
+        array.push(vs, fmt(fRc, "#.###"))
+        array.push(ks, "dist_session_open_atr")
+        array.push(vs, fmt(fDso, "#.###"))
+        array.push(ks, "dist_weekly_open_atr")
+        array.push(vs, fmt(fDwo, "#.###"))
+        array.push(ks, "dist_overnight_high_atr")
+        array.push(vs, fmt(fDoh, "#.###"))
+        array.push(ks, "dist_overnight_low_atr")
+        array.push(vs, fmt(fDol, "#.###"))
+        array.push(ks, "htf_15m_compression")
+        array.push(vs, fmt(fH15, "#.###"))
+        array.push(ks, "htf_1h_range_pctile")
+        array.push(vs, fmt(fH1r, "#.###"))
+        array.push(ks, "htf_1h_vol_state")
+        array.push(vs, fmt(fH1v, "#.###"))
+        array.push(ks, "htf_1h_dist_ref_atr")
+        array.push(vs, fmt(fH1d, "#.###"))
+        array.push(ks, "gapped")
+        array.push(vs, fGapped ? "true" : "false")
+        array.push(ks, "opposing_level_price")
+        array.push(vs, fmt(fOppPx, format.mintick))
+
+    table.clear(tp, 0, 0, 1, 43)
+    int rows = math.min(array.size(ks), 44)
+    for r = 0 to rows - 1
+        color fg = chart.fg_color
+        if r == 1 or r == 2
+            fg := #B03A3A
+        if r == 0
+            fg := #8A6A1F
+        if r == 4 and degraded
+            fg := #B03A3A
+        if r == 6 and volMissing
+            fg := #B03A3A
+        table.cell(tp, 0, r, array.get(ks, r), text_color = color.new(chart.fg_color, 25),
+             text_size = size.tiny, text_halign = text.align_left,
+             bgcolor = color.new(chart.bg_color, 15))
+        table.cell(tp, 1, r, array.get(vs, r), text_color = fg, text_size = size.tiny,
+             text_halign = text.align_right, bgcolor = color.new(chart.bg_color, 15))

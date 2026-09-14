@@ -9,6 +9,32 @@ strategy("Arashi framework (strategy)", "Arashi ST", overlay = true,
      calc_on_every_tick = false,
      process_orders_on_close = true,
      max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+//
+// ═══ SUPERSEDED BY THE FROZEN V1 AUDIT - READ BEFORE TRUSTING ANY NUMBER ═══
+// Performance figures in this file were SUPERSEDED and must not be relied on.
+// V1 was re-audited and frozen as a NEGATIVE result (research/V1_FROZEN.json,
+// research/V1_ERRATA.md). For the CANDIDATE configuration this file ships:
+//
+//                     claimed here          frozen audit
+//   trades                    1997                  1978
+//   expectancy / trade     +0.117R              +0.0136R
+//   profit factor             1.18                  1.02
+//   win rate                     -                 23.5%
+//   95% band       [+0.042, +0.193]     [-0.056, +0.084]  <- STRADDLES ZERO
+//
+// No V1 configuration produced an interval excluding zero under ANY of the
+// seven estimators applied (naive trade-level, day-clustered CR1, day
+// bootstrap, three moving-block lengths, stationary bootstrap). A separate
+// defect overstated the breakeven rate at 67% when the true figure is 17%.
+// Two further generations agreed: across V1, V2_PROXY and V3, 24 predeclared
+// primary hypotheses were tested and 0 were promoted.
+//
+// Remaining figures below - and any still rendered on the chart dashboard at
+// runtime - are a record of what was claimed at the time, NOT a current
+// result. See indicators/v2_liquidity_event_engine.pine for the descriptive
+// engine that carries no directional claim.
+// ═══════════════════════════════════════════════════════════════════════════
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ARASHI FRAMEWORK — STRATEGY BUILD
