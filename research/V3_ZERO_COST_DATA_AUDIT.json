@@ -1,0 +1,98 @@
+{
+  "artifact": "V3_ZERO_COST_DATA_AUDIT",
+  "date": "2026-09-14",
+  "constraint": "DATA BUDGET = $0. No purchase, no payment information, no paid API.",
+  "data_cost_usd": 0,
+  "probed_live": true,
+  "sources": [
+    {
+      "provider": "Yahoo Finance v8 chart API",
+      "instrument": "NQ=F (genuine CME E-mini Nasdaq-100 front-month)",
+      "cost_usd": 0,
+      "payment_information_required": false,
+      "registration_required": false,
+      "access": "anonymous cookie+crumb session (already implemented, backtest/fetch_nq.py)",
+      "measured_caps": {
+        "1m": "range=7d max -> ~10 calendar days, 6,243 bars; 30d REJECTED 422",
+        "5m": "range=60d max -> 70 calendar days, 13,412 bars; 1y REJECTED 422",
+        "15m": "range=60d max -> 70 calendar days, 4,493 bars; 1y REJECTED 422",
+        "1h": "range=730d max -> 875 calendar days, 13,734 bars; 5y REJECTED 422",
+        "1d": "range=10y -> 2,515 bars (range=max coerces to monthly, 267 bars)"
+      },
+      "contract_identity": "NONE - front-month continuous",
+      "roll_handling": "Yahoo-internal, UNDOCUMENTED",
+      "volume_semantics": "CME front-month contract volume; cross-roll continuity unverifiable",
+      "back_adjusted": "UNKNOWN",
+      "timestamp": "UTC epoch, bar-open",
+      "saveable_locally": true,
+      "suitable_for_systematic_research": "YES at 1h/1d; NO for multi-year 1m/5m",
+      "limits": "rolling windows - 1m/5m/15m/1h cannot be extended BACKWARD, only forward by re-fetching",
+      "terms": "personal/research use; no bulk redistribution"
+    },
+    {
+      "provider": "Yahoo (same endpoint)",
+      "instrument": "ES=F, YM=F, RTY=F, ^VIX",
+      "cost_usd": 0,
+      "payment_information_required": false,
+      "measured": {
+        "ES=F 1h": "13,736 bars 2024-04-21..2026-09-13, vol>0 96.4%",
+        "YM=F 1h": "13,731 bars, vol>0 96.4%",
+        "RTY=F 1h": "13,761 bars, vol>0 96.3%",
+        "ES=F 1d": "2,515 bars 2016-09-13..2026-09-13",
+        "YM=F 1d": "2,515 bars",
+        "RTY=F 1d": "2,311 bars from 2017-07-10",
+        "^VIX 1d": "2,516 bars (index, no volume)"
+      },
+      "note": "same caps and same roll opacity as NQ"
+    },
+    {
+      "provider": "Stooq",
+      "cost_usd": 0,
+      "status": "BLOCKED - serves a proof-of-work JS bot challenge to programmatic requests",
+      "usable": false
+    },
+    {
+      "provider": "Nasdaq Data Link (CHRIS/CME_NQ1, CME_ES1)",
+      "cost_usd": 0,
+      "status": "BLOCKED - HTTP 403 Incapsula bot protection; dataset is DAILY only and long frozen",
+      "usable": false
+    },
+    {
+      "provider": "Barchart / FirstRateData / Portara / EODData",
+      "cost_usd": ">0",
+      "status": "REJECTED - multi-year intraday NQ is a paid subscription at every vendor checked",
+      "usable": false
+    },
+    {
+      "provider": "Dukascopy NDX CFD",
+      "cost_usd": 0,
+      "status": "held (data_ndx/, 2,175 trade days)",
+      "usable": "yes but it is the V2_PROXY basis: a CFD proxy with broker volume, NOT CME NQ"
+    }
+  ],
+  "provenance_resolved": {
+    "file": "data_po3/NQ_1d.csv",
+    "was": "UNKNOWN - no provenance file",
+    "now": "CONFIRMED Yahoo NQ=F",
+    "evidence": "2,510 shared timestamps vs a live Yahoo 10y pull; closes identical on 2,510/2,510 (max diff 0.0000); volumes identical on 2,510/2,510"
+  },
+  "answers": {
+    "genuine_order_flow_available_for_0_usd": false,
+    "multi_year_1m_genuine_nq_for_0_usd": false,
+    "multi_year_5m_genuine_nq_for_0_usd": false,
+    "multi_year_1h_genuine_nq_for_0_usd": "YES - 618 CME trade days (rolling 730-day window)",
+    "multi_year_daily_genuine_nq_for_0_usd": "YES - 2,515 days / ~10 years",
+    "synchronized_multi_instrument_panel_for_0_usd": "YES - NQ/ES/YM/RTY at 1h and 1d, plus VIX"
+  },
+  "candidate_A_order_flow": {
+    "status": "BLOCKED - REJECTED FOR THIS GENERATION",
+    "reason": "DATA UNAVAILABILITY at $0, NOT statistical falsification",
+    "rule": "order flow, delta, bid/ask imbalance, absorption, depth and aggressive buyer/seller volume must NEVER be manufactured from OHLCV"
+  },
+  "structural_limits": [
+    "no free source provides contract identity, expiry or a roll log for NQ",
+    "roll gaps are not separable from news gaps without contract identity",
+    "1h and finer windows are ROLLING: history cannot be recovered backward, only accumulated forward",
+    "618 trade-day clusters is the honest effective sample at 1h, not 13,734 bars"
+  ]
+}
