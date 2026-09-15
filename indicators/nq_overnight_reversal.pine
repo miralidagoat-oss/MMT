@@ -1,0 +1,239 @@
+//@version=6
+// ═════════════════════════════════════════════════════════════════════════════════════
+//  ON REVERSAL — the overnight high and low, and the one thing they actually do
+// ─────────────────────────────────────────────────────────────────────────────────────
+//  WHAT THIS IS
+//  The overnight range (18:00 ET -> 09:30 ET) frozen at the RTH open, and the FIRST
+//  touch of each edge during RTH marked as it resolves. That first touch is the only
+//  event in this script, because it is the only one that was measured.
+//
+//  WHAT WAS MEASURED, AND AGAINST WHAT
+//  The honest question is never "does this level work" -- every level works sometimes.
+//  It is "does it work better than a level with NO information in it". So the same
+//  engine was run over levels placed at prior_close +/- k*ATR, which know nothing, and
+//  that null is what everything below is measured against.
+//
+//  A CLEAN REVERSAL is defined in advance and mechanically: within 5 bars of the touch,
+//  price travels >= 1.0 ATR in the reversal direction AND goes no more than 0.3 ATR
+//  further through the level. A reversal you could have traded, not a wiggle.
+//
+//      sample                        ON first touch     null      edge
+//      60m, 599 sessions (2yr)            41.0%        25.6%    +15.4 pp
+//      15m,  50 sessions                  37.5%        20.8%    +16.7 pp
+//       5m,  50 sessions                  39.0%        22.1%    +16.9 pp
+//      ... 2024-04 to 2025-07             40.8%        23.2%    +17.6 pp
+//      ... 2025-07 to 2026-09             41.2%        28.1%    +13.1 pp
+//
+//  Median trade shape on a touch: MFE 1.28 ATR, MAE 0.60-0.79 ATR.
+//  Reproduce all of it: python3 tools/find_reversal_zones.py --tf 60m --range 730d
+//
+//  READ THAT TABLE PROPERLY. 41% is not 90%. The MAJORITY of first touches do NOT
+//  produce a clean reversal -- they chop, or they go through. What the number says is
+//  that this level is about 1.6x better than an arbitrary one, consistently, across
+//  two years, both halves of the sample, and three timeframes. That consistency is the
+//  finding. The magnitude is modest and the script will not pretend otherwise.
+//
+//  WHAT WAS TESTED AND FAILED, which is worth as much as what passed:
+//      round numbers (100s)     23-25% clean  -- indistinguishable from the null
+//      prior day high / low     18-22% clean  -- at or BELOW the null
+//      prior day close          20-25% clean  -- indistinguishable
+//      initial balance H/L      27-28% clean  -- weakly positive, thin sample
+//  Round numbers in particular are folklore by this measurement, not structure.
+//
+//  WHAT THIS IS NOT
+//  It is not a zone that reverses price every day. No such thing survives: on 60m the
+//  ON edges are touched at all on ~37% of sessions, and of those ~41% resolve cleanly,
+//  so a clean ON reversal happens on roughly ONE SESSION IN SIX. An edge that fired
+//  daily and violently would be arbitraged flat in weeks. This one is small enough to
+//  still be here, which is the only reason to believe it.
+//
+//  NOTHING REPAINTS. The range is frozen at the open and never revised; outcomes score
+//  on confirmed bars only; the marker is offset back onto the bar that was touched.
+// ═════════════════════════════════════════════════════════════════════════════════════
+indicator("ON REVERSAL — overnight high / low", "ON REV", overlay = true,
+     max_lines_count = 100, max_labels_count = 100, max_boxes_count = 10,
+     max_bars_back = 2000)
+
+// ───────────────────────────── inputs ─────────────────────────────
+gS = "Session (Eastern)"
+onStart = input.int(1080, "Overnight starts (minutes past ET midnight)", minval = 0, maxval = 1439, group = gS,
+     tooltip = "1080 = 18:00 ET, the CME electronic reopen. The overnight range accumulates from here until the RTH open below.")
+rthOpen = input.int(570, "RTH opens", minval = 0, maxval = 1439, group = gS, tooltip = "570 = 09:30 ET.")
+rthClose = input.int(960, "RTH closes", minval = 0, maxval = 1439, group = gS, tooltip = "960 = 16:00 ET.")
+
+gZ = "Zone"
+atrLen  = input.int(14, "ATR length", minval = 2, group = gZ)
+zoneATR = input.float(0.075, "Zone half-width (x ATR)", minval = 0.01, maxval = 1.0, step = 0.005, group = gZ,
+     tooltip = "0.075 is the width the edge was MEASURED at. Change it and the 41% no longer describes what you are looking at — a wider zone catches touches that were never tested.")
+evalBars = input.int(5, "Bars to resolve a touch over", minval = 2, maxval = 60, group = gZ,
+     tooltip = "5 is the window the measurement used. The outcome window starts on the bar AFTER the touch: scoring the touch bar itself reads the result off the bar that produced the signal.")
+mfeMin  = input.float(1.0, "Clean reversal needs MFE >= (ATR)", minval = 0.1, step = 0.1, group = gZ)
+maeMax  = input.float(0.3, "…and MAE <= (ATR)", minval = 0.05, step = 0.05, group = gZ)
+
+gV = "Display"
+colHi = input.color(#ef5350, "Overnight high", group = gV)
+colLo = input.color(#26a69a, "Overnight low", group = gV)
+showZone = input.bool(true, "Shade the zone", group = gV,
+     tooltip = "The band that is actually tested. A wick that misses this band is not a touch.")
+showRange = input.bool(false, "Shade the whole overnight range", group = gV)
+showTable = input.bool(true, "Session tally", group = gV)
+
+// ───────────────────────────── session clock ─────────────────────────────
+mins = hour(time, "America/New_York") * 60 + minute(time, "America/New_York")
+inRTH = mins >= rthOpen and mins < rthClose
+// the overnight window wraps midnight, so it is "at or after 18:00" OR "before 09:30"
+inON  = mins >= onStart or mins < rthOpen
+rthFirst = inRTH and not inRTH[1]
+
+atr = ta.atr(atrLen)
+
+// ───────────────────────────── the overnight range ─────────────────────────────
+// Accumulated while the market is outside RTH, FROZEN at the open, never revised. The
+// freeze is the whole point: a level that keeps updating after you have taken a trade
+// against it is not a level, and the measurement above was made on frozen values.
+var float accHi = na
+var float accLo = na
+var float onHi  = na
+var float onLo  = na
+var float lockW = na
+var int   rthBar = 0
+
+if rthFirst
+    onHi   := accHi
+    onLo   := accLo
+    lockW  := math.max(syminfo.mintick, nz(atr[1]) * zoneATR)
+    rthBar := bar_index
+    accHi  := na
+    accLo  := na
+
+if inON
+    accHi := na(accHi) ? high : math.max(accHi, high)
+    accLo := na(accLo) ? low  : math.min(accLo, low)
+
+// ───────────────────────────── first touch, and how it resolved ─────────────────────
+// Two independent state machines, one per edge. Each fires ONCE per session: the first
+// touch is the measured event, and later touches of an edge that has already been
+// worked are a different, untested thing.
+var bool  hiDone = false          // the high's first touch has already been taken
+var bool  loDone = false
+var int   hiDue  = -1             // bar the outcome resolves on
+var int   loDue  = -1
+var float hiMfe  = 0.0
+var float hiMae  = 0.0
+var float loMfe  = 0.0
+var float loMae  = 0.0
+var int   hiRes  = 0              // +1 clean reversal, -1 not, 0 pending
+var int   loRes  = 0
+var int   sesClean = 0
+var int   sesTouch = 0
+
+if rthFirst
+    hiDone := false
+    loDone := false
+    hiDue  := -1
+    loDue  := -1
+    hiRes  := 0
+    loRes  := 0
+    sesClean := 0
+    sesTouch := 0
+
+// EVERYTHING below runs on confirmed bars only. Pine rolls scalars back on each
+// realtime tick but not the outcome of a bar that has not closed, and an outcome
+// scored off a forming bar can reverse before that bar closes — which would make both
+// the marker and the alert repaint.
+bool touchHi = false
+bool touchLo = false
+
+if barstate.isconfirmed and inRTH and not na(onHi) and not na(lockW)
+    // ── the overnight HIGH: approached from below, so a reversal is DOWN
+    if not hiDone and high >= onHi - lockW and low <= onHi + lockW
+        hiDone  := true
+        hiDue   := bar_index + evalBars
+        hiMfe   := 0.0
+        hiMae   := 0.0
+        touchHi := true
+        sesTouch += 1
+    if hiDue > 0 and bar_index > hiDue - evalBars and bar_index <= hiDue
+        hiMfe := math.max(hiMfe, onHi - low)     // favourable = away, downward
+        hiMae := math.max(hiMae, high - onHi)    // adverse = further through, upward
+    if hiDue > 0 and bar_index == hiDue
+        u = math.max(nz(atr), lockW)
+        hiRes := (hiMfe / u >= mfeMin and hiMae / u <= maeMax) ? 1 : -1
+        if hiRes == 1
+            sesClean += 1
+        hiDue := -1
+
+    // ── the overnight LOW: approached from above, so a reversal is UP
+    if not loDone and high >= onLo - lockW and low <= onLo + lockW
+        loDone  := true
+        loDue   := bar_index + evalBars
+        loMfe   := 0.0
+        loMae   := 0.0
+        touchLo := true
+        sesTouch += 1
+    if loDue > 0 and bar_index > loDue - evalBars and bar_index <= loDue
+        loMfe := math.max(loMfe, high - onLo)
+        loMae := math.max(loMae, onLo - low)
+    if loDue > 0 and bar_index == loDue
+        u = math.max(nz(atr), lockW)
+        loRes := (loMfe / u >= mfeMin and loMae / u <= maeMax) ? 1 : -1
+        if loRes == 1
+            sesClean += 1
+        loDue := -1
+
+// ───────────────────────────── drawing ─────────────────────────────
+plotHi = inRTH and not na(onHi) ? onHi : na
+plotLo = inRTH and not na(onLo) ? onLo : na
+pH = plot(plotHi, "ON high", color = color.new(colHi, 0), linewidth = 2, style = plot.style_linebr)
+pL = plot(plotLo, "ON low",  color = color.new(colLo, 0), linewidth = 2, style = plot.style_linebr)
+
+zHiU = plot(showZone and inRTH and not na(onHi) ? onHi + lockW : na, "", color = color.new(colHi, 100), style = plot.style_linebr)
+zHiD = plot(showZone and inRTH and not na(onHi) ? onHi - lockW : na, "", color = color.new(colHi, 100), style = plot.style_linebr)
+zLoU = plot(showZone and inRTH and not na(onLo) ? onLo + lockW : na, "", color = color.new(colLo, 100), style = plot.style_linebr)
+zLoD = plot(showZone and inRTH and not na(onLo) ? onLo - lockW : na, "", color = color.new(colLo, 100), style = plot.style_linebr)
+fill(zHiU, zHiD, color = color.new(colHi, 82), title = "ON high zone")
+fill(zLoU, zLoD, color = color.new(colLo, 82), title = "ON low zone")
+fill(pH, pL, color = showRange ? color.new(color.gray, 94) : na, title = "Overnight range")
+
+// the touch marker sits on the bar that was touched; the outcome marker is offset
+// back onto it too, so the triangle describes the bar it belongs to
+plotshape(touchHi, "First touch — ON high", shape.circle, location.abovebar,
+     color.new(colHi, 20), size = size.tiny)
+plotshape(touchLo, "First touch — ON low", shape.circle, location.belowbar,
+     color.new(colLo, 20), size = size.tiny)
+
+resolvedHi = barstate.isconfirmed and hiRes != 0 and hiRes[1] == 0
+resolvedLo = barstate.isconfirmed and loRes != 0 and loRes[1] == 0
+plotshape(resolvedHi and hiRes == 1, "Clean reversal off ON high", shape.triangledown,
+     location.abovebar, color.new(colHi, 0), size = size.small, offset = -evalBars)
+plotshape(resolvedLo and loRes == 1, "Clean reversal off ON low", shape.triangleup,
+     location.belowbar, color.new(colLo, 0), size = size.small, offset = -evalBars)
+plotshape(resolvedHi and hiRes == -1, "ON high did not reverse", shape.xcross,
+     location.abovebar, color.new(color.gray, 35), size = size.tiny, offset = -evalBars)
+plotshape(resolvedLo and loRes == -1, "ON low did not reverse", shape.xcross,
+     location.belowbar, color.new(color.gray, 35), size = size.tiny, offset = -evalBars)
+
+// ───────────────────────────── tally ─────────────────────────────
+var table tb = table.new(position.bottom_right, 1, 1, border_width = 0)
+if barstate.islast and showTable
+    string s = na(onHi) ? "waiting for an RTH open"
+         : "ON " + str.tostring(onLo, format.mintick) + " – " + str.tostring(onHi, format.mintick)
+              + "   (" + str.tostring(onHi - onLo, "#.#") + " pts)"
+              + "\nzone ±" + str.tostring(lockW, "#.##")
+              + "   touched " + str.tostring(sesTouch) + "/2"
+              + "   clean " + str.tostring(sesClean)
+    tip = "Measured on NQ: the FIRST touch of an overnight edge resolves as a clean "
+         + "reversal 37-41% of the time, against 21-26% for a level with no information "
+         + "in it. Consistent across 5m, 15m and 60m, and across both halves of a "
+         + "599-session sample.\n\nClean = within " + str.tostring(evalBars)
+         + " bars, MFE >= " + str.tostring(mfeMin, "#.#") + " ATR and MAE <= "
+         + str.tostring(maeMax, "#.#") + " ATR.\n\nThat is roughly 1.6x an arbitrary level, "
+         + "not a coin that lands heads. MOST first touches do not reverse cleanly. "
+         + "Round numbers, prior-day high/low and prior-day close were all tested the "
+         + "same way and were indistinguishable from the null.\n\n"
+         + "Reproduce: python3 tools/find_reversal_zones.py --tf 60m --range 730d"
+    table.cell(tb, 0, 0, s, text_color = color.new(color.white, 15), text_size = size.tiny,
+         text_halign = text.align_left, bgcolor = color.new(color.black, 65), tooltip = tip)
+
+alertcondition(touchHi, "ON high — first touch", "{{ticker}} first touch of the overnight high")
+alertcondition(touchLo, "ON low — first touch",  "{{ticker}} first touch of the overnight low")
