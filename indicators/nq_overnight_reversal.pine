@@ -96,12 +96,15 @@ var float accLo = na
 var float onHi  = na
 var float onLo  = na
 var float lockW = na
+var float onW   = na          // the overnight range, in ATR, as it stood at the open
 var int   rthBar = 0
 
 if rthFirst
     onHi   := accHi
     onLo   := accLo
     lockW  := math.max(syminfo.mintick, nz(atr[1]) * zoneATR)
+    onW    := (not na(accHi) and not na(accLo) and nz(atr[1]) > 0)
+                 ? (accHi - accLo) / atr[1] : na
     rthBar := bar_index
     accHi  := na
     accLo  := na
@@ -216,12 +219,23 @@ plotshape(resolvedLo and loRes == -1, "ON low did not reverse", shape.xcross,
 // ───────────────────────────── tally ─────────────────────────────
 var table tb = table.new(position.bottom_right, 1, 1, border_width = 0)
 if barstate.islast and showTable
+    // ON WIDTH IS SHOWN, NOT ACTED ON. Splitting the 222-touch sample by overnight
+    // width gives narrow 35.1%, mid 46.7%, wide 41.1% against 41.0% unfiltered, and
+    // mid held up out of sample (48.5% then 45.2%). But it is NON-MONOTONIC -- mid
+    // beating both neighbours has no mechanism behind it -- and it came out of 17
+    // buckets tested on one sample, which is exactly how a coincidence gets found.
+    // So the width is printed and the trade is not gated on it. Halving your sample
+    // to chase 47% over a 41% that is solid across two years and three timeframes is
+    // a worse bet than it looks.
+    string wTxt = na(onW) ? "" : "\nON width " + str.tostring(onW, "#.##") + " ATR   ("
+         + (onW < 3.37 ? "narrow" : onW > 4.60 ? "wide" : "mid") + " third — unconfirmed)"
     string s = na(onHi) ? "waiting for an RTH open"
          : "ON " + str.tostring(onLo, format.mintick) + " – " + str.tostring(onHi, format.mintick)
               + "   (" + str.tostring(onHi - onLo, "#.#") + " pts)"
               + "\nzone ±" + str.tostring(lockW, "#.##")
               + "   touched " + str.tostring(sesTouch) + "/2"
               + "   clean " + str.tostring(sesClean)
+              + wTxt
     tip = "Measured on NQ: the FIRST touch of an overnight edge resolves as a clean "
          + "reversal 37-41% of the time, against 21-26% for a level with no information "
          + "in it. Consistent across 5m, 15m and 60m, and across both halves of a "
