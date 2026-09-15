@@ -1,0 +1,576 @@
+//@version=6
+// ══════════════════════════════════════════════════════════════════════════════
+//  MNQ SESSION REVERSAL — RESEARCH STRATEGY
+// ══════════════════════════════════════════════════════════════════════════════
+//
+//  WHAT THIS IS
+//    A closed-bar sweep-and-reclaim research baseline for CME Micro E-mini
+//    Nasdaq (MNQ) futures. It is an original rule set, not a reproduction of
+//    any course, signal service or published system.
+//
+//  STATUS
+//    BASELINE NOT ACCEPTED — preliminary research did not meet the requested
+//    targets. Nothing here is live validated. Read the companion report for
+//    the evidence and the test limitations before drawing any conclusion from
+//    the numbers this script prints on screen.
+//
+//  THE RULE, IN FOUR STEPS
+//    1. RANGE   Build a reference range from the prior `lookback` bars. The bar
+//               being judged is excluded, so the range never contains it.
+//    2. SWEEP   Wait for a bar that trades at least `sweepTicks` beyond that
+//               range and then rejects: it closes back inside the range, closes
+//               in the direction of the reclaim, shows a rejection wick of at
+//               least `minWick` of the whole candle, and closes in the required
+//               part of its own range (`minClose`).
+//    3. CONFIRM Either accept that same closed bar ("Immediate reclaim"), or
+//               wait up to `confirmBars` bars for a close beyond the sweep
+//               candle ("Close beyond sweep candle").
+//    4. RISK    Place the stop beyond the sweep wick plus `stopBuffer`, reject
+//               the setup when the implied risk is too small (noise) or larger
+//               than `maxRiskATR` × ATR, and project the target at `rewardR`
+//               times the planned stop distance.
+//
+//  EXECUTION MODEL — what the printed numbers actually assume
+//    - Every decision is taken on a CONFIRMED bar close; nothing reads intrabar.
+//    - Entries are market orders, so a fill lands on the NEXT bar open. The
+//      signal close is a reference price, never a fill price.
+//    - Stop and target are submitted as a relative bracket with the entry, so
+//      protection is live from the fill bar rather than one bar later.
+//    - Fills come from TradingView's OHLC emulator with 2 ticks of slippage and
+//      $0.75 per contract per side in commission.
+//    - One position at a time (pyramiding = 0). Raw setups that appear while a
+//      position is open are still counted, but they are not traded.
+//
+//  WHAT THIS SCRIPT DELIBERATELY DOES NOT DO
+//    - No lookahead: no request.security(), no backdated pivots, no repainting
+//      of historical signals, no intrabar alerts.
+//    - No claim of an exact turning-tick entry and no claim of an edge.
+//    - No brokerage connectivity: strategy.* orders are simulations only.
+//
+//  CHART REQUIREMENTS (enforced on the first bar)
+//    CME MNQ futures, standard candles, 1 to 15 minute timeframe.
+//
+// ══════════════════════════════════════════════════════════════════════════════
+strategy("MNQ Session Reversal - Research Strategy", overlay = true, pyramiding = 0,
+     initial_capital = 100000, currency = currency.USD,
+     default_qty_type = strategy.fixed, default_qty_value = 1,
+     commission_type = strategy.commission.cash_per_contract, commission_value = 0.75,
+     slippage = 2, backtest_fill_limits_assumption = 1,
+     calc_on_every_tick = false, calc_on_order_fills = false, process_orders_on_close = false,
+     margin_long = 100, margin_short = 100, use_bar_magnifier = false,
+     max_bars_back = 1000, max_labels_count = 100)
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  1. CONSTANTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Every session window, date stamp and panel timestamp is expressed in New York
+// exchange time. A named zone rather than a fixed UTC offset keeps the windows
+// anchored to the trading day across daylight-saving changes.
+const string TZ = "America/New_York"
+
+// Settings-dialog group headings, in the order they appear to the user.
+const string G_SETUP = "1. Setup rules"
+const string G_TIME  = "2. Sessions and dates (New York time, DST automatic)"
+const string G_RISK  = "3. Research exits"
+const string G_VIEW  = "4. Display and alerts"
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  2. INPUTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── 2.1 Setup rules ───────────────────────────────────────────────────────────
+// The reference range, how far price must poke beyond it, and how convincing
+// the rejection candle has to be before the bar counts as a setup.
+int    lookback         = input.int(20, "Prior range bars (excludes signal bar)", minval = 5, maxval = 500, group = G_SETUP)
+int    sweepTicks       = input.int(1, "Minimum sweep beyond range, ticks", minval = 1, maxval = 100, group = G_SETUP)
+float  minWick          = input.float(0.35, "Minimum rejection wick / whole candle", minval = 0.05, maxval = 0.95, step = 0.05, group = G_SETUP)
+float  minClose         = input.float(0.65, "Long close location (short is symmetric)", minval = 0.50, maxval = 1.00, step = 0.05, group = G_SETUP)
+int    cooldownBars     = input.int(3, "Minimum bars between raw setup signals", minval = 1, maxval = 100, group = G_SETUP, tooltip = "A value of 3 allows signals on bars 100 and 103. All raw signals reset this clock, including signals a strategy cannot trade while a position is open.")
+bool   halfFilter       = input.bool(false, "Require long below / short above prior range midpoint", group = G_SETUP)
+string confirmationMode = input.string("Immediate reclaim", "Confirmation", options = ["Immediate reclaim", "Close beyond sweep candle"], group = G_SETUP)
+int    confirmBars      = input.int(3, "Confirmation deadline after sweep, bars", minval = 1, maxval = 10, group = G_SETUP)
+
+// ── 2.2 Sessions and dates ────────────────────────────────────────────────────
+// Only bars inside an enabled session and inside the date range can produce a
+// signal. Session strings are read in New York time, so DST is handled for you.
+bool   useAsia          = input.bool(true, "Enable Asia", inline = "AS", group = G_TIME)
+string asiaSession      = input.session("1800-0000", "Asia", inline = "AS", group = G_TIME)
+bool   useLondon        = input.bool(true, "Enable London", inline = "LD", group = G_TIME)
+string londonSession    = input.session("0200-0500", "London", inline = "LD", group = G_TIME)
+bool   useNewYork       = input.bool(true, "Enable New York", inline = "NY", group = G_TIME)
+string newYorkSession   = input.session("0830-1600", "New York", inline = "NY", group = G_TIME)
+int    startDate        = input.time(timestamp("06 May 2019 00:00 -0400"), "Start date", group = G_TIME)
+int    endDate          = input.time(timestamp("31 Dec 2099 23:59 -0500"), "End date", group = G_TIME)
+
+// ── 2.3 Research exits ────────────────────────────────────────────────────────
+// Stop placement, the two risk sanity filters that discard degenerate setups,
+// the target ratio, and the hard time stop.
+int    atrLength        = input.int(14, "ATR length (Wilder)", minval = 2, maxval = 100, group = G_RISK)
+int    stopBuffer       = input.int(2, "Stop distance buffer beyond sweep wick, ticks", minval = 0, maxval = 100, group = G_RISK)
+int    minRiskTicks     = input.int(8, "Reject risk smaller than this many ticks", minval = 1, maxval = 500, group = G_RISK)
+float  maxRiskATR       = input.float(2.0, "Reject risk larger than ATR times", minval = 0.25, maxval = 10.0, step = 0.25, group = G_RISK)
+float  rewardR          = input.float(1.5, "Gross target / planned stop distance", minval = 0.25, maxval = 10.0, step = 0.25, group = G_RISK, tooltip = "This is a distance ratio before fees, not a claimed realized return. The target rounds to the nearest tick.")
+int    maxHoldBars      = input.int(12, "Maximum completed bars in a position", minval = 1, maxval = 200, group = G_RISK, tooltip = "Strategy requests a market exit after this many filled-position bars; it fills at the next available bar open. The entry bar counts as 1.")
+
+// ── 2.4 Display and alerts ────────────────────────────────────────────────────
+// Presentation only. Nothing in this group changes a signal, an order or a
+// statistic; hiding a label does not remove it from the calculations.
+bool   showRange        = input.bool(false, "Show prior range and midpoint", group = G_VIEW)
+bool   showLevels       = input.bool(true, "Show trade / projected levels", group = G_VIEW)
+bool   showSessions     = input.bool(false, "Shade enabled sessions", group = G_VIEW)
+bool   showDashboard    = input.bool(true, "Show compact trade panel", group = G_VIEW)
+int    labelsToKeep     = input.int(40, "Recent BUY / SELL labels", minval = 5, maxval = 80, group = G_VIEW, tooltip = "Older chart labels are hidden for readability. All setups and strategy trades remain in the calculations.")
+bool   enableAlerts     = input.bool(true, "Enable closed-bar setup alert() messages", group = G_VIEW)
+bool   showFullStats    = input.bool(false, "Show full research statistics (larger table)", group = G_VIEW)
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  3. ENVIRONMENT GUARDS
+// ══════════════════════════════════════════════════════════════════════════════
+// Fail loudly on the first bar rather than quietly producing numbers that were
+// measured on the wrong instrument, a synthetic chart type or an empty window.
+
+if barstate.isfirst
+    if syminfo.root != "MNQ" or syminfo.type != "futures"
+        runtime.error("Use a CME MNQ futures chart. NQ, CFDs, stocks and other symbols are not supported by this MNQ research script.")
+    if not chart.is_standard or not timeframe.isminutes or timeframe.multiplier < 1 or timeframe.multiplier > 15
+        runtime.error("Use standard candlesticks at 1 to 15 minutes. Heikin Ashi, Renko, range, tick and other synthetic/non-minute charts are not supported.")
+    if startDate >= endDate
+        runtime.error("Start date must be earlier than end date.")
+    if not useAsia and not useLondon and not useNewYork
+        runtime.error("Enable at least one session.")
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  4. FORMATTING HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+// Pure presentation helpers. They read no series state beyond their arguments,
+// so they are safe to call from anywhere below.
+
+// Midnight New York for the calendar day that contains `t`, as a UTC stamp.
+// Used to count calendar days spanned, not bars elapsed.
+f_calendarDate(int t) =>
+    timestamp("UTC", year(t, TZ), month(t, TZ), dayofmonth(t, TZ), 0, 0)
+
+// Two-decimal number, or "n/a" when the value is undefined.
+f_num(float value) =>
+    na(value) ? "n/a" : str.tostring(value, "#.##")
+
+// Ratio guarded against a zero denominator, so an all-wins sample reads as
+// "No losses yet" instead of printing an infinite profit factor.
+f_ratio(float numerator, float denominator) =>
+    denominator > 0 ? f_num(numerator / denominator) : numerator > 0 ? "No losses yet" : "n/a"
+
+// One label/value row of a two-column table.
+f_row(table t, int row, string name, string value) =>
+    table.cell(t, 0, row, name, text_color = chart.fg_color, text_halign = text.align_left, text_size = size.small)
+    table.cell(t, 1, row, value, text_color = chart.fg_color, text_halign = text.align_right, text_size = size.small)
+
+// Price at chart tick precision, or "-" when there is nothing to show.
+f_price(float price) =>
+    na(price) ? "-" : str.tostring(price, format.mintick)
+
+// Coloured header row of the trade panel: direction, session and time stamp.
+f_planHeader(table card, int side, string sess, int stamp) =>
+    color accent = side == 1 ? #087F8C : side == -1 ? #CF465B : color.gray
+    table.cell(card, 0, 0, side == 1 ? "BUY | " + sess : side == -1 ? "SELL | " + sess : "MNQ | waiting", bgcolor = accent, text_color = color.white, text_halign = text.align_left, text_size = size.small)
+    table.cell(card, 1, 0, na(stamp) ? "No signal" : str.format_time(stamp, "MM-dd HH:mm", TZ) + " NY", bgcolor = accent, text_color = color.white, text_halign = text.align_right, text_size = size.small)
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  5. MARKET CONTEXT
+// ══════════════════════════════════════════════════════════════════════════════
+// The reference range is built from `high[1]` / `low[1]`, i.e. the bars BEFORE
+// the one being judged. That is what makes a sweep meaningful: the current bar
+// can never contribute to the level it is supposed to be violating.
+
+float tick          = syminfo.mintick
+float priorHigh     = ta.highest(high[1], lookback)
+float priorLow      = ta.lowest(low[1], lookback)
+float priorMid      = (priorHigh + priorLow) / 2.0
+float atr           = ta.atr(atrLength)
+
+// Anatomy of the current candle, used by the rejection tests in section 7.
+float barRange      = high - low
+float lowerWick     = math.min(open, close) - low
+float upperWick     = high - math.max(open, close)
+float closeLocation = barRange > 0 ? (close - low) / barRange : 0.5
+
+// Nothing may signal until the range and the ATR are fully seeded.
+bool  enoughHistory = bar_index >= lookback and not na(atr) and not na(priorHigh) and not na(priorLow)
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  6. SESSION AND DATE GATING
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Is the CURRENT bar inside each enabled session?
+bool inAsia    = useAsia and not na(time(timeframe.period, asiaSession, TZ))
+bool inLondon  = useLondon and not na(time(timeframe.period, londonSession, TZ))
+bool inNewYork = useNewYork and not na(time(timeframe.period, newYorkSession, TZ))
+
+// Will the NEXT bar still be inside an enabled session? A market entry fills at
+// the next open, so a signal on the last bar of a session has nowhere to go.
+// The future time() call below predicts the next time-based bar's timestamp
+// only. It does not read future price data. Missing bars and holidays may still
+// defer a real fill.
+bool nextAsia    = useAsia and not na(time(timeframe.period, asiaSession, TZ, bars_back = -1))
+bool nextLondon  = useLondon and not na(time(timeframe.period, londonSession, TZ, bars_back = -1))
+bool nextNewYork = useNewYork and not na(time(timeframe.period, newYorkSession, TZ, bars_back = -1))
+
+bool inSession   = inAsia or inLondon or inNewYork
+bool nextSession = nextAsia or nextLondon or nextNewYork
+
+// CME daily maintenance halt: no new business into it, and open positions are
+// flattened before it. On 15-minute charts, waiting for 16:55 would first fire
+// at 17:00, too late. Request the exit at an earlier available close so the
+// next open precedes 17:00.
+int  closeMinuteNY     = hour(time_close, TZ) * 60 + minute(time_close, TZ)
+int  maintenanceStart  = math.min(16 * 60 + 55, 17 * 60 - timeframe.multiplier)
+bool maintenanceWindow = closeMinuteNY >= maintenanceStart and closeMinuteNY < 18 * 60
+
+// The full permission to open new risk on this bar.
+bool inDate      = time >= startDate and time_close <= endDate
+bool entryWindow = inSession and nextSession and not maintenanceWindow and inDate
+
+// Overlapping windows are resolved New York first, then Asia, then London.
+string signalSession = inNewYork ? "New York" : inAsia ? "Asia" : inLondon ? "London" : "Outside"
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  7. SWEEP AND REJECTION DETECTION
+// ══════════════════════════════════════════════════════════════════════════════
+
+// A sweep needs a genuine violation of the prior extreme, not a touch.
+bool sweptLow  = enoughHistory and low <= priorLow - sweepTicks * tick
+bool sweptHigh = enoughHistory and high >= priorHigh + sweepTicks * tick
+
+// A bar that raided BOTH extremes has no readable direction, so it is discarded
+// rather than guessed at.
+bool ambiguousSweep = sweptLow and sweptHigh
+
+// Seed conditions for a long: sweep the low, reclaim it on the close, close up,
+// leave a lower wick worth at least `minWick` of the candle, close in the top
+// `minClose` of the candle, and optionally still sit below the range midpoint.
+bool seedLong = sweptLow and not ambiguousSweep and close > priorLow and close > open and barRange > 0 and
+     lowerWick / barRange >= minWick and
+     closeLocation >= minClose and
+     (not halfFilter or close <= priorMid)
+
+// Short is the exact mirror image, including the symmetric close-location test.
+bool seedShort = sweptHigh and not ambiguousSweep and close < priorHigh and close < open and barRange > 0 and
+     upperWick / barRange >= minWick and
+     closeLocation <= 1.0 - minClose and
+     (not halfFilter or close >= priorMid)
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  8. CONFIRMATION STATE MACHINE
+// ══════════════════════════════════════════════════════════════════════════════
+// Two mutually exclusive modes produce the same output pair — `candidateSide`
+// and `candidateWick` — so everything downstream is mode-agnostic:
+//   "Immediate reclaim"        the seed bar itself is the candidate.
+//   "Close beyond sweep candle" the seed bar is parked as `pending`, and a later
+//                               bar must close beyond it within `confirmBars`
+//                               without first breaking the sweep extreme.
+
+var int   pendingSide     = 0       // 0 flat, 1 waiting on a long, -1 on a short
+var int   pendingBar      = na      // bar_index of the parked sweep candle
+var float pendingHigh     = na      // that candle's high
+var float pendingLow      = na      // that candle's low
+var int   lastRawBar      = na      // bar_index of the last raw signal (cooldown)
+var int   rawCount        = 0       // raw setups, traded or not
+var int   asiaRawCount    = 0
+var int   londonRawCount  = 0
+var int   newYorkRawCount = 0
+
+int   candidateSide = 0             // per-bar output: 0, 1 or -1
+float candidateWick = na            // the extreme the stop will be measured from
+
+// Indicators execute on every update; all state changes occur only at bar close.
+if barstate.isconfirmed
+    if confirmationMode == "Immediate reclaim"
+        // No parking in this mode: anything pending is cleared every bar.
+        pendingSide := 0
+        if entryWindow
+            candidateSide := seedLong ? 1 : seedShort ? -1 : 0
+            candidateWick := candidateSide == 1 ? low : candidateSide == -1 ? high : na
+    else
+        // First, resolve an existing pending sweep: it can expire, be
+        // invalidated by a new extreme, lose its session, or confirm.
+        if pendingSide != 0
+            bool expired     = bar_index - pendingBar > confirmBars
+            bool invalidated = pendingSide == 1 ? low < pendingLow : high > pendingHigh
+            if expired or invalidated or not entryWindow or ambiguousSweep
+                pendingSide := 0
+            else if (pendingSide == 1 and close > pendingHigh) or (pendingSide == -1 and close < pendingLow)
+                candidateSide := pendingSide
+                candidateWick := pendingSide == 1 ? pendingLow : pendingHigh
+                pendingSide   := 0
+        // Then park a fresh sweep, unless this bar already confirmed one.
+        if candidateSide == 0 and entryWindow and (seedLong or seedShort)
+            pendingSide := seedLong ? 1 : -1
+            pendingBar  := bar_index
+            pendingHigh := high
+            pendingLow  := low
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  9. RISK MODEL AND RAW SIGNAL GATING
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Risk is measured from the confirmation close to the sweep wick, plus a buffer,
+// then rounded UP to whole ticks so the quoted risk is never understated.
+float riskDistance = candidateSide == 1 ? close - candidateWick + stopBuffer * tick : candidateSide == -1 ? candidateWick - close + stopBuffer * tick : na
+int   riskTicks    = not na(riskDistance) ? int(math.ceil(riskDistance / tick)) : na
+int   targetTicks  = not na(riskTicks) ? int(math.max(1, math.round(riskTicks * rewardR))) : na
+
+// Two-sided sanity filter: a stop tighter than `minRiskTicks` is spread noise,
+// and one wider than `maxRiskATR` × ATR is an outsized bet on a quiet tape.
+bool riskOK     = not na(riskTicks) and riskTicks >= minRiskTicks and riskTicks * tick <= maxRiskATR * atr
+bool cooldownOK = na(lastRawBar) or bar_index - lastRawBar >= cooldownBars
+
+// A "raw" signal is what the RULE produced, independent of whether a
+// single-position strategy happens to be free to trade it.
+bool rawLong  = barstate.isconfirmed and entryWindow and candidateSide == 1 and riskOK and cooldownOK
+bool rawShort = barstate.isconfirmed and entryWindow and candidateSide == -1 and riskOK and cooldownOK
+
+if rawLong or rawShort
+    lastRawBar := bar_index
+    rawCount   += 1
+    if inNewYork
+        newYorkRawCount += 1
+    else if inAsia
+        asiaRawCount += 1
+    else if inLondon
+        londonRawCount += 1
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  10. SAMPLE COVERAGE BOOKKEEPING
+// ══════════════════════════════════════════════════════════════════════════════
+// Date labels describe actual loaded bars; date inputs do not download history.
+// The panel reports both so a short data window cannot be mistaken for a long
+// backtest.
+
+var int firstLoadedTime   = time
+var int firstEligibleTime = na
+var int lastEligibleTime  = na
+
+if barstate.isconfirmed and inDate
+    if na(firstEligibleTime)
+        firstEligibleTime := time
+    lastEligibleTime := time
+
+// Calendar days spanned, inclusive of both endpoints, for the entries/day rate.
+float calendarDays = not na(firstEligibleTime) ? 1.0 + (f_calendarDate(lastEligibleTime) - f_calendarDate(firstEligibleTime)) / 86400000.0 : na
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  11. CHART VISUALS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// The plotted range is lagged by one bar by construction — see section 5.
+plot(showRange ? priorHigh : na, "Prior range high (lagged)", color = color.new(color.red, 50), style = plot.style_stepline)
+plot(showRange ? priorLow : na, "Prior range low (lagged)", color = color.new(color.teal, 50), style = plot.style_stepline)
+plot(showRange ? priorMid : na, "Prior range midpoint (lagged)", color = color.new(color.gray, 65), style = plot.style_stepline)
+
+bgcolor(showSessions ? inNewYork ? color.new(color.blue, 94) : inAsia ? color.new(color.purple, 94) : inLondon ? color.new(color.orange, 94) : na : na, title = "Enabled research sessions")
+
+// Only the most recent `labelsToKeep` labels are retained, oldest deleted first.
+var array<label> signalLabels = array.new<label>()
+
+// Compact labels expose the complete setup when hovered.
+f_mark(bool buy, int stopT, int targetT) =>
+    int side = buy ? 1 : -1
+    string tip = (buy ? "BUY" : "SELL") + " | MNQ | " + signalSession
+    tip += "\nConfirmed: " + str.format_time(time_close, "yyyy-MM-dd HH:mm", TZ) + " New York"
+    tip += "\nEntry reference: " + str.tostring(close, format.mintick) + " (signal close; not a fill)"
+    tip += "\nStop reference: " + str.tostring(close - side * stopT * tick, format.mintick)
+    tip += "\nTarget reference: " + str.tostring(close + side * targetT * tick, format.mintick)
+    tip += "\nRisk: " + str.tostring(stopT) + " ticks / " + f_num(stopT * tick) + " points / $" + f_num(stopT * tick * syminfo.pointvalue) + " per contract before costs"
+    tip += "\nGross target: " + str.tostring(targetT) + " ticks / " + f_num(float(targetT) / stopT) + "R"
+    tip += "\nRule: prior " + str.tostring(lookback) + "-bar sweep and reclaim; " + confirmationMode
+    tip += "\nA confirmed signal is not an exact turning-tick entry. Edge not established."
+    label mark = label.new(bar_index, buy ? low : high, buy ? "BUY" : "SELL", yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = buy ? #087F8C : #CF465B, textcolor = color.white, size = size.small, tooltip = tip)
+    array.push(signalLabels, mark)
+    if array.size(signalLabels) > labelsToKeep
+        label.delete(array.shift(signalLabels))
+    mark
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  12. STRATEGY EXECUTION AND NET ACCOUNTING
+// ══════════════════════════════════════════════════════════════════════════════
+// Strategy entry signals are a subset of the raw indicator signals: one position
+// at a time. Orders are simulations. This script cannot place orders in a
+// brokerage account.
+
+// Trade plan mirrored into the panel.
+var float  planEntry        = na
+var int    planSide         = 0
+var int    planTime         = na
+var string planSession      = ""
+var string planBasis        = "Reference close"
+var int    activeRiskTicks  = na
+var int    activeTargetTicks = na
+
+// Running net (after-fee) statistics, kept independently of the Strategy Tester
+// so the panel can reconcile against strategy.netprofit.
+var float netWinSum      = 0.0
+var float netLossSum     = 0.0
+var int   netWins        = 0
+var int   netLosses      = 0
+var int   netClosed      = 0
+var float netRealizedSum = 0.0
+var float realizedRSum   = 0.0
+var float commissionSum  = 0.0
+
+// ── 12.1 Book every newly closed trade ────────────────────────────────────────
+// Runs BEFORE the entry block below, so `activeRiskTicks` still holds the risk
+// of the trade being closed rather than the one about to be opened.
+int closedDelta = strategy.closedtrades - nz(strategy.closedtrades[1])
+if closedDelta > 0
+    for tradeIndex = strategy.closedtrades - closedDelta to strategy.closedtrades - 1
+        // Explicit MNQ USD calculation avoids subtracting commission twice.
+        // Signed size is positive for longs and negative for shorts; fills include
+        // the configured emulator slippage. Commission() covers entry and exit.
+        float tradeQty  = strategy.closedtrades.size(tradeIndex)
+        float grossPnl  = (strategy.closedtrades.exit_price(tradeIndex) - strategy.closedtrades.entry_price(tradeIndex)) * tradeQty * syminfo.pointvalue
+        float fees      = strategy.closedtrades.commission(tradeIndex)
+        float netPnl    = grossPnl - fees
+        netClosed      += 1
+        netRealizedSum += netPnl
+        commissionSum  += fees
+        // Realized R uses the risk that was actually planned for this trade.
+        float riskDollars = activeRiskTicks * tick * syminfo.pointvalue * math.abs(tradeQty)
+        realizedRSum += riskDollars > 0 ? netPnl / riskDollars : 0
+        if netPnl > 0
+            netWins   += 1
+            netWinSum += netPnl
+        else if netPnl < 0
+            netLosses  += 1
+            netLossSum += math.abs(netPnl)
+
+// ── 12.2 Keep the panel honest about which price it is showing ────────────────
+// Reference close -> simulated fill -> last fill, in order of what is known.
+if closedDelta > 0
+    planEntry := strategy.closedtrades.entry_price(strategy.closedtrades - 1)
+    planBasis := "Last fill"
+if strategy.position_size != 0
+    planEntry := strategy.position_avg_price
+    planBasis := "Simulated fill"
+
+// ── 12.3 Entries ──────────────────────────────────────────────────────────────
+bool entryLong  = rawLong and strategy.position_size == 0
+bool entryShort = rawShort and strategy.position_size == 0
+
+if entryLong
+    planEntry         := close
+    planSide          := 1
+    planTime          := time_close
+    planSession       := signalSession
+    planBasis         := "Reference close"
+    activeRiskTicks   := riskTicks
+    activeTargetTicks := targetTicks
+    strategy.entry("Long", strategy.long, qty = 1, alert_message = "MNQ simulated BUY fill")
+    // Relative bracket submitted with entry: active from fill, not one bar later.
+    strategy.exit("Long bracket", from_entry = "Long", loss = riskTicks, profit = targetTicks, comment_loss = "Stop", comment_profit = "Target", alert_message = "MNQ simulated long bracket exit")
+    if enableAlerts
+        alert("MNQ BUY order signal | " + signalSession + " | confirmed close " + str.tostring(close, format.mintick) + " | stop " + str.tostring(riskTicks) + " ticks; target " + str.tostring(targetTicks) + " ticks from NEXT available fill | research only", alert.freq_once_per_bar_close)
+
+if entryShort
+    planEntry         := close
+    planSide          := -1
+    planTime          := time_close
+    planSession       := signalSession
+    planBasis         := "Reference close"
+    activeRiskTicks   := riskTicks
+    activeTargetTicks := targetTicks
+    strategy.entry("Short", strategy.short, qty = 1, alert_message = "MNQ simulated SELL fill")
+    strategy.exit("Short bracket", from_entry = "Short", loss = riskTicks, profit = targetTicks, comment_loss = "Stop", comment_profit = "Target", alert_message = "MNQ simulated short bracket exit")
+    if enableAlerts
+        alert("MNQ SELL order signal | " + signalSession + " | confirmed close " + str.tostring(close, format.mintick) + " | stop " + str.tostring(riskTicks) + " ticks; target " + str.tostring(targetTicks) + " ticks from NEXT available fill | research only", alert.freq_once_per_bar_close)
+
+// ── 12.4 Non-bracket exits: time stop, maintenance halt, end of window ────────
+if strategy.position_size != 0
+    int  heldBars  = bar_index - strategy.opentrades.entry_bar_index(0) + 1
+    bool mustClose = heldBars >= maxHoldBars or maintenanceWindow or time_close >= endDate
+    if mustClose
+        // Keep protective brackets active while the market close waits for a fill.
+        strategy.close_all(comment = maintenanceWindow ? "Maintenance" : time_close >= endDate ? "Date end" : "Time exit", alert_message = "MNQ simulated timed exit")
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  13. TRADE LEVELS, LABELS AND DATA WINDOW
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Drawn from the simulated fill, so they show where the bracket really sits
+// rather than where the signal close was.
+float liveEntry  = strategy.position_size != 0 ? strategy.position_avg_price : na
+float liveStop   = strategy.position_size > 0 ? liveEntry - activeRiskTicks * tick : strategy.position_size < 0 ? liveEntry + activeRiskTicks * tick : na
+float liveTarget = strategy.position_size > 0 ? liveEntry + activeTargetTicks * tick : strategy.position_size < 0 ? liveEntry - activeTargetTicks * tick : na
+
+plot(showLevels ? liveEntry : na, "Simulated fill price", color = color.gray, style = plot.style_linebr)
+plot(showLevels ? liveStop : na, "Simulated bracket stop", color = color.red, style = plot.style_linebr, linewidth = 2)
+plot(showLevels ? liveTarget : na, "Simulated bracket target", color = color.teal, style = plot.style_linebr, linewidth = 2)
+
+if entryLong
+    f_mark(true, riskTicks, targetTicks)
+if entryShort
+    f_mark(false, riskTicks, targetTicks)
+
+// Data-window series for export and manual auditing of individual bars.
+plot(rawLong ? 1 : rawShort ? -1 : 0, "Raw setup direction", display = display.data_window)
+plot(entryLong or entryShort ? riskTicks : na, "Order stop distance ticks", display = display.data_window)
+plot(entryLong or entryShort ? targetTicks : na, "Order target distance ticks", display = display.data_window)
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  14. PANELS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── 14.1 Full research statistics (opt-in, bottom left) ───────────────────────
+// Reports net-of-fee figures. The reconciliation row must read 0: it is the
+// difference between this script's own accounting and the Strategy Tester.
+var table dashboard = table.new(position.bottom_left, 2, 17, bgcolor = color.new(chart.bg_color, 5), border_color = color.new(chart.fg_color, 70), border_width = 1)
+if barstate.islast and showFullStats
+    float wr            = netClosed > 0 ? 100.0 * netWins / netClosed : na
+    float avgNetWin     = netWins > 0 ? netWinSum / netWins : na
+    float avgNetLoss    = netLosses > 0 ? netLossSum / netLosses : na
+    int   filledEntries = strategy.closedtrades + strategy.opentrades
+    f_row(dashboard, 0, "MNQ RESEARCH", "BASELINE NOT ACCEPTED")
+    f_row(dashboard, 1, "Loaded bars begin (NY)", str.format_time(firstLoadedTime, "yyyy-MM-dd HH:mm", TZ))
+    f_row(dashboard, 2, "Loaded bars end (NY)", str.format_time(time, "yyyy-MM-dd HH:mm", TZ))
+    f_row(dashboard, 3, "Closed trades / raw setups", str.tostring(netClosed) + " / " + str.tostring(rawCount))
+    f_row(dashboard, 4, "Net winning trades", f_num(wr) + "%")
+    f_row(dashboard, 5, "Net profit factor", f_ratio(netWinSum, netLossSum))
+    f_row(dashboard, 6, "Avg net win / avg net loss", f_ratio(avgNetWin, avgNetLoss))
+    f_row(dashboard, 7, "Mean net R / closed trade", f_num(netClosed > 0 ? realizedRSum / netClosed : na))
+    f_row(dashboard, 8, "Closed net P/L (USD)", f_num(netRealizedSum))
+    f_row(dashboard, 9, "Max drawdown, Tester (USD)", f_num(strategy.max_drawdown))
+    f_row(dashboard, 10, "Closed-trade fees (USD)", f_num(commissionSum))
+    f_row(dashboard, 11, "Avg entries / calendar day", f_num(calendarDays > 0 ? filledEntries / calendarDays : na))
+    f_row(dashboard, 12, "Raw: Asia / London / NY", str.tostring(asiaRawCount) + " / " + str.tostring(londonRawCount) + " / " + str.tostring(newYorkRawCount))
+    f_row(dashboard, 13, "Net P/L reconciliation", f_num(netRealizedSum - strategy.netprofit) + " USD (expect 0)")
+    f_row(dashboard, 14, "Frequency / 65% target", "Measured; never forced")
+    f_row(dashboard, 15, "Fill model", "Next open; OHLC emulator")
+    f_row(dashboard, 16, "First retained trade index", str.tostring(strategy.closedtrades.first_index))
+
+// ── 14.2 Compact trade panel (top right) ──────────────────────────────────────
+// Cleared and redrawn on the last bar so it never shows stale rows.
+var table tradePanel = table.new(position.top_right, 2, 8, bgcolor = color.new(chart.bg_color, 6), border_color = color.new(chart.fg_color, 85), border_width = 1)
+if barstate.islast
+    table.clear(tradePanel, 0, 0, 1, 7)
+    if showDashboard
+        f_planHeader(tradePanel, planSide, planSession, planTime)
+        f_row(tradePanel, 1, "State", strategy.position_size != 0 ? "Open simulation" : entryLong or entryShort ? "Next-open order" : "Last signal | flat")
+        f_row(tradePanel, 2, planBasis, f_price(planEntry))
+        f_row(tradePanel, 3, "Stop | " + str.tostring(activeRiskTicks) + " ticks", f_price(planEntry - planSide * activeRiskTicks * tick))
+        f_row(tradePanel, 4, "Target | " + f_num(float(activeTargetTicks) / activeRiskTicks) + "R", f_price(planEntry + planSide * activeTargetTicks * tick))
+        f_row(tradePanel, 5, "Risk / contract", "$" + f_num(activeRiskTicks * tick * syminfo.pointvalue) + " + costs")
+        f_row(tradePanel, 6, "Net WR | PF", f_num(netClosed > 0 ? 100.0 * netWins / netClosed : na) + "% | " + f_ratio(netWinSum, netLossSum))
+        f_row(tradePanel, 7, "Research only", "Edge not established")
