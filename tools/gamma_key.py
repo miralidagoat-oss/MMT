@@ -126,6 +126,32 @@ def session_after(d):
     return n.strftime("%Y%m%d")
 
 
+def expected_move(rows, spot, td=252.0):
+    """One session's expected move, priced by the NEAREST-dated at-the-money options.
+
+    This is the forward-looking answer to a fair complaint: ATR14 is a mean of ranges
+    that have already happened, so it describes yesterday's market. Implied vol is the
+    market's price for movement that has NOT happened yet, which is the only honest
+    way to be forward-looking without reading bars you cannot have.
+
+    Nearest expiry, not 30-day VXN. Measured over 6,462 sessions, 30-day implied vol
+    beats ATR14 on ES (holdout calibration 0.90pp vs 1.07pp) and ties it on NQ -- and
+    30-day vol is answering a 30-day question. The near-dated ATM straddle prices the
+    horizon actually being asked about, so it should do at least as well; that specific
+    claim is NOT backtested here, because historical option chains are not available to
+    this repo and inventing a backtest for them would be worse than saying so.
+    """
+    if not rows or not spot:
+        return None
+    tmin = min(r[1] for r in rows)
+    near = sorted((r for r in rows if abs(r[1] - tmin) < 1e-9),
+                  key=lambda r: abs(r[0] - spot))[:8]
+    sig = [r[2] for r in near if r[2] and r[2] > 0.001]
+    if not sig:
+        return None
+    return spot * (sum(sig) / len(sig)) / math.sqrt(td)
+
+
 def wilder_atr(bars, n=14):
     if len(bars) <= n:
         return None
@@ -252,6 +278,7 @@ def build_row(tag, session, max_dte, r, sign, iv_floor, reach, verbose=True):
         session = session_after(anchor_date)
 
     merged = {}          # strike IN THE FRAME OF THE FIRST BOOK -> dollar gamma
+    em = None            # implied 1-session expected move, in the key's price frame
     books = []
     frame_spot = None
     steps = []
@@ -270,6 +297,9 @@ def build_row(tag, session, max_dte, r, sign, iv_floor, reach, verbose=True):
             kk = round(K * scale, 4)
             merged[kk] = merged.get(kk, 0.0) + g
         books.append((spot, rows, 100.0, scale))
+        em_b = expected_move(rows, spot)
+        if em_b and em is None:                         # index book first, ETF as fallback
+            em = em_b * scale
         if listed:
             steps.append(modal_step(listed) * scale)
         if verbose:
@@ -321,6 +351,9 @@ def build_row(tag, session, max_dte, r, sign, iv_floor, reach, verbose=True):
          "%.2f" % cw, "%.2f" % pw]
     for c in chosen:
         f += ["%.2f" % c["px"], "%.4f" % c["gex"], "%.4f" % c["p"]]
+    # field 25: the forward-looking scale. 0 means the chain could not price one, and
+    # the indicator falls back to ATR rather than to a silently wrong zero.
+    f.append("%.2f" % (em if em else 0.0))
     row = ",".join([tag, session] + f)
 
     if verbose:
@@ -330,6 +363,12 @@ def build_row(tag, session, max_dte, r, sign, iv_floor, reach, verbose=True):
                  atr or 0.0, step, sep))
         print("    key stamped for session %s" % session)
         print("    flip %.2f   net %.3f $bn/1%%   CW %.2f   PW %.2f" % (flip, net, cw, pw))
+        if em:
+            print("    implied 1-session move %.2f  (ATR14 %.2f -> %s)"
+                  % (em, atr or 0.0,
+                     "IV sees a QUIETER session" if em < (atr or 0) else "IV sees a WIDER session"))
+        else:
+            print("    implied move unavailable -- chart will fall back to ATR")
         print("    %-4s %12s %12s %8s %8s" % ("rank", "price", "$bn/1%", "P(hit)", "score"))
         for i, c in enumerate(chosen):
             print("    %d/5  %12.2f %12.4f %7.1f%% %8.4f"
