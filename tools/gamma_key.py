@@ -16,7 +16,7 @@ PIPELINE
     4. sign it by the DEALER POSITIONING ASSUMPTION (see below), sum per strike
     5. gamma flip: re-price the whole book across a spot grid, find the zero crossing
     6. score every candidate:  P(reached today) x (its share of the largest |gamma|)
-    7. enforce separation, take the top five, emit the 24-field row
+    7. enforce separation, take the top five, emit the 25-field row
 
 THE ASSUMPTION, STATED ONCE AND PLAINLY
     Open interest is UNSIGNED. Nothing in the data says who is long. This script
