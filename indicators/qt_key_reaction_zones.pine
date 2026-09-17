@@ -714,11 +714,32 @@ isManual = basisMode == "Manual offset"
 basisAdj = isManual ? basisManual : isAuto ? nz(basisSelf, 0.0) : 0.0
 basisX   = isAuto ? nz(basisOther, 0.0) : 0.0
 basisBad = isAuto and na(basisSelf)
-// A cash index and its future do NOT track to within a tenth of a percent -- NQ runs
-// roughly 0.5% over NDX. If the reference does, it is not a cash index: it is another
-// future, or this chart again. Cheap arithmetic, and it catches the one settings
-// mistake that silently invalidates every level on the screen.
-basisSuspect = isAuto and not na(cashPx) and close > 0 and math.abs(cashPx - close) / close < 0.0005
+
+// ── is the "cash" reference actually a future?
+// THE OLD TEST WAS WRONG AND WOULD HAVE FIRED ON CORRECT SETTINGS. It warned when the
+// reference tracked this chart inside 0.05%, on the reasoning that "NQ runs about 0.5%
+// over NDX". That figure is not a constant -- basis is S*(r-q)*T, so it collapses
+// toward zero as a contract approaches expiry. Measured on NQ: +307 on the December
+// contract three months out, +21 on September near expiry, +6 at the extreme. 0.05% of
+// 29,000 is 145 points, so a perfectly correct near-expiry chart sat well under the
+// threshold and would have been told its settings were broken.
+//
+// Price distance cannot separate the two cases near expiry, because a real basis and a
+// futures-vs-futures basis are both ~0 there. So the primary test is structural instead:
+// A FUTURE'S PRICE IS ALWAYS A MULTIPLE OF ITS OWN TICK. A cash index is not -- NDX
+// quotes in hundredths, and only about one print in twenty-five lands on a 0.25 grid by
+// chance. A reference that sits on this chart's tick grid essentially every bar is a
+// future, whatever the basis happens to be today.
+var int tickHits = 0
+var int tickN    = 0
+if barstate.isconfirmed and not na(cashPx) and cashPx > 0
+    tickN += 1
+    if math.abs(cashPx / syminfo.mintick - math.round(cashPx / syminfo.mintick)) < 0.01
+        tickHits += 1
+onTickShare = tickN >= 50 ? tickHits / tickN : 0.0
+// The price test is kept, but only at a distance no real basis reaches outside the
+// final hours of a contract: 0.005% is about 1.5 NQ points.
+basisSuspect = isAuto and ((not na(cashPx) and close > 0 and math.abs(cashPx - close) / close < 0.00005) or onTickShare > 0.9)
 
 // Every consumer of a key price goes through here. The arrays hold the key exactly as
 // pasted; the chart frame is applied at the point of use, once, in one place.
@@ -1170,9 +1191,12 @@ if barstate.islast
              + "⚠ key carries no implied move — width fell back to strike step"
     if basisSuspect
         l4 := l4 + (str.length(l4) > 0 ? "\n" : "")
-             + "⚠ " + cashSym + " tracks this chart — that is a FUTURE, not a cash index."
-             + "\n   Basis reads ~0, so every level is in the wrong price frame."
-             + "\n   Set it back to " + (myTag == "NQ" ? "NASDAQ:NDX" : "SP:SPX") + "."
+             + "⚠ " + cashSym + " is quoting like a FUTURE, not a cash index."
+             + "\n   " + (onTickShare > 0.9 ? str.tostring(onTickShare * 100, "#") + "% of its prints sit exactly on this chart's tick grid."
+                                             : "It tracks this chart to within 0.005%.")
+             + "\n   The basis is measured against the wrong thing, so every level is"
+             + "\n   in the wrong price frame. Set it back to "
+             + (myTag == "NQ" ? "NASDAQ:NDX" : "SP:SPX") + "."
 
     txt = l1 + "\n" + l2 + (str.length(l3) > 0 ? "\n" + l3 : "")
          + (str.length(lD) > 0 ? "\n" + lD : "") + (str.length(l4) > 0 ? "\n" + l4 : "")

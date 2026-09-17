@@ -24,6 +24,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statistics  # noqa: E402
+
 import find_reversal_zones as F  # noqa: E402
 import yahoo  # noqa: E402
 
@@ -51,13 +53,48 @@ def load(tag):
     return {r["session"]: r for r in out}      # dedupe, last wins
 
 
-def basis_by_date(tag):
-    """futures close - cash close, per date. The key is cash; the chart is not."""
-    fb = yahoo.daily_bars(FUT[tag], start="2026-01-01")
-    cb = yahoo.daily_bars(CASH[tag], start="2026-01-01")
-    c = {dt.datetime.utcfromtimestamp(r[0]).date(): r[4] for r in cb}
-    return {dt.datetime.utcfromtimestamp(r[0]).date(): r[4] - c[dt.datetime.utcfromtimestamp(r[0]).date()]
-            for r in fb if dt.datetime.utcfromtimestamp(r[0]).date() in c}
+def basis_by_session(tag, tf, rng):
+    """futures minus cash, measured INTRADAY, per session. The key is cash; the chart
+    is not, so every level has to be shifted by the offset that was in force.
+
+    THIS MUST NOT USE DAILY CLOSES. Yahoo's daily continuous series is adjusted on a
+    different convention from its intraday series, and the two disagree enormously:
+    on 2026-09-16 the daily close difference said +18 while the intraday RTH median
+    said +307. Taking the daily figure put every archived level ~290 points from
+    where it belonged and turned a session with five zone touches into one with none
+    -- a clean-looking null produced entirely by the measurement.
+
+    Matching 5-minute bars during RTH and taking the median is what the indicator
+    itself does, and it survives the contract roll: NQ=F rolled on 2026-09-14 and the
+    basis stepped from +21 to +307 between two sessions, which a per-session median
+    reports faithfully and a smoothed series would have smeared across both.
+    """
+    fb = bars_for(FUT[tag], tf, rng)
+    cb = bars_for(CASH[tag], tf, rng)
+    cm = {r[0]: r[4] for r in cb}
+    by = {}
+    for r in fb:
+        if r[0] not in cm:
+            continue
+        t = dt.datetime.utcfromtimestamp(r[0])
+        mins = t.hour * 60 + t.minute
+        if 13 * 60 + 30 <= mins < 20 * 60:          # RTH in UTC, where cash is ticking
+            by.setdefault(F.et(r[0]).date(), []).append(r[4] - cm[r[0]])
+    return {d: statistics.median(v) for d, v in by.items() if len(v) >= 20}
+
+
+def bars_for(sym, tf, rng):
+    return F.bars(sym, tf, rng)
+
+
+def frozen_basis(bas, d):
+    """The offset in force for session d: measured on the PREVIOUS session that had a
+    measurement, never on d itself and never defaulted to zero. A calendar d-1 lookup
+    silently returns nothing every Monday, and a zero default is the exact failure the
+    indicator refuses to make -- a missing basis draws nothing rather than drawing the
+    cash frame and calling it the chart's."""
+    prev = [x for x in sorted(bas) if x < d]
+    return bas[prev[-1]] if prev else None
 
 
 def main():
@@ -80,16 +117,22 @@ def main():
         b = F.bars(FUT[tag], a_.tf, a_.range)
         a = F.atr_series(b)
         days = F.sessionize(b)
-        bas = basis_by_date(tag)
+        bas = basis_by_session(tag, a_.tf, a_.range)
 
         lv = {}
+        skipped = 0
         for d in days:
             key = arc.get(d.strftime("%Y%m%d"))
             if not key or not days[d]["rth"]:
                 continue
-            off = bas.get(d - dt.timedelta(days=1), 0.0)     # basis as of the anchor
+            off = frozen_basis(bas, d)
+            if off is None:                      # no measurement: draw nothing
+                skipped += 1
+                continue
             lv[d] = [("G%d" % l["grade"], l["px"] + off, days[d]["rth"][0])
                      for l in key["levels"]]
+        if skipped:
+            print("  %d archived session(s) skipped: no prior-session basis" % skipped)
         recs = F.run(b, a, days, lv)
         nu = F.run(b, a, days, F.build_levels(b, days, "NULL", a))
         if not recs:
