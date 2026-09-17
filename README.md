@@ -446,3 +446,72 @@ error that looks entirely plausible on the chart. The script measures the basis
 itself: futures minus cash, sampled only on bars where the cash index is actually
 ticking, smoothed, and frozen at the session open. The badge always prints the
 offset in force and says so when it could not measure one.
+
+---
+
+# QT KEY causal research (`indicators/qt_key_causal_research.pine`)
+
+A research variant of QT KEY, contributed by the repo owner and reviewed here. It
+trades only the 5/5 and 4/5 levels from an **archive** of keys rather than today's,
+and its point is a discipline the main indicator does not have: **it refuses a key
+that was not demonstrably available before its session opened.**
+
+Key rows carry a 26th column — UTC milliseconds at generation completion — and the
+script compares it against 18:00 NY on the calendar day before the session label. A
+date stamp says which session a key is *for*; it says nothing about when the key
+existed. Without the timestamp there is no way to tell a genuine pre-session snapshot
+from one rebuilt afterwards with the answer already in it, which is the easiest way
+there is to fool yourself about a level. `tools/gamma_key.py` emits that column.
+
+It is an **indicator, not a strategy**, deliberately. A strategy prints an equity
+curve, and an equity curve built on an untested 5:1 hold reads as a result rather
+than as the assumption it is. This prints the trade record — fills, wins, losses,
+net R — and nothing that looks like a P&L. Two rules in the tally point against the
+user: a bar whose range contains both the target and the stop resolves as the **stop**
+(5-minute bars cannot say which came first, and guessing the other way buys a free
+win rate), and costs come out of every closed trade including the winners.
+
+## The result that should change how it is configured
+
+Its default bracket is 100-point target against a 20-point stop. Running the exact
+entry and exit rules over 50 sessions of real NQ 5m data, with the gamma levels
+replaced by levels carrying **no information**:
+
+| Target | Hit rate | Breakeven needs | Shortfall | Net per trade |
+|---|---|---|---|---|
+| 20 pts (1:1) | 45.7% | 50% | −4.3 pp | −0.145R |
+| 40 pts | 21.7% | 33% | −11.6 pp | −0.385R |
+| 100 pts (5:1) | 6.5% | 17% | −10.5 pp | −0.609R |
+
+Every target loses on informationless levels, which is the null behaving correctly.
+But the 100-point target loses **four times per trade** what the 20-point one does.
+If real gamma levels add, say, +10 pp of hit rate, that rescues the 1:1 bracket
+(55.7% against 50% needed) and does not rescue the 5:1 (16.5% against 17%). **The
+default bracket is wide enough to swallow the edge it is meant to measure.** A
+20-point stop on MNQ 5m also sits inside the noise, and the entry is mean-reversion
+shaped while the exit asks for a multi-ATR trend.
+
+Swapping the levels for the 25-point and 100-point strike grids changed nothing
+(10.6% against 6.5%, on 5 wins versus 3 out of ~47 — noise), which is consistent
+with the grid measuring as null over 599 sessions elsewhere in this repo.
+
+Reproduce: `python3 tools/find_reversal_zones.py`, and the entry-rule simulation is
+described in the commit that added this file.
+
+## Defects fixed during review
+
+Two stopped it compiling: `str.trim()`, which Pine does not have, and
+`strategy.exit(loss=math.round(...))`, where `math.round` returns a float against a
+`series int` parameter. Two more were silent: `time_tradingday` returns the
+*beginning* of the trading day, which for an overnight futures session is the
+previous calendar date, so every key lookup was off by one session while still
+reporting a key it "found"; and `dayofmonth(...) - 1` is 0 on the first of a month.
+A trailing `;` in the key field killed the script, trailing spaces defeated the
+column check, `strategy.close_all` re-fired every bar for the rest of the day, and
+the `boundaryBar` guard was declared and never assigned, so it never did anything.
+
+The hard refusal to run on a continuous contract (`MNQ1!`) was replaced rather than
+deleted. The hazard was real — the front month is spliced, and the basis jumps by the
+calendar spread at each roll — but refusing to run is the wrong trade when almost
+every chart is the continuous one. A roll detector now discards the basis estimate
+and re-measures, drawing nothing until it has samples again.
