@@ -208,10 +208,13 @@ if blockChanged
             keyStatus:="Duplicate key date; price zones active"
         else
             f=str.split(map.get(keys,dateKey),",")
-            key5:=str.tonumber(array.get(f,KEY_COL_RANK5))
-            key4:=str.tonumber(array.get(f,KEY_COL_RANK4))
+            // Trimmed like the tag and date above. A key written with a
+            // space after each comma reaches these fields as " 21000.25",
+            // and an untrimmed read rejected the whole row as invalid.
+            key5:=str.tonumber(str.trim(array.get(f,KEY_COL_RANK5)))
+            key4:=str.tonumber(str.trim(array.get(f,KEY_COL_RANK4)))
             legacy:=array.size(f)==25
-            keyAt:=legacy ? legacyKnownFrom>0 ? legacyKnownFrom : na : str.tonumber(array.get(f,KEY_COL_PUBLISHED))
+            keyAt:=legacy ? legacyKnownFrom>0 ? legacyKnownFrom : na : str.tonumber(str.trim(array.get(f,KEY_COL_PUBLISHED)))
             haveKey:=not na(key5) and key5>0 and not na(key4) and key4>0
             if not haveKey
                 keyStatus:="Invalid 4/5 level prices; price zones active"
