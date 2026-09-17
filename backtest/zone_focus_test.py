@@ -36,19 +36,35 @@ class Z:
 n_sources = lambda m: sum(1 for b in (1, 2, 4, 8) if (m // b) % 2 == 1)
 
 
+def f_score(z, price, scale, max_dist):
+    """None means the zone is not eligible at all."""
+    if z is None or scale is None or scale <= 0 or z.side == 0:
+        return None
+    dist = abs(z.p - price)
+    if dist > max_dist * scale:
+        return None
+    return (n_sources(z.sources) * 100.0 - dist / scale * 5.0
+            + (10.0 if z.touches == 0 else 20.0 * z.rejects / z.touches))
+
+
 def f_pick(zones, price, scale, max_dist):
-    best, best_score = None, -1e20
-    if zones and scale and scale > 0:
-        for z in zones:
-            if z.side != 0:
-                dist = abs(z.p - price)
-                if dist <= max_dist * scale:
-                    score = (n_sources(z.sources) * 100.0 - dist / scale * 5.0
-                             + (10.0 if z.touches == 0
-                                else 20.0 * z.rejects / z.touches))
-                    if score > best_score:
-                        best, best_score = z, score
+    best, best_score = None, None
+    for z in zones or []:
+        sc = f_score(z, price, scale, max_dist)
+        if sc is not None and (best_score is None or sc > best_score):
+            best, best_score = z, sc
     return best
+
+
+def select(zones, held_p, price, scale, max_dist, margin):
+    """One bar of the single-zone selection, with hysteresis."""
+    best = f_pick(zones, price, scale, max_dist)
+    best_score = f_score(best, price, scale, max_dist)
+    held = next((z for z in zones if z.p == held_p), None) if held_p is not None else None
+    held_score = f_score(held, price, scale, max_dist)
+    focus = best if (held_score is None or
+                     (best_score is not None and best_score > held_score + margin)) else held
+    return focus, (None if focus is None else focus.p)
 
 
 def plan(z, entry_at, pad_ticks, rr):
@@ -114,6 +130,45 @@ held = Z(21050, 2.5, -1, 2, touches=4, rejects=4, name="held 4/4")
 broken_thru = Z(21050, 2.5, -1, 2, touches=4, rejects=0, name="held 0/4")
 check("a level that has held outranks one that has not",
       f_pick([broken_thru, held], 21000, 100, 5).name, "held 4/4")
+
+# ── hysteresis: the incumbent is not given up for a marginal improvement ────
+A = Z(21050, 2.5, -1, 2, name="incumbent")      # 0.5 ATR away, 1 source
+B = Z(21010, 2.5, -1, 2, name="marginally nearer")   # 0.1 ATR away, 1 source
+zs = [A, B]
+check("without an incumbent, the best zone is taken",
+      select(zs, None, 21000, 100, 5, 20)[0].name, "marginally nearer")
+check("a 2-point edge does not unseat the incumbent",
+      select(zs, 21050, 21000, 100, 5, 20)[0].name, "incumbent")
+check("  ...and the held price is carried forward",
+      select(zs, 21050, 21000, 100, 5, 20)[1], 21050)
+check("zero margin restores bar-to-bar switching",
+      select(zs, 21050, 21000, 100, 5, 0)[0].name, "marginally nearer")
+
+C = Z(21010, 2.5, -1, 2 + 4, name="extra source")    # 2 sources, near
+check("a genuinely better zone does unseat it",
+      select([A, C], 21050, 21000, 100, 5, 20)[0].name, "extra source")
+
+check("an incumbent removed from the set is replaced",
+      select([B], 21050, 21000, 100, 5, 20)[0].name, "marginally nearer")
+check("an incumbent drifting out of range is replaced",
+      select([Z(28000, 2.5, -1, 2, name="far gone"), B], 28000, 21000, 100, 5, 20)[0].name,
+      "marginally nearer")
+check("nothing eligible selects nothing",
+      select([Z(28000, 2.5, -1, 2)], 28000, 21000, 100, 5, 20)[0], None)
+check("  ...and clears the held price", select([], 21050, 21000, 100, 5, 20)[1], None)
+
+# repeated bars with price drifting: the incumbent must survive the drift
+held = None
+picks = []
+for px in (21000, 21005, 21012, 21020, 21008, 21002):
+    f, held = select([A, B], held, px, 100, 5, 20)
+    picks.append(f.name)
+check("the choice is stable across a drifting sequence",
+      len(set(picks)), 1)
+
+# ── dollar risk ─────────────────────────────────────────────────────────────
+check("NQ risk in cash is points x point value", 6.0 * 20, 120.0)
+check("MNQ risk in cash is a tenth of that", 6.0 * 2, 12.0)
 
 print(f"\n{sum(T)}/{len(T)} passed")
 sys.exit(0 if all(T) else 1)

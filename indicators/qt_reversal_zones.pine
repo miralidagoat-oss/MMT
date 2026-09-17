@@ -5,7 +5,8 @@ useNY=input.bool(true,"New York: 06:00-13:55 California",group=gs)
 useAsia=input.bool(true,"Asia: 15:00-19:00 California",group=gs)
 useSwings=input.bool(true,"Include confirmed swing zones",group=gs,tooltip="A swing needs two later closed candles. Its zone begins at confirmation, never at the earlier turning candle.")
 maxZones=input.int(8,"Maximum active zones",minval=2,maxval=12,group=gs)
-keepHistory=input.int(100,"Historical state segments",minval=0,maxval=240,group=gs)
+maxSwings=input.int(4,"Maximum swing zones",minval=0,maxval=8,group=gs,tooltip="Swings outnumber everything else - they form several times a session while the New York high and low form once a day - so without a cap they fill every slot and evict the structural levels. Four swings plus both New York levels plus both key ranks fits the default of eight active zones exactly.")
+keepHistory=input.int(100,"Historical state segments",minval=0,maxval=240,group=gs,tooltip="Only applies when Single zone mode is off. In single-zone mode no per-zone boxes are drawn, so nothing is kept.")
 showPanel=input.bool(true,"Show zone and key status",group=gs)
 string gf="Single zone"
 focusSingle=input.bool(true,"Show one zone only",group=gf,tooltip="Draws the single best candidate instead of the whole set, with a limit, stop and target. Selection is by confluence first, then nearness to price. This narrows the display and forces a decision; it does NOT make the zone more likely to hold. Nothing in this script has been measured on live data, and the same hold/break definitions score about 65% on pure noise.")
@@ -13,6 +14,7 @@ entryAt=input.string("Near edge","Limit sits at",options=["Near edge","Zone midd
 stopPadTicks=input.int(4,"Stop pad beyond far edge (ticks)",minval=0,group=gf)
 targetRR=input.float(2,"Target reward:risk",minval=.5,step=.5,group=gf)
 maxFocusDist=input.float(4,"Ignore zones beyond (ATR)",minval=.5,step=.5,group=gf)
+focusMargin=input.float(20,"Keep current zone unless beaten by",minval=0,step=5,group=gf,tooltip="Score points a rival must beat the current zone by before the display switches. Without this the selection changes as price drifts and the limit price moves out from under a resting order. On the score scale, one extra confluence source is worth 100 and one ATR of extra distance costs 5, so 20 tolerates normal drift but yields to a genuinely better level. Zero restores the old bar-to-bar switching.")
 string gk="Optional daily key"
 keyText=input.text_area("","Daily key: 25 or 26 columns",group=gk,tooltip="Paste ES/NQ rows separated by semicolons or newlines. Only ranks 5 and 4 are used. A key is optional: price zones work without it.")
 priceFrame=input.string("Cash: measured offset","Key price frame",options=["Cash: measured offset","Cash: manual offset","Futures prices"],group=gk)
@@ -117,21 +119,27 @@ f_retire(Zone z,int when,bool broken)=>
 // Returns true when the level ended up represented on the chart, as a new zone
 // or merged into an overlapping one. False means it was dropped for want of a
 // slot, which previously happened silently.
+// The lower distance bound is gone: a level within w of the reference price
+// used to be rejected outright for every source but the key, which was
+// inconsistent once undetermined sides existed. Such a level is now admitted
+// with side 0 and resolves when price settles on one side of it.
 f_add(float p,float w,int source,string name,int when,float price,float scale,int until)=>
     bool placed=false
-    bool candidate=not na(p) and not na(w) and not na(scale) and p>0 and (source==4 or math.abs(p-price)>w and math.abs(p-price)<=12*scale) and when<until
+    bool candidate=not na(p) and not na(w) and not na(scale) and p>0 and math.abs(p-price)<=12*scale and when<until
     if candidate
         bool merged=false
         if array.size(zones)>0
             for z in zones
-                if not merged and math.abs(p-z.p)<=z.w
+                // One test, not two. The old code recorded the source only when
+                // the new level's centre fell inside the existing zone; a level
+                // that merely overlapped was suppressed with its source
+                // discarded, so a genuine key-plus-swing confluence scored and
+                // drew as a lone swing and the key status claimed it had merged.
+                if not merged and math.abs(p-z.p)<w+z.w
                     if not f_has(z.sources,source)
                         z.sources+=source
                         z.names+=" + "+name
                         f_segment(z,when)
-                    merged:=true
-                    placed:=true
-                else if not merged and math.abs(p-z.p)<w+z.w
                     merged:=true
                     placed:=true
         if not merged
@@ -158,22 +166,35 @@ f_add(float p,float w,int source,string name,int when,float price,float scale,in
                 array.push(zones,z)
                 placed:=true
     placed
-// Selection is deliberately simple and inspectable: confluence dominates,
-// nearness breaks ties, and this session's holding record nudges it. It ranks
-// candidates; it does not estimate a probability for any of them.
-f_pick(float price,float scale,float maxDist)=>
+// Scoring is deliberately simple and inspectable: one confluence source is
+// worth 100, one ATR of distance costs 5, and this session's holding record
+// adds up to 20. It ranks candidates; it does not estimate a probability for
+// any of them. na means the zone is not eligible at all.
+f_score(Zone z,float price,float scale)=>
+    float out=na
+    if not na(z) and not na(scale) and scale>0 and z.side!=0
+        float dist=math.abs(z.p-price)
+        if dist<=maxFocusDist*scale
+            out:=f_count(z.sources)*100.0-dist/scale*5.0+(z.touches==0 ? 10.0 : 20.0*z.rejects/z.touches)
+    out
+f_pick(float price,float scale)=>
     Zone best=na
-    float bestScore=-1e20
-    if array.size(zones)>0 and not na(scale) and scale>0
+    float bestScore=na
+    if array.size(zones)>0
         for z in zones
-            if z.side!=0
-                float dist=math.abs(z.p-price)
-                if dist<=maxDist*scale
-                    float score=f_count(z.sources)*100.0-dist/scale*5.0+(z.touches==0 ? 10.0 : 20.0*z.rejects/z.touches)
-                    if score>bestScore
-                        bestScore:=score
-                        best:=z
+            float sc=f_score(z,price,scale)
+            if not na(sc) and (na(bestScore) or sc>bestScore)
+                bestScore:=sc
+                best:=z
     best
+// Count of live zones carrying the swing bit, for the swing cap.
+f_swings()=>
+    int c=0
+    if array.size(zones)>0
+        for z in zones
+            if f_has(z.sources,2)
+                c+=1
+    c
 var float nyHigh=na
 var float nyLow=na
 var int nyBars=0
@@ -219,8 +240,11 @@ var string keyStatus="Price zones active; key optional"
 // scalar key state below is idempotent and stays here so the panel reflects the
 // new block immediately.
 var bool pendingSeed=false
+// Price of the zone the single-zone display is currently holding.
+var float heldP=na
 if blockChanged
     pendingSeed:=true
+    heldP:=na
     keyAdded:=false
     keyMissed:=false
     key5:=na
@@ -265,10 +289,14 @@ if barstate.isconfirmed
                 f_add(completedHigh,w,1,"NY high",time,open,atr[1],deadline)
                 f_add(completedLow,w,8,"NY low",time,open,atr[1],deadline)
             if useSwings and array.size(swingPrices)>0
+                int seeded=0
                 for j=0 to array.size(swingPrices)-1
                     int k=array.size(swingPrices)-1-j
-                    if time-array.get(swingTimes,k)<=86400000
-                        f_add(array.get(swingPrices,k),w,2,"Swing",time,open,atr[1],deadline)
+                    // Newest first, so the cap keeps the most recent swings
+                    // rather than letting eight of them evict the NY levels.
+                    if seeded<maxSwings and time-array.get(swingTimes,k)<=86400000
+                        if f_add(array.get(swingPrices,k),w,2,"Swing",time,open,atr[1],deadline)
+                            seeded+=1
     if session!=SESSION_NONE and array.size(zones)>0
         int j=array.size(zones)-1
         while j>=0
@@ -344,7 +372,10 @@ if barstate.isconfirmed
                 basisAt:=na
             basisEstimate:=na(basisEstimate) ? observation : basisEstimate+(observation-basisEstimate)/60
             basisSamples+=1
-        if minute==775 and nyBars>=75
+        // Captured from bar 75 onward and refreshed each bar, rather than on
+        // the 12:55 bar alone: one missing bar at the close used to cost the
+        // whole day's range and fall back silently to one days older.
+        if nyBars>=75
             completedHigh:=nyHigh
             completedLow:=nyLow
             completedAt:=time_close
@@ -362,7 +393,7 @@ if barstate.isconfirmed
                 if array.size(swingPrices)>8
                     array.shift(swingPrices)
                     array.shift(swingTimes)
-                if session!=SESSION_NONE and time_close<deadline
+                if session!=SESSION_NONE and time_close<deadline and f_swings()<maxSwings
                     f_add(p,halfWidth,2,"Swing",time_close,close,atr,deadline)
 bool previewNow=legacy and na(keyAt) and (barstate.islastconfirmedhistory or barstate.isrealtime)
 bool publishedNow=not na(keyAt) and time_close>=keyAt
@@ -388,16 +419,34 @@ if session!=SESSION_NONE and array.size(zones)>0 and not focusSingle
             box.set_right(z.drawing,math.min(time_close+30*60000,z.until))
 // The one zone, its limit, stop and target. Delete-then-create on the last bar
 // keeps this at four drawing objects regardless of how long the chart runs.
-Zone focus=focusSingle ? f_pick(close,atr,maxFocusDist) : na
+// Runs only where it is read, on the last bar, and keeps its choice across
+// bars. Without hysteresis the ranking flips as price drifts and the displayed
+// limit moves out from under a resting order. The incumbent is identified by
+// price rather than by reference, so it simply stops matching once the block is
+// cleared or the zone is broken and removed.
+Zone focus=na
 float fEntry=na
 float fStop=na
 float fTarget=na
 float fRisk=na
+float fRiskCash=na
+if barstate.islast and focusSingle
+    Zone best=f_pick(close,atr)
+    float bestScore=f_score(best,close,atr)
+    Zone held=na
+    if not na(heldP) and array.size(zones)>0
+        for z in zones
+            if na(held) and z.p==heldP
+                held:=z
+    float heldScore=f_score(held,close,atr)
+    focus:=na(heldScore) or (not na(bestScore) and bestScore>heldScore+focusMargin) ? best : held
+    heldP:=na(focus) ? na : focus.p
 if not na(focus)
     fEntry:=entryAt=="Near edge" ? focus.p+focus.side*focus.w : entryAt=="Far edge" ? focus.p-focus.side*focus.w : focus.p
     fStop:=focus.p-focus.side*focus.w-focus.side*stopPadTicks*syminfo.mintick
     fRisk:=math.abs(fEntry-fStop)
     fTarget:=fEntry+focus.side*targetRR*fRisk
+    fRiskCash:=fRisk*syminfo.pointvalue
 var box focusBox=na
 var line entryLine=na
 var line stopLine=na
@@ -423,7 +472,7 @@ if barstate.islast and focusSingle
         entryLine:=line.new(x1,fEntry,x2,fEntry,xloc=xloc.bar_time,color=fc,width=2)
         stopLine:=line.new(x1,fStop,x2,fStop,xloc=xloc.bar_time,color=color.new(color.red,25),style=line.style_dashed)
         targetLine:=line.new(x1,fTarget,x2,fTarget,xloc=xloc.bar_time,color=color.new(color.teal,25),style=line.style_dashed)
-var table panel=table.new(position.top_right,1,10,bgcolor=color.new(color.rgb(15,23,34),9),frame_color=color.new(color.gray,60),frame_width=1)
+var table panel=table.new(position.top_right,1,11,bgcolor=color.new(color.rgb(15,23,34),9),frame_color=color.new(color.gray,60),frame_width=1)
 if barstate.islast and showPanel
     table.cell(panel,0,0,"QT REVERSAL ZONES",text_color=color.white,text_size=size.small)
     string sessionText=session==SESSION_NY ? "NEW YORK | 06:00-13:55 CA" : session==SESSION_ASIA ? "ASIA | 15:00-19:00 CA" : "Outside session | 06:00-19:00 CA"
@@ -435,19 +484,25 @@ if barstate.islast and showPanel
     // of being applied silently.
     string frameText=priceFrame=="Futures prices" ? "Key frame: futures prices, no offset" : priceFrame=="Cash: manual offset" ? "Key frame: cash + manual "+str.tostring(manualOffset,format.mintick) : na(offset) ? "Key frame: cash, no usable offset measured" : "Key frame: cash + "+str.tostring(offset,format.mintick)+", measured "+str.tostring((time-basisAt)/86400000.0,"#.#")+"d ago"
     table.cell(panel,0,4,frameText,text_color=priceFrame!="Futures prices" and na(offset) ? color.orange : color.silver,text_size=size.tiny)
-    table.cell(panel,0,5,focusSingle ? "Ranked by confluence then nearness - a ranking, not a probability" : "Bold border = multiple sources, not win probability",text_color=color.silver,text_size=size.tiny)
+    // How old the New York range behind the seeded levels is. A half-day
+    // session or a gap in the feed leaves the previous range in place, drawn
+    // identically to a fresh one, so the age is stated rather than implied.
+    float rangeAge=na(completedAt) ? na : (time-completedAt)/86400000.0
+    string rangeText=na(completedAt) ? "NY range: none captured yet" : rangeAge>5 ? "NY range expired; NY levels not seeded" : "NY range "+str.tostring(completedLow,format.mintick)+"-"+str.tostring(completedHigh,format.mintick)+", "+str.tostring(rangeAge,"#.#")+"d old"
+    table.cell(panel,0,5,rangeText,text_color=na(completedAt) or rangeAge>4 ? color.orange : color.silver,text_size=size.tiny)
+    table.cell(panel,0,6,focusSingle ? "Ranked by confluence then nearness - a ranking, not a probability" : "Bold border = multiple sources, not win probability",text_color=color.silver,text_size=size.tiny)
     if focusSingle
         if na(focus)
-            table.cell(panel,0,6,"No zone within "+str.tostring(maxFocusDist,"#.#")+" ATR - stand aside",text_color=color.silver,text_size=size.small)
-            table.cell(panel,0,7,"",text_size=size.tiny)
+            table.cell(panel,0,7,"No zone within "+str.tostring(maxFocusDist,"#.#")+" ATR - stand aside",text_color=color.silver,text_size=size.small)
             table.cell(panel,0,8,"",text_size=size.tiny)
             table.cell(panel,0,9,"",text_size=size.tiny)
+            table.cell(panel,0,10,"",text_size=size.tiny)
         else
             color fc=f_color(focus)
-            table.cell(panel,0,6,(focus.side==1 ? "BUY LIMIT " : "SELL LIMIT ")+str.tostring(fEntry,format.mintick),text_color=fc,text_size=size.normal)
-            table.cell(panel,0,7,"stop "+str.tostring(fStop,format.mintick)+"    risk "+str.tostring(fRisk,format.mintick)+" pts",text_color=color.new(color.red,20),text_size=size.small)
-            table.cell(panel,0,8,"target "+str.tostring(fTarget,format.mintick)+"    "+str.tostring(targetRR,"#.#")+"R",text_color=color.new(color.teal,20),text_size=size.small)
-            table.cell(panel,0,9,focus.names+" | "+str.tostring(focus.p-focus.w,format.mintick)+"-"+str.tostring(focus.p+focus.w,format.mintick)+" | "+f_state(focus),text_color=color.silver,text_size=size.tiny)
+            table.cell(panel,0,7,(focus.side==1 ? "BUY LIMIT " : "SELL LIMIT ")+str.tostring(fEntry,format.mintick),text_color=fc,text_size=size.normal)
+            table.cell(panel,0,8,"stop "+str.tostring(fStop,format.mintick)+"    risk "+str.tostring(fRisk,format.mintick)+" pts = $"+str.tostring(fRiskCash,"#.##")+"/contract",text_color=color.new(color.red,20),text_size=size.small)
+            table.cell(panel,0,9,"target "+str.tostring(fTarget,format.mintick)+"    "+str.tostring(targetRR,"#.#")+"R",text_color=color.new(color.teal,20),text_size=size.small)
+            table.cell(panel,0,10,focus.names+" | "+str.tostring(focus.p-focus.w,format.mintick)+"-"+str.tostring(focus.p+focus.w,format.mintick)+" | "+f_state(focus),text_color=color.silver,text_size=size.tiny)
     else
         array<float> distances=array.new<float>()
         if array.size(zones)>0
@@ -462,4 +517,4 @@ if barstate.islast and showPanel
                 txt:=(z.side==1 ? "Lower " : z.side==-1 ? "Upper " : "At price ")+str.tostring(z.p-z.w,format.mintick)+" - "+str.tostring(z.p+z.w,format.mintick)+" | "+z.names+" | "+f_state(z)
                 col=f_color(z)
                 array.set(distances,idx,1e20)
-            table.cell(panel,0,row+6,txt,text_color=col,text_size=size.tiny)
+            table.cell(panel,0,row+7,txt,text_color=col,text_size=size.tiny)
