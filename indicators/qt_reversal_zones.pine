@@ -12,6 +12,7 @@ keyText=input.text_area("","Daily key: 25 or 26 columns",group=gk,tooltip="Paste
 priceFrame=input.string("Cash: measured offset","Key price frame",options=["Cash: measured offset","Cash: manual offset","Futures prices"],group=gk)
 manualOffset=input.float(0,"Manual cash-to-futures offset",step=.25,group=gk)
 legacyKnownFrom=input.time(0,"25-column key: known since (optional)",group=gk,tooltip="Leave at zero for a current-chart preview with unknown publication time. An authentic known-since time enables historical display from that time only. Do not invent an earlier timestamp.")
+keyDateBasis=input.string("California calendar date","Key row is dated by",options=["California calendar date","CME trading day"],group=gk,tooltip="Which date the daily key row is keyed by. California calendar date maps both the New York and the Asia block of one California day to that day's row. CME trading day follows the futures roll at 15:00 California, so the Asia block maps to the next day's row instead. Match this to how your key file is dated; the resolved date is shown on the panel.")
 bool nq=syminfo.root=="MNQ" or syminfo.root=="NQ"
 bool es=syminfo.root=="MES" or syminfo.root=="ES"
 if barstate.isfirst and (not (nq or es) or timeframe.in_seconds()!=300 or not chart.is_standard)
@@ -21,7 +22,16 @@ int minute=hour(time,ca)*60+minute(time,ca)
 int session=useNY and minute>=360 and minute<835 ? 2 : useAsia and minute>=900 and minute<1140 ? 0 : -1
 bool dayChanged=ta.change(time_tradingday)!=0
 bool blockChanged=barstate.isfirst or dayChanged or session!=session[1]
-string dateKey=str.format_time(time_tradingday,"yyyyMMdd","UTC")
+// The key row is looked up by date, and that date has to agree with the block
+// deadline below, which is built from the California calendar date. CME equity
+// index futures roll the trading day at 15:00 California, so the Asia block
+// (15:00-19:00) falls in the NEXT trading day while its deadline stays on the
+// current calendar day - the two halves of one lookup disagreed. Both are now
+// derived from the California calendar date, and the roll is applied here
+// explicitly rather than via time_tradingday, whose session-start anchoring is
+// not what the "trading day" label means for an overnight session.
+int tradingDayShift=hour(time,ca)>=15 ? 86400000 : 0
+string dateKey=str.format_time(keyDateBasis=="CME trading day" ? time+tradingDayShift : time,"yyyyMMdd",ca)
 string tag=nq ? "NQ" : "ES"
 float atr=ta.atr(14)
 float low5=ta.lowest(low,5)
@@ -138,11 +148,14 @@ var bool legacy=false
 var bool haveKey=false
 var bool keyAdded=false
 var string keyStatus="Price zones active; key optional"
+// Retiring and re-seeding zones creates and deletes boxes and mutates the zones
+// array. blockChanged stays true for every realtime tick of a block's first bar,
+// so that work is deferred to the bar's confirmation and runs exactly once. The
+// scalar key state below is idempotent and stays here so the panel reflects the
+// new block immediately.
+var bool pendingSeed=false
 if blockChanged
-    if array.size(zones)>0
-        for z in zones
-            f_retire(z,time,false)
-        array.clear(zones)
+    pendingSeed:=true
     keyAdded:=false
     key5:=na
     key4:=na
@@ -167,17 +180,26 @@ if blockChanged
                 keyStatus:="Invalid publication time; price zones active"
             else
                 keyStatus:=legacy and na(keyAt) ? "Legacy key: current preview, timing unknown" : "Key waiting for its availability time"
-    if session>=0 and not na(atr[1])
-        float w=halfWidth[1]
-        if not na(completedAt) and time-completedAt<=5*86400000
-            f_add(completedHigh,w,1,"NY high",time,open,atr[1],deadline)
-            f_add(completedLow,w,1,"NY low",time,open,atr[1],deadline)
-        if useSwings and array.size(swingPrices)>0
-            for j=0 to array.size(swingPrices)-1
-                int k=array.size(swingPrices)-1-j
-                if time-array.get(swingTimes,k)<=86400000
-                    f_add(array.get(swingPrices,k),w,2,"Swing",time,open,atr[1],deadline)
 if barstate.isconfirmed
+    // Seeded with the block's open time, so zone birth timestamps and the
+    // "born==time ? open : close[1]" reference below are unchanged; only the
+    // moment of execution moved.
+    if pendingSeed
+        pendingSeed:=false
+        if array.size(zones)>0
+            for z in zones
+                f_retire(z,time,false)
+            array.clear(zones)
+        if session>=0 and not na(atr[1])
+            float w=halfWidth[1]
+            if not na(completedAt) and time-completedAt<=5*86400000
+                f_add(completedHigh,w,1,"NY high",time,open,atr[1],deadline)
+                f_add(completedLow,w,1,"NY low",time,open,atr[1],deadline)
+            if useSwings and array.size(swingPrices)>0
+                for j=0 to array.size(swingPrices)-1
+                    int k=array.size(swingPrices)-1-j
+                    if time-array.get(swingTimes,k)<=86400000
+                        f_add(array.get(swingPrices,k),w,2,"Swing",time,open,atr[1],deadline)
     if session>=0 and array.size(zones)>0
         int j=array.size(zones)-1
         while j>=0
@@ -254,13 +276,14 @@ if session>=0 and haveKey and not keyAdded and (previewNow or publishedNow) and 
 if session>=0 and array.size(zones)>0
     for z in zones
         box.set_right(z.drawing,math.min(time_close+30*60000,z.until))
-var table panel=table.new(position.top_right,1,8,bgcolor=color.new(color.rgb(15,23,34),9),frame_color=color.new(color.gray,60),frame_width=1)
+var table panel=table.new(position.top_right,1,9,bgcolor=color.new(color.rgb(15,23,34),9),frame_color=color.new(color.gray,60),frame_width=1)
 if barstate.islast and showPanel
     table.cell(panel,0,0,"QT REVERSAL ZONES",text_color=color.white,text_size=size.small)
     string sessionText=session==2 ? "NEW YORK | 06:00-13:55 CA" : session==0 ? "ASIA | 15:00-19:00 CA" : "Outside session | 06:00-19:00 CA"
     table.cell(panel,0,1,sessionText,text_color=color.silver,text_size=size.small)
-    table.cell(panel,0,2,keyStatus,text_color=haveKey and not keyAdded ? color.orange : color.silver,text_size=size.tiny)
-    table.cell(panel,0,3,"Bold border = multiple sources, not win probability",text_color=color.silver,text_size=size.tiny)
+    table.cell(panel,0,2,"Key date "+dateKey+" | "+(keyDateBasis=="CME trading day" ? "CME trading day" : "CA calendar"),text_color=color.silver,text_size=size.tiny)
+    table.cell(panel,0,3,keyStatus,text_color=haveKey and not keyAdded ? color.orange : color.silver,text_size=size.tiny)
+    table.cell(panel,0,4,"Bold border = multiple sources, not win probability",text_color=color.silver,text_size=size.tiny)
     array<float> distances=array.new<float>()
     if array.size(zones)>0
         for z in zones
@@ -274,4 +297,4 @@ if barstate.islast and showPanel
             txt:=(z.side==1 ? "Lower " : "Upper ")+str.tostring(z.p-z.w,format.mintick)+" - "+str.tostring(z.p+z.w,format.mintick)+" | "+z.names+" | "+f_state(z)
             col=f_color(z)
             array.set(distances,idx,1e20)
-        table.cell(panel,0,row+4,txt,text_color=col,text_size=size.tiny)
+        table.cell(panel,0,row+5,txt,text_color=col,text_size=size.tiny)
