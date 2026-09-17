@@ -231,3 +231,88 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+## QT Reversal Zones — measurement harness
+
+`indicators/qt_reversal_zones.pine` draws session reversal zones (prior New
+York RTH high/low, confirmed 5-bar swings, optional ranks 4/5 from a daily
+key) and labels their state, but like Alpha Matrix v1 it never graded itself.
+`backtest/zone_study.py` closes that gap.
+
+### Why the indicator's own labels cannot be counted
+
+Its "Rejected" state is a single 5-minute close back on the approach side.
+Price can print that and break on the next bar, so `Rejected` and `Broken`
+are sequential snapshots of one touch rather than outcomes — counting them
+yields a rate above 100%. The harness instead follows each touch forward to a
+terminal state.
+
+### Outcome labelling
+
+From the touch bar, up to `horizon` bars forward (default 12 = 1 hour):
+
+- **HOLD** — price trades `target` × ATR clear of the near edge (default 0.75)
+- **BREAK** — two consecutive closes beyond the far edge
+- **TIMEOUT** — neither, inside the horizon
+
+The break is tested first on every bar, so a bar that both completes a break
+and reaches the target books a break — the same pessimism the Alpha Matrix
+fill model uses. Outcomes are measured on the raw bar series, independently of
+the zone's own lifecycle, so engine retirement or a block deadline cannot
+truncate a label and bias the rate.
+
+A tradeable framing runs alongside: fade at the near edge, stop beyond the far
+edge, race target against stop with the stop winning any bar containing both.
+That produces a win rate and R expectancy comparable to the tables above.
+
+Rates carry Wilson score intervals, which stay honest at the sample sizes
+these buckets produce, and any bucket under `--min-n` decided touches is
+flagged thin.
+
+### The null baseline — read this before interpreting any rate
+
+**A driftless random walk with no levels in it scores ~65% HOLD under these
+definitions.** Over five seeds × 60 sessions of NQ-shaped noise
+(`backtest/zone_null_baseline.py`):
+
+| seed | touches | hold rate | fade WR @2:1 | R/touch |
+|---|---|---|---|---|
+| 1 | 2554 | 65.3% | 37.0% | +0.111 |
+| 2 | 2557 | 63.4% | 35.4% | +0.061 |
+| 3 | 2549 | 66.5% | 38.0% | +0.139 |
+| 4 | 2478 | 64.7% | 36.4% | +0.091 |
+| 5 | 2682 | 64.1% | 37.5% | +0.124 |
+
+The asymmetry is structural, not an edge: HOLD needs one intrabar excursion of
+0.75 ATR, while BREAK needs *two consecutive closes* past a far edge only
+~0.25 ATR away. The fade framing is positive on noise too (+0.06 to +0.14
+R/touch at ~36% WR against a 33.3% breakeven), so **a real-data result must
+beat ~65% and ~+0.10 R/touch, not 50% and zero.** Re-run the baseline whenever
+the thresholds change; the null moves with them.
+
+### Sample size
+
+Yahoo caps 5m history near 60 days. On the null run that was ~2,500 touches,
+but ~94% were swing zones — the NY high and NY low buckets held 57 and 33
+touches, because there is only one of each per day and it is often out of
+range. Expect the per-source split to stay thin on real data and treat those
+cells as directional at best.
+
+### Running it
+
+```
+python3 backtest/fetch_yahoo.py data MNQ=F        # 5m capped near 60 days
+python3 backtest/zone_study.py data/MNQ_5m.csv
+python3 backtest/zone_study.py data/MNQ_5m.csv data/NQ_5m.csv --dump touches.csv
+python3 backtest/zone_study.py data/MNQ_5m.csv --key-file keys.txt --offset 0
+```
+
+`--key-file` takes the same 25/26-column rows as the indicator and applies the
+same validation, so ranks 4/5 can be measured as their own bucket once
+historical keys are available. `--dump` writes every touch for independent
+analysis.
+
+Tests: `python3 backtest/zone_study_test.py` (38 ground-truth cases — sessions,
+block dates, ATR, Wilson, every labelling branch including both pessimism
+ties, and an end-to-end synthetic series where the touch bar and its outcome
+are known by construction).
