@@ -141,6 +141,14 @@ if newDay
         sampleCount:=0
         basisLast:=na
         frozenBasis:=na
+        // RE-ANCHOR, or the guard latches on forever. prevFrozen held the PRE-roll
+        // level, so without this every later session still differs from it by the
+        // whole calendar spread, trips the guard again, and wipes the estimate before
+        // it can ever reach basisLength samples. The basis would never come back and
+        // the chart would draw nothing for the rest of the contract. Clearing it means
+        // the next session has nothing to compare against and simply accepts what it
+        // measures, which is what re-anchoring after a roll should do.
+        prevFrozen:=na
     else
         frozenBasis:=cand
         if not na(cand)
