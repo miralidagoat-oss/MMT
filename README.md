@@ -231,3 +231,38 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+---
+
+## TERMINUS — price-axis survival reversal engine
+
+`indicators/terminus.pine` is a separate script (not a variant of the Alpha
+Matrix). It keeps a decaying memory field of absorption nodes, scores each one
+with a hold model (absorbed mass + stop fuel) and a reach model (volatility
+still available in the session), then runs a survival scan along the price axis
+to find the first level that is likely to both be reached and hold — the
+terminus.
+
+The model is documented in the script's own section banners. What this file
+fixes is the **render layer**, which previously painted every node and every bar
+in saturated red and green:
+
+- **Three visual tiers.** The active terminus per side gets the accent color, a
+  border, a projection line and a full readout. Ladder nodes — the walls queued
+  behind it — get a faint fill, a dotted level tick and one aligned line of text.
+  Everything below the display threshold drops to a neutral slate wash with no
+  border and no label, so dormant structure reads as memory rather than signal.
+- **Opacity is probability.** Zone fill transparency is driven by each node's
+  live probability, so the chart's visual weight matches the model's confidence
+  instead of being uniform.
+- **No per-bar dots.** The terminus track is off by default; the values stay in
+  the data window and remain available to alerts either way.
+- **Monospace readouts with meters.** Prices use the symbol's tick format,
+  probabilities carry a five-segment meter, and distance is reported in units of
+  remaining sigma, so the same number means the same thing on any symbol or
+  timeframe.
+- **Sectioned dashboard** (regime / upside / downside / exhaustion / field) with
+  a compact mode, selectable corner and text size.
+
+Display controls live in the *Display · structure* and *Display · dashboard &
+palette* input groups; the model inputs are unchanged.
