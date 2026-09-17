@@ -310,6 +310,19 @@ def build_row(tag, session, max_dte, r, sign, iv_floor, reach, verbose=True):
         vsum += vn
         csum += ch
 
+    # SANITY-CHECK THE IMPLIED MOVE. The nearest expiry is often a 0DTE whose far
+    # strikes quote absurd implied vols, and eight strikes around spot can still pick
+    # some up: an ES run printed a 676-point expected move against an ATR14 of 62,
+    # which is 141% vol and would have set a zone width twenty times too wide. A real
+    # one-session implied move lives within a few multiples of realised, so anything
+    # outside that band is a bad quote, not a forecast. Drop it and let the chart fall
+    # back to the strike step rather than ship a number that looks authoritative.
+    if em and atr and (em > 3.0 * atr or em < 0.2 * atr):
+        if verbose:
+            print("    implied move %.2f rejected: outside 0.2-3.0 x ATR14 %.2f (bad chain quote)"
+                  % (em, atr))
+        em = None
+
     if not merged:
         raise RuntimeError("%s: no open interest inside --max-dte %s" % (tag, max_dte))
 
@@ -354,6 +367,13 @@ def build_row(tag, session, max_dte, r, sign, iv_floor, reach, verbose=True):
     # field 25: the forward-looking scale. 0 means the chain could not price one, and
     # the indicator falls back to ATR rather than to a silently wrong zero.
     f.append("%.2f" % (em if em else 0.0))
+    # field 26: UTC MILLISECONDS AT GENERATION COMPLETION. A date stamp says which
+    # session a key is FOR; it says nothing about when the key existed. Without this a
+    # backtest cannot tell a genuine pre-session snapshot from one rebuilt afterwards
+    # with the answer already in it, which is the single easiest way to fool yourself
+    # about a level. A consumer compares it against the session open and refuses the
+    # row if it was not available in time.
+    f.append("%d" % int(now_utc.timestamp() * 1000))
     row = ",".join([tag, session] + f)
 
     if verbose:
