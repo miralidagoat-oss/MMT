@@ -1,0 +1,325 @@
+// This Pine Script code is subject to Mozilla Public License 2.0.
+// Original QT KEY: miralidagoat. Research rewrite: causal availability and orders.
+//@version=6
+// INDICATOR, not a strategy. The order calls are replaced by an explicit position
+// state machine, which changes what this can claim and makes the claim honest:
+// a strategy prints an equity curve, and an equity curve built on an untested 5:1
+// hold reads as a result rather than as the assumption it is. This prints the trade
+// record -- fills, wins, losses, R -- and nothing that looks like a P&L.
+//
+// TWO RULES THE TALLY FOLLOWS, BOTH DELIBERATELY UNFLATTERING:
+//   1. If a bar's range contains BOTH the target and the stop, the STOP is taken.
+//      5-minute bars cannot say which came first, and every "indicator backtest"
+//      that guesses the other way inflates its win rate for free.
+//   2. Costs are subtracted from every closed trade, in points, including the ones
+//      that hit target. Gross R is not a number worth printing.
+indicator("QT KEY - causal 4/5-grade research", overlay=true,
+     max_bars_back=300, max_labels_count=20)
+
+// Requires the reviewed generator's 26-column rows. Field 26 is UTC milliseconds
+// at generation completion. A historical date without availability is insufficient.
+keyText=input.text_area("", "Archived keys (26 columns per row)")
+frame=input.string("Cash: measured basis", "Key price frame", options=["Cash: measured basis","Cash: manual basis","Futures prices"])
+manualBasis=input.float(0, "Manual cash-to-contract offset", step=0.25)
+cashSymbol=input.symbol("NASDAQ:NDX", "Cash reference for basis")
+basisLength=input.int(60, "Basis smoothing samples", minval=1, maxval=500)
+entryMode=input.string("Sweep reclaim", "Entry", options=["Sweep reclaim","Sweep retest","Resting fade"])
+targetPoints=input.float(100, "Target points", minval=0.25, step=0.25)
+stopPoints=input.float(20, "Stop points", minval=0.25, step=0.25)
+costPoints=input.float(1.25, "Round-turn cost (points)", minval=0, step=0.25, tooltip="Subtracted from every closed trade. 1.25 is roughly $1.50 commission round turn plus a tick of slippage each way on MNQ at $2 a point. Set 0 only if you want to see the gross number and know that is what you are looking at.")
+distanceCap=input.float(20, "Maximum reclaim distance", minval=0.25, step=0.25)
+zoneHalfWidth=input.float(2.5, "Display zone half-width", minval=0.25, step=0.25)
+rollGuard=input.float(8, "Roll detector: basis jump (points)", minval=0.25, step=0.25, tooltip="On a continuous chart the front month is spliced, and at a roll the basis jumps by the calendar spread -- tens of points on NQ, because the new front is further from expiry. Carry decay inside one session moves it by a fraction of a point, so a session-over-session jump larger than this is a roll, not a market move. When it trips, the basis estimate is thrown away and re-measured from scratch, and nothing is drawn or traded until it has enough samples again. Set very high to disable, and know that a rolled basis puts every level out by the spread.")
+skipFirstBar=input.bool(true, "Skip the first bar of each block", tooltip="The opening bar of a block straddles the boundary and its range is not comparable to the bars around it.")
+tradeAsia=input.bool(true, "Asia 15:00-19:00 California")
+tradeNY=input.bool(true, "New York 06:00-13:55 California")
+startTest=input.time(timestamp("01 Jan 2022 00:00 +0000"), "Start")
+endTest=input.time(timestamp("01 Jan 2030 00:00 +0000"), "End")
+
+if barstate.isfirst and (timeframe.in_seconds()!=300 or syminfo.root!="MNQ" or not chart.is_standard)
+    runtime.error("Use standard 5-minute MNQ candles. Cash reference must remain NDX.")
+// A continuous chart (MNQ1!) is ALLOWED, but it is not free. Refusing to run on it
+// was the original behaviour and it is the wrong trade: almost every chart is the
+// continuous one, individual expiries carry thin history, and the real hazard is
+// confined to the roll itself. So run, flag it, and guard the roll below.
+bool isContinuous=str.contains(syminfo.ticker,"!")
+
+string tz="America/New_York"
+
+// Pine has no str.trim(). A text_area returns the newlines between pasted rows and any
+// spaces around commas, and both survive str.split -- a trailing space makes a column
+// that str.tonumber still reads, and a trailing newline makes an empty extra row that
+// fails the column check and kills the script. Strip both instead.
+f_clean(string s) => str.replace_all(str.replace_all(s, " ", ""), "\n", "")
+f_pad2(int v) => (v<10 ? "0" : "") + str.tostring(v)
+
+// DO NOT USE time_tradingday HERE. It returns the BEGINNING of the trading day, which
+// for an overnight futures session is the PREVIOUS calendar date: a Wednesday 10:25 NY
+// bar sits in a session that opened Tuesday 18:00, so time_tradingday reads Tuesday and
+// every key lookup is off by one session while still reporting a key it "found".
+// Shift the bar's close forward 6h instead, so the 18:00 roll lands on midnight and the
+// calendar date after the shift IS the session label.
+int tShift=time_close+6*60*60*1000
+int tdY=year(tShift,tz)
+int tdM=month(tShift,tz)
+int tdD=dayofmonth(tShift,tz)
+int sesNum=tdY*10000+tdM*100+tdD
+string dayKey=str.tostring(tdY)+f_pad2(tdM)+f_pad2(tdD)
+bool newDay=ta.change(sesNum)!=0
+
+int minuteNY=hour(time,tz)*60+minute(time,tz)
+int block=minuteNY>=1080 and minuteNY<1320 ? 0 : minuteNY>=540 and minuteNY<1015 ? 2 : -1
+bool newBlock=newDay or block!=nz(block[1],-1)
+bool enabled=block==0 ? tradeAsia : block==2 ? tradeNY : false
+bool beforeCutoff=(minuteNY>=540 and minuteNY<1000) or (minuteNY>=1080 and minuteNY<1310)
+bool boundaryBar=skipFirstBar and newBlock
+bool flattenWindow=(minuteNY>=1010 and minuteNY<1080) or minuteNY>=1315 or minuteNY<540 or time_close>=endTest
+bool cancelWindow=(minuteNY>=1000 and minuteNY<1080) or minuteNY>=1310 or time_close>=endTest
+
+var map<string,string> keys=map.new<string,string>()
+var bool duplicateKey=false
+if barstate.isfirst and str.length(f_clean(keyText))>0
+    rows=str.split(keyText,";")
+    for i=0 to math.max(0,array.size(rows)-1)
+        row=f_clean(array.get(rows,i))
+        if str.length(row)>0                       // a trailing ';' is not a broken row
+            fields=str.split(row,",")
+            if array.size(fields)!=26
+                runtime.error("Each key needs 26 columns, including generation-completion UTC milliseconds.")
+            if array.get(fields,0)=="NQ"
+                k=array.get(fields,1)
+                if map.contains(keys,k)
+                    duplicateKey:=true
+                map.put(keys,k,row)
+    if duplicateKey
+        runtime.error("Duplicate NQ session keys. Keep one original pre-session snapshot per date.")
+
+var array<float> rawLevels=array.new<float>(5,na)
+var array<float> probabilities=array.new<float>(5,na)
+var float published=na
+var bool keyValid=false
+var int sessionOpen=na
+if newDay or barstate.isfirst
+    array.fill(rawLevels,na)
+    array.fill(probabilities,na)
+    published:=na
+    keyValid:=false
+    // 18:00 NY on the calendar day before the session label. Built by subtracting a day
+    // from the session date rather than passing dayofmonth-1 into timestamp(), because
+    // that is 0 on the first of a month.
+    sessionOpen:=timestamp(tz,tdY,tdM,tdD,18,0,0)-86400000
+    if map.contains(keys,dayKey)
+        f=str.split(map.get(keys,dayKey),",")
+        published:=str.tonumber(array.get(f,25))
+        keyValid:=not na(published) and published>1000000000000 and published<=sessionOpen
+        for j=0 to 4
+            p=str.tonumber(array.get(f,9+j*3))
+            prob=str.tonumber(array.get(f,11+j*3))
+            if not na(p) and p>0
+                array.set(rawLevels,j,p)
+            if not na(prob) and prob>=0 and prob<=1
+                array.set(probabilities,j,prob)
+        keyValid:=keyValid and not na(array.get(rawLevels,0)) and not na(array.get(rawLevels,1))
+
+// Missing cash data never becomes a zero offset. Basis only activates next session.
+cashClose=request.security(cashSymbol,timeframe.period,close,gaps=barmerge.gaps_on,lookahead=barmerge.lookahead_off,ignore_invalid_symbol=true)
+var float estimate=na
+var int sampleCount=0
+var float frozenBasis=na
+var int basisLast=na
+var float prevFrozen=na
+var bool rolledNow=false
+if newDay
+    rolledNow:=false
+    float cand=sampleCount>=basisLength and not na(basisLast) and time-basisLast<=5*86400000 ? estimate : na
+    // THE ROLL GUARD. The EMA would otherwise carry a spliced jump for basisLength
+    // samples and put every level out by the calendar spread, silently, on a chart
+    // that still looked fine. Throw the estimate away and re-measure instead.
+    if not na(cand) and not na(prevFrozen) and math.abs(cand-prevFrozen)>rollGuard
+        rolledNow:=true
+        estimate:=na
+        sampleCount:=0
+        basisLast:=na
+        frozenBasis:=na
+        // RE-ANCHOR, or the guard latches on forever. prevFrozen held the PRE-roll
+        // level, so without this every later session still differs from it by the
+        // whole calendar spread, trips the guard again, and wipes the estimate before
+        // it can ever reach basisLength samples. The basis would never come back and
+        // the chart would draw nothing for the rest of the contract. Clearing it means
+        // the next session has nothing to compare against and simply accepts what it
+        // measures, which is what re-anchoring after a roll should do.
+        prevFrozen:=na
+    else
+        frozenBasis:=cand
+        if not na(cand)
+            prevFrozen:=cand
+if barstate.isconfirmed and minuteNY>=570 and minuteNY<960 and not na(cashClose)
+    observation=close-cashClose
+    estimate:=na(estimate) ? observation : estimate+(observation-estimate)/basisLength
+    sampleCount+=1
+    basisLast:=time_close
+float basis=frame=="Futures prices" ? 0 : frame=="Cash: manual basis" ? manualBasis : frozenBasis
+bool ready=keyValid and not na(basis) and time>=published
+f_level(int j)=>ready ? math.round_to_mintick(array.get(rawLevels,j)+basis) : na
+
+// ── position state, replacing strategy.*  ───────────────────────────────────────────
+var int   posDir   = 0        // 0 flat, +1 long, -1 short
+var float posEntry = na
+var float posStop  = na
+var float posTgt   = na
+var int   posBar   = na       // entry bar, for "bars held" on the badge
+var int   pendDir  = 0        // a working limit order
+var float pendPx   = na
+var int   expires  = na
+var array<int> attempts=array.new<int>(2,0)
+var array<int> lastSignal=array.new<int>(2,-10000)
+var int   nWin=0
+var int   nLoss=0
+var int   nFlat=0
+var float sumR=0.0
+
+bool longSignal=false
+bool shortSignal=false
+bool wonNow=false
+bool lostNow=false
+
+if barstate.isconfirmed
+    // 1 ── resolve an open position BEFORE anything else looks at this bar
+    if posDir!=0
+        bool hitStop = posDir==1 ? low<=posStop : high>=posStop
+        bool hitTgt  = posDir==1 ? high>=posTgt : low<=posTgt
+        float exitPx = na
+        // PESSIMISTIC. A 5-minute bar that spans both cannot say which came first.
+        if hitStop
+            exitPx:=posStop
+        else if hitTgt
+            exitPx:=posTgt
+        else if flattenWindow or newDay
+            exitPx:=close
+        if not na(exitPx)
+            float r=((exitPx-posEntry)*posDir-costPoints)/stopPoints
+            sumR+=r
+            if hitStop
+                nLoss+=1
+                lostNow:=true
+            else if hitTgt
+                nWin+=1
+                wonNow:=true
+            else
+                nFlat+=1
+            posDir:=0
+            posEntry:=na
+            posStop:=na
+            posTgt:=na
+            posBar:=na
+
+    // 2 ── a working limit either fills, expires, or is cancelled by the clock
+    if pendDir!=0 and posDir==0
+        bool filled = pendDir==1 ? low<=pendPx : high>=pendPx
+        if filled
+            posDir:=pendDir
+            posEntry:=pendPx
+            posStop:=pendPx-pendDir*stopPoints
+            posTgt:=pendPx+pendDir*targetPoints
+            posBar:=bar_index
+            pendDir:=0
+            pendPx:=na
+            expires:=na
+        else if cancelWindow or (not na(expires) and bar_index>=expires)
+            pendDir:=0
+            pendPx:=na
+            expires:=na
+
+    if newBlock
+        array.fill(attempts,0)
+        array.fill(lastSignal,-10000)
+        pendDir:=0
+        pendPx:=na
+        expires:=na
+
+    // 3 ── only now may a new signal be taken
+    bool windowOK = time>=startTest and time_close<endTest and posDir==0 and pendDir==0
+    bool canSignal = ready and enabled and beforeCutoff and not boundaryBar and windowOK
+    if canSignal
+        // Grade priority is predetermined, never selected using a later candle.
+        for j=0 to 1
+            p=f_level(j)
+            if not na(p) and array.get(attempts,j)<2 and bar_index-array.get(lastSignal,j)>=10
+                int dir=0
+                if entryMode=="Resting fade"
+                    dir:=close>p+syminfo.mintick ? 1 : close<p-syminfo.mintick ? -1 : 0
+                else
+                    dir:=low<=p-syminfo.mintick and close>=p+syminfo.mintick and close-p<=distanceCap and close>open ? 1 : high>=p+syminfo.mintick and close<=p-syminfo.mintick and p-close<=distanceCap and close<open ? -1 : 0
+                if dir!=0
+                    if entryMode=="Sweep reclaim"
+                        // market at this bar's close, which is the earliest price a
+                        // confirmed-bar signal could actually have been filled at
+                        posDir:=dir
+                        posEntry:=close
+                        posStop:=close-dir*stopPoints
+                        posTgt:=close+dir*targetPoints
+                        posBar:=bar_index
+                    else
+                        pendDir:=dir
+                        pendPx:=p
+                        expires:=bar_index+(entryMode=="Resting fade" ? 1 : 3)
+                    longSignal:=dir==1
+                    shortSignal:=dir==-1
+                    // Conservative: an unfilled attempt still consumes a slot.
+                    array.set(attempts,j,array.get(attempts,j)+1)
+                    array.set(lastSignal,j,bar_index)
+                    break
+
+plot(f_level(0),"5/5 rank",color=color.purple,linewidth=2,style=plot.style_linebr)
+plot(f_level(1),"4/5 rank",color=color.orange,linewidth=2,style=plot.style_linebr)
+plot(f_level(2),"3/5 context",color=color.new(color.gray,65),style=plot.style_linebr)
+plot(f_level(3),"2/5 context",color=color.new(color.gray,75),style=plot.style_linebr)
+plot(f_level(4),"1/5 context",color=color.new(color.gray,85),style=plot.style_linebr)
+upper=plot(f_level(0)+zoneHalfWidth,"5/5 zone upper",color=color.new(color.purple,90),style=plot.style_linebr)
+lower=plot(f_level(0)-zoneHalfWidth,"5/5 zone lower",color=color.new(color.purple,90),style=plot.style_linebr)
+fill(upper,lower,color=color.new(color.purple,94))
+plot(posDir!=0 ? posEntry : na,"Open entry",color=color.new(color.white,30),style=plot.style_linebr)
+plot(posDir!=0 ? posStop  : na,"Open stop", color=color.new(color.red,30),  style=plot.style_linebr)
+plot(posDir!=0 ? posTgt   : na,"Open target",color=color.new(color.teal,30),style=plot.style_linebr)
+plotshape(longSignal,"Long signal",shape.triangleup,location.belowbar,color.teal,size=size.tiny)
+plotshape(shortSignal,"Short signal",shape.triangledown,location.abovebar,color.red,size=size.tiny)
+// Outcome markers sit on the bar the trade RESOLVED on. They deliberately do NOT use
+// plotshape's offset to jump back to the entry: offset takes a SIMPLE int and the
+// distance back to an entry is a series, so that version does not compile. The entry
+// already has its own triangle, so the pair reads as open-here, closed-there.
+plotshape(wonNow,"Target reached",shape.circle,location.belowbar,color.new(color.teal,0),size=size.tiny)
+plotshape(lostNow,"Stop reached",shape.xcross,location.abovebar,color.new(color.red,0),size=size.tiny)
+
+alertcondition(longSignal,"QT KEY long signal","{{ticker}} QT KEY long signal at a 5/5 or 4/5 level")
+alertcondition(shortSignal,"QT KEY short signal","{{ticker}} QT KEY short signal at a 5/5 or 4/5 level")
+
+var table status=table.new(position.bottom_right,1,1)
+if barstate.islast
+    state=not keyValid ? "No valid pre-session key" : na(basis) ? "Waiting for pre-session basis" : "Key available before this session"
+    if rolledNow
+        state:="Contract roll detected - basis re-measuring"
+    if isContinuous and frame=="Cash: measured basis"
+        state:=state+"\ncontinuous chart: basis is spliced at each roll"
+    // P(reached) was parsed and then never read anywhere. Printing it is the smallest
+    // honest fix: either the number is worth having on screen or it should not be parsed.
+    p5=array.get(probabilities,0)
+    p4=array.get(probabilities,1)
+    string reach=""
+    if not na(p5) or not na(p4)
+        reach:="\nP(reached) 5/5 "+(na(p5) ? "-" : str.tostring(p5*100,"#")+"%")
+        reach:=reach+"   4/5 "+(na(p4) ? "-" : str.tostring(p4*100,"#")+"%")
+    int n=nWin+nLoss+nFlat
+    string rec="\nno closed trades yet"
+    if n>0
+        rec:="\n"+str.tostring(n)+" closed   "+str.tostring(nWin)+"W / "+str.tostring(nLoss)+"L / "+str.tostring(nFlat)+" flat"
+        rec:=rec+"\nhit rate "+str.tostring(100.0*nWin/n,"#")+"%   net "+str.tostring(sumR,"#.##")+"R"
+        rec:=rec+"\nbreakeven needs "+str.tostring(100.0/(1.0+targetPoints/stopPoints),"#")+"%"
+    string live=""
+    if posDir!=0
+        live:="\nOPEN "+(posDir==1 ? "long" : "short")+" from "+str.tostring(posEntry,format.mintick)
+        live:=live+"   "+str.tostring(bar_index-posBar)+" bars held"
+    string txt="QT KEY 4/5-grade research\n"+state+reach+rec+live
+    txt:=txt+"\nRank is not win probability"
+    txt:=txt+"\nTies inside a bar resolve as the STOP; costs are deducted"
+    txt:=txt+"\n100-point objective is unvalidated for gamma keys"
+    table.cell(status,0,0,txt,text_color=ready ? color.white : color.orange,bgcolor=color.new(color.black,15),text_size=size.small)
