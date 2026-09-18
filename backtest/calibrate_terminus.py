@@ -649,10 +649,10 @@ def main():
             print(f"  joint: resolution {js['res']:.4f} (a little, inherited from reach) "
                   f"but reliability {js['rel']:.4f} and skill {js['skill']:+.3f}")
             print(f"    The joint is dominated by hold's miscalibration, not by reach.")
-            print(f"    On memoryless data hold SHOULD be ~the base rate, but kM/kS")
-            print(f"    default to printing {js['n'] and 50}-70% regardless, so the product")
-            print(f"    runs several times hot. Whether real tape holds more than GBM is")
-            print(f"    exactly what running this on real bars answers.")
+            print("    On memoryless data hold should sit at the base rate, but the")
+            print("    default kM/kS print 50-70% regardless, so the product runs hot.")
+            print("    Whether real tape holds more than GBM is what running this on")
+            print("    real bars answers.")
         print(f"\n  {'harness validated' if ok else 'HARNESS NOT VALIDATED'}")
         return 0 if ok else 1
     return 0

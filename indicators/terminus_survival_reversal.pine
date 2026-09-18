@@ -30,6 +30,10 @@ indicator("TERMINUS · Price-Axis Survival Reversal Engine", shorttitle = "TERMI
 // 5. f_pct keeps one decimal below ~10%, so sub-percent probabilities and
 //    near-certain complements stop collapsing to the same string.
 // 6. alertcondition hooks for threshold crossings and terminus touches.
+// 7. tauRem priced from time_close, not time. The bar-open stamp overstated
+//    the remaining session by one bar, inflating sigRem and every reach
+//    probability with it, worst in the final bars of the session. Measured
+//    with backtest/calibrate_terminus.py: reach reliability 0.0029 -> 0.0016.
 // ============================================================================
 
 // ════════════════════════════ INPUTS ════════════════════════════
@@ -266,7 +270,10 @@ if sE <= sS
     else
         sE += 86400000      // session runs on into tomorrow
 bool inSess = time >= sS and time < sE
-float tauRem = inSess ? float(sE - time) / float(sE - sS) : 1.0
+// Horizon runs from this bar's CLOSE: the scan prices off `close`, so the
+// outcome it describes can only begin on the next bar. Using `time` (the bar
+// OPEN) overstates the remaining session by one bar, worst near the bell.
+float tauRem = inSess ? math.max(0.0, float(sE - time_close)) / float(sE - sS) : 1.0
 float sigDay = nz(adr) / 1.596
 float sigRem = sigDay * math.sqrt(math.max(tauRem, 0.02)) * volScale
 float sigBar = nz(atrL, nz(atrS)) / 1.596 * volScale
