@@ -1,0 +1,693 @@
+//@version=6
+indicator("TERMINUS v2 - New York + Asia Reversal Zones", shorttitle="TERMINUSv2", overlay=true, max_boxes_count=500, max_labels_count=100, max_lines_count=100, max_bars_back=600)
+// Zone research indicator. Scores are heuristics, not reversal probabilities.
+// All persistent changes publish on confirmed closes; nothing is backdated.
+//
+// Render layer notes (the model, timing and scoring below are unchanged):
+//   Zones are drawn in four weights that follow the evidence, not the side.
+//   Fresh is a whisper with no border; Tested, Retested and Rejected each gain
+//   fill and edge, so the zones price has actually respected are the ones that
+//   read first. Archived segments fade to one neutral tone and drop their text,
+//   which turns the trail behind a zone into context instead of clutter, and
+//   retirement markers shrink to a single glyph. The two leading zones get a
+//   quiet focus layer on the last bar. The panel is monospace and sectioned.
+
+string gz="Zones and risk"
+bool useNY=input.bool(true,"New York: 06:00-14:00 California",group=gz)
+bool useAsia=input.bool(true,"Asia: 15:00-19:00 California",group=gz)
+bool useSwings=input.bool(true,"Include confirmed swing zones",group=gz)
+int pivLen=input.int(5,"Swing confirmation bars each side",minval=2,maxval=20,group=gz)
+float widthATR=input.float(.20,"Half-width / session typical 5m range",minval=.05,maxval=.5,step=.05,group=gz)
+float riskPoints=input.float(20,"Reference risk (points)",minval=1,step=.25,group=gz)
+float maxRiskFraction=input.float(.60,"Maximum full width / reference risk",minval=.1,maxval=.9,step=.05,group=gz)
+float maxDistanceATR=input.float(12,"Maximum nearby distance / ATR",minval=2,maxval=30,group=gz)
+int maxNodes=input.int(24,"Maximum live zones",minval=4,maxval=60,group=gz)
+int keepHistory=input.int(240,"Historical state segments",minval=20,maxval=400,group=gz)
+float maxAgeD=input.float(20,"Expire after days without fresh evidence",minval=1,maxval=60,group=gz)
+float halfLifeD=input.float(5,"Wick-mass half-life (days)",minval=.5,maxval=30,group=gz)
+int manualReset=input.time(0,"Optional reference reset time",group=gz,tooltip="Use an authentic contract/reference-change time if needed. Zero disables it. This is not automatic roll detection. Use a consistent contract-adjustment convention.")
+
+string gp="Completed-session wick profile"
+int nBins=input.int(48,"Price bins",minval=12,maxval=100,group=gp)
+float peakMult=input.float(1.35,"Peak / mean density",minval=1,maxval=4,step=.05,group=gp)
+int topK=input.int(3,"Maximum peaks per completed session",minval=1,maxval=6,group=gp)
+int histSessions=input.int(20,"Completed sessions in movement history",minval=5,maxval=60,group=gp)
+int minSamples=input.int(5,"Minimum sessions before movement readout",minval=3,maxval=20,group=gp)
+
+string gc="Experimental context"
+bool useSMT=input.bool(true,"Show comparison-market context",group=gc)
+bool autoSMT=input.bool(true,"Choose ES for NQ; NQ for ES",group=gc)
+string manualSMT=input.symbol("CME_MINI:ES1!","Manual comparison symbol",group=gc)
+bool rankContext=input.bool(false,"Experimental: include context in score",group=gc,tooltip="OFF by default. No improvement in reversal outcomes has been established. Context otherwise appears separately and does not influence rankings.")
+int divLen=input.int(20,"Context lookback",minval=5,maxval=100,group=gc)
+
+string gd="Display - zones"
+bool showNodes=input.bool(true,"Zone boxes and history",group=gd)
+bool showFocus=input.bool(true,"Focus the leading zone on each side",group=gd)
+int focusBars=input.int(10,"Focus extension (bars)",minval=2,maxval=60,group=gd)
+bool zoneText=input.bool(true,"Evidence tag on live segments",group=gd)
+bool historyText=input.bool(false,"Text on historical segments",group=gd)
+
+string gu="Display - panel and palette"
+bool showPanel=input.bool(true,"Zone panel",group=gu)
+bool panelFull=input.bool(true,"Full panel detail (off = compact)",group=gu)
+string panelPos=input.string(position.top_right,"Panel position",options=[position.top_right,position.middle_right,position.bottom_right,position.top_left,position.bottom_left],group=gu)
+string panelSize=input.string(size.small,"Panel text size",options=[size.tiny,size.small,size.normal],group=gu)
+color colRes=input.color(color.rgb(239,104,80),"Resistance",group=gu)
+color colSup=input.color(color.rgb(43,174,156),"Support",group=gu)
+color colHist=input.color(color.rgb(122,132,148),"Archived and retired",group=gu)
+color colPanel=input.color(color.rgb(12,15,20),"Panel background",group=gu)
+
+// Chrome resolved once so every drawing agrees
+color colTxt=color.rgb(226,232,240)
+color colDim=color.rgb(124,136,152)
+color colSect=color.rgb(24,29,37)
+string MONO=font.family_monospace
+
+bool nq=syminfo.root=="MNQ" or syminfo.root=="NQ"
+bool es=syminfo.root=="MES" or syminfo.root=="ES"
+if barstate.isfirst and (not (nq or es) or not chart.is_standard or timeframe.in_seconds()!=300)
+    runtime.error("Use standard 5-minute MNQ, NQ, MES or ES candles.")
+if barstate.isfirst and minSamples>histSessions
+    runtime.error("Minimum sessions must not exceed movement history length.")
+if barstate.isfirst and riskPoints*maxRiskFraction<2*syminfo.mintick
+    runtime.error("The zone-width allowance must accommodate at least two ticks.")
+
+string CA="America/Los_Angeles"
+float tick=syminfo.mintick
+int mm=hour(time,CA)*60+minute(time,CA)
+int mc=hour(time_close,CA)*60+minute(time_close,CA)
+int dow=dayofweek(time,CA)
+int dateId=year(time,CA)*10000+month(time,CA)*100+dayofmonth(time,CA)
+bool weekNY=dow>=dayofweek.monday and dow<=dayofweek.friday
+bool weekAsia=dow>=dayofweek.sunday and dow<=dayofweek.thursday
+// Closed windows are half-open. Respect the documented 13:15-13:30 CA halt.
+f_window(int m)=>m>=360 and m<840 ? 1 : m>=900 and m<1140 ? 2 : 0
+int rawBlock=f_window(mm)
+int block=rawBlock==1 and useNY and weekNY ? 1 : rawBlock==2 and useAsia and weekAsia ? 2 : 0
+bool halt=mm>=795 and mm<810
+bool activeBar=block>0 and not halt
+bool activeClose=block>0 and f_window(mc)==block and not (mc>=795 and mc<810)
+int endTime=timestamp(CA,year(time,CA),month(time,CA),dayofmonth(time,CA),block==1 ? 14 : 19,0)
+int slot=rawBlock==1 ? int((mm-360)/5) : rawBlock==2 ? int((mm-900)/5) : -1
+float atr=ta.atr(14)
+float ph=ta.pivothigh(high,pivLen,pivLen)
+float pl=ta.pivotlow(low,pivLen,pivLen)
+
+type Node
+    float p
+    float w
+    float mass
+    int born
+    int massAt
+    int evidenceAt
+    int side
+    int sources
+    int touches=0
+    bool outside=true
+    string state="Fresh"
+    float quality=0.0
+    box bx=na
+
+type Pool
+    float p
+    int seen
+
+type Sample
+    array<float> up
+    array<float> down
+    float barRange
+    int ended
+
+var array<Node> nodes=array.new<Node>()
+var array<Pool> poolsH=array.new<Pool>()
+var array<Pool> poolsL=array.new<Pool>()
+var array<box> history=array.new<box>()
+var array<Sample> nyHistory=array.new<Sample>()
+var array<Sample> asiaHistory=array.new<Sample>()
+var array<float> sessionH=array.new<float>(96,na)
+var array<float> sessionL=array.new<float>(96,na)
+var array<float> sessionC=array.new<float>(96,na)
+var array<float> cashP=array.new<float>()
+var array<float> cashW=array.new<float>()
+var array<float> asiaP=array.new<float>()
+var array<float> asiaW=array.new<float>()
+var int collectBlock=0
+var int collectDate=0
+var int cashDate=0
+var int cashCount=0
+var int cashFirst=0
+var float cashHigh=na
+var float cashLow=na
+var int paintedBlock=0
+var int paintedDate=0
+var int paintedEnd=0
+var int retiredBroken=0
+var float lastNYHigh=na
+var float lastNYLow=na
+var int lastNYEnded=0
+var bool nyHighBroken=false
+var bool nyLowBroken=false
+
+f_has(int mask,int bit)=>int(math.floor(mask/bit))%2==1
+// Compact evidence tag: NY reference, W wick profile, S confirmed swing
+f_name(Node n)=>
+    string s=""
+    if f_has(n.sources,1)
+        s+="NY"
+    if f_has(n.sources,2)
+        s+=(s=="" ? "" : "·")+"W"
+    if f_has(n.sources,4)
+        s+=(s=="" ? "" : "·")+"S"
+    s
+f_mass(Node n,int at)=>n.mass*math.pow(.5,math.max(0,at-n.massAt)/(86400000.0*halfLifeD))
+f_color(Node n)=>n.side==1 ? colRes : colSup
+// Weight follows evidence: untested is a whisper, respected is legible
+f_tier(Node n)=>n.state=="Rejected" ? 3 : n.state=="Retested" ? 2 : n.state=="Tested" ? 1 : 0
+f_keep(box b)=>
+    if not na(b)
+        if not historyText
+            box.set_text(b,"")
+        // Archived segments share one neutral tone so the trail reads as context
+        box.set_bgcolor(b,color.new(colHist,94))
+        box.set_border_color(b,color.new(colHist,100))
+        box.set_border_width(b,0)
+        box.set_text_color(b,color.new(colHist,30))
+        box.set_text_size(b,size.tiny)
+        history.push(b)
+        if history.size()>keepHistory
+            box.delete(history.shift())
+f_end(Node n,int at)=>
+    if not na(n.bx)
+        box.set_right(n.bx,math.max(box.get_left(n.bx),math.min(at,box.get_right(n.bx))))
+        f_keep(n.bx)
+        n.bx:=na
+f_segment(Node n,int at,int until)=>
+    f_end(n,at)
+    if showNodes and at<until
+        color c=f_color(n)
+        int t=f_tier(n)
+        int fill=t==3 ? 80 : t==2 ? 85 : t==1 ? 89 : 93
+        int edge=t==3 ? 38 : t==2 ? 56 : t==1 ? 72 : 100
+        string tag=not zoneText ? "" : f_name(n)+(t==0 ? "" : "  "+n.state)
+        n.bx:=box.new(at,n.p+n.w,math.min(at+1800000,until),n.p-n.w,xloc=xloc.bar_time,border_color=color.new(c,edge),border_width=t>0 ? 1 : 0,bgcolor=color.new(c,fill),text=tag,text_color=color.new(c,t>0 ? 18 : 42),text_size=size.tiny,text_halign=text.align_right,text_font_family=MONO)
+f_retire(int i,int at,int until,string reason,bool visible)=>
+    Node n=nodes.remove(i)
+    f_end(n,at)
+    if showNodes and visible and at<until
+        box b=box.new(at,n.p+n.w,math.min(at+300000,until),n.p-n.w,xloc=xloc.bar_time,border_color=color.new(colHist,100),border_width=0,bgcolor=color.new(colHist,92),text=reason,text_color=color.new(colHist,25),text_size=size.tiny,text_font_family=MONO)
+        f_keep(b)
+        if reason=="Broken" and not historyText
+            box.set_text(b,"×")
+    true
+f_typical(array<Sample> samples,int at)=>
+    float total=0.0
+    int count=0
+    if samples.size()>0
+        for s in samples
+            if at-s.ended<=45*86400000.0
+                total+=s.barRange
+                count+=1
+    count>=minSamples ? total/count : na
+f_width(float typical)=>
+    float cap=math.max(tick,math.floor(riskPoints*maxRiskFraction/2/tick)*tick)
+    float floorWidth=math.min(cap,nq ? 2.0 : .5)
+    float target=math.max(floorWidth,math.min(cap,typical*widthATR))
+    math.min(cap,math.max(tick,math.round_to_mintick(target)))
+f_pool(array<Pool> pools,float p,float tolerance,int at)=>
+    bool merged=false
+    if pools.size()>0
+        for i=pools.size()-1 to 0
+            Pool r=pools.get(i)
+            if math.abs(r.p-p)<=tolerance
+                if not merged
+                    r.seen:=at
+                    merged:=true
+                else
+                    pools.remove(i)
+    if not merged
+        pools.push(Pool.new(p,at))
+    if pools.size()>60
+        pools.shift()
+f_poolCount(Node n,array<Pool> pools)=>
+    int total=0
+    if pools.size()>0
+        for r in pools
+            if n.side==1 and r.p>=n.p-4*n.w and r.p<=n.p+n.w or n.side==-1 and r.p<=n.p+4*n.w and r.p>=n.p-n.w
+                total+=1
+    total
+f_add(float price,float mass,int source,float half,int at,float px,float scale,bool visible,int until,int evidence=0)=>
+    if not na(price) and not na(half) and not na(scale) and scale>0
+        int evidenceTime=evidence>0 ? evidence : at
+        float p=math.round_to_mintick(price)
+        bool merged=false
+        if nodes.size()>0
+            for n in nodes
+                if not merged and math.abs(n.p-p)<=n.w
+                    n.mass:=math.min(12.0,f_mass(n,at)+.5*mass)
+                    n.massAt:=at
+                    n.evidenceAt:=math.max(n.evidenceAt,evidenceTime)
+                    if not f_has(n.sources,source)
+                        n.sources+=source
+                        if visible
+                            f_segment(n,at,until)
+                    merged:=true
+                else if not merged and math.abs(n.p-p)<n.w+half
+                    merged:=true
+        if not merged and math.abs(p-px)>half and math.abs(p-px)<=maxDistanceATR*scale
+            if nodes.size()>=maxNodes
+                int oldest=0
+                for j=0 to nodes.size()-1
+                    if nodes.get(j).evidenceAt<nodes.get(oldest).evidenceAt
+                        oldest:=j
+                f_retire(oldest,at,until,"Capacity",visible)
+            Node n=Node.new(p,half,math.min(12.0,mass),at,at,evidenceTime,p>px ? 1 : -1,source)
+            nodes.push(n)
+            if visible
+                f_segment(n,at,until)
+    true
+f_accumulate(array<float> prices,array<float> weights)=>
+    float uw=high-math.max(open,close)
+    float lw=math.min(open,close)-low
+    float wickMass=high>low ? nz(volume)*(uw+lw)/(high-low) : 0.0
+    if wickMass>0 and uw+lw>0
+        if uw>0
+            prices.push(math.max(open,close)+uw/2)
+            weights.push(wickMass*uw/(uw+lw))
+        if lw>0
+            prices.push(math.min(open,close)-lw/2)
+            weights.push(wickMass*lw/(uw+lw))
+    true
+f_profile(array<float> prices,array<float> weights,float half,int at,float px,float scale,bool visible,int until)=>
+    if prices.size()>20
+        float lo=prices.min()
+        float bs=(prices.max()-lo)/nBins
+        if bs>0
+            array<float> profile=array.new<float>(nBins,0)
+            float total=weights.sum()
+            for i=0 to prices.size()-1
+                int b=math.max(0,math.min(nBins-1,int(math.floor((prices.get(i)-lo)/bs))))
+                profile.set(b,profile.get(b)+weights.get(i))
+            if total>0
+                array<float> sm=array.new<float>(nBins,0)
+                for b=0 to nBins-1
+                    sm.set(b,.25*profile.get(math.max(0,b-1))+.5*profile.get(b)+.25*profile.get(math.min(nBins-1,b+1)))
+                array<float> centers=array.new<float>()
+                array<float> masses=array.new<float>()
+                float mean=sm.avg()
+                for b=1 to nBins-2
+                    if sm.get(b)>=sm.get(b-1) and sm.get(b)>sm.get(b+1) and sm.get(b)>mean*peakMult
+                        float a=profile.get(b-1)
+                        float c=profile.get(b)
+                        float d=profile.get(b+1)
+                        float w=a+c+d
+                        if w>0
+                            centers.push((a*(lo+(b-.5)*bs)+c*(lo+(b+.5)*bs)+d*(lo+(b+1.5)*bs))/w)
+                            masses.push(w/total*nBins/3)
+                if masses.size()>0
+                    array<int> orderPk=masses.sort_indices(order.descending)
+                    for k=0 to math.min(topK,orderPk.size())-1
+                        int j=orderPk.get(k)
+                        f_add(centers.get(j),masses.get(j),2,half,at,px,scale,visible,until)
+    true
+f_complete(int b)=>
+    int length=b==1 ? 96 : 48
+    bool good=true
+    for i=0 to length-1
+        bool scheduledGap=b==1 and i>=87 and i<90
+        if na(sessionC.get(i)) and not scheduledGap
+            good:=false
+    good
+f_store(array<Sample> target,int b,int at)=>
+    int length=b==1 ? 96 : 48
+    array<float> ups=array.new<float>(length,na)
+    array<float> dns=array.new<float>(length,na)
+    float futureH=na
+    float futureL=na
+    float totalRange=0.0
+    int bars=0
+    for i=length-1 to 0
+        float c=sessionC.get(i)
+        if not na(c)
+            ups.set(i,na(futureH) ? 0.0 : math.max(0,futureH-c))
+            dns.set(i,na(futureL) ? 0.0 : math.max(0,c-futureL))
+            futureH:=na(futureH) ? sessionH.get(i) : math.max(futureH,sessionH.get(i))
+            futureL:=na(futureL) ? sessionL.get(i) : math.min(futureL,sessionL.get(i))
+            totalRange+=sessionH.get(i)-sessionL.get(i)
+            bars+=1
+    target.push(Sample.new(ups,dns,totalRange/bars,at))
+    if target.size()>histSessions
+        target.shift()
+f_remaining(array<Sample> samples,int index,int at)=>
+    float up=0.0
+    float down=0.0
+    int count=0
+    if index>=0 and samples.size()>0
+        for s in samples
+            if index<s.up.size() and at>s.ended and at-s.ended<=45*86400000.0
+                float u=s.up.get(index)
+                float d=s.down.get(index)
+                if not na(u) and not na(d)
+                    up+=u
+                    down+=d
+                    count+=1
+    [count>=minSamples ? up/count : na,count>=minSamples ? down/count : na,count]
+
+// Context uses OHLCV proxies. Comparison-market data is one closed bar old.
+float barRange=high-low
+float effort=nz(volume)/(math.abs(close-open)+.1*nz(atr,barRange)+tick)
+float effortMean=ta.sma(effort,50)
+float effortSd=ta.stdev(effort,50)
+bool concentrated=not na(effortSd) and effortSd>0 and effort>effortMean+effortSd
+float proxyDelta=barRange>0 ? nz(volume)*(2*close-high-low)/barRange : 0
+float cvd=ta.cum(proxyDelta)
+bool newHigh=high>=ta.highest(high,divLen)
+bool newLow=low<=ta.lowest(low,divLen)
+float cvdHigh=ta.highest(cvd,divLen)
+float cvdLow=ta.lowest(cvd,divLen)
+bool bearDiv=newHigh and cvd<cvdHigh
+bool bullDiv=newLow and cvd>cvdLow
+float path=math.sum(math.abs(close-close[1]),10)
+float er=path>0 ? math.abs(close-close[10])/path : .5
+bool inefficient=er<ta.sma(er,10)
+string smtSymbol=autoSMT ? (nq ? "CME_MINI:ES1!" : "CME_MINI:NQ1!") : manualSMT
+[smtRoot,smtTime,smtHighGap,smtLowGap]=request.security(smtSymbol,timeframe.period,[syminfo.root,time[1],ta.highest(high,divLen)[1]-high[1],low[1]-ta.lowest(low,divLen)[1]],gaps=barmerge.gaps_on,lookahead=barmerge.lookahead_off,ignore_invalid_symbol=true)
+bool sameFamily=nq and (smtRoot=="NQ" or smtRoot=="MNQ") or es and (smtRoot=="ES" or smtRoot=="MES")
+bool smtReady=useSMT and not sameFamily and not na(smtTime) and smtTime==time[1]
+bool bearSMT=smtReady and newHigh[1] and smtHighGap>0
+bool bullSMT=smtReady and newLow[1] and smtLowGap>0
+float contextUp=(concentrated ? 1.0 : 0)+(bearDiv ? 1.0 : 0)+(inefficient ? 1.0 : 0)+(bearSMT ? 1.0 : 0)
+float contextDown=(concentrated ? 1.0 : 0)+(bullDiv ? 1.0 : 0)+(inefficient ? 1.0 : 0)+(bullSMT ? 1.0 : 0)
+
+var float lastUp=na
+var float lastDown=na
+var float remainingUp=na
+var float remainingDown=na
+var int remainingN=0
+var int issueTime=na
+var int issueBlock=0
+var int issueDate=0
+var float lastContextUp=0
+var float lastContextDown=0
+var bool lastSMT=false
+var bool widthFallback=true
+
+if barstate.isconfirmed
+    bool reset=manualReset>0 and time_close>=manualReset and (barstate.isfirst or time_close[1]<manualReset)
+    if reset
+        if nodes.size()>0
+            for i=nodes.size()-1 to 0
+                f_retire(i,time_close,endTime,"Reference reset",activeClose)
+        poolsH.clear()
+        poolsL.clear()
+        nyHistory.clear()
+        asiaHistory.clear()
+        cashP.clear()
+        cashW.clear()
+        asiaP.clear()
+        asiaW.clear()
+        sessionH.fill(na)
+        sessionL.fill(na)
+        sessionC.fill(na)
+        cashCount:=0
+        cashHigh:=na
+        cashLow:=na
+        cashFirst:=0
+        lastNYHigh:=na
+        lastNYLow:=na
+        lastNYEnded:=0
+
+    bool changeWindow=paintedBlock!=block or paintedDate!=dateId or not activeBar
+    if changeWindow and nodes.size()>0
+        for n in nodes
+            f_end(n,math.min(time,paintedEnd))
+    // Process only zones that were available BEFORE this candle opened.
+    if nodes.size()>0
+        for i=nodes.size()-1 to 0
+            Node n=nodes.get(i)
+            bool broken=n.side==1 ? close>n.p+n.w+tick : close<n.p-n.w-tick
+            bool expired=time_close-n.evidenceAt>maxAgeD*86400000.0
+            if broken or expired
+                if broken
+                    retiredBroken+=1
+                f_retire(i,time_close,endTime,broken ? "Broken" : "Expired",activeClose)
+            else
+                bool overlap=high>=n.p-n.w and low<=n.p+n.w
+                bool touch=time>=n.born and overlap and n.outside
+                bool reject=overlap and (n.side==1 ? close<n.p-n.w : close>n.p+n.w)
+                string before=n.state
+                if touch
+                    n.touches+=1
+                    n.state:=n.touches>1 ? "Retested" : "Tested"
+                if reject and time>=n.born
+                    n.state:="Rejected"
+                n.outside:=not overlap
+                bool nearby=math.abs(n.p-close)<=maxDistanceATR*atr
+                if activeClose and nearby and (na(n.bx) or before!=n.state)
+                    f_segment(n,time_close,endTime)
+                else if not nearby
+                    f_end(n,time_close)
+                else if not na(n.bx)
+                    box.set_right(n.bx,math.min(time_close+1800000,endTime))
+    if not activeClose and nodes.size()>0
+        for n in nodes
+            f_end(n,time_close)
+    paintedBlock:=block
+    paintedDate:=dateId
+    paintedEnd:=endTime
+
+    // Remove swept or stale inferred levels; cluster new levels by price.
+    if poolsH.size()>0
+        for i=poolsH.size()-1 to 0
+            Pool r=poolsH.get(i)
+            if high>=r.p or time_close-r.seen>maxAgeD*86400000.0
+                poolsH.remove(i)
+    if poolsL.size()>0
+        for i=poolsL.size()-1 to 0
+            Pool r=poolsL.get(i)
+            if low<=r.p or time_close-r.seen>maxAgeD*86400000.0
+                poolsL.remove(i)
+    float tolerance=math.max(2*tick,math.min(nq ? 3.0 : .75,nz(atr)*.1))
+    if not na(ph) and ph>high
+        f_pool(poolsH,ph,tolerance,time_close)
+    if not na(pl) and pl<low
+        f_pool(poolsL,pl,tolerance,time_close)
+
+    float nyTypical=f_typical(nyHistory,time_close)
+    float asiaTypical=f_typical(asiaHistory,time_close)
+    float typical=rawBlock==2 ? asiaTypical : nyTypical
+    float half=f_width(nz(typical,atr))
+    widthFallback:=na(typical)
+    if not na(lastNYHigh) and close>lastNYHigh+tick
+        nyHighBroken:=true
+    if not na(lastNYLow) and close<lastNYLow-tick
+        nyLowBroken:=true
+    if activeClose and changeWindow and time_close-lastNYEnded<=5*86400000.0
+        if not nyHighBroken and lastNYHigh>close+half
+            f_add(lastNYHigh,0,1,half,time_close,close,atr,true,endTime,lastNYEnded)
+        if not nyLowBroken and lastNYLow<close-half
+            f_add(lastNYLow,0,1,half,time_close,close,atr,true,endTime,lastNYEnded)
+    if useSwings and activeClose
+        if not na(ph)
+            f_add(ph,0,4,half,time_close,close,atr,true,endTime)
+        if not na(pl)
+            f_add(pl,0,4,half,time_close,close,atr,true,endTime)
+
+    // Collect complete windows, regardless of which display window is enabled.
+    if rawBlock>0
+        if collectBlock!=rawBlock or collectDate!=dateId
+            sessionH.fill(na)
+            sessionL.fill(na)
+            sessionC.fill(na)
+            asiaP.clear()
+            asiaW.clear()
+            collectBlock:=rawBlock
+            collectDate:=dateId
+        sessionH.set(slot,high)
+        sessionL.set(slot,low)
+        sessionC.set(slot,close)
+        if rawBlock==2
+            f_accumulate(asiaP,asiaW)
+        if (rawBlock==1 and mm==835 or rawBlock==2 and mm==1135) and f_complete(rawBlock)
+            if rawBlock==1
+                f_store(nyHistory,1,time_close)
+            else
+                f_profile(asiaP,asiaW,half,time_close,close,atr,false,endTime)
+                f_store(asiaHistory,2,time_close)
+
+    // NY cash references are measured explicitly, not taken from daily futures bars.
+    if cashDate!=dateId
+        cashDate:=dateId
+        cashCount:=0
+        cashFirst:=0
+        cashHigh:=na
+        cashLow:=na
+        cashP.clear()
+        cashW.clear()
+    if weekNY and mm>=390 and mm<780
+        if cashCount==0
+            cashFirst:=mm
+        cashCount+=1
+        cashHigh:=na(cashHigh) ? high : math.max(cashHigh,high)
+        cashLow:=na(cashLow) ? low : math.min(cashLow,low)
+        f_accumulate(cashP,cashW)
+        if mm==775 and cashFirst==390 and cashCount==78
+            lastNYHigh:=cashHigh
+            lastNYLow:=cashLow
+            lastNYEnded:=time_close
+            nyHighBroken:=false
+            nyLowBroken:=false
+            f_add(cashHigh,0,1,half,time_close,close,atr,activeClose,endTime)
+            f_add(cashLow,0,1,half,time_close,close,atr,activeClose,endTime)
+            if cashHigh>high
+                f_pool(poolsH,cashHigh,tolerance,time_close)
+            if cashLow<low
+                f_pool(poolsL,cashLow,tolerance,time_close)
+            f_profile(cashP,cashW,half,time_close,close,atr,activeClose,endTime)
+
+    lastUp:=na
+    lastDown:=na
+    remainingUp:=na
+    remainingDown:=na
+    remainingN:=0
+    float bestUp=-1.0
+    float bestDown=-1.0
+    issueTime:=time_close
+    issueBlock:=activeClose ? block : 0
+    issueDate:=dateId
+    lastContextUp:=contextUp
+    lastContextDown:=contextDown
+    lastSMT:=smtReady
+    if activeClose
+        [u,d,samples]=f_remaining(block==1 ? nyHistory : asiaHistory,slot,time_close)
+        remainingUp:=u
+        remainingDown:=d
+        remainingN:=samples
+    if nodes.size()>0
+        for n in nodes
+            int count=f_poolCount(n,n.side==1 ? poolsH : poolsL)
+            float context=n.side==1 ? contextUp : contextDown
+            n.quality:=.35*f_mass(n,time_close)+.4*math.sqrt(count)+(f_has(n.sources,1) ? .8 : 0)+(f_has(n.sources,4) ? .3 : 0)+(rankContext ? .15*context : 0)
+            float distance=n.side==1 ? math.max(0,n.p-n.w-close) : math.max(0,close-n.p-n.w)
+            bool approach=n.side==1 ? close<n.p-n.w : close>n.p+n.w
+            if activeClose and approach and distance<=maxDistanceATR*atr
+                if n.side==1 and n.quality>bestUp
+                    bestUp:=n.quality
+                    lastUp:=n.p
+                if n.side==-1 and n.quality>bestDown
+                    bestDown:=n.quality
+                    lastDown:=n.p
+
+// No retrospective pivot dots, strategy orders, entry arrows, ETA or probability labels.
+var table panel=table.new(panelPos,2,24,bgcolor=color.new(colPanel,14),border_width=1,border_color=color.new(color.gray,84),frame_width=1,frame_color=color.new(color.gray,70))
+var line focusU1=na
+var line focusU2=na
+var line focusD1=na
+var line focusD2=na
+var label focusUL=na
+var label focusDL=na
+f_row(int r,string a,string b,color c)=>
+    table.cell(panel,0,r,a,text_color=colDim,text_size=panelSize,text_halign=text.align_left,text_font_family=MONO)
+    table.cell(panel,1,r,b,text_color=c,text_size=panelSize,text_halign=text.align_right,text_font_family=MONO)
+f_sec(int r,string s)=>
+    table.cell(panel,0,r,s,text_color=colTxt,text_size=panelSize,text_halign=text.align_left,bgcolor=colSect,text_font_family=MONO)
+    table.cell(panel,1,r,"",bgcolor=colSect)
+f_num(float v)=>na(v) ? "warming up" : str.tostring(v,"#.##")
+// Four checks, so a four-segment meter is a count and not an implied odds bar
+f_checks(float v)=>
+    string s=""
+    for i=1 to 4
+        s+=i<=int(v) ? "▰" : "▱"
+    s+" "+str.tostring(v,"#")
+// One lookup feeds both the panel and the focus layer
+f_zone(float p)=>
+    string rng="no nearby zone"
+    string tag="-"
+    float q=na
+    float top=na
+    float bot=na
+    if not na(p) and nodes.size()>0
+        for n in nodes
+            if n.p==p
+                top:=n.p+n.w
+                bot:=n.p-n.w
+                rng:=str.tostring(bot,format.mintick)+" - "+str.tostring(top,format.mintick)
+                tag:=f_name(n)+"  "+n.state
+                q:=n.quality
+    [rng,tag,q,top,bot]
+
+if barstate.islast
+    line.delete(focusU1)
+    line.delete(focusU2)
+    line.delete(focusD1)
+    line.delete(focusD2)
+    label.delete(focusUL)
+    label.delete(focusDL)
+    bool liveWindow=activeBar and f_window(mm)==issueBlock and issueBlock>0 and issueDate==dateId and time_close-issueTime<=300000
+    [rngU,tagU,qU,topU,botU]=f_zone(lastUp)
+    [rngD,tagD,qD,topD,botD]=f_zone(lastDown)
+
+    // Focus layer: the leading zone per side, extended past the last bar only
+    // while the window is live. Nothing here re-reads or re-ranks the model.
+    if showFocus and liveWindow
+        if not na(topU)
+            focusU1:=line.new(bar_index,topU,bar_index+focusBars,topU,color=color.new(colRes,45),width=1)
+            focusU2:=line.new(bar_index,botU,bar_index+focusBars,botU,color=color.new(colRes,45),width=1)
+            focusUL:=label.new(bar_index+focusBars,(topU+botU)/2,"▲ RESISTANCE  "+rngU+"\n   "+tagU+"   Q "+str.tostring(qU,"#.##"),style=label.style_label_left,color=color.new(colPanel,14),textcolor=colRes,size=size.small,textalign=text.align_left,text_font_family=MONO)
+        if not na(topD)
+            focusD1:=line.new(bar_index,topD,bar_index+focusBars,topD,color=color.new(colSup,45),width=1)
+            focusD2:=line.new(bar_index,botD,bar_index+focusBars,botD,color=color.new(colSup,45),width=1)
+            focusDL:=label.new(bar_index+focusBars,(topD+botD)/2,"▼ SUPPORT     "+rngD+"\n   "+tagD+"   Q "+str.tostring(qD,"#.##"),style=label.style_label_left,color=color.new(colPanel,14),textcolor=colSup,size=size.small,textalign=text.align_left,text_font_family=MONO)
+
+    if showPanel
+        table.clear(panel,0,0,1,23)
+        string sessionName=liveWindow ? (issueBlock==1 ? "New York" : "Asia") : "outside window / waiting for close"
+        int r=0
+        f_row(r,"TERMINUS v2","zone map · scores are not odds",colTxt)
+        r+=1
+        if panelFull
+            f_sec(r,"SESSION")
+            r+=1
+        f_row(r,"california window",sessionName,colTxt)
+        r+=1
+        f_row(r,"last confirmed",na(issueTime) ? "waiting" : str.format_time(issueTime,"MM-dd HH:mm",CA),colDim)
+        r+=1
+        if panelFull
+            f_sec(r,"ZONES")
+            r+=1
+        f_row(r,"resistance",liveWindow ? rngU : "paused",colRes)
+        r+=1
+        if panelFull
+            f_row(r,"  evidence",liveWindow ? tagU+"   Q "+(na(qU) ? "-" : str.tostring(qU,"#.##")) : "-",colRes)
+            r+=1
+        f_row(r,"support",liveWindow ? rngD : "paused",colSup)
+        r+=1
+        if panelFull
+            f_row(r,"  evidence",liveWindow ? tagD+"   Q "+(na(qD) ? "-" : str.tostring(qD,"#.##")) : "-",colSup)
+            r+=1
+        if panelFull
+            f_sec(r,"SAME-TIME HISTORY")
+            r+=1
+        f_row(r,"past rise / fall",liveWindow ? f_num(remainingUp)+" / "+f_num(remainingDown)+" pt" : "paused",colTxt)
+        r+=1
+        if panelFull
+            f_row(r,"samples",liveWindow ? str.tostring(remainingN)+" · average, not a forecast" : "NY and Asia stored separately",colDim)
+            r+=1
+            f_sec(r,"CONTEXT")
+            r+=1
+            f_row(r,"up / down",f_checks(lastContextUp)+"  "+f_checks(lastContextDown),colDim)
+            r+=1
+            f_row(r,"ranking",rankContext ? "EXPERIMENTAL: context ranked" : "not ranked",rankContext ? color.orange : colDim)
+            r+=1
+            f_row(r,"comparison market",not useSMT ? "off" : lastSMT ? "previous closed bar synchronized" : "unavailable / not synchronized",colDim)
+            r+=1
+            f_sec(r,"FIELD")
+            r+=1
+            f_row(r,"zone width basis",widthFallback ? "ATR fallback: history warming" : "completed same-session ranges",colDim)
+            r+=1
+        f_row(r,"segments",str.tostring(nodes.size())+" live · "+str.tostring(retiredBroken)+" broken · "+str.tostring(history.size())+" kept",colDim)
+        r+=1
+        if panelFull
+            f_row(r,"evidence keys","NY reference · W wick · S swing",colDim)
+            r+=1
+        f_row(r,"risk reference",str.tostring(riskPoints,"#.##")+" pt · no measured trade WR/PF",colDim)
