@@ -32,14 +32,14 @@ indicator("TERMINUS · Price-Axis Survival Reversal Engine", shorttitle = "TERMI
 //    every str.tostring gets a literal const format, avoiding any dependence
 //    on whether `format` is const-qualified.
 // 6. alertcondition hooks for threshold crossings and terminus touches.
-// 8. The five inputs that drive a series lookback (adrLen, hmmLen, divLen,
-//    erLen, pivLen) now carry maxval caps. close[erLen] is a direct historical
-//    offset, so an erLen above max_bars_back was a runtime error waiting to
-//    happen; the ta.* lengths overrun the same series buffer.
 // 7. tauRem priced from time_close, not time. The bar-open stamp overstated
 //    the remaining session by one bar, inflating sigRem and every reach
 //    probability with it, worst in the final bars of the session. Measured
 //    with backtest/calibrate_terminus.py: reach reliability 0.0029 -> 0.0016.
+// 8. The five inputs that drive a series lookback (adrLen, hmmLen, divLen,
+//    erLen, pivLen) now carry maxval caps. close[erLen] is a direct historical
+//    offset, so an erLen above max_bars_back was a runtime error waiting to
+//    happen; the ta.* lengths overrun the same series buffer.
 // ============================================================================
 
 // ════════════════════════════ INPUTS ════════════════════════════
