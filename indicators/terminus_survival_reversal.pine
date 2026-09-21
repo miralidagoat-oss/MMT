@@ -28,8 +28,14 @@ indicator("TERMINUS · Price-Axis Survival Reversal Engine", shorttitle = "TERMI
 //    clamps at zero, so an intrabar-breached node scored reach = 1.0 until the
 //    lifecycle pruned it at bar close, flickering the terminus onto a dead level.
 // 5. f_pct keeps one decimal below ~10%, so sub-percent probabilities and
-//    near-certain complements stop collapsing to the same string.
+//    near-certain complements stop collapsing to the same string. Written so
+//    every str.tostring gets a literal const format, avoiding any dependence
+//    on whether `format` is const-qualified.
 // 6. alertcondition hooks for threshold crossings and terminus touches.
+// 8. The five inputs that drive a series lookback (adrLen, hmmLen, divLen,
+//    erLen, pivLen) now carry maxval caps. close[erLen] is a direct historical
+//    offset, so an erLen above max_bars_back was a runtime error waiting to
+//    happen; the ta.* lengths overrun the same series buffer.
 // 7. tauRem priced from time_close, not time. The bar-open stamp overstated
 //    the remaining session by one bar, inflating sigRem and every reach
 //    probability with it, worst in the final bars of the session. Measured
@@ -54,7 +60,7 @@ string G2 = "Hold model"
 float kM       = input.float(0.35, "Km  absorbed-mass weight", minval = 0.0, step = 0.05, group = G2)
 float kS       = input.float(0.40, "Ks  stop-fuel weight", minval = 0.0, step = 0.05, group = G2)
 float fuelZone = input.float(3.0, "Fuel reach (x node half-height)", minval = 0.5, step = 0.5, group = G2)
-int   pivLen   = input.int(5, "Stop-pool pivot length", minval = 2, group = G2)
+int   pivLen   = input.int(5, "Stop-pool pivot length", minval = 2, maxval = 50, group = G2)
 
 string G3 = "Reach model"
 string tz      = input.string("America/New_York", "Session timezone", group = G3)
@@ -62,10 +68,10 @@ int    sStartH = input.int(9, "Session start hour", minval = 0, maxval = 23, gro
 int    sStartM = input.int(30, "Session start minute", minval = 0, maxval = 59, group = G3)
 int    sEndH   = input.int(16, "Session end hour", minval = 0, maxval = 23, group = G3)
 int    sEndM   = input.int(0, "Session end minute", minval = 0, maxval = 59, group = G3)
-int    adrLen  = input.int(14, "ADR length (days)", minval = 2, group = G3)
+int    adrLen  = input.int(14, "ADR length (days)", minval = 2, maxval = 100, group = G3)
 
 string G4 = "Regime HMM"
-int   hmmLen = input.int(100, "Range baseline length", minval = 20, group = G4)
+int   hmmLen = input.int(100, "Range baseline length", minval = 20, maxval = 400, group = G4)
 float muC    = input.float(-0.25, "Calm state mean (log range ratio)", step = 0.05, group = G4)
 float sdC    = input.float(0.45, "Calm state sd", minval = 0.05, step = 0.05, group = G4)
 float muV    = input.float(0.45, "Volatile state mean", step = 0.05, group = G4)
@@ -73,8 +79,8 @@ float sdV    = input.float(0.60, "Volatile state sd", minval = 0.05, step = 0.05
 float pStay  = input.float(0.98, "State persistence", minval = 0.5, maxval = 0.999, step = 0.005, group = G4)
 
 string G5 = "Exhaustion readout"
-int    divLen = input.int(20, "Extreme / divergence lookback", minval = 5, group = G5)
-int    erLen  = input.int(10, "Efficiency length", minval = 3, group = G5)
+int    divLen = input.int(20, "Extreme / divergence lookback", minval = 5, maxval = 200, group = G5)
+int    erLen  = input.int(10, "Efficiency length", minval = 3, maxval = 200, group = G5)
 bool   useSMT = input.bool(true, "Use intermarket SMT", group = G5)
 string smtSym = input.symbol("CME_MINI:ES1!", "SMT symbol (ES on NQ charts, NQ on ES charts)", group = G5)
 
@@ -140,9 +146,12 @@ f_fmtMin(float bars) =>
     na(bars) ? "-" : m < 1.0 ? "AT ZONE" : m < 60.0 ? str.tostring(m, "#") + "m" : str.tostring(m / 60.0, "#.#") + "h"
 
 // One decimal below ~10% so sub-percent probabilities and near-certain
-// complements stay distinguishable; whole numbers above that to keep it terse
+// complements stay distinguishable; whole numbers above that to keep it terse.
+// The ternary picks between two finished strings rather than between two format
+// arguments, so each str.tostring call gets a literal const format. This
+// compiles whether or not `format` carries a const-only type qualifier.
 f_pct(float x) =>
-    na(x) ? "-" : str.tostring(x * 100.0, math.abs(x) < 0.095 ? "0.#" : "#") + "%"
+    na(x) ? "-" : math.abs(x) < 0.095 ? str.tostring(x * 100.0, "0.#") + "%" : str.tostring(x * 100.0, "#") + "%"
 
 f_px(float x) =>
     na(x) ? "-" : str.tostring(x, format.mintick)
