@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LCD Snake</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ground: #1b2340;
+    --lcd: #c7f0d8;
+    --ink: #43523d;
+    --text: #e6ebf5;
+    --muted: #9aa5c2;
+    --font: "Silkscreen", ui-monospace, "Courier New", monospace;
+    color-scheme: dark;
+  }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font: 14px/1.5 var(--font);
+  }
+  .page {
+    max-width: 600px;
+    margin: 0 auto;
+    padding-block: 32px;
+    padding-inline: 16px;
+  }
+  .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  h1 { margin: 0; font-size: 28px; font-weight: 700; }
+  .scores { display: flex; gap: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .scores b { color: var(--text); font-weight: 400; }
+  .screen {
+    position: relative;
+    border: 10px solid #0f1629;
+    border-radius: 12px;
+    background: var(--lcd);
+    touch-action: none;
+  }
+  canvas { display: block; width: 100%; max-width: 100%; height: auto; }
+  .msg {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    gap: 6px;
+    text-align: center;
+    color: var(--ink);
+    background: rgba(199, 240, 216, 0.82);
+    font-size: clamp(12px, 3.4vw, 16px);
+  }
+  .msg[hidden] { display: none; }
+  .msg strong { font-size: clamp(20px, 6vw, 30px); font-weight: 700; }
+  .help { margin: 14px 0 0; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="top">
+    <h1>Snake</h1>
+    <div class="scores">
+      <span>Score <b id="score">0</b></span>
+      <span>Best <b id="best">0</b></span>
+    </div>
+  </div>
+  <div class="screen" id="screen">
+    <canvas id="board" width="480" height="320" aria-label="Snake board"></canvas>
+    <div class="msg" id="msg"><strong>Snake</strong><span>Press an arrow key or tap to start</span></div>
+  </div>
+  <p class="help">Arrows or WASD to steer, swipe on a phone. Space pauses.</p>
+</main>
+
+<script>
+(() => {
+  const COLS = 24, ROWS = 16, SIZE = 20;
+  const INK = '#43523d', GHOST = 'rgba(67, 82, 61, 0.07)';
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
+  const KEYS = {
+    ArrowUp: 'up', w: 'up', W: 'up',
+    ArrowDown: 'down', s: 'down', S: 'down',
+    ArrowLeft: 'left', a: 'left', A: 'left',
+    ArrowRight: 'right', d: 'right', D: 'right',
+  };
+
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  const msg = document.getElementById('msg');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+
+  let best = 0;
+  try { best = Number(localStorage.getItem('snake-best')) || 0; } catch {}
+  bestEl.textContent = best;
+
+  let snake, dir, queue, food, score, state, timer;
+
+  function reset() {
+    snake = [{ x: 8, y: 8 }, { x: 7, y: 8 }, { x: 6, y: 8 }];
+    dir = 'right';
+    queue = [];
+    score = 0;
+    scoreEl.textContent = 0;
+    placeFood();
+    state = 'ready';
+    draw();
+  }
+
+  function placeFood() {
+    const free = [];
+    for (let y = 0; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++)
+        if (!snake.some(s => s.x === x && s.y === y)) free.push({ x, y });
+    food = free[Math.floor(Math.random() * free.length)];
+  }
+
+  const speed = () => Math.max(60, 130 - score * 2);
+
+  function tick() {
+    if (queue.length) dir = queue.shift();
+    const head = { x: snake[0].x + DIRS[dir][0], y: snake[0].y + DIRS[dir][1] };
+    const eats = head.x === food.x && head.y === food.y;
+    const body = eats ? snake : snake.slice(0, -1);   // tail moves away unless growing
+    const out = head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS;
+    if (out || body.some(s => s.x === head.x && s.y === head.y)) return gameOver();
+
+    snake.unshift(head);
+    if (eats) {
+      score++;
+      scoreEl.textContent = score;
+      if (snake.length === COLS * ROWS) return gameOver(true);
+      placeFood();
+    } else {
+      snake.pop();
+    }
+    draw();
+    timer = setTimeout(tick, speed());
+  }
+
+  function cell(x, y, inset) {
+    ctx.fillRect(x * SIZE + inset, y * SIZE + inset, SIZE - inset * 2, SIZE - inset * 2);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = GHOST;
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) cell(x, y, 1);
+    ctx.fillStyle = INK;
+    cell(food.x, food.y, 5);
+    snake.forEach((s, i) => cell(s.x, s.y, i === 0 ? 0 : 2));
+  }
+
+  function show(title, line) {
+    msg.innerHTML = `<strong>${title}</strong><span>${line}</span>`;
+    msg.hidden = false;
+  }
+
+  function start() {
+    msg.hidden = true;
+    state = 'playing';
+    timer = setTimeout(tick, speed());
+  }
+
+  function pause() {
+    if (state !== 'playing') return;
+    clearTimeout(timer);
+    state = 'paused';
+    show('Paused', 'Press space to resume');
+  }
+
+  function gameOver(won) {
+    clearTimeout(timer);
+    state = 'over';
+    if (score > best) {
+      best = score;
+      bestEl.textContent = best;
+      try { localStorage.setItem('snake-best', best); } catch {}
+    }
+    draw();
+    show(won ? 'You win!' : 'Game over', `Score ${score}</span><span>Space or tap to play again`);
+  }
+
+  function turn(d) {
+    if (state === 'ready' || state === 'paused') start();
+    else if (state === 'over') { reset(); start(); }
+    const last = queue.length ? queue[queue.length - 1] : dir;
+    if (d !== last && d !== OPPOSITE[last] && queue.length < 3) queue.push(d);
+  }
+
+  function primary() {
+    if (state === 'playing') pause();
+    else if (state === 'over') { reset(); start(); }
+    else start();
+  }
+
+  window.addEventListener('keydown', e => {
+    if (KEYS[e.key]) { e.preventDefault(); turn(KEYS[e.key]); }
+    else if (e.key === ' ' || e.key === 'Enter' || e.key === 'p' || e.key === 'P') { e.preventDefault(); primary(); }
+  });
+
+  // Swipe to steer, tap to start / pause.
+  const screen = document.getElementById('screen');
+  let touch = null;
+  screen.addEventListener('pointerdown', e => { touch = { x: e.clientX, y: e.clientY, moved: false }; });
+  screen.addEventListener('pointermove', e => {
+    if (!touch) return;
+    const dx = e.clientX - touch.x, dy = e.clientY - touch.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+    turn(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+    touch = { x: e.clientX, y: e.clientY, moved: true };
+  });
+  screen.addEventListener('pointerup', () => { if (touch && !touch.moved) primary(); touch = null; });
+  screen.addEventListener('pointercancel', () => { touch = null; });
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+
+  reset();
+})();
+</script>
+</body>
+</html>
