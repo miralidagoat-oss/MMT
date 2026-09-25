@@ -1,0 +1,278 @@
+//@version=6
+indicator("SMT Divergence — MNQ vs MES", "SMT MNQ/MES", overlay = true,
+     max_lines_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// SMT (Smart Money Technique) divergence between MNQ and MES.
+//   Put it on an MNQ chart — it pulls MES of the SAME contract automatically
+//   (MNQ1! → MES1!, MNQZ2026 → MESZ2026) with the chart's session/back-adjust
+//   settings, so both legs are like-for-like.
+//
+//   Swing SMT (confirmed): at two consecutive chart swing highs, one index
+//     makes a higher high and the other does not → bearish SMT. At two
+//     consecutive swing lows, one makes a lower low and the other does not →
+//     bullish SMT. Either leg can be the one that fails. Prints R bars after
+//     the swing (pivot confirmation) and never repaints.
+//   Sweep SMT (early): after a swing is confirmed, the first bar CLOSE on
+//     which exactly one index has traded through its swing level while the
+//     other has held. Fires at the break instead of waiting for the next
+//     pivot; it is marked ✕ (invalidated) if the lagging index later takes
+//     its level too.
+//
+//   Swings are defined on the chart symbol. The comparison symbol rarely
+//   pivots on the exact same bar, so its extreme is taken from ±tolerance
+//   bars around each chart swing.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+string G_PAIR   = "Pair"
+string G_SWING  = "Swing Detection"
+string G_FILTER = "Filters"
+string G_UI     = "Display"
+
+autoPair  = input.bool(true, "Auto-pair MNQ ↔ MES (same contract)", group = G_PAIR,
+     tooltip = "MNQ chart → MES, MES chart → MNQ (also NQ ↔ ES), keeping the chart's contract month, session and back-adjustment. Any other chart uses the manual symbol below.")
+manualSym = input.symbol("CME_MINI:MES1!", "Comparison Symbol (manual / fallback)", group = G_PAIR)
+
+mode   = input.string("Swing + Sweep", "Detection", options = ["Swing + Sweep", "Swing only", "Sweep only"], group = G_SWING,
+     tooltip = "Swing: confirmed SMT between two consecutive swing points (lags by the right-bars setting). Sweep: early SMT at the bar where one index breaks its last swing and the other holds.")
+pivL   = input.int(5,   "Swing Strength — Left Bars",  minval = 1, group = G_SWING)
+pivR   = input.int(3,   "Swing Strength — Right Bars", minval = 1, group = G_SWING,
+     tooltip = "Also the confirmation lag of a swing SMT, in bars.")
+tolIn  = input.int(2,   "Swing Match Tolerance (± bars)", minval = 0, group = G_SWING,
+     tooltip = "The comparison symbol's extreme is taken from this many bars either side of the chart swing. Capped at the right-bars setting (bars after that are not known yet).")
+maxGap = input.int(100, "Max Bars Between Compared Swings", minval = 5, group = G_SWING,
+     tooltip = "Swings further apart than this are not compared, and a sweep is only watched for this many bars after its swing.")
+
+useSess = input.bool(false, "Only Signal Inside Session", group = G_FILTER)
+sessStr = input.session("0930-1600", "Session", group = G_FILTER)
+sessTz  = input.string("America/New_York", "Session Timezone", group = G_FILTER)
+corrLen = input.int(50, "Return Correlation Length", minval = 10, group = G_FILTER,
+     tooltip = "Shown in the status table. SMT only means something while the two indices move together; treat signals with suspicion when this drops below ~0.8.")
+
+bearCol   = input.color(#FF5252, "Bearish SMT",  group = G_UI)
+bullCol   = input.color(#00E676, "Bullish SMT",  group = G_UI)
+failCol   = input.color(#787B86, "Invalidated",  group = G_UI)
+showTable = input.bool(true, "Show Status Table", group = G_UI)
+
+bool swingOn = mode != "Sweep only"
+bool sweepOn = mode != "Swing only"
+int  tol     = math.min(tolIn, pivR)
+
+// ─────────────────────────────────────────────────────────────
+// PAIR RESOLUTION
+// ─────────────────────────────────────────────────────────────
+string chartRoot = syminfo.root
+string autoRoot  = switch chartRoot
+    "MNQ" => "MES"
+    "MES" => "MNQ"
+    "NQ"  => "ES"
+    "ES"  => "NQ"
+    => ""
+bool   autoOk     = autoPair and autoRoot != ""
+string autoTicker = str.replace(syminfo.ticker, chartRoot, autoRoot)
+int    colonPos   = str.pos(manualSym, ":")
+string manualName = na(colonPos) ? manualSym : str.substring(manualSym, colonPos + 1)
+
+string pairSym = autoOk ? syminfo.prefix + ":" + autoTicker : manualSym
+// inherit the chart's modifiers (extended session, back-adjustment, ...) so
+// both legs are built the same way
+string pairId  = ticker.inherit(syminfo.tickerid, pairSym)
+string aName   = syminfo.ticker
+string bName   = autoOk ? autoTicker : manualName
+
+[bH, bL, bC] = request.security(pairId, timeframe.period, [high, low, close], ignore_invalid_symbol = true)
+bool pairOk = not na(bC)
+
+// ─────────────────────────────────────────────────────────────
+// SWINGS & COMPARISON WINDOWS (computed every bar for series consistency)
+// ─────────────────────────────────────────────────────────────
+float aPH = ta.pivothigh(high, pivL, pivR)
+float aPL = ta.pivotlow(low, pivL, pivR)
+
+// comparison extreme within ±tol bars of the chart swing (swing bar = pivR bars ago)
+float bSwingH = ta.highest(bH, 2 * tol + 1)[pivR - tol]
+float bSwingL = ta.lowest(bL, 2 * tol + 1)[pivR - tol]
+// comparison extreme from swing-tol through the confirmation bar: the level
+// the comparison symbol has to break for a sweep
+float bRegH = ta.highest(bH, pivR + tol + 1)
+float bRegL = ta.lowest(bL, pivR + tol + 1)
+
+bool inSess      = not useSess or not na(time(timeframe.period, sessStr, sessTz))
+bool sessAtPivot = inSess[pivR]
+
+float corr = ta.correlation(ta.change(close), ta.change(bC), corrLen)
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+type SwingTrack
+    // last confirmed swing, for swing-to-swing comparison
+    float aPrev
+    float bPrev
+    int   prevBar
+    // levels each symbol must break for a sweep SMT
+    float aRef
+    float bRef
+    int   refBar
+    bool  aSwept   = false
+    bool  bSwept   = false
+    bool  fired    = false
+    label sweepLbl
+    line  sweepLine
+    string sweepTip = ""
+
+var SwingTrack hiT = SwingTrack.new()   // swing highs → bearish SMT
+var SwingTrack loT = SwingTrack.new()   // swing lows  → bullish SMT
+
+var int    cntSwingBear = 0
+var int    cntSwingBull = 0
+var int    cntSweepBear = 0
+var int    cntSweepBull = 0
+var int    lastBearBar  = na
+var int    lastBullBar  = na
+var string lastBearKind = ""
+var string lastBullKind = ""
+
+// ─────────────────────────────────────────────────────────────
+// DETECTION
+// ─────────────────────────────────────────────────────────────
+f_px(float v) =>
+    str.tostring(v, format.mintick)
+
+f_leg(string name, bool isHigh, bool beyond, float newV, float oldV) =>
+    string what = isHigh ? (beyond ? "higher high" : "NO higher high") : (beyond ? "lower low" : "NO lower low")
+    name + ": " + what + "  " + f_px(newV) + " vs " + f_px(oldV)
+
+// isHigh = true tracks swing highs (bearish SMT); false tracks swing lows
+// (bullish SMT). sgn flips every comparison so one body serves both sides.
+// Call on confirmed bars only. Returns [swing SMT fired, sweep SMT fired].
+f_track(SwingTrack t, bool isHigh, float aPiv, float bSwing, float bReg, float aBar, float bBar, bool sessPiv, bool sessNow) =>
+    float  sgn      = isHigh ? 1.0 : -1.0
+    color  c        = isHigh ? bearCol : bullCol
+    string side     = isHigh ? "Bearish" : "Bullish"
+    string ext      = isHigh ? "high" : "low"
+    bool   swingSmt = false
+    bool   sweepSmt = false
+
+    // 1) sweep tracking against the last confirmed swing (runs before a new
+    //    swing resets the levels, so a catch-up on this bar is not missed)
+    if not na(t.refBar) and bar_index - t.refBar <= maxGap
+        t.aSwept := t.aSwept or sgn * (aBar - t.aRef) > 0
+        t.bSwept := t.bSwept or sgn * (bBar - t.bRef) > 0
+        if not t.fired
+            // first bar where exactly one index has taken its level; both on
+            // the same bar is not a divergence and can never fire later
+            if t.aSwept != t.bSwept
+                t.fired := true
+                if sweepOn and sessNow
+                    sweepSmt := true
+                    string leader  = t.aSwept ? aName : bName
+                    string laggard = t.aSwept ? bName : aName
+                    float  ledLvl  = t.aSwept ? t.aRef : t.bRef
+                    float  lagLvl  = t.aSwept ? t.bRef : t.aRef
+                    t.sweepTip  := side + " SMT (sweep, early)\n" +
+                         leader + " broke its swing " + ext + " " + f_px(ledLvl) + "\n" +
+                         laggard + " held " + (isHigh ? "below " : "above ") + f_px(lagLvl)
+                    t.sweepLine := line.new(t.refBar, t.aRef, bar_index, t.aRef, color = c, style = line.style_dotted, width = 1)
+                    t.sweepLbl  := label.new(bar_index, aBar, "⚡SMT", style = isHigh ? label.style_label_down : label.style_label_up,
+                         color = color.new(c, 35), textcolor = color.white, size = size.tiny, tooltip = t.sweepTip)
+                    alert(side + " SMT (sweep) " + aName + " vs " + bName + ": " + leader + " took its swing " + ext +
+                         ", " + laggard + " held", alert.freq_once_per_bar_close)
+        else if t.aSwept and t.bSwept and not na(t.sweepLbl)
+            // the lagging index took its level too — correlation restored
+            label.set_text(t.sweepLbl, "✕SMT")
+            label.set_color(t.sweepLbl, color.new(failCol, 35))
+            label.set_tooltip(t.sweepLbl, t.sweepTip + "\n✕ invalidated: both indices have now broken their swing " + ext)
+            line.set_color(t.sweepLine, failCol)
+            t.sweepLbl := na
+    // 2) newly confirmed swing: compare with the previous one, then make it
+    //    the level to watch for the next sweep
+    if not na(aPiv) and not na(bSwing) and not na(bReg)
+        int pBar = bar_index - pivR
+        if not na(t.aPrev) and pBar - t.prevBar <= maxGap
+            bool aBeyond = sgn * (aPiv - t.aPrev) > 0
+            bool bBeyond = sgn * (bSwing - t.bPrev) > 0
+            // exactly one index extended past its prior swing → divergence
+            if aBeyond != bBeyond and swingOn and sessPiv
+                swingSmt := true
+                string tip = side + " SMT (swing)\n" +
+                     f_leg(aName, isHigh, aBeyond, aPiv, t.aPrev) + "\n" +
+                     f_leg(bName, isHigh, bBeyond, bSwing, t.bPrev)
+                line.new(t.prevBar, t.aPrev, pBar, aPiv, color = c, width = 2)
+                label.new(pBar, aPiv, "SMT", style = isHigh ? label.style_label_down : label.style_label_up,
+                     color = color.new(c, 10), textcolor = color.white, size = size.small, tooltip = tip)
+                alert(side + " SMT (swing) " + aName + " vs " + bName + ": " +
+                     (aBeyond ? aName : bName) + " made the " + (isHigh ? "higher high" : "lower low") + ", " +
+                     (aBeyond ? bName : aName) + " did not", alert.freq_once_per_bar_close)
+        t.aPrev     := aPiv
+        t.bPrev     := bSwing
+        t.prevBar   := pBar
+        // a new swing becomes the level to watch for the next sweep
+        t.aRef      := aPiv
+        t.bRef      := bReg
+        t.refBar    := pBar
+        t.aSwept    := false
+        t.bSwept    := false
+        t.fired     := false
+        t.sweepLbl  := na
+        t.sweepLine := na
+    [swingSmt, sweepSmt]
+
+bool bearSwing = false
+bool bearSweep = false
+bool bullSwing = false
+bool bullSweep = false
+
+if barstate.isconfirmed and pairOk
+    [s1, s2] = f_track(hiT, true,  aPH, bSwingH, bRegH, high, bH, sessAtPivot, inSess)
+    [s3, s4] = f_track(loT, false, aPL, bSwingL, bRegL, low,  bL, sessAtPivot, inSess)
+    bearSwing := s1
+    bearSweep := s2
+    bullSwing := s3
+    bullSweep := s4
+
+if bearSwing or bearSweep
+    cntSwingBear += bearSwing ? 1 : 0
+    cntSweepBear += bearSweep ? 1 : 0
+    lastBearBar  := bar_index
+    lastBearKind := bearSwing ? "swing" : "sweep"
+if bullSwing or bullSweep
+    cntSwingBull += bullSwing ? 1 : 0
+    cntSweepBull += bullSweep ? 1 : 0
+    lastBullBar  := bar_index
+    lastBullKind := bullSwing ? "swing" : "sweep"
+
+// ─────────────────────────────────────────────────────────────
+// STATUS TABLE
+// ─────────────────────────────────────────────────────────────
+f_row(table tb, int r, string k, string v, color vc) =>
+    table.cell(tb, 0, r, k, text_color = color.silver, text_halign = text.align_left,  text_size = size.small)
+    table.cell(tb, 1, r, v, text_color = vc,           text_halign = text.align_right, text_size = size.small)
+
+f_ago(int b, string kind) =>
+    na(b) ? "—" : kind + ", " + str.tostring(bar_index - b) + " bars ago"
+
+if showTable and barstate.islast
+    var table tb = table.new(position.top_right, 2, 7,
+         bgcolor = color.new(#101418, 15), border_width = 1,
+         border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 55))
+    table.cell(tb, 0, 0, "SMT DIVERGENCE", text_color = color.white, text_size = size.small)
+    table.merge_cells(tb, 0, 0, 1, 0)
+    f_row(tb, 1, "Pair", pairOk ? aName + " vs " + bName : "⚠ " + bName + " — no data",
+         pairOk ? color.white : color.orange)
+    f_row(tb, 2, "Return corr (" + str.tostring(corrLen) + ")", na(corr) ? "—" : str.tostring(corr, "#.##"),
+         na(corr) ? color.white : corr >= 0.8 ? color.new(color.teal, 0) : color.orange)
+    f_row(tb, 3, "Last bearish", f_ago(lastBearBar, lastBearKind), bearCol)
+    f_row(tb, 4, "Last bullish", f_ago(lastBullBar, lastBullKind), bullCol)
+    f_row(tb, 5, "Swing SMTs  ▼ / ▲", str.tostring(cntSwingBear) + " / " + str.tostring(cntSwingBull), color.white)
+    f_row(tb, 6, "Sweep SMTs  ▼ / ▲", str.tostring(cntSweepBear) + " / " + str.tostring(cntSweepBull), color.white)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(bearSwing or bearSweep, "Bearish SMT", "SMT: bearish divergence vs comparison index")
+alertcondition(bullSwing or bullSweep, "Bullish SMT", "SMT: bullish divergence vs comparison index")
+alertcondition(bearSwing or bullSwing, "Swing SMT (confirmed)", "SMT: confirmed swing divergence")

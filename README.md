@@ -7,6 +7,8 @@ the results in an on-chart dashboard.
 
 - **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
 - **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
+- **SMT divergence (MNQ vs MES):** `indicators/smt_divergence_mnq_mes.pine` — see
+  [the section at the end](#smt-divergence--mnq-vs-mes)
 
 ## Audit findings (why v1's "backtest" was fiction)
 
@@ -231,3 +233,60 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+## SMT Divergence — MNQ vs MES
+
+`indicators/smt_divergence_mnq_mes.pine` (Pine v6, overlay). Add it to an
+**MNQ chart**; it pulls MES of the same contract automatically (MNQ1! →
+MES1!, MNQZ2026 → MESZ2026) and inherits the chart's session and
+back-adjustment settings so both legs are built the same way. It also works
+the other way round (MES chart → MNQ) and for NQ ↔ ES; any other chart
+falls back to the manual comparison symbol (default `CME_MINI:MES1!`).
+
+### What it marks
+
+| on chart | meaning |
+|---|---|
+| solid line + **SMT** label | **Swing SMT (confirmed).** Two consecutive swing highs where one index made a higher high and the other did not → bearish (red). Two consecutive swing lows where one made a lower low and the other did not → bullish (green). Either index can be the one that fails. Prints `Right Bars` after the swing and never repaints. |
+| dotted line + **⚡SMT** label | **Sweep SMT (early).** The first bar close where exactly one index has traded through its last swing high/low while the other has held its level. Fires at the break instead of waiting for the next swing to confirm. |
+| grey **✕SMT** | A sweep SMT that was invalidated: the lagging index later took its level too, so the two indices are moving together again. |
+
+Hover a label for the levels on both legs (e.g. `MNQ1!: higher high
+21450.25 vs 21430.00 / MES1!: NO higher high 5920.50 vs 5925.25`).
+
+### How it lines the two symbols up
+
+- Swings are pivots on the **chart** symbol (`Left Bars` / `Right Bars`,
+  default 5 / 3).
+- MES rarely pivots on exactly the same bar as MNQ, so its extreme is taken
+  from **± `Swing Match Tolerance` bars** (default 2) around each MNQ swing.
+  The tolerance is capped at `Right Bars`, since later bars aren't known
+  yet when the swing confirms.
+- Swings more than `Max Bars Between Compared Swings` (default 100) apart
+  are not compared.
+- A difference of one tick counts. MNQ and MES both tick in 0.25.
+
+### Other features
+
+- **Status table:** pair, rolling return correlation between the two
+  indices (orange below 0.8, where SMT stops meaning much), last
+  bearish/bullish SMT, and swing/sweep counts.
+- **Optional session filter** (off by default; e.g. `0930-1600`
+  America/New_York for RTH only).
+- **Detection mode:** Swing + Sweep (default), Swing only, or Sweep only.
+- **Alerts:** `Bearish SMT`, `Bullish SMT` and `Swing SMT (confirmed)`
+  alert conditions, plus detailed `alert()` messages naming which index
+  broke its level and which held. Everything is evaluated on confirmed
+  bars, so nothing flickers intrabar.
+
+### Caveats
+
+- SMT is a **context** signal (which index is weak/strong at a liquidity
+  level), not a standalone entry. It has **not been backtested here**:
+  the Yahoo endpoint used by `backtest/fetch_yahoo.py` was unreachable from
+  the build environment. The detection logic was checked with a Python
+  port on constructed scenarios: HH-vs-LH in both directions, both making
+  HH with peaks offset inside the tolerance (correctly no signal), a
+  lagging catch-up (correctly invalidated), and the bullish mirror.
+- Expect many ⚡ sweep SMTs to be invalidated. They are early warnings; the
+  swing SMT is the confirmation.
