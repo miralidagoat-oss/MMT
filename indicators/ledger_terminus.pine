@@ -1032,15 +1032,15 @@ if barstate.isconfirmed and zones.size() > 0
             if btOn and inSess and trades.size() < 100 and (zz.side == 1 ? open < top : open > bot)
                 float nearE = zz.side == 1 ? bot : top
                 float stopP = f_stop(zz)
-                float fill  = zz.side == 1 ? math.max(nearE, open) : math.min(nearE, open)
-                float risk  = zz.side * (stopP - fill)
+                float fillPx = zz.side == 1 ? math.max(nearE, open) : math.min(nearE, open)
+                float risk   = zz.side * (stopP - fillPx)
                 if risk > 0
                     int c16 = int(math.floor(zz.cell / 4.0))
                     if (zz.side == 1 ? high >= stopP : low <= stopP)
                         // the fill bar also reached the stop and its order is unknown: book the loss
                         f_book(c16, -1.0 - costTk * syminfo.mintick / risk, 2)
                     else
-                        trades.push(Trade.new(side = zz.side, entry = fill, stop = stopP, target = fill - zz.side * tgtR * risk, risk = risk, cls = c16))
+                        trades.push(Trade.new(side = zz.side, entry = fillPx, stop = stopP, target = fillPx - zz.side * tgtR * risk, risk = risk, cls = c16))
             if alertTouch
                 alert("LEDGER·T: " + syminfo.ticker + " is testing the " + (zz.side == 1 ? "upside wall " : "downside wall ") + f_px(zz.p) + " · holds " + f_hPct(f_hold(zz, exh, true)) + " · " + f_tag(zz) + (btOn ? " · fade " + (zz.side == 1 ? "sell " : "buy ") + f_px(f_entry(zz)) + " stop " + f_px(f_stop(zz)) + " target " + f_px(f_target(zz)) : ""), alert.freq_once_per_bar_close)
         // spent once price has reacted a full zone height away on the rejection side
