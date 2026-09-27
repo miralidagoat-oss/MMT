@@ -6,7 +6,8 @@ Pine Script v6 indicators:
 - **LEDGER · Trapped-Crowd Reversal Zones** — see
   [its section](#ledger--trapped-crowd-reversal-zones).
 - **TERMINUS v2 · Price-Axis Survival Reversal Engine** and
-  **LEDGER·TERMINUS**, the combination of the two — see
+  **LEDGER·TERMINUS · Support & Resistance Reversal Map**, the combination of
+  the two (zones and their measured accuracy, no trade signals) — see
   [their section](#terminus-v2-and-ledgerterminus) at the end.
 
 **Alpha Predictive Limit Matrix** is a Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
@@ -447,96 +448,158 @@ a far wall can only end the move if every nearer one breaks first.
    unchanged. `tauRem` falls back to the bar open where there is no bar close
    time.
 
-### LEDGER·TERMINUS: the combination
 
-- **Walls = LEDGER's trapped-crowd zones.** They're more specific than
-  TERMINUS's generic absorption nodes, which are kept only to mark DOUBLE
-  zones.
-- **Hold = measured** (LEDGER v3.2's self-grading), now split into 64 cells:
-  side × swing/MAJOR × DOUBLE × trend path × stop fuel (TERMINUS's un-run
-  pivot stops in front of the zone) × exhaustion at the test. Each level is
-  shrunk toward the one above it: chart-wide → class pooled over side → class
-  → + stop fuel → + exhaustion. Exhaustion only counts when price is within
-  0.25 × ADR, where the current reading describes the arrival. With no
-  history every zone starts at 50%, and values show with a `~` until 20 tests
-  are graded.
-- **Reach and the survival scan are TERMINUS v2's.** A zone price is sweeping
-  (beyond it, short of a decisive break) stays in the scan as "being tested";
-  one it is already decisively past is skipped. Zones whose crowd already got
-  out (spent) are skipped too.
-- **Display:** TERMINUS's three-tier, probability-keyed grammar with LEDGER's
-  information. The terminus readout shows reach·hold, the zone's hold rate,
-  MAJOR/DOUBLE/trend-path/stops tags and the % of a day's volume trapped.
-  Hovering any readout or ladder row shows the class and its counts.
-- **Honesty panel:** "zones held", swing vs major, reach said vs hit, and
-  reach reliability, all measured on your chart.
+### LEDGER·TERMINUS: support and resistance reversal map
 
-### Fade test and timeframe fit
+The combined script draws support and resistance zones, ranks them by how
+likely each is to turn price, and measures on your chart how often they
+actually did. It gives no buy or sell signals: no entries, stops, targets or
+trade plans.
 
-- **Fade test.** Every zone's first test inside the session is also graded as a
-  trade:
-  - **Entry:** a limit at the zone's near edge, or the open if price opened
-    inside the zone. There's no trade if the bar gapped past the zone.
-  - **Stop:** `stopMult` × zone height beyond the far edge, which is the same
-    distance as the decisive-break rule.
-  - **Target:** `tgtR` × risk.
-  - **Session exit:** anything still open exits at the session close.
-  - **Costs:** deducted in ticks.
-  - **Pessimistic fills:** the fill bar can only lose, the stop wins a bar that
-    prints both, and a gap through the stop fills at the open.
+**Three zone families.** The border style shows the family.
 
-  The dashboard's FADE TEST rows show trades, win rate against the breakeven
-  rate, expectancy per trade, net R and max drawdown. The terminus readout
-  shows its fade plan (entry, stop, target, drawn as lines) and the expected R
-  for its class.
-- **Fairness check.** On synthetic random-walk data, which has no edge by
-  construction, the port of this accounting returns −0.02R and +0.01R per trade
-  (about 1,400 trades, 2R target, 2-tick costs), with win rates at the 33%
-  breakeven. So the accounting doesn't manufacture profit. A positive
-  expectancy on real data is therefore evidence, not an artefact.
-- **Timeframe fit.** The dashboard row compares the average session bar range
-  with a zone's test span: the distance from its near edge to its decisive-break
-  level. When one bar can cover that span, a whole test happens inside a single
-  bar, and a sweep can't be told from a break ("too coarse"). With fewer than
-  `minTests` graded tests the row says "thin history" instead.
+| family | where the zone is | border |
+|---|---|---|
+| TRAPPED | the volume-weighted breakeven of a crowd caught on the wrong side of a failed swing (LEDGER's zones, swing and MAJOR size) | solid |
+| SWING | the confirmed highs and lows of the same two zigzags; the level is the zone's far edge | dashed |
+| PRIOR DAY | the previous day's high and low, filed at each new day; the level is the far edge | dotted |
+
+- A structure level that would overlap a live zone on the same side isn't
+  added again. A new trapped zone absorbs any untested level it overlaps, and
+  shows `+level`.
+- Up to 8 trapped zones and 3 levels per family are kept on each side
+  (trapped by crowd size, levels newest first). A zone in the middle of its
+  test is never pruned, because its result would be lost.
+
+**Reversal grading.** Every zone's first test is graded the same way: it
+*reversed* if a bar closes `reactAdr` (0.2) × ADR beyond its edge on the
+rejection side before an accepted break, and it *failed* if the break came
+first. Rates are kept per family × class (side × swing/MAJOR × DOUBLE × trend
+path) × stop fuel × exhaustion, 192 cells. Each level of detail is shrunk
+toward the one above it: family → class pooled over side → class → + stop
+fuel → + exhaustion.
+
+**Accuracy against random levels.** A high hit rate alone proves nothing: on a
+random walk a level "holds" 33–45% of the time under these rules, depending on
+the zone's height. So every zone gets a hidden **twin** at a pseudo-random
+price, with the same family, side and height, 0.5–1.5× the zone's distance
+from price. Twins are graded by exactly the same rules, and they're never
+drawn or used by the scan.
+
+- A twin lives as long as its zone does until it is tested, so both get the
+  same window for a test. When a new crowd reinforces a zone, its untested
+  twin gets the same height and age clock.
+- The ACCURACY panel shows, per family: reversal rate, number of tests, the
+  twins' rate, and the difference in points.
+- A two-proportion z-test marks the difference: ✓ when the family beats random
+  levels at the 5% level, ✗ when it does significantly worse, and "n.s." when
+  it can't be told apart.
+- **Hide families that don't beat random levels** (off by default) hides a
+  family after 100 graded tests of it and of its twins unless it shows a ✓.
+  It keeps being graded, so it can come back.
+
+**Overfit check.** 192 cells can fit noise. Every test is therefore predicted
+before it's graded, twice: by the detailed class rate and by the plain family
+rate, each using only earlier tests. Both are scored (Brier). After 30 tests,
+the detailed classes are used only while they score better out of sample; if
+they don't, every zone shows its plain family rate, and the dashboard says
+"classes add nothing · family rate used".
+
+**Terminus.** On each side the zone most likely to end today's move:
+reach (the chance price gets there before the session ends) × its reversal
+rate × the chance every nearer zone breaks first. This is TERMINUS v2's
+survival scan. Spent zones, hidden families and zones price is already
+decisively past are skipped.
+
+**On the chart.** Zone colour: resistance above price (red), support below
+(teal). Opacity follows live probability. The label at each terminus shows:
+
+- "ends the move" (the scan probability) and "turns price" (the zone's
+  measured reversal rate, with `~` while still learning);
+- the tags: family, MAJOR / STACKED / ×N, `+level`, trend path, DOUBLE,
+  stops, tested;
+- its family's record against random levels.
+
+Hovering any label or ladder row shows the class, its counts and an 80%
+range.
+
+**Dashboard.**
+
+- REGIME: state, session left, σ left, day type, timeframe fit and the
+  correlated index.
+- RESISTANCE / SUPPORT: terminus, probability, reversal rate, evidence,
+  distance, E[top] or E[bot], "no zone ends it" and eta.
+- EXHAUSTION.
+- ACCURACY: per-family record against random levels, all zones, the overfit
+  check, and reach said vs hit with its reliability.
+- FIELD: live zones per family and the leg sizes.
+
+**Timeframe fit.** This row compares the average session bar range with a
+zone's test span, the distance from its near edge to its decisive-break level.
+When one bar can cover that span, a whole test happens inside a single bar
+and a sweep can't be told from a break ("too coarse"). With fewer than
+`minTests` graded tests the row says "thin history" instead.
 
 ### Which timeframe on MNQ
 
-This is an estimate from how the model is built, not a measurement; the fade
-test above is what settles it on your charts. At MNQ's recent levels:
+This is an estimate from how the model is built, not a measurement. The
+ACCURACY panel is what settles it on your charts. At MNQ's recent levels:
 
-- Zones are typically 15–30 points tall, so a test spans roughly 30–60 points
-  from the near edge to a decisive break.
+- Trapped zones are typically 15–30 points tall and levels about 15–20, so a
+  test spans roughly 30–60 points from the near edge to a decisive break.
 - Typical RTH bar ranges are about 8–15 points on 1m, 15–25 on 3m, 20–35 on 5m,
   40–65 on 15m and 90+ on 1h.
 - MNQ trades about 23 hours a day. With 20,000 bars loaded that is about 14
   sessions on 1m, 43 on 3m, 72 on 5m and 217 on 15m.
 
-| timeframe | bars vs zones | history for the hold rates | verdict |
+| timeframe | bars vs zones | history for the rates | verdict |
 |---|---|---|---|
-| 1m | fine | ~2–3 weeks: rates and the noise area barely learn | entries only |
+| 1m | fine | ~2–3 weeks: rates and the random-level test barely learn | too little history |
 | 3m | fine | ~2 months | good |
-| **5m** | **fine to borderline** | **~3 months: plenty of graded tests** | **best balance** |
+| **5m** | **fine to borderline** | **~3 months: several hundred graded tests** | **best balance** |
 | 15m | a bar can cover a whole test | long | too coarse |
 | 1h+ | far too coarse | long | not suited |
 
-Start on **5m** with the default 09:30–16:00 ET session, and use 3m if you want
-tighter entries. On each, look at the timeframe row and the FADE TEST
-expectancy once there are at least 100 trades. Keep whichever shows positive
-expectancy after costs. If neither does, the zones aren't a tradeable edge on
-MNQ with these settings.
+Start on **5m** with the default 09:30–16:00 ET session, or 3m. Trust a family
+only once its ACCURACY row shows a ✓ against random levels. PRIOR DAY adds only
+about two levels a day, so it needs months of history before its test can
+say anything.
 
 ### Verification and limits
 
 - Both scripts pass the `pynescript` parser. Neither has been compiled on
   TradingView from here: paste it in, and report any error.
-- The new math (session clock, session-range σ, session-bar volatility ratio,
-  64-cell hold estimator, survival scan, reach calibration) was ported to
-  Python and run on synthetic data. Probabilities stay within [0, 1], each
-  side's terminus probabilities plus "no wall holds" sum to 1 on every bar,
-  and every graded test lands in a valid cell. The reach table above comes
-  from that port.
-- Synthetic data has no trapped-crowd effect, so these checks prove the
-  mechanics, not an edge. Whether zones hold more often than the no-edge
-  baseline (about 35–41% for LEDGER's grading) has to be read off the
-  CALIBRATION rows on real charts.
+- The zone families, grading, random twins, z-test, overfit check, pruning and
+  overlap rules were ported to Python and run on synthetic RTH
+  1-minute data, aggregated to 3m, 5m and 15m. Counts stay consistent on every
+  bar, every graded test lands in its family's cells, and no graded outcome is
+  lost to pruning.
+- **No false edge on random data.** On a pure random walk real zones can't
+  beat random levels, so any ✓ there would be a flaw. Pooled over 16 runs of
+  ~85 sessions on 5m, zones vs their twins reversed at 41.3% vs 41.4%
+  (TRAPPED, ~6,500 tests each), 36.4% vs 36.4% (SWING, ~6,900) and 33.8% vs
+  35.1% (PRIOR DAY, ~450); all pooled z within ±0.5. Across those runs and
+  further runs on 3m, 5m and 15m, none of 96 per-family tests reached
+  significance.
+- **Found and fixed while testing:** a new crowd reinforcing a trapped zone
+  could re-centre or widen it in the middle of its own test, moving the line
+  its test is graded against. Zones under test now keep their geometry until
+  the test is graded.
+- **The overfit check works both ways.** With noise features, the detailed
+  classes scored 5–10% *worse* than the plain family rate out of sample in
+  every run (16 of 16), and the guard switched them off. With a planted
+  feature that really predicts the outcome, the classes scored 12–16% better
+  and the guard kept them (9 of 9).
+- **The random-level test can find a real edge.** With a reversal tendency
+  planted at the prior-day high/low, PRIOR DAY zones reversed 74–96% of the
+  time against 50–80% for their twins. That reached significance in 5 of 9
+  runs (z 0.9–3.2): with about two levels a day this family needs a lot of
+  history. Swing levels near those highs and lows picked up part of the edge
+  (z 1.4–3.9), and trapped zones didn't (z −2.8 to +0.2), so the test is
+  specific to each family.
+- Earlier checks still hold: probabilities stay within [0, 1], each side's
+  terminus probabilities plus "no zone ends it" sum to 1 on every bar, and
+  the reach table above comes from the same port.
+- Synthetic data can prove the mechanics, not an edge. Whether these zones
+  turn MNQ more often than random levels can only be read off the ACCURACY
+  panel on real charts, and the panel is built to say so when they don't.

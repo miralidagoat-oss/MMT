@@ -1,42 +1,36 @@
 //@version=6
-indicator("LEDGER·TERMINUS · Trapped-Crowd Reversal Map", shorttitle = "LEDGER·T", overlay = true, max_boxes_count = 300, max_lines_count = 100, max_labels_count = 100)
+indicator("LEDGER·TERMINUS · Support & Resistance Reversal Map", shorttitle = "LEDGER·T", overlay = true, max_boxes_count = 300, max_lines_count = 100, max_labels_count = 100)
 
 // ============================================================================
-// LEDGER·TERMINUS — where is today's move most likely to end, and how sure?
+// LEDGER·TERMINUS — support and resistance zones, ranked by how likely each is
+// to turn price, with their accuracy measured on this chart. No trade signals.
 //
-//   WALLS    LEDGER's trapped-crowd zones. Two zigzag trackers (swing and
-//            MAJOR, sized in ADR) build a volume-at-price histogram for every
-//            leg; when a leg gives back most of its move, the volume now
-//            underwater is a trapped crowd and the zone sits at its
-//            volume-weighted breakeven.
-//   HOLD     Measured, not assumed. Every zone's first test is graded on this
-//            chart: held = a close `reactAdr` ADR back from the zone before an
-//            accepted break; failed = accepted break first. Rates are kept per
-//            class (side × swing/MAJOR × DOUBLE × trend path × stop fuel ×
-//            exhaustion) and each level is shrunk toward the one above it, so
-//            thin classes lean on their neighbours.
-//   REACH    TERMINUS's reflection-principle model: the chance price touches
-//            the zone before the session ends, from the session's own average
-//            range scaled by the time left.
-//   TERMINUS Survival scan outward from price: a far zone can only end the
-//            move if every nearer zone on that side breaks first.
-//              P(move ends at zone i) = reach_i × hold_i × Π_nearer (1 − hold_j)
-//
-// Context that feeds the hold classes: trend day (noise area + leading the
-// correlated index), DOUBLE (overlaps a short-term absorption node), stop fuel
-// (un-run pivot stops parked in front of the zone), exhaustion (effort vs
-// result, CVD and SMT divergence, efficiency collapse).
-// FADE TEST: every first test inside the session is also graded as a trade -
-// filled at the zone's near edge (or the open if price opened inside it), stop
-// beyond the zone, target a fixed R multiple, costs deducted, pessimistic
-// fills - so the dashboard shows whether fading these zones actually pays on
-// this symbol and timeframe, next to a timeframe-fit check.
-// The dashboard scores the model against what happened: hold model vs held,
-// reach said vs hit. All state changes on confirmed bars; nothing repaints.
+//   ZONES     Three families of support and resistance:
+//               TRAPPED    the volume-weighted breakeven of a crowd caught on
+//                          the wrong side of a failed swing (two zigzag sizes)
+//               SWING      the confirmed highs and lows of the same zigzags
+//               PRIOR DAY  the previous day's high and low
+//   REVERSAL  Every zone's first test is graded: it reversed if price turned
+//             `reactAdr` × ADR away before an accepted break, it failed if the
+//             break came first. Rates are learned per family and class (side,
+//             swing/MAJOR, DOUBLE, trend day, stop fuel, exhaustion), each
+//             level shrunk toward the one above it so thin classes lean on
+//             their neighbours.
+//   ACCURACY  Every zone gets a hidden twin at a pseudo-random price (same
+//             family, side and height, similar distance) graded by the same
+//             rules. A family only earns a ✓ when its zones reverse price
+//             significantly more often than those random levels do.
+//   OVERFIT   The detailed classes are checked out of sample: each test is
+//             predicted before it is graded. If the classes don't beat the
+//             plain family rate, the plain rate is what gets shown.
+//   TERMINUS  reach (chance price gets there before the session ends) ×
+//             reversal chance × chance every nearer zone breaks first: the
+//             zone most likely to end today's move on each side.
+// All state changes on confirmed bars; nothing repaints.
 // ============================================================================
 
 // ════════════════════════════ INPUTS ════════════════════════════
-string GL = "Trapped crowds (walls)"
+string GL = "Trapped-crowd zones"
 float legThr   = input.float(0.20, "Swing leg size (× ADR)", minval = 0.05, maxval = 1.0, step = 0.01, group = GL, tooltip = "A swing crowd is everyone who traded during a leg of at least this size. A leg is confirmed once price reverses by the same amount.")
 bool  useMajor = input.bool(true, "Track MAJOR crowds", group = GL)
 float majThr   = input.float(0.40, "MAJOR leg size (× ADR)", minval = 0.1, maxval = 2.0, step = 0.05, group = GL, tooltip = "Must be larger than the swing size, otherwise MAJOR tracking stays off.")
@@ -48,8 +42,14 @@ float maxPct   = input.float(0.12, "Max half-height (% of price)", minval = 0.01
 float pendDays = input.float(5.0, "Forget legs that haven't failed after (days)", minval = 0.5, maxval = 30.0, step = 0.5, group = GL)
 int   adrLen   = input.int(14, "ADR / average volume length (days)", minval = 2, group = GL)
 
+string GS = "Structure levels"
+bool  useSwing   = input.bool(true, "Swing highs and lows", group = GS, tooltip = "Confirmed extremes of the swing and MAJOR zigzags.")
+bool  usePD      = input.bool(true, "Prior-day high and low", group = GS)
+float lvlW       = input.float(0.025, "Level half-height (× ADR)", minval = 0.005, maxval = 0.2, step = 0.005, group = GS, tooltip = "The level itself is the zone's far edge; the zone extends this far and again toward price.")
+int   lvlPerSide = input.int(3, "Max levels per family per side", minval = 1, maxval = 10, group = GS, tooltip = "The newest are kept.")
+
 string GZ = "Zone lifecycle"
-int   maxPerSide = input.int(8, "Max live zones per side", minval = 1, maxval = 20, group = GZ)
+int   maxPerSide = input.int(8, "Max trapped zones per side", minval = 1, maxval = 20, group = GZ)
 float maxAgeD    = input.float(10.0, "Max zone age (days)", minval = 1.0, group = GZ, tooltip = "Counted from the zone's last reinforcement by a new trapped crowd.")
 float halfLifeD  = input.float(4.0, "Crowd size half-life (days)", minval = 0.5, group = GZ)
 float bandPct    = input.float(6.0, "Distance band (% of price)", minval = 0.5, group = GZ, tooltip = "Zones farther than this from price are dropped.")
@@ -57,21 +57,14 @@ int   acceptMin  = input.int(10, "Dies after closes hold beyond it for (minutes)
 float breakMult  = input.float(1.0, "…or at once on a close this far past (× zone height)", minval = 0.25, maxval = 5.0, step = 0.25, group = GZ)
 float rollPct    = input.float(12.0, "Contract-roll gap wipe (%)", minval = 2.0, group = GZ, tooltip = "An opening gap this large (a futures roll) resets all zones, legs and stop pools.")
 
-string GH = "Hold rate (measured on this chart)"
-float reactAdr = input.float(0.20, "Held = reaction of at least (× ADR)", minval = 0.05, maxval = 2.0, step = 0.05, group = GH, tooltip = "After price first reaches a zone, it has held once a bar closes this far beyond the zone's edge on the rejection side, before an accepted break kills the zone. A break first counts as a failure.")
-int   minTests = input.int(20, "Rates count as learned after (tests)", minval = 5, maxval = 200, group = GH, tooltip = "Until then hold rates are mostly the neutral prior and are shown with a ~.")
-float fuelZone = input.float(3.0, "Stop fuel reach (× zone half-height)", minval = 0.5, step = 0.5, group = GH, tooltip = "Un-run pivot stops parked within this distance in front of a zone mark it as fuelled.")
-int   pivLen   = input.int(5, "Stop-pool pivot length", minval = 2, group = GH)
-int   divLen   = input.int(20, "Exhaustion: extreme / divergence lookback", minval = 5, group = GH)
-int   erLen    = input.int(10, "Exhaustion: efficiency length", minval = 3, group = GH)
-
-string GB = "Fade test (self-graded trades)"
-bool  btOn     = input.bool(true, "Grade a fade trade at every first test", group = GB, tooltip = "At each zone's first test inside the session a fade is filled at the zone's near edge (or at the open if price opened inside the zone), with a stop beyond the zone and a target in R. Pessimistic: stop and target in one bar count as a loss, and the fill bar can only lose.")
-float stopMult = input.float(1.0, "Stop beyond the zone (× zone height)", minval = 0.0, maxval = 5.0, step = 0.25, group = GB)
-float tgtR     = input.float(2.0, "Target (R multiple)", minval = 0.5, maxval = 10.0, step = 0.5, group = GB)
-bool  eodExit  = input.bool(true, "Exit open trades at the session end", group = GB)
-float costTk   = input.float(2.0, "Round-trip costs (ticks)", minval = 0.0, step = 0.5, group = GB, tooltip = "Commission plus slippage per trade. On MNQ a ~$1.25 round-trip commission is 2.5 ticks.")
-bool  showPlan = input.bool(true, "Draw the fade plan at each terminus", group = GB)
+string GH = "Reversal accuracy (measured on this chart)"
+float reactAdr   = input.float(0.20, "Reversal = price turns at least (× ADR)", minval = 0.05, maxval = 2.0, step = 0.05, group = GH, tooltip = "A test counts as a reversal once a bar closes this far beyond the zone's edge on the rejection side, before an accepted break kills the zone. A break first counts as a failure.")
+int   minTests   = input.int(20, "Rates count as learned after (tests)", minval = 5, maxval = 200, group = GH, tooltip = "Until then reversal rates are mostly the neutral prior and are shown with a ~.")
+bool  onlyProven = input.bool(false, "Hide families that don't beat random levels", group = GH, tooltip = "After 100 graded tests of a family and 100 of its random twins, a family whose zones don't reverse price significantly more often than random levels is hidden. It keeps being graded, so it comes back if that changes.")
+float fuelZone   = input.float(3.0, "Stop fuel reach (× zone half-height)", minval = 0.5, step = 0.5, group = GH, tooltip = "Un-run pivot stops parked within this distance in front of a zone mark it as fuelled.")
+int   pivLen     = input.int(5, "Stop-pool pivot length", minval = 2, group = GH)
+int   divLen     = input.int(20, "Exhaustion: extreme / divergence lookback", minval = 5, group = GH)
+int   erLen      = input.int(10, "Exhaustion: efficiency length", minval = 3, group = GH)
 
 string GR = "Reach model · session"
 string tz      = input.string("America/New_York", "Session timezone", group = GR)
@@ -82,7 +75,7 @@ int    sEndM   = input.int(0, ":", minval = 0, maxval = 59, inline = "se", group
 string volSrc  = input.string("Session range", "Reach volatility", options = ["Session range", "Daily range"], group = GR, tooltip = "Session range: the average range of the session itself (falls back to the daily range until 5 full sessions are seen). Daily range: the full-day ADR, which on futures includes the overnight range.")
 
 string GT = "Trend-day context"
-bool   useTrend = input.bool(true, "Trend-day classes", group = GT, tooltip = "Intraday charts only. A trend day is price outside its time-of-day noise area, or leading the correlated index. Zones in its path form their own hold-rate classes.")
+bool   useTrend = input.bool(true, "Trend-day classes", group = GT, tooltip = "Intraday charts only. A trend day is price outside its time-of-day noise area, or leading the correlated index. Zones in its path form their own reversal-rate classes.")
 int    nbDays   = input.int(14, "Noise-area lookback (sessions)", minval = 5, maxval = 30, group = GT)
 float  nbMult   = input.float(1.0, "Noise-area width (×)", minval = 0.5, maxval = 3.0, step = 0.1, group = GT)
 bool   useDiv   = input.bool(true, "Also flag a trend when leading the correlated index", group = GT)
@@ -125,28 +118,34 @@ bool   showTable = input.bool(true, "Dashboard", group = G7)
 bool   tblFull   = input.bool(true, "Full detail (off = compact)", group = G7)
 string tblPos    = input.string(position.top_right, "Dashboard position", options = [position.top_right, position.middle_right, position.bottom_right, position.top_left, position.bottom_left], group = G7)
 string tblSize   = input.string(size.small, "Dashboard text size", options = [size.tiny, size.small, size.normal], group = G7)
-color  colRes    = input.color(color.rgb(199, 106, 114), "Upside walls (trapped buyers)", group = G7)
-color  colSup    = input.color(color.rgb(86, 166, 154), "Downside walls (trapped sellers)", group = G7)
+color  colRes    = input.color(color.rgb(199, 106, 114), "Resistance (above price)", group = G7)
+color  colSup    = input.color(color.rgb(86, 166, 154), "Support (below price)", group = G7)
 color  colDbl    = input.color(color.rgb(255, 215, 0), "DOUBLE", group = G7)
 color  colNeut   = input.color(color.rgb(120, 132, 148), "Dormant structure", group = G7)
 color  colPanel  = input.color(color.rgb(14, 17, 22), "Panel background", group = G7)
 
 string G8 = "Alerts"
 float alertThr   = input.float(50.0, "Terminus alert threshold (% probability)", minval = 1.0, maxval = 99.0, step = 1.0, group = G8) / 100.0
-bool  alertTouch = input.bool(true, "alert() on the first test of a zone", group = G8, tooltip = "Fires through an alert set to 'Any alert() function call'.")
-bool  alertNew   = input.bool(false, "alert() when a new zone forms", group = G8)
+bool  alertTouch = input.bool(true, "alert() when a zone is first tested", group = G8, tooltip = "Fires through an alert set to 'Any alert() function call'.")
+bool  alertNew   = input.bool(false, "alert() when a new trapped zone forms", group = G8)
 
 // ════════════════════════════ CONSTANTS ════════════════════════════
 float  DAY_MS   = 86400000.0
 int    MAP_CAP  = 40000     // Pine maps hold at most 50,000 keys
-float  PRIOR_K  = 8.0       // pseudo-tests each hold-rate level borrows from the level above it
+float  PRIOR_K  = 8.0       // pseudo-tests each reversal-rate level borrows from the level above it
 float  NEAR_ADR = 0.25      // within this many ADR the current exhaustion reading describes the arrival
+int    PROVE_N  = 100       // graded tests of a family and of its random twins before it can be hidden
+int    PQ_MIN   = 30        // graded tests before the out-of-sample check can switch the classes off
+int    CTL_CAP  = 150       // random-level twins kept at once
+float  PHI      = 0.6180339887
 float  loPct    = math.min(minPct, maxPct)
 float  hiPct    = math.max(minPct, maxPct)
 bool   majOn    = useMajor and majThr > legThr
 color  colTxt   = color.rgb(226, 232, 240)
 color  colDim   = color.rgb(126, 137, 153)
 color  colSect  = color.rgb(24, 29, 37)
+color  colGood  = color.rgb(120, 200, 140)
+color  colBad   = color.rgb(230, 120, 110)
 string MONO     = font.family_monospace
 
 // the correlated index must be a different market: NQ for the S&P family, ES for everything else
@@ -169,31 +168,39 @@ type Node
     int   side
     box   bx
 
-// trapped-crowd zone; side 1 = trapped buyers above price (upside wall), -1 = trapped sellers below
+// a support / resistance zone, or (ctrl) the hidden random-level twin of one;
+// side 1 = resistance above price, -1 = support below; fam 0 = trapped, 1 = swing, 2 = prior day
 type Zone
-    float p
-    float w
-    float sd
-    int   side
-    int   t
-    float q
-    int   spanS
-    int   spanE
-    int   bornBar
-    int   horizon = 0
-    bool  stacked = false
-    int   crowds  = 1
-    int   beyondT = 0
-    bool  touched = false
-    bool  spent   = false
-    bool  dbl     = false
-    bool  inPath  = false
-    bool  fuel    = false
-    int   cell    = -1
-    bool  graded  = false
-    float prob    = 0.0
-    float hold    = na
-    box   bx
+    float  p
+    float  w
+    float  sd
+    int    side
+    int    t
+    float  q
+    int    spanS
+    int    spanE
+    int    bornBar
+    int    uid     = 0
+    int    fam     = 0
+    bool   ctrl    = false
+    string note    = ""
+    int    horizon = 0
+    bool   stacked = false
+    int    crowds  = 1
+    bool   conf    = false
+    int    beyondT = 0
+    bool   touched = false
+    bool   spent   = false
+    bool   dbl     = false
+    bool   inPath  = false
+    bool   fuel    = false
+    int    cell    = -1
+    bool   graded  = false
+    float  pC      = na
+    float  pF      = na
+    float  prob    = 0.0
+    float  hold    = na
+    box    bx
 
 // zigzag state at one crowd size; A = volume by price from the leg start to its extreme, B = after the extreme
 type Tracker
@@ -218,22 +225,15 @@ type Leg
     int   scale
     map<int, float> hist
 
-// a graded fade trade; side 1 = short at an upside wall, -1 = long at a downside wall
-type Trade
-    int   side
-    float entry
-    float stop
-    float target
-    float risk
-    int   cls
-
-// Zone field notes: p = the crowd's volume-weighted breakeven, w = half-height, sd = spread of its entries,
-// t = last reinforcement (decay and age clock), q = trapped volume as of t, spanS/spanE = time span of the
-// volume behind the zone (so merges don't count the same traders twice), horizon 0 = swing / 1 = MAJOR,
-// stacked = reinforced by the other crowd size, crowds = distinct crowds merged in, beyondT = time closes
-// beyond it began (0 = not beyond), spent = reacted after a test (its crowd got out), fuel = un-run stops
-// parked in front of it, cell = hold-rate cell locked at the first test, prob / hold = last scan.
-// Tracker.primed: the first leg's true start is unknown, so it is never emitted.
+// Zone field notes: p = centre (a trapped crowd's volume-weighted breakeven), w = half-height, sd = spread
+// of the crowd's entries, t = last reinforcement (decay and age clock), q = trapped volume as of t,
+// spanS/spanE = time span of the volume behind a trapped zone (so merges don't count the same traders
+// twice), uid = shared by a zone and its random twin, note = what a structure level is, horizon 0 = swing / 1 = MAJOR, stacked = reinforced by the
+// other crowd size, crowds = distinct crowds merged in, conf = a trapped zone that absorbed a structure
+// level, beyondT = time closes beyond it began (0 = not beyond), spent = reacted after a test, fuel =
+// un-run stops parked in front of it, cell = reversal-rate cell locked at the first test, pC / pF = the
+// detailed and the plain family prediction made at that moment (scored out of sample), prob / hold =
+// last scan. Tracker.primed: the first leg's true start is unknown, so it is never emitted.
 
 // ════════════════════════════ DATA ════════════════════════════
 [adr, adv, adrPct, pdh, pdl] = request.security(syminfo.tickerid, "D", [ta.sma(high - low, adrLen)[1], ta.sma(volume, adrLen)[1], ta.sma((high - low) / close, adrLen)[1], high[1], low[1]], lookahead = barmerge.lookahead_on)
@@ -249,14 +249,23 @@ var array<Node>  nodes = array.new<Node>()
 var array<float> epP   = array.new<float>()
 var array<float> epW   = array.new<float>()
 var array<Zone>  zones = array.new<Zone>()
+var array<Zone>  ctls  = array.new<Zone>()
+var array<int>   uidSeq = array.new<int>(1, 0)
 var array<Leg>   pend  = array.new<Leg>()
 var array<float> resH  = array.new<float>()
 var array<float> resL  = array.new<float>()
 var Tracker trkS = Tracker.new(scale = 0, A = map.new<int, float>(), B = map.new<int, float>())
 var Tracker trkM = Tracker.new(scale = 1, A = map.new<int, float>(), B = map.new<int, float>())
-// hold rates: 64 cells = class (16: side × swing/MAJOR × DOUBLE × trend path) × stop fuel × exhaustion
-var array<int>   cN = array.new<int>(64, 0)
-var array<int>   cW = array.new<int>(64, 0)
+// reversal rates: 192 cells = family (3) × class (16: side × swing/MAJOR × DOUBLE × trend path) × stop fuel ×
+// exhaustion; famN / famW = tests / reversals per family; kN / kW = the same for the random twins;
+// pq = [out-of-sample tests, Brier of the detailed classes, Brier of the plain family rate]
+var array<float> cN   = array.new<float>(192, 0.0)
+var array<float> cW   = array.new<float>(192, 0.0)
+var array<float> famN = array.new<float>(3, 0.0)
+var array<float> famW = array.new<float>(3, 0.0)
+var array<float> kN   = array.new<float>(3, 0.0)
+var array<float> kW   = array.new<float>(3, 0.0)
+var array<float> pq   = array.new<float>(3, 0.0)
 // reach calibration: pending hourly predictions, scored at the session end into 10 probability bins
 var array<float> rkP   = array.new<float>()
 var array<float> rkE   = array.new<float>()
@@ -265,12 +274,6 @@ var array<bool>  rkHit = array.new<bool>()
 var array<float> rbN   = array.new<float>(10, 0.0)
 var array<float> rbP   = array.new<float>(10, 0.0)
 var array<float> rbH   = array.new<float>(10, 0.0)
-// fade test: open trades; bt = [trades, targets, stops, time exits, sum R, equity, peak, max drawdown];
-// tN / tR = trades and summed R per hold-rate class
-var array<Trade> trades = array.new<Trade>()
-var array<float> bt     = array.new<float>(8, 0.0)
-var array<float> tN     = array.new<float>(16, 0.0)
-var array<float> tR     = array.new<float>(16, 0.0)
 
 // histogram bin, fixed once for the whole chart so bin keys stay comparable
 var float binSz = na
@@ -396,16 +399,205 @@ f_score(Zone z) =>
 f_half(float sd) =>
     math.max(close * loPct / 100.0, math.min(close * hiPct / 100.0, widthSig * sd))
 
+f_lvlHalf() =>
+    math.max(close * loPct / 100.0, math.min(close * hiPct / 100.0, lvlW * nz(adr)))
+
+// removing a zone also removes its random twin if the twin hasn't been tested yet, so both get the same
+// window in which a test can happen; a twin already under test runs on to its grade
 f_killZone(int i) =>
     Zone gone = zones.remove(i)
     if not na(gone.bx)
         box.delete(gone.bx)
+    if ctls.size() > 0
+        for j = ctls.size() - 1 to 0
+            Zone c = ctls.get(j)
+            if c.uid == gone.uid
+                if not c.touched
+                    ctls.remove(j)
+                break
     true
 
 f_killNode(int i) =>
     Node gone = nodes.remove(i)
     if not na(gone.bx)
         box.delete(gone.bx)
+    true
+
+f_famName(int f) =>
+    f == 0 ? "TRAPPED" : f == 1 ? "SWING" : "PRIOR DAY"
+
+f_heavy(Zone z) =>
+    z.horizon == 1 or z.stacked or z.crowds > 1
+
+// reversal-rate class within a family: side × size × DOUBLE × trend path (0-15)
+f_cls(Zone z) =>
+    (z.side == 1 ? 0 : 8) + (f_heavy(z) ? 4 : 0) + (z.dbl ? 2 : 0) + (z.inPath ? 1 : 0)
+
+f_clsName(int c) =>
+    string s = (c >= 8 ? "support" : "resistance") + " · " + (c % 8 >= 4 ? "MAJOR/stacked" : "swing size")
+    if c % 4 >= 2
+        s += " · DOUBLE"
+    if c % 2 == 1
+        s += " · trend path"
+    s
+
+// plain family reversal rate, shrunk toward the chart-wide rate (which starts at 50%)
+f_famRate(int fam) =>
+    float nAll = famN.sum()
+    float wAll = famW.sum()
+    float pAll = (wAll + 1.0) / (nAll + 2.0)
+    (famW.get(fam) + PRIOR_K * pAll) / (famN.get(fam) + PRIOR_K)
+
+// Detailed reversal rate. Each level is shrunk toward the one above it: family -> class pooled over side
+// -> class -> + stop fuel -> + exhaustion (only when price is near enough for the current exhaustion
+// reading to describe the arrival).
+f_rate(int fam, int c16, bool fuel, bool exh, bool near) =>
+    int   base = fam * 64
+    int   c8   = c16 % 8
+    float n8   = 0.0
+    float w8   = 0.0
+    float n16  = 0.0
+    float w16  = 0.0
+    for m = 0 to 3
+        n8  += cN.get(base + c8 * 4 + m) + cN.get(base + (c8 + 8) * 4 + m)
+        w8  += cW.get(base + c8 * 4 + m) + cW.get(base + (c8 + 8) * 4 + m)
+        n16 += cN.get(base + c16 * 4 + m)
+        w16 += cW.get(base + c16 * 4 + m)
+    int   f0  = base + c16 * 4 + (fuel ? 2 : 0)
+    float n32 = cN.get(f0) + cN.get(f0 + 1)
+    float w32 = cW.get(f0) + cW.get(f0 + 1)
+    int   c64 = f0 + (exh ? 1 : 0)
+    float pF  = f_famRate(fam)
+    float p8  = (w8 + PRIOR_K * pF) / (n8 + PRIOR_K)
+    float p16 = (w16 + PRIOR_K * p8) / (n16 + PRIOR_K)
+    float p32 = (w32 + PRIOR_K * p16) / (n32 + PRIOR_K)
+    near ? (cW.get(c64) + PRIOR_K * p32) / (cN.get(c64) + PRIOR_K) : p32
+
+// overfit guard: the detailed classes are used only while they predict better out of sample than the plain
+// family rate (or while there are too few tests to tell)
+f_detailOk() =>
+    pq.get(0) < PQ_MIN or pq.get(1) < pq.get(2)
+
+// Lock a zone's cell at its first test and record, from past tests only, what the detailed classes and the
+// plain family rate predict for it; they are scored when the test is graded. Class and stop fuel come from
+// the last confirmed bar, before this bar swept anything; exhaustion is read on the test bar itself.
+f_lock(Zone z, bool exh) =>
+    int c16 = f_cls(z)
+    z.cell := z.fam * 64 + c16 * 4 + (z.fuel ? 2 : 0) + (exh ? 1 : 0)
+    if not z.ctrl
+        z.pC := f_rate(z.fam, c16, z.fuel, exh, true)
+        z.pF := f_famRate(z.fam)
+    true
+
+f_grade(Zone z, bool held) =>
+    float y = held ? 1.0 : 0.0
+    if z.ctrl
+        kN.set(z.fam, kN.get(z.fam) + 1.0)
+        kW.set(z.fam, kW.get(z.fam) + y)
+    else
+        cN.set(z.cell, cN.get(z.cell) + 1.0)
+        cW.set(z.cell, cW.get(z.cell) + y)
+        famN.set(z.fam, famN.get(z.fam) + 1.0)
+        famW.set(z.fam, famW.get(z.fam) + y)
+        pq.set(0, pq.get(0) + 1.0)
+        pq.set(1, pq.get(1) + math.pow(z.pC - y, 2))
+        pq.set(2, pq.get(2) + math.pow(z.pF - y, 2))
+    z.graded := true
+    true
+
+// a zone under test keeps the cell it was locked into; an untested zone is priced from its features now
+f_hold(Zone z, bool exh, bool near) =>
+    int  c16 = z.cell >= 0 ? int(math.floor((z.cell % 64) / 4.0)) : f_cls(z)
+    bool fu  = z.cell >= 0 ? z.cell % 4 >= 2 : z.fuel
+    bool ex  = z.cell >= 0 ? z.cell % 2 == 1 : exh
+    f_detailOk() ? f_rate(z.fam, c16, fu, ex, z.cell >= 0 or near) : f_famRate(z.fam)
+
+f_learning() =>
+    famN.sum() < minTests
+
+f_hPct(float h) =>
+    (f_learning() ? "~" : "") + f_pct(h)
+
+// two-proportion z-score: does this family reverse price more often than its random twins?
+f_z(int fam) =>
+    float n1 = famN.get(fam)
+    float n2 = kN.get(fam)
+    float z  = na
+    if n1 > 0 and n2 > 0
+        float p1 = famW.get(fam) / n1
+        float p2 = kW.get(fam) / n2
+        float pp = (famW.get(fam) + kW.get(fam)) / (n1 + n2)
+        float se = math.sqrt(pp * (1.0 - pp) * (1.0 / n1 + 1.0 / n2))
+        if se > 0
+            z := (p1 - p2) / se
+    z
+
+f_hidden(int fam) =>
+    onlyProven and famN.get(fam) >= PROVE_N and kN.get(fam) >= PROVE_N and nz(f_z(fam)) < 1.96
+
+f_newZone(int fam, int side, float p, float w, float q, int scale, bool ctrl) =>
+    box bx = na
+    int id = 0
+    if not ctrl
+        id := uidSeq.get(0) + 1
+        uidSeq.set(0, id)
+        if showZones
+            // born neutral; the last-bar pass re-weights every zone by live probability
+            bx := box.new(bar_index, p + w, bar_index + 1, p - w, border_color = color.new(colNeut, 100), border_width = 0, bgcolor = color.new(colNeut, 94), extend = extend.none)
+    Zone.new(p = p, w = w, sd = w, side = side, t = time, q = q, spanS = time, spanE = time, bornBar = bar_index, uid = id, fam = fam, ctrl = ctrl, horizon = scale, bx = bx)
+
+// Hidden random-level twin of a new zone: same family, side and height, at a pseudo-random 0.5-1.5× the
+// zone's distance from price (a low-discrepancy sequence, so it never repaints). Graded by the same rules,
+// never drawn, never used by the scan: it is the "is this better than a random line?" baseline.
+f_addCtrl(Zone z) =>
+    float x  = bar_index * PHI + z.p / syminfo.mintick * 0.0001
+    float u  = x - math.floor(x)
+    float pc = close + z.side * math.abs(z.p - close) * (0.5 + u)
+    if (z.side == 1 ? pc - z.w > close : pc + z.w < close)
+        Zone c = f_newZone(z.fam, z.side, pc, z.w, 0.0, z.horizon, true)
+        c.uid := z.uid
+        ctls.push(c)
+        if ctls.size() > CTL_CAP
+            ctls.shift()
+    true
+
+// an untested twin follows its zone's age clock and height when a new crowd reinforces the zone, so a
+// reinforced zone is never compared with an older, narrower random level
+f_syncTwin(Zone z) =>
+    for c in ctls
+        if c.uid == z.uid
+            if not c.touched
+                c.t := z.t
+                if (c.side == 1 ? c.p - z.w > close : c.p + z.w < close)
+                    c.w := z.w
+            break
+    true
+
+f_overlapIdx(int side, float p, float w) =>
+    int hit = -1
+    for [i, z] in zones
+        if z.side == side and not z.spent and math.abs(z.p - p) <= z.w + w
+            hit := i
+            break
+    hit
+
+// file a structure level (swing extreme or prior-day high/low) as a zone whose far edge is the level;
+// skipped when it would sit on price or overlap a live zone on the same side
+f_level(int fam, int side, float level, int scale, string note) =>
+    float w = f_lvlHalf()
+    float p = level - side * w
+    if (side == 1 ? p - w > close : p + w < close)
+        int oi = f_overlapIdx(side, p, w)
+        if oi >= 0
+            Zone ex = zones.get(oi)
+            if ex.fam == fam and scale > ex.horizon
+                ex.horizon := scale
+                ex.note    := note
+        else
+            Zone z = f_newZone(fam, side, p, w, 0.0, scale, false)
+            z.note := note
+            zones.push(z)
+            f_addCtrl(z)
     true
 
 // a pending leg just failed: price its trapped crowd, then file a new zone or reinforce an overlapping one
@@ -433,7 +625,7 @@ f_trap(Leg L) =>
         if isClear and isNear
             int mi = -1
             for [j, zz] in zones
-                if zz.side == L.d and not zz.spent and math.abs(zz.p - vw) <= zz.w + half
+                if zz.fam == 0 and zz.side == L.d and not zz.spent and math.abs(zz.p - vw) <= zz.w + half
                     mi := j
                     break
             if mi >= 0
@@ -446,8 +638,10 @@ f_trap(Leg L) =>
                 float vN = (m0 * (zm.sd * zm.sd + math.pow(zm.p - pN, 2)) + sv * (sdv * sdv + math.pow(vw - pN, 2))) / wt
                 float sN = math.sqrt(math.max(vN, 0.0))
                 float wN = f_half(sN)
-                // re-centre on the pooled crowd unless that would drop the zone onto price
-                if (L.d == 1 ? close < pN - wN : close > pN + wN)
+                // re-centre on the pooled crowd unless that would drop the zone onto price, or the zone is
+                // mid-test (moving it then would change the rules its test is graded by)
+                bool underTest = zm.touched and not zm.graded
+                if not underTest and (L.d == 1 ? close < pN - wN : close > pN + wN)
                     zm.p  := pN
                     zm.sd := sN
                     zm.w  := wN
@@ -463,123 +657,69 @@ f_trap(Leg L) =>
                 zm.horizon := math.max(zm.horizon, L.scale)
                 if not overlap
                     zm.crowds := zm.crowds + 1
+                f_syncTwin(zm)
             else
-                box bx = na
-                if showZones
-                    // born neutral; the last-bar pass re-weights every zone by live probability
-                    bx := box.new(bar_index, vw + half, bar_index + 1, vw - half, border_color = color.new(colNeut, 100), border_width = 0, bgcolor = color.new(colNeut, 94), extend = extend.none)
-                zones.push(Zone.new(p = vw, w = half, sd = sdv, side = L.d, t = time, q = sv, spanS = L.tS, spanE = L.tE, bornBar = bar_index, horizon = L.scale, bx = bx))
+                Zone zN = f_newZone(0, L.d, vw, half, sv, L.scale, false)
+                zN.sd    := sdv
+                zN.spanS := L.tS
+                zN.spanE := L.tE
+                // the trapped crowd absorbs any untested structure level it overlaps on the same side
+                if zones.size() > 0
+                    for j = zones.size() - 1 to 0
+                        Zone lz = zones.get(j)
+                        if lz.fam > 0 and lz.side == L.d and not lz.touched and math.abs(lz.p - vw) <= lz.w + half
+                            f_killZone(j)
+                            zN.conf := true
+                zones.push(zN)
+                f_addCtrl(zN)
                 if alertNew
-                    alert("LEDGER·T: new " + (L.scale == 1 ? "MAJOR" : "swing") + (L.d == 1 ? " upside wall (trapped buyers) at " : " downside wall (trapped sellers) at ") + f_px(vw) + " on " + syminfo.ticker, alert.freq_once_per_bar_close)
+                    alert("LEDGER·T: new " + (L.scale == 1 ? "MAJOR " : "") + (L.d == 1 ? "resistance" : "support") + " zone (trapped " + (L.d == 1 ? "buyers" : "sellers") + ") at " + f_px(vw) + " on " + syminfo.ticker, alert.freq_once_per_bar_close)
     true
 
-f_heavy(Zone z) =>
-    z.horizon == 1 or z.stacked or z.crowds > 1
-
-// hold-rate class: side × size × DOUBLE × trend path (0-15)
-f_cls(Zone z) =>
-    (z.side == 1 ? 0 : 8) + (f_heavy(z) ? 4 : 0) + (z.dbl ? 2 : 0) + (z.inPath ? 1 : 0)
-
-f_clsName(int c) =>
-    string s = (c >= 8 ? "downside" : "upside") + " · " + (c % 8 >= 4 ? "MAJOR/stacked" : "swing")
-    if c % 4 >= 2
-        s += " · DOUBLE"
-    if c % 2 == 1
-        s += " · trend path"
-    s
-
-// Lock a zone's hold-rate cell at its first test. Class and stop fuel come from the last confirmed bar,
-// before this bar swept anything; exhaustion is read on the test bar itself.
-f_lock(Zone z, bool exh) =>
-    z.cell := f_cls(z) * 4 + (z.fuel ? 2 : 0) + (exh ? 1 : 0)
-    true
-
-f_grade(Zone z, bool held) =>
-    cN.set(z.cell, cN.get(z.cell) + 1)
-    if held
-        cW.set(z.cell, cW.get(z.cell) + 1)
-    z.graded := true
-    true
-
-// Hold-rate estimate. Each level is shrunk toward the one above it: chart-wide -> class pooled over side
-// -> class -> + stop fuel -> + exhaustion (only when price is near enough for the current exhaustion
-// reading to describe the arrival). With no history every zone starts at 50%.
-f_rate(int c16, bool fuel, bool exh, bool near) =>
-    float nAll = cN.sum()
-    float wAll = cW.sum()
-    int   c8   = c16 % 8
-    float n8   = 0.0
-    float w8   = 0.0
-    float n16  = 0.0
-    float w16  = 0.0
-    for m = 0 to 3
-        n8  += cN.get(c8 * 4 + m) + cN.get((c8 + 8) * 4 + m)
-        w8  += cW.get(c8 * 4 + m) + cW.get((c8 + 8) * 4 + m)
-        n16 += cN.get(c16 * 4 + m)
-        w16 += cW.get(c16 * 4 + m)
-    int   f0   = c16 * 4 + (fuel ? 2 : 0)
-    float n32  = cN.get(f0) + cN.get(f0 + 1)
-    float w32  = cW.get(f0) + cW.get(f0 + 1)
-    int   c64  = f0 + (exh ? 1 : 0)
-    float pAll = (wAll + 1.0) / (nAll + 2.0)
-    float p8   = (w8 + PRIOR_K * pAll) / (n8 + PRIOR_K)
-    float p16  = (w16 + PRIOR_K * p8) / (n16 + PRIOR_K)
-    float p32  = (w32 + PRIOR_K * p16) / (n32 + PRIOR_K)
-    near ? (cW.get(c64) + PRIOR_K * p32) / (cN.get(c64) + PRIOR_K) : p32
-
-// a zone under test keeps the cell it was locked into; an untested zone is priced from its features now
-f_hold(Zone z, bool exh, bool near) =>
-    int c16 = z.cell >= 0 ? int(math.floor(z.cell / 4.0)) : f_cls(z)
-    bool fu = z.cell >= 0 ? z.cell % 4 >= 2 : z.fuel
-    bool ex = z.cell >= 0 ? z.cell % 2 == 1 : exh
-    f_rate(c16, fu, ex, z.cell >= 0 or near)
-
-f_learning() =>
-    cN.sum() < minTests
-
-f_hPct(float h) =>
-    (f_learning() ? "~" : "") + f_pct(h)
-
-f_zC16(Zone z) =>
-    z.cell >= 0 ? int(math.floor(z.cell / 4.0)) : f_cls(z)
-
-// fade plan for a zone: entry at the near edge, stop beyond the far edge, target in R
-f_entry(Zone z) =>
-    z.side == 1 ? z.p - z.w : z.p + z.w
-
-f_stop(Zone z) =>
-    z.side == 1 ? z.p + z.w + stopMult * 2.0 * z.w : z.p - z.w - stopMult * 2.0 * z.w
-
-f_target(Zone z) =>
-    f_entry(z) - z.side * tgtR * math.abs(f_stop(z) - f_entry(z))
-
-// book a closed fade (R after costs) into the totals, the per-class tallies and the drawdown;
-// kind 1 = target, 2 = stop, 3 = time exit
-f_book(int cls, float r, int kind) =>
-    bt.set(0, bt.get(0) + 1.0)
-    bt.set(kind, bt.get(kind) + 1.0)
-    bt.set(4, bt.get(4) + r)
-    float eq = bt.get(5) + r
-    bt.set(5, eq)
-    bt.set(6, math.max(bt.get(6), eq))
-    bt.set(7, math.max(bt.get(7), bt.get(6) - eq))
-    tN.set(cls, tN.get(cls) + 1.0)
-    tR.set(cls, tR.get(cls) + r)
-    true
-
-// expected R of a fade in this class, shrunk toward the chart-wide expectancy
-f_ev(int c16) =>
-    float n  = bt.get(0)
-    float eA = n > 0 ? bt.get(4) / n : 0.0
-    (tR.get(c16) + PRIOR_K * eA) / (tN.get(c16) + PRIOR_K)
-
-f_rTxt(float r) =>
-    na(r) ? "-" : (bt.get(0) < minTests ? "~" : "") + (r >= 0 ? "+" : "−") + str.tostring(math.abs(r), "0.00") + "R"
+// Advance one zone (real or random twin) by a confirmed bar: first test, reversal grading, accepted-break
+// death, age and distance limits. Returns 1 if it should be removed, plus 2 if it was first tested now.
+f_life(Zone z, bool exh) =>
+    float top    = z.p + z.w
+    float bot    = z.p - z.w
+    bool  tested = false
+    if high >= bot and low <= top and not z.touched and bar_index > z.bornBar
+        z.touched := true
+        f_lock(z, exh)
+        tested := true
+    // spent once price has reacted a full zone height away on the rejection side
+    if z.touched and not z.spent and (z.side == 1 ? high < bot and close < bot - z.w : low > top and close > top + z.w)
+        z.spent := true
+    // reversal: after the first test, a close reactAdr ADR beyond the zone edge on the rejection side
+    if z.touched and not z.graded and nz(adr) > 0 and z.side * ((z.side == 1 ? bot : top) - close) >= reactAdr * adr
+        f_grade(z, true)
+    float past = z.side * (close - (z.side == 1 ? top : bot))
+    bool  dead = false
+    if past > 0
+        int tNow = nz(time_close, time)
+        if z.beyondT == 0
+            z.beyondT := tNow
+        dead := past > breakMult * 2.0 * z.w or tNow - z.beyondT >= acceptMin * 60000
+    else
+        z.beyondT := 0
+    // an accepted break before the reversal is a failure, including a gap straight through an untested zone
+    if dead and not z.graded
+        if z.cell < 0
+            f_lock(z, exh)
+        f_grade(z, false)
+    bool tooOld = time - z.t > maxAgeD * DAY_MS
+    bool tooFar = math.abs(z.p - close) / close * 100.0 > bandPct
+    (dead or tooOld or tooFar ? 1 : 0) + (tested ? 2 : 0)
 
 f_tag(Zone z) =>
-    string s = z.stacked ? "STACKED" : z.horizon == 1 ? "MAJOR" : "swing"
+    string s = f_famName(z.fam)
+    if z.fam == 0 and z.stacked
+        s += " · STACKED"
+    else if z.horizon == 1
+        s += " · MAJOR"
     if z.crowds > 1
         s += " ×" + str.tostring(z.crowds)
+    if z.conf
+        s += " · +level"
     if z.inPath
         s += " · trend path"
     if z.dbl
@@ -590,28 +730,49 @@ f_tag(Zone z) =>
         s += " · tested"
     s
 
-f_crowd(Zone z) =>
-    nz(adv) > 0 ? str.tostring(f_mass(z) / adv * 100.0, "0") + "% ADV trapped" : "crowd " + str.tostring(f_mass(z), "#.#")
+f_desc(Zone z) =>
+    z.fam > 0 ? z.note : nz(adv) > 0 ? str.tostring(f_mass(z) / adv * 100.0, "0") + "% of a day's volume trapped" : "crowd " + str.tostring(f_mass(z), "#.#")
+
+// how this zone's family compares with random levels on this chart
+f_edgeTxt(int fam) =>
+    float n1 = famN.get(fam)
+    float n2 = kN.get(fam)
+    string s = "vs random levels: learning"
+    if n1 > 0 and n2 > 0
+        float d = famW.get(fam) / n1 - kW.get(fam) / n2
+        float z = f_z(fam)
+        s := "vs random levels " + (d >= 0 ? "+" : "−") + str.tostring(math.abs(d) * 100.0, "0") + " pts" + (na(z) ? "" : z >= 1.96 ? " ✓" : z <= -1.96 ? " ✗" : " (not yet significant)")
+    s
+
+f_accTxt(int fam) =>
+    float n1 = famN.get(fam)
+    float n2 = kN.get(fam)
+    string s = "no tests yet"
+    if n1 > 0
+        s := f_pct(famW.get(fam) / n1) + " of " + str.tostring(n1, "#")
+        if n2 > 0
+            float d = famW.get(fam) / n1 - kW.get(fam) / n2
+            float z = f_z(fam)
+            s += " · random " + f_pct(kW.get(fam) / n2) + " · " + (d >= 0 ? "+" : "−") + str.tostring(math.abs(d) * 100.0, "0") + (na(z) ? "" : z >= 1.96 ? " ✓" : z <= -1.96 ? " ✗" : " n.s.")
+    s
 
 f_holdTip(Zone z) =>
-    int   c16  = z.cell >= 0 ? int(math.floor(z.cell / 4.0)) : f_cls(z)
+    int   c16  = z.cell >= 0 ? int(math.floor((z.cell % 64) / 4.0)) : f_cls(z)
+    int   base = z.fam * 64
     float n16  = 0.0
     float w16  = 0.0
     for m = 0 to 3
-        n16 += cN.get(c16 * 4 + m)
-        w16 += cW.get(c16 * 4 + m)
-    float nAll = cN.sum()
-    float wAll = cW.sum()
+        n16 += cN.get(base + c16 * 4 + m)
+        w16 += cW.get(base + c16 * 4 + m)
     float h    = nz(z.hold, 0.5)
     float se   = math.sqrt(h * (1.0 - h) / (n16 + PRIOR_K))
     string rng = str.tostring(math.max(h - 1.2816 * se, 0.0) * 100.0, "0") + "–" + str.tostring(math.min(h + 1.2816 * se, 1.0) * 100.0, "0") + "%"
-    string head = f_learning() ? "Still learning: " + str.tostring(nAll, "0") + " of " + str.tostring(minTests) + " tests graded, so this is mostly the 50% prior.\n" : "Chance this zone holds: " + f_pct(h) + " (80% range " + rng + ")\n"
-    head + "Class: " + f_clsName(c16) + (z.fuel ? " · stop fuel" : "") + "\nThis class held " + str.tostring(w16, "0") + " of " + str.tostring(n16, "0") + " tests on this chart; all zones " + str.tostring(wAll, "0") + " of " + str.tostring(nAll, "0") + ".\nHeld = a close " + str.tostring(reactAdr, "0.00") + " ADR beyond the zone on the rejection side before an accepted break."
+    string head = f_learning() ? "Still learning: " + str.tostring(famN.sum(), "0") + " of " + str.tostring(minTests) + " tests graded, so this is mostly the 50% prior.\n" : "Chance this zone turns price: " + f_pct(h) + " (80% range " + rng + ")\n"
+    head + f_famName(z.fam) + " · " + f_clsName(c16) + (z.fuel ? " · stop fuel" : "") + "\nThis class reversed price in " + str.tostring(w16, "0") + " of " + str.tostring(n16, "0") + " tests on this chart.\n" + f_famName(z.fam) + " zones " + f_edgeTxt(z.fam) + ".\nReversal = a close " + str.tostring(reactAdr, "0.00") + " ADR beyond the zone on the rejection side before an accepted break." + (f_detailOk() ? "" : "\nThe detailed classes didn't beat the plain family rate out of sample, so the family rate is shown.")
 
-// Survival scan outward from price on one side. Zones whose crowd already got out (spent) are skipped,
-// and so are zones price is already past by the decisive-break distance (they die at this bar's close;
-// keeping them would flicker the terminus onto a dead level). A zone price is sweeping without a
-// decisive break stays in at distance 0: it is being tested, not yet broken.
+// Survival scan outward from price on one side. Zones that already reacted (spent), zones of hidden
+// families and zones price is already decisively past (they die at this bar's close) are skipped. A zone
+// price is sweeping without a decisive break stays in at distance 0: it is being tested, not yet broken.
 f_scan(int sd, float px, float sRem, bool exh, float nearD) =>
     array<float> dist = array.new<float>()
     array<int>   idx  = array.new<int>()
@@ -620,7 +781,7 @@ f_scan(int sd, float px, float sRem, bool exh, float nearD) =>
             z.prob := 0.0
             float farE   = sd == 1 ? z.p + z.w : z.p - z.w
             bool  broken = sd * (px - farE) > breakMult * 2.0 * z.w
-            if not z.spent and not broken
+            if not z.spent and not broken and not f_hidden(z.fam)
                 float edge = sd == 1 ? z.p - z.w : z.p + z.w
                 dist.push(math.max(0.0, sd * (edge - px)))
                 idx.push(i)
@@ -808,8 +969,8 @@ if rollGap and barstate.isconfirmed
     if nodes.size() > 0
         for i = nodes.size() - 1 to 0
             f_killNode(i)
+    ctls.clear()
     pend.clear()
-    trades.clear()
     f_resetTracker(trkS)
     f_resetTracker(trkM)
     resH.clear()
@@ -961,7 +1122,7 @@ bool  divDn    = not na(relPct) and relPct < -divPct and chartPct < 0
 bool  trendUp  = inCtx and ((outside and close > sOpen) or divUp)
 bool  trendDn  = inCtx and ((outside and close < sOpen) or divDn)
 
-// ════════════════════════════ FAILED LEGS -> ZONES AT THE TRAPPED CROWD'S BREAKEVEN ════════════════════════════
+// ════════════════════════════ FAILED LEGS -> TRAPPED ZONES ════════════════════════════
 if barstate.isconfirmed and pend.size() > 0
     for i = pend.size() - 1 to 0
         Leg   L = pend.get(i)
@@ -974,119 +1135,74 @@ if barstate.isconfirmed and pend.size() > 0
         if extended or failed or expired
             pend.remove(i)
 
-// ════════════════════════════ TRACK LEGS AT BOTH CROWD SIZES ════════════════════════════
+// ════════════════════════════ LEGS -> SWING LEVELS; NEW DAY -> PRIOR-DAY LEVELS ════════════════════════════
 if barstate.isconfirmed and nz(adr) > 0 and not na(binSz)
     Leg ls = f_track(trkS, legThr * adr, binSz, wBar)
     if not na(ls)
         pend.push(ls)
+        if useSwing
+            f_level(1, ls.d, ls.E, 0, ls.d == 1 ? "swing high" : "swing low")
     if majOn
         Leg lm = f_track(trkM, majThr * adr, binSz, wBar)
         if not na(lm)
             pend.push(lm)
+            if useSwing
+                f_level(1, lm.d, lm.E, 1, lm.d == 1 ? "MAJOR swing high" : "MAJOR swing low")
     while pend.size() > 80
         pend.shift()
+if barstate.isconfirmed and usePD and dayChange and nz(adr) > 0
+    if not na(pdh)
+        f_level(2, pdh > close ? 1 : -1, pdh, 0, "prior-day high")
+    if not na(pdl)
+        f_level(2, pdl > close ? 1 : -1, pdl, 0, "prior-day low")
 
-// ════════════════════════════ FADE TEST: manage open trades ════════════════════════════
-// runs before the lifecycle, so a trade can never be opened and closed on the same bar
-if barstate.isconfirmed and trades.size() > 0
-    for i = trades.size() - 1 to 0
-        Trade tx   = trades.get(i)
-        int   kind = 0
-        float r    = na
-        if eodExit and sessEnd
-            // the session closed on the previous bar: exit at its close
-            kind := 3
-            r    := tx.side * (tx.entry - close[1]) / tx.risk
-        else if (tx.side == 1 ? high >= tx.stop : low <= tx.stop)
-            // the stop wins whenever stop and target print in one bar; a gap through it fills at the open
-            float px = tx.side == 1 ? math.max(tx.stop, open) : math.min(tx.stop, open)
-            kind := 2
-            r    := tx.side * (tx.entry - px) / tx.risk
-        else if (tx.side == 1 ? low <= tx.target : high >= tx.target)
-            kind := 1
-            r    := tgtR
-        if kind > 0
-            f_book(tx.cls, r - costTk * syminfo.mintick / tx.risk, kind)
-            trades.remove(i)
-
-// ════════════════════════════ ZONE LIFECYCLE + HOLD GRADING ════════════════════════════
+// ════════════════════════════ ZONE LIFECYCLE + REVERSAL GRADING ════════════════════════════
+// the random-level twins run through exactly the same rules (first, so a twin tested on the bar its zone dies is kept)
+if barstate.isconfirmed and ctls.size() > 0
+    for i = ctls.size() - 1 to 0
+        Zone cz = ctls.get(i)
+        if f_life(cz, cz.side == 1 ? exhUp : exhDn) % 2 == 1
+            ctls.remove(i)
 bool hitRes = false
 bool hitSup = false
 if barstate.isconfirmed and zones.size() > 0
     for i = zones.size() - 1 to 0
-        Zone  zz  = zones.get(i)
-        float top = zz.p + zz.w
-        float bot = zz.p - zz.w
-        bool  exh = zz.side == 1 ? exhUp : exhDn
-        bool  inZone = high >= bot and low <= top
-        // first test: lock the zone's hold-rate cell
-        if inZone and not zz.touched and bar_index > zz.bornBar
-            zz.touched := true
-            f_lock(zz, exh)
+        Zone zz   = zones.get(i)
+        bool exh  = zz.side == 1 ? exhUp : exhDn
+        int  code = f_life(zz, exh)
+        if code >= 2 and not f_hidden(zz.fam)
             if zz.side == 1
                 hitRes := true
             else
                 hitSup := true
-            // fade test: fill at the near edge, or at the open if price opened inside the zone;
-            // no trade when the bar opened beyond the zone (it gapped through)
-            if btOn and inSess and trades.size() < 100 and (zz.side == 1 ? open < top : open > bot)
-                float nearE = zz.side == 1 ? bot : top
-                float stopP = f_stop(zz)
-                float fillPx = zz.side == 1 ? math.max(nearE, open) : math.min(nearE, open)
-                float risk   = zz.side * (stopP - fillPx)
-                if risk > 0
-                    int c16 = int(math.floor(zz.cell / 4.0))
-                    if (zz.side == 1 ? high >= stopP : low <= stopP)
-                        // the fill bar also reached the stop and its order is unknown: book the loss
-                        f_book(c16, -1.0 - costTk * syminfo.mintick / risk, 2)
-                    else
-                        trades.push(Trade.new(side = zz.side, entry = fillPx, stop = stopP, target = fillPx - zz.side * tgtR * risk, risk = risk, cls = c16))
             if alertTouch
-                alert("LEDGER·T: " + syminfo.ticker + " is testing the " + (zz.side == 1 ? "upside wall " : "downside wall ") + f_px(zz.p) + " · holds " + f_hPct(f_hold(zz, exh, true)) + " · " + f_tag(zz) + (btOn ? " · fade " + (zz.side == 1 ? "sell " : "buy ") + f_px(f_entry(zz)) + " stop " + f_px(f_stop(zz)) + " target " + f_px(f_target(zz)) : ""), alert.freq_once_per_bar_close)
-        // spent once price has reacted a full zone height away on the rejection side
-        bool away = zz.side == 1 ? high < bot and close < bot - zz.w : low > top and close > top + zz.w
-        if zz.touched and not zz.spent and away
-            zz.spent := true
-        // held: after the first test, a close reactAdr ADR beyond the zone edge on the rejection side
-        if zz.touched and not zz.graded and nz(adr) > 0 and zz.side * ((zz.side == 1 ? bot : top) - close) >= reactAdr * adr
-            f_grade(zz, true)
-        float past = zz.side * (close - (zz.side == 1 ? top : bot))
-        bool  dead = false
-        if past > 0
-            int tNow = nz(time_close, time)
-            if zz.beyondT == 0
-                zz.beyondT := tNow
-            dead := past > breakMult * 2.0 * zz.w or tNow - zz.beyondT >= acceptMin * 60000
-        else
-            zz.beyondT := 0
-        // an accepted break before the reaction is a failure, including a gap straight through an untested zone
-        if dead and not zz.graded
-            if zz.cell < 0
-                f_lock(zz, exh)
-            f_grade(zz, false)
-        bool tooOld = time - zz.t > maxAgeD * DAY_MS
-        bool tooFar = math.abs(zz.p - close) / close * 100.0 > bandPct
-        if dead or tooOld or tooFar
+                alert("LEDGER·T: " + syminfo.ticker + " is testing " + (zz.side == 1 ? "resistance " : "support ") + f_px(zz.p) + " · chance it turns price " + f_hPct(f_hold(zz, exh, true)) + " · " + f_tag(zz), alert.freq_once_per_bar_close)
+        if code % 2 == 1
             f_killZone(i)
 
-// keep the strongest maxPerSide zones on each side
-if zones.size() > 0
+// trapped zones: keep the strongest maxPerSide per side; structure levels: the newest lvlPerSide per family
+// per side. A zone under test is never pruned: its outcome would be lost, and only the slow tests with it.
+if barstate.isconfirmed and zones.size() > 0
     for side = -1 to 1 by 2
-        int cnt = 0
-        for zz in zones
-            if zz.side == side
-                cnt += 1
-        while cnt > maxPerSide
-            int   wI = -1
-            float wS = 0.0
-            for [i, zz] in zones
-                if zz.side == side
-                    float sc = f_score(zz)
-                    if wI < 0 or sc < wS
-                        wS := sc
-                        wI := i
-            f_killZone(wI)
-            cnt -= 1
+        for fam = 0 to 2
+            int cap = fam == 0 ? maxPerSide : lvlPerSide
+            int cnt = 0
+            for zz in zones
+                if zz.side == side and zz.fam == fam
+                    cnt += 1
+            while cnt > cap
+                int   wI = -1
+                float wS = 0.0
+                for [i, zz] in zones
+                    if zz.side == side and zz.fam == fam and not (zz.touched and not zz.graded)
+                        float sc = fam == 0 ? f_score(zz) : float(zz.bornBar)
+                        if wI < 0 or sc < wS
+                            wS := sc
+                            wI := i
+                if wI < 0
+                    break
+                f_killZone(wI)
+                cnt -= 1
 
 // ════════════════════════════ ZONE FEATURES (trend path, DOUBLE, stop fuel) ════════════════════════════
 if barstate.isconfirmed and zones.size() > 0
@@ -1149,7 +1265,7 @@ if barstate.isconfirmed
         for zz in zones
             float edge = zz.side == 1 ? zz.p - zz.w : zz.p + zz.w
             float d = zz.side * (edge - close)
-            if not zz.spent and d > 0 and rkP.size() < 3000
+            if not zz.spent and not f_hidden(zz.fam) and d > 0 and rkP.size() < 3000
                 rkP.push(f_reach(d, sigRem))
                 rkE.push(edge)
                 rkS.push(zz.side)
@@ -1173,12 +1289,12 @@ bool armUp   = ta.crossover(upP, alertThr)
 bool armDn   = ta.crossover(dnP, alertThr)
 bool touchUp = not na(tUpPrice) and high >= tUpPrice - tUpW and upP >= alertThr
 bool touchDn = not na(tDnPrice) and low <= tDnPrice + tDnW and dnP >= alertThr
-alertcondition(armUp, "Upside terminus armed", "LEDGER·T: upside terminus probability crossed the alert threshold on {{ticker}}")
-alertcondition(armDn, "Downside terminus armed", "LEDGER·T: downside terminus probability crossed the alert threshold on {{ticker}}")
-alertcondition(touchUp, "Upside terminus touched", "LEDGER·T: price reached a high-probability upside terminus on {{ticker}}")
-alertcondition(touchDn, "Downside terminus touched", "LEDGER·T: price reached a high-probability downside terminus on {{ticker}}")
-alertcondition(hitRes, "Upside wall tested", "LEDGER·T: price reached a trapped-buyer zone on {{ticker}} {{interval}}")
-alertcondition(hitSup, "Downside wall tested", "LEDGER·T: price reached a trapped-seller zone on {{ticker}} {{interval}}")
+alertcondition(armUp, "Resistance terminus above threshold", "LEDGER·T: the most likely resistance reversal zone crossed the probability threshold on {{ticker}}")
+alertcondition(armDn, "Support terminus above threshold", "LEDGER·T: the most likely support reversal zone crossed the probability threshold on {{ticker}}")
+alertcondition(touchUp, "Resistance terminus reached", "LEDGER·T: price reached the most likely resistance reversal zone on {{ticker}}")
+alertcondition(touchDn, "Support terminus reached", "LEDGER·T: price reached the most likely support reversal zone on {{ticker}}")
+alertcondition(hitRes, "Resistance zone tested", "LEDGER·T: price reached a resistance zone on {{ticker}} {{interval}}")
+alertcondition(hitSup, "Support zone tested", "LEDGER·T: price reached a support zone on {{ticker}} {{interval}}")
 
 // ════════════════════════════ LAST-BAR RENDER ════════════════════════════
 var line  pjU = na
@@ -1187,10 +1303,6 @@ var line  exU = na
 var line  exD = na
 var label lbU = na
 var label lbD = na
-var line  plU1 = na
-var line  plU2 = na
-var line  plD1 = na
-var line  plD2 = na
 var array<label> ladder = array.new<label>()
 var array<line>  ladLn  = array.new<line>()
 var table dash = table.new(tblPos, 3, 50, bgcolor = color.new(colPanel, 12), border_width = 1, border_color = color.new(color.gray, 82), frame_width = 1, frame_color = color.new(color.gray, 68))
@@ -1202,10 +1314,6 @@ if barstate.islast
     line.delete(exD)
     label.delete(lbU)
     label.delete(lbD)
-    line.delete(plU1)
-    line.delete(plU2)
-    line.delete(plD1)
-    line.delete(plD2)
     for lb in ladder
         label.delete(lb)
     ladder.clear()
@@ -1232,15 +1340,20 @@ if barstate.islast
         gapD := math.max(0.0, close - tD.p - tD.w)
         etaD := f_eta(gapD, sigBar)
 
-    // ── every zone re-weighted by live probability ──
+    // ── every zone re-weighted by live probability; the border style marks the family ──
     for [i, z] in zones
         if not na(z.bx)
-            bool  isTop = i == upI or i == dnI
-            bool  heavy = f_heavy(z)
-            color sc    = z.side == 1 ? colRes : colSup
+            bool   isTop = i == upI or i == dnI
+            bool   heavy = f_heavy(z)
+            color  sc    = z.side == 1 ? colRes : colSup
+            string fst   = z.fam == 0 ? line.style_solid : z.fam == 1 ? line.style_dashed : line.style_dotted
             box.set_right(z.bx, xEdge)
-            box.set_border_style(z.bx, z.spent ? line.style_dotted : line.style_solid)
-            if z.spent
+            box.set_border_style(z.bx, fst)
+            if f_hidden(z.fam)
+                box.set_bgcolor(z.bx, color.new(colNeut, 100))
+                box.set_border_color(z.bx, color.new(colNeut, 100))
+                box.set_border_width(z.bx, 0)
+            else if z.spent
                 box.set_bgcolor(z.bx, color.new(color.gray, 96))
                 box.set_border_color(z.bx, color.new(color.gray, 70))
                 box.set_border_width(z.bx, 1)
@@ -1251,28 +1364,22 @@ if barstate.islast
             else if z.prob >= pMin
                 int tr = int(math.round(93.0 - 11.0 * math.min(1.0, z.prob / 0.5)))
                 box.set_bgcolor(z.bx, color.new(sc, tr))
-                box.set_border_color(z.bx, z.dbl ? color.new(colDbl, 40) : color.new(sc, 80))
+                box.set_border_color(z.bx, z.dbl ? color.new(colDbl, 40) : color.new(sc, 70))
                 box.set_border_width(z.bx, heavy ? 2 : 1)
             else
                 box.set_bgcolor(z.bx, color.new(colNeut, 95))
-                box.set_border_color(z.bx, z.dbl ? color.new(colDbl, 75) : color.new(colNeut, 100))
-                box.set_border_width(z.bx, z.dbl ? 1 : 0)
+                box.set_border_color(z.bx, z.dbl ? color.new(colDbl, 75) : color.new(colNeut, 80))
+                box.set_border_width(z.bx, 1)
 
-    // ── tier 1: the two levels that actually matter ──
+    // ── tier 1: the two zones most likely to end today's move ──
     if showProj and not na(tU)
         int xU = bar_index + int(math.max(5.0, math.min(nz(etaU, 20.0), 400.0)))
         pjU := line.new(bar_index, pxU, xU, pxU, color = color.new(colRes, 15), width = 2)
-        lbU := label.new(xU, pxU, "▲ TERMINUS  " + f_px(pxU) + "\n  reach·hold  " + f_pct(upP) + "\n  zone holds  " + f_hPct(tU.hold) + "\n  " + f_tag(tU) + "\n  " + f_crowd(tU) + "\n  eta " + f_fmtMin(etaU) + "  ·  gap " + f_sig(gapU, sigRem) + (btOn ? "\n  fade sell " + f_px(f_entry(tU)) + " · stop " + f_px(f_stop(tU)) + " · tgt " + f_px(f_target(tU)) + "\n  fade EV " + f_rTxt(f_ev(f_zC16(tU))) : ""), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = tU.dbl ? colDbl : colRes, size = size.small, textalign = text.align_left, text_font_family = MONO, tooltip = f_holdTip(tU))
-        if btOn and showPlan
-            plU1 := line.new(bar_index, f_stop(tU), xU, f_stop(tU), color = color.new(colNeut, 25), style = line.style_dashed, width = 1)
-            plU2 := line.new(bar_index, f_target(tU), xU, f_target(tU), color = color.new(colSup, 35), style = line.style_dotted, width = 1)
+        lbU := label.new(xU, pxU, "▲ TERMINUS  " + f_px(pxU) + "\n  ends the move " + f_pct(upP) + "\n  turns price   " + f_hPct(tU.hold) + "\n  " + f_tag(tU) + "\n  " + f_desc(tU) + "\n  " + f_edgeTxt(tU.fam) + "\n  eta " + f_fmtMin(etaU) + "  ·  gap " + f_sig(gapU, sigRem), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = tU.dbl ? colDbl : colRes, size = size.small, textalign = text.align_left, text_font_family = MONO, tooltip = f_holdTip(tU))
     if showProj and not na(tD)
         int xD = bar_index + int(math.max(5.0, math.min(nz(etaD, 20.0), 400.0)))
         pjD := line.new(bar_index, pxD, xD, pxD, color = color.new(colSup, 15), width = 2)
-        lbD := label.new(xD, pxD, "▼ TERMINUS  " + f_px(pxD) + "\n  reach·hold  " + f_pct(dnP) + "\n  zone holds  " + f_hPct(tD.hold) + "\n  " + f_tag(tD) + "\n  " + f_crowd(tD) + "\n  eta " + f_fmtMin(etaD) + "  ·  gap " + f_sig(gapD, sigRem) + (btOn ? "\n  fade buy " + f_px(f_entry(tD)) + " · stop " + f_px(f_stop(tD)) + " · tgt " + f_px(f_target(tD)) + "\n  fade EV " + f_rTxt(f_ev(f_zC16(tD))) : ""), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = tD.dbl ? colDbl : colSup, size = size.small, textalign = text.align_left, text_font_family = MONO, tooltip = f_holdTip(tD))
-        if btOn and showPlan
-            plD1 := line.new(bar_index, f_stop(tD), xD, f_stop(tD), color = color.new(colNeut, 25), style = line.style_dashed, width = 1)
-            plD2 := line.new(bar_index, f_target(tD), xD, f_target(tD), color = color.new(colRes, 35), style = line.style_dotted, width = 1)
+        lbD := label.new(xD, pxD, "▼ TERMINUS  " + f_px(pxD) + "\n  ends the move " + f_pct(dnP) + "\n  turns price   " + f_hPct(tD.hold) + "\n  " + f_tag(tD) + "\n  " + f_desc(tD) + "\n  " + f_edgeTxt(tD.fam) + "\n  eta " + f_fmtMin(etaD) + "  ·  gap " + f_sig(gapD, sigRem), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = tD.dbl ? colDbl : colSup, size = size.small, textalign = text.align_left, text_font_family = MONO, tooltip = f_holdTip(tD))
 
     // ── probability-weighted expectation: a hairline ──
     if showExp and not na(upE)
@@ -1280,13 +1387,13 @@ if barstate.islast
     if showExp and not na(dnE)
         exD := line.new(bar_index, dnE, xEdge + 2, dnE, color = color.new(colSup, 55), style = line.style_dotted, width = 1)
 
-    // ── tier 2: the walls queued behind the terminus ──
+    // ── tier 2: the zones queued behind the terminus ──
     if showLadder and zones.size() > 0
         array<float> lpr = array.new<float>()
         array<int>   lix = array.new<int>()
         for [i, z] in zones
             bool drawn = showProj and (i == upI or i == dnI)
-            if not z.spent and z.prob >= pMin and not drawn
+            if not z.spent and not f_hidden(z.fam) and z.prob >= pMin and not drawn
                 lpr.push(z.prob)
                 lix.push(i)
         if lpr.size() > 0
@@ -1304,31 +1411,15 @@ if barstate.islast
                         shownD += 1
                     bool  isTop = zi == upI or zi == dnI
                     color sc    = z.side == 1 ? colRes : colSup
-                    string sz   = z.stacked ? "STACKED" : z.horizon == 1 ? "MAJOR" : "swing"
                     ladLn.push(line.new(bar_index, z.p, xEdge + 3, z.p, color = color.new(sc, isTop ? 30 : 74), width = 1, style = isTop ? line.style_solid : line.style_dotted))
-                    ladder.push(label.new(xEdge + 4, z.p, (z.side == 1 ? "▲ " : "▼ ") + f_px(z.p) + "  " + f_gauge(z.prob) + " " + f_pct(z.prob) + "   holds " + f_hPct(z.hold) + "   " + sz + (z.dbl ? " · DOUBLE" : ""), style = label.style_label_left, color = color.new(colPanel, 100), textcolor = z.dbl ? colDbl : color.new(sc, isTop ? 0 : 25), size = size.tiny, text_font_family = MONO, tooltip = f_holdTip(z)))
+                    ladder.push(label.new(xEdge + 4, z.p, (z.side == 1 ? "▲ " : "▼ ") + f_px(z.p) + "  " + f_gauge(z.prob) + " " + f_pct(z.prob) + "   turns " + f_hPct(z.hold) + "   " + f_famName(z.fam) + (z.horizon == 1 ? " MAJOR" : "") + (z.dbl ? " · DOUBLE" : ""), style = label.style_label_left, color = color.new(colPanel, 100), textcolor = z.dbl ? colDbl : color.new(sc, isTop ? 0 : 25), size = size.tiny, text_font_family = MONO, tooltip = f_holdTip(z)))
 
     // ── dashboard ──
     if showTable
         table.clear(dash, 0, 0, 2, 49)
-        int cntU  = 0
-        int cntD  = 0
-        int cntHv = 0
-        int cntDb = 0
-        for z in zones
-            if not z.spent
-                if z.side == 1
-                    cntU += 1
-                else
-                    cntD += 1
-                if f_heavy(z)
-                    cntHv += 1
-                if z.dbl
-                    cntDb += 1
-
         table.cell(dash, 0, 0, "LEDGER·TERMINUS", text_color = colTxt, text_size = tblSize, text_halign = text.align_left, text_font_family = MONO)
         table.cell(dash, 1, 0, "", text_size = tblSize)
-        table.cell(dash, 2, 0, "trapped-crowd field", text_color = colDim, text_size = tblSize, text_halign = text.align_right, text_font_family = MONO)
+        table.cell(dash, 2, 0, "support & resistance", text_color = colDim, text_size = tblSize, text_halign = text.align_right, text_font_family = MONO)
 
         int r = 1
         f_sec(dash, r, "REGIME")
@@ -1343,9 +1434,8 @@ if barstate.islast
         string ctx = not useTrend ? "off" : not intraday ? "intraday only" : not inSess ? "outside session" : na(sOpen) ? "waiting for a full session" : na(band) ? "learning " + str.tostring(nbFilled) + "/5" : trendUp ? "TREND UP" : trendDn ? "TREND DOWN" : "balanced"
         f_row(dash, r, "day type", ctx, trendUp or trendDn ? color.orange : colTxt)
         r += 1
-        // timeframe fit: when one bar can travel from a zone's near edge to its decisive-break level, a
-        // whole test (sweep or break) happens inside a single bar and can't be told apart; too little
-        // history can't teach the hold rates
+        // timeframe fit: when one bar can travel from a zone's near edge to its decisive-break level, a whole
+        // test (sweep or break) happens inside a single bar; too little history can't teach the rates
         float zSum = 0.0
         float zCnt = 0.0
         for z in zones
@@ -1355,8 +1445,8 @@ if barstate.islast
         float span   = zCnt > 0 ? (1.0 + breakMult) * zSum / zCnt : na
         float barR   = trReady ? trSlow : nz(atrL, nz(atrS))
         bool  tfBad  = not na(span) and barR > span
-        bool  tfThin = cN.sum() < minTests
-        string tfTxt = na(span) ? "-" : tfBad ? "too coarse · bar " + f_px(barR) + " > test span " + f_px(span) : tfThin ? "thin history · " + str.tostring(cN.sum()) + " tests" : "fits · bar " + f_px(barR) + " vs test span " + f_px(span)
+        bool  tfThin = famN.sum() < minTests
+        string tfTxt = na(span) ? "-" : tfBad ? "too coarse · bar " + f_px(barR) + " > test span " + f_px(span) : tfThin ? "thin history · " + str.tostring(famN.sum(), "#") + " tests" : "fits · bar " + f_px(barR) + " vs test span " + f_px(span)
         f_row(dash, r, "timeframe", tfTxt, tfBad or tfThin ? color.orange : colTxt)
         r += 1
         if tblFull
@@ -1364,83 +1454,81 @@ if barstate.islast
             f_row(dash, r, "vs " + corrName, divTxt, divUp or divDn ? color.orange : colTxt)
             r += 1
 
-        f_sec(dash, r, "UPSIDE")
+        f_sec(dash, r, "RESISTANCE (above)")
         r += 1
         f_row(dash, r, "terminus", f_px(pxU), colRes)
         r += 1
         f_rowG(dash, r, "probability", f_pct(upP), colRes, upP)
         r += 1
         if not na(tU)
-            f_rowG(dash, r, "zone holds", f_hPct(tU.hold), colRes, tU.hold)
+            f_rowG(dash, r, "turns price", f_hPct(tU.hold), colRes, tU.hold)
             r += 1
             if tblFull
                 f_row(dash, r, "zone", f_tag(tU), tU.dbl ? colDbl : colRes)
                 r += 1
-                f_row(dash, r, "crowd", f_crowd(tU), colRes)
+                f_row(dash, r, "detail", f_desc(tU), colRes)
                 r += 1
-                if btOn
-                    f_row(dash, r, "fade EV", f_rTxt(f_ev(f_zC16(tU))) + "  (stop " + f_px(f_stop(tU)) + ")", colRes)
-                    r += 1
+                f_row(dash, r, "evidence", f_edgeTxt(tU.fam), colRes)
+                r += 1
         if tblFull
             f_row(dash, r, "distance", na(gapU) ? "-" : f_px(gapU) + "  " + f_sig(gapU, sigRem), colRes)
             r += 1
             f_row(dash, r, "E[top]", f_px(upE), colRes)
             r += 1
-            f_rowG(dash, r, "no wall holds", f_pct(upNone), colRes, upNone)
+            f_rowG(dash, r, "no zone ends it", f_pct(upNone), colRes, upNone)
             r += 1
         f_row(dash, r, "eta", f_fmtMin(etaU), colRes)
         r += 1
 
-        f_sec(dash, r, "DOWNSIDE")
+        f_sec(dash, r, "SUPPORT (below)")
         r += 1
         f_row(dash, r, "terminus", f_px(pxD), colSup)
         r += 1
         f_rowG(dash, r, "probability", f_pct(dnP), colSup, dnP)
         r += 1
         if not na(tD)
-            f_rowG(dash, r, "zone holds", f_hPct(tD.hold), colSup, tD.hold)
+            f_rowG(dash, r, "turns price", f_hPct(tD.hold), colSup, tD.hold)
             r += 1
             if tblFull
                 f_row(dash, r, "zone", f_tag(tD), tD.dbl ? colDbl : colSup)
                 r += 1
-                f_row(dash, r, "crowd", f_crowd(tD), colSup)
+                f_row(dash, r, "detail", f_desc(tD), colSup)
                 r += 1
-                if btOn
-                    f_row(dash, r, "fade EV", f_rTxt(f_ev(f_zC16(tD))) + "  (stop " + f_px(f_stop(tD)) + ")", colSup)
-                    r += 1
+                f_row(dash, r, "evidence", f_edgeTxt(tD.fam), colSup)
+                r += 1
         if tblFull
             f_row(dash, r, "distance", na(gapD) ? "-" : f_px(gapD) + "  " + f_sig(gapD, sigRem), colSup)
             r += 1
             f_row(dash, r, "E[bot]", f_px(dnE), colSup)
             r += 1
-            f_rowG(dash, r, "no wall holds", f_pct(dnNone), colSup, dnNone)
+            f_rowG(dash, r, "no zone ends it", f_pct(dnNone), colSup, dnNone)
             r += 1
         f_row(dash, r, "eta", f_fmtMin(etaD), colSup)
         r += 1
 
         f_sec(dash, r, "EXHAUSTION")
         r += 1
-        f_rowG(dash, r, "upside", f_pct(eUp), colRes, eUp)
+        f_rowG(dash, r, "at resistance", f_pct(eUp), colRes, eUp)
         r += 1
-        f_rowG(dash, r, "downside", f_pct(eDn), colSup, eDn)
+        f_rowG(dash, r, "at support", f_pct(eDn), colSup, eDn)
         r += 1
 
-        // model vs what actually happened on this chart
-        f_sec(dash, r, "CALIBRATION")
+        // how often each family actually turned price on this chart, against random levels graded the same way
+        f_sec(dash, r, "ACCURACY")
         r += 1
-        float hN = cN.sum()
-        float hW = cW.sum()
-        f_row(dash, r, "zones held", hN > 0 ? f_pct(hW / hN) + " of " + str.tostring(hN, "#") + " tests" + (f_learning() ? "  (learning)" : "") : "no tests yet", colTxt)
+        f_row(dash, r, "reversal =", "turns " + str.tostring(reactAdr, "0.00") + " ADR before a break", colDim)
         r += 1
-        if tblFull
-            float nHv = 0.0
-            float wHv = 0.0
-            for c = 0 to 63
-                if int(math.floor(c / 4.0)) % 8 >= 4
-                    nHv += cN.get(c)
-                    wHv += cW.get(c)
-            f_row(dash, r, "swing / major", (hN - nHv > 0 ? f_pct((hW - wHv) / (hN - nHv)) : "-") + " / " + (nHv > 0 ? f_pct(wHv / nHv) : "-"), colDim)
+        for fam = 0 to 2
+            float zf = f_z(fam)
+            color cf = na(zf) ? colDim : zf >= 1.96 ? colGood : zf <= -1.96 ? colBad : colTxt
+            f_row(dash, r, f_famName(fam) + (f_hidden(fam) ? " (hidden)" : ""), f_accTxt(fam), cf)
             r += 1
+        float nA = famN.sum()
+        f_row(dash, r, "all zones", nA > 0 ? f_pct(famW.sum() / nA) + " of " + str.tostring(nA, "#") + (f_learning() ? "  (learning)" : "") : "no tests yet", colTxt)
+        r += 1
+        string pqTxt = pq.get(0) < PQ_MIN ? "checking · " + str.tostring(pq.get(0), "#") + "/" + str.tostring(PQ_MIN) + " tests" : pq.get(1) < pq.get(2) ? "classes beat family rate by " + str.tostring((1.0 - pq.get(1) / pq.get(2)) * 100.0, "0.0") + "% · used" : "classes add nothing · family rate used"
+        f_row(dash, r, "overfit check", pqTxt, pq.get(0) >= PQ_MIN and pq.get(1) >= pq.get(2) ? color.orange : colDim)
+        r += 1
         float rN  = rbN.sum()
         float rel = 0.0
         for b = 0 to 9
@@ -1453,27 +1541,20 @@ if barstate.islast
             f_row(dash, r, "reach reliability", rN > 0 ? str.tostring(rel / rN, "0.0000") : "-", colDim)
             r += 1
 
-        if btOn
-            f_sec(dash, r, "FADE TEST")
-            r += 1
-            float fN = bt.get(0)
-            float fW = bt.get(1)
-            float fL = bt.get(2)
-            f_row(dash, r, "trades", fN > 0 ? str.tostring(fN, "#") + " · won " + f_pct(fW / math.max(fW + fL, 1.0)) + " (breakeven " + f_pct(1.0 / (1.0 + tgtR)) + ")" : "none yet", colTxt)
-            r += 1
-            f_row(dash, r, "expectancy", fN > 0 ? f_rTxt(bt.get(4) / fN) + " per trade · net " + str.tostring(bt.get(4), "0.0") + "R" : "-", fN > 0 ? (bt.get(4) > 0 ? colSup : colRes) : colTxt)
-            r += 1
-            if tblFull
-                f_row(dash, r, "max drawdown", fN > 0 ? str.tostring(bt.get(7), "0.0") + "R · " + str.tostring(bt.get(3), "#") + " session exits" : "-", colDim)
-                r += 1
-
         if tblFull
             f_sec(dash, r, "FIELD")
             r += 1
-            f_row(dash, r, "live zones", str.tostring(cntU) + " up  " + str.tostring(cntD) + " dn  · " + str.tostring(cntHv) + " major · " + str.tostring(cntDb) + " DOUBLE", colDim)
-            r += 1
-            f_row(dash, r, "stop pools", str.tostring(resH.size()) + " up  " + str.tostring(resL.size()) + " dn", colDim)
-            r += 1
+            for fam = 0 to 2
+                int cU = 0
+                int cD = 0
+                for z in zones
+                    if z.fam == fam and not z.spent
+                        if z.side == 1
+                            cU += 1
+                        else
+                            cD += 1
+                f_row(dash, r, f_famName(fam) + " live", str.tostring(cU) + " above · " + str.tostring(cD) + " below", colDim)
+                r += 1
             string legTxt = nz(adr) > 0 and not na(binSz) ? "swing " + f_px(legThr * adr) + " · major " + (majOn ? f_px(majThr * adr) : "off") + " · bin " + f_px(binSz) : "waiting for " + str.tostring(adrLen + 1) + " daily bars"
             f_row(dash, r, "legs", legTxt, colDim)
             r += 1
