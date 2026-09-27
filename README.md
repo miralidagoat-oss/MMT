@@ -1,10 +1,13 @@
 # MMT — Quant Engine
 
-Two Pine Script v6 indicators:
+Pine Script v6 indicators:
 
 - **Alpha Predictive Limit Matrix** — everything up to the LEDGER section.
 - **LEDGER · Trapped-Crowd Reversal Zones** — see
-  [its section](#ledger--trapped-crowd-reversal-zones) at the end.
+  [its section](#ledger--trapped-crowd-reversal-zones).
+- **TERMINUS v2 · Price-Axis Survival Reversal Engine** and
+  **LEDGER·TERMINUS**, the combination of the two — see
+  [their section](#terminus-v2-and-ledgerterminus) at the end.
 
 **Alpha Predictive Limit Matrix** is a Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
@@ -386,3 +389,99 @@ differ by symbol, timeframe and settings. A larger `reactAdr` lowers them.
   price actually reverses at these zones.
 - RTH windows that cross midnight aren't supported. The dashboard says "check
   the RTH hours".
+
+## TERMINUS v2 and LEDGER·TERMINUS
+
+- **TERMINUS v2 (fixed):** `indicators/terminus.pine`
+- **LEDGER·TERMINUS (combined):** `indicators/ledger_terminus.pine`
+- **Original TERMINUS:** `indicators/legacy/terminus_original.pine`, kept for reference only.
+
+TERMINUS asks where today's move ends. For each wall it multiplies the chance
+price reaches it before the session closes (a random-walk "reflection
+principle" formula) by the chance the wall holds, and walks outward from price:
+a far wall can only end the move if every nearer one breaks first.
+
+### What was wrong with TERMINUS, and the fixes (v2)
+
+1. **The hold probability was a guess.** `1 − exp(−(0.35·mass + 0.40·√stops))`
+   used hand-set weights that nothing ever checked, so the headline
+   "reach·hold" number was half made up. v2 grades every wall's first test on
+   the chart (held = a close 0.2 × ADR back from the wall before price closes
+   through it; failed = closes through first). The model's score is used only
+   as the prior, pulled toward what walls with the same score actually did,
+   then the same side, then the same exhaustion state. The dashboard's
+   CALIBRATION rows show "model said x%, actually held y%".
+2. **The exhaustion panel was display-only.** It now feeds that calibration,
+   so whether exhaustion helps is measured rather than asserted.
+3. **Reach overstated on charts that include the overnight.** Two causes. The
+   daily ADR includes the overnight range while the horizon is a fraction of
+   the session. And `volScale = ATR14 / ATR200` at the session open compares
+   busy session bars with a 200-bar average made mostly of quiet overnight
+   bars, so it pinned high. v2 prices reach from the session's own average
+   range and a session-bars-only volatility ratio. Synthetic 1-minute data
+   (random walk with a busy session and a quiet overnight, 4 seeds × 60 days,
+   ~16,000 graded reach predictions):
+
+   | reach model | predicted | happened | reliability |
+   |---|---|---|---|
+   | original (daily range, all-bar ratio) | 47.6% | 26.7% | 0.0542 |
+   | session range only | 34.9% | 26.7% | 0.0098 |
+   | **v2 (session range + session-bar ratio)** | **26.7%** | **26.7%** | **0.0006** |
+
+   On session-only charts nothing changes (38.2% vs 36.0%, 0.0009 either way).
+   "Daily range" stays selectable. If you rely on
+   `backtest/calibrate_terminus.py`, re-run it: its 0.0016 figure was measured
+   with the old model.
+4. **Reach calibration readout.** At the first bar of every session hour,
+   each wall's reach probability is recorded and then scored at the session
+   end. The dashboard shows predicted vs hit and the reliability term on your
+   own chart.
+5. **No walls on symbols without volume** (SPX, most FX and CFD feeds). The
+   memory field was built only from volume, so it stayed empty and effort/CVD
+   were flat. Every bar now weighs 1 there.
+6. **SMT could never fire on ES** (it defaulted to comparing ES with itself).
+   The SMT symbol now auto-picks NQ on S&P charts and ES elsewhere, and a
+   symbol equal to the chart's own is turned off.
+7. Node birth and epoch accumulation run on confirmed bars only, so live nodes
+   no longer flicker with the developing close. Historical results are
+   unchanged. `tauRem` falls back to the bar open where there is no bar close
+   time.
+
+### LEDGER·TERMINUS: the combination
+
+- **Walls = LEDGER's trapped-crowd zones.** They're more specific than
+  TERMINUS's generic absorption nodes, which are kept only to mark DOUBLE
+  zones.
+- **Hold = measured** (LEDGER v3.2's self-grading), now split into 64 cells:
+  side × swing/MAJOR × DOUBLE × trend path × stop fuel (TERMINUS's un-run
+  pivot stops in front of the zone) × exhaustion at the test. Each level is
+  shrunk toward the one above it: chart-wide → class pooled over side → class
+  → + stop fuel → + exhaustion. Exhaustion only counts when price is within
+  0.25 × ADR, where the current reading describes the arrival. With no
+  history every zone starts at 50%, and values show with a `~` until 20 tests
+  are graded.
+- **Reach and the survival scan are TERMINUS v2's.** A zone price is sweeping
+  (beyond it, short of a decisive break) stays in the scan as "being tested";
+  one it is already decisively past is skipped. Zones whose crowd already got
+  out (spent) are skipped too.
+- **Display:** TERMINUS's three-tier, probability-keyed grammar with LEDGER's
+  information. The terminus readout shows reach·hold, the zone's hold rate,
+  MAJOR/DOUBLE/trend-path/stops tags and the % of a day's volume trapped.
+  Hovering any readout or ladder row shows the class and its counts.
+- **Honesty panel:** "zones held", swing vs major, reach said vs hit, and
+  reach reliability, all measured on your chart.
+
+### Verification and limits
+
+- Both scripts pass the `pynescript` parser. Neither has been compiled on
+  TradingView from here: paste it in, and report any error.
+- The new math (session clock, session-range σ, session-bar volatility ratio,
+  64-cell hold estimator, survival scan, reach calibration) was ported to
+  Python and run on synthetic data. Probabilities stay within [0, 1], each
+  side's terminus probabilities plus "no wall holds" sum to 1 on every bar,
+  and every graded test lands in a valid cell. The reach table above comes
+  from that port.
+- Synthetic data has no trapped-crowd effect, so these checks prove the
+  mechanics, not an edge. Whether zones hold more often than the no-edge
+  baseline (about 35–41% for LEDGER's grading) has to be read off the
+  CALIBRATION rows on real charts.
