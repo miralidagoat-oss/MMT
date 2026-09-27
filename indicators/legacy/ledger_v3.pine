@@ -1,0 +1,595 @@
+//@version=6
+indicator("LEDGER v3 · Trapped-Crowd Reversal Zones", shorttitle = "LEDGER", overlay = true, max_boxes_count = 300, max_labels_count = 100)
+
+// ════════════════════════════ INPUTS ════════════════════════════
+string GL = "Trapped crowds"
+float legThr   = input.float(0.20, "Swing crowds: legs of at least (x ADR)", minval = 0.05, maxval = 1.0, step = 0.01, group = GL)
+bool  useMajor = input.bool(true, "Also track MAJOR crowds", group = GL)
+float majThr   = input.float(0.40, "MAJOR crowds: legs of at least (x ADR)", minval = 0.1, maxval = 2.0, step = 0.05, group = GL)
+float failFrac = input.float(0.80, "Crowd is trapped once this much of its leg is given back", minval = 0.5, maxval = 1.0, step = 0.05, group = GL)
+int   binTicks = input.int(8, "Cost-basis resolution (ticks per bin)", minval = 1, maxval = 100, group = GL)
+float widthSig = input.float(0.5, "Zone half-height (x spread of the trapped crowd's entries)", minval = 0.1, maxval = 2.0, step = 0.1, group = GL)
+float minPct   = input.float(0.02, "Min zone half-height (% of price)", minval = 0.005, maxval = 0.5, step = 0.005, group = GL)
+float maxPct   = input.float(0.12, "Max zone half-height (% of price)", minval = 0.01, maxval = 1.0, step = 0.01, group = GL)
+float pendDays = input.float(5.0, "Forget legs that haven't failed after (days)", minval = 0.5, maxval = 30.0, step = 0.5, group = GL)
+int   adrLen   = input.int(14, "ADR / average volume length (days)", minval = 2, group = GL)
+
+string GZ = "Zone lifecycle"
+int   maxPerSide = input.int(8, "Max live zones per side", minval = 1, maxval = 20, group = GZ)
+float maxAgeD    = input.float(10.0, "Max zone age (days)", minval = 1.0, group = GZ)
+float halfLifeD  = input.float(4.0, "Crowd size half-life (days)", minval = 0.5, group = GZ)
+float bandPct    = input.float(6.0, "Distance band (% of price)", minval = 0.5, group = GZ)
+int   acceptMin  = input.int(10, "Dies after staying beyond for (minutes)", minval = 1, maxval = 240, group = GZ)
+float breakMult  = input.float(1.0, "Or dies on a close this far past (x zone height)", minval = 0.25, maxval = 5.0, step = 0.25, group = GZ)
+
+string G1 = "Short-term crowd (v1 engine, used for DOUBLE)"
+bool   showShort = input.bool(false, "Also draw the short-term nodes (off if v1 is on the chart)", group = G1)
+string epochTF   = input.timeframe("1D", "Epoch (node birth cadence)", group = G1)
+int    nBins     = input.int(48, "Profile bins per epoch", minval = 12, maxval = 200, group = G1)
+float  peakMult  = input.float(1.35, "Peak threshold (x mean density)", minval = 1.0, step = 0.05, group = G1)
+int    topK      = input.int(3, "Nodes born per epoch", minval = 1, maxval = 10, group = G1)
+float  wCalmPct  = input.float(0.068, "Node height % of price (calm)", minval = 0.005, step = 0.001, group = G1)
+float  wVolPct   = input.float(0.102, "Node height % of price (volatile)", minval = 0.005, step = 0.001, group = G1)
+int    maxNodes  = input.int(60, "Max live nodes", minval = 5, maxval = 150, group = G1)
+float  nodeAgeD  = input.float(20.0, "Max node age (days)", minval = 1.0, group = G1)
+float  nodeBand  = input.float(10.0, "Node distance band (% of price)", minval = 1.0, group = G1)
+int    hmmLen    = input.int(100, "Range baseline length", minval = 20, group = G1)
+float  muC       = input.float(-0.25, "Calm state mean", step = 0.05, group = G1)
+float  sdC       = input.float(0.45, "Calm state sd", minval = 0.05, step = 0.05, group = G1)
+float  muV       = input.float(0.45, "Volatile state mean", step = 0.05, group = G1)
+float  sdV       = input.float(0.60, "Volatile state sd", minval = 0.05, step = 0.05, group = G1)
+float  pStay     = input.float(0.98, "State persistence", minval = 0.5, maxval = 0.999, step = 0.005, group = G1)
+
+string GT = "Trend-day context"
+bool   useTrend = input.bool(true, "Dim zones in the path of a trend day", group = GT)
+string tz       = input.string("America/New_York", "Timezone", group = GT)
+int    rStartH  = input.int(9, "RTH start hour", minval = 0, maxval = 23, group = GT)
+int    rStartM  = input.int(30, "RTH start minute", minval = 0, maxval = 59, group = GT)
+int    rEndH    = input.int(16, "RTH end hour", minval = 0, maxval = 23, group = GT)
+int    rEndM    = input.int(0, "RTH end minute", minval = 0, maxval = 59, group = GT)
+int    nbDays   = input.int(14, "Noise-area lookback (sessions)", minval = 5, maxval = 30, group = GT)
+float  nbMult   = input.float(1.0, "Noise-area width multiplier", minval = 0.5, maxval = 3.0, step = 0.1, group = GT)
+bool   useDiv   = input.bool(true, "Also flag trend when leading the correlated index", group = GT)
+string corrSym  = input.symbol("CME_MINI:ES1!", "Correlated index (ES on NQ charts, NQ on ES charts)", group = GT)
+float  betaRel  = input.float(1.25, "Normal move ratio (this / correlated)", minval = 0.2, maxval = 4.0, step = 0.05, group = GT)
+float  divPct   = input.float(0.40, "Divergence threshold (% of price)", minval = 0.05, maxval = 3.0, step = 0.05, group = GT)
+
+string GD = "Display"
+bool  showLabels  = input.bool(true, "Label zones near price", group = GD)
+float labelWithin = input.float(1.5, "Label zones within (x ADR of price)", minval = 0.2, maxval = 5.0, step = 0.1, group = GD)
+bool  showTable   = input.bool(true, "Dashboard", group = GD)
+color colRes      = input.color(color.rgb(186, 104, 200), "Trapped buyers (resistance)", group = GD)
+color colSup      = input.color(color.rgb(255, 167, 38), "Trapped sellers (support)", group = GD)
+color colDbl      = input.color(color.rgb(255, 215, 0), "DOUBLE", group = GD)
+
+// ════════════════════════════ TYPES ════════════════════════════
+type Node
+    float p
+    float m
+    float w
+    int   t
+    int   side
+    box   bx
+
+type Lvl
+    float p
+    float w
+    int   side
+    int   t
+    float q
+    int   bornBar
+    int   horizon = 0
+    bool  stacked = false
+    int   beyondT = 0
+    bool  touched = false
+    bool  spent = false
+    bool  dbl = false
+    bool  inPath = false
+    box   bx
+
+// one leg being tracked at one crowd size; A = volume by price up to the extreme, B = after it
+type Tracker
+    int   scale
+    int   zdir = 0
+    float extP = na
+    float legS = na
+    float pendMin = na
+    float pendMax = na
+    map<int, float> A
+    map<int, float> B
+
+// a completed leg, with the full price histogram of its volume
+type Leg
+    int   d
+    float S
+    float E
+    int   t
+    int   scale
+    map<int, float> hist
+
+// ════════════════════════════ FUNCTIONS ════════════════════════════
+float binSz = syminfo.mintick * binTicks
+
+f_gauss(float x, float mu, float sd) =>
+    math.exp(-0.5 * math.pow((x - mu) / sd, 2)) / sd
+
+f_row(table tb, int r, string k, string v, color c) =>
+    table.cell(tb, 0, r, k, text_color = color.gray, text_size = size.small, text_halign = text.align_left)
+    table.cell(tb, 1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
+
+f_decayed(Lvl e) =>
+    e.q * math.pow(0.5, (time - e.t) / 86400000.0 / halfLifeD) * (e.spent ? 0.3 : 1.0)
+
+f_killNode(array<Node> arr, int i) =>
+    Node n = arr.remove(i)
+    if not na(n.bx)
+        box.delete(n.bx)
+    true
+
+f_addBin(map<int, float> m, float price, float v, float bsz) =>
+    int k = int(math.floor(price / bsz))
+    m.put(k, nz(m.get(k), 0.0) + v)
+    true
+
+f_merge(map<int, float> dst, map<int, float> src) =>
+    array<int> ks = src.keys()
+    if ks.size() > 0
+        for i = 0 to ks.size() - 1
+            int k = ks.get(i)
+            dst.put(k, nz(dst.get(k), 0.0) + nz(src.get(k), 0.0))
+    true
+
+// advance one tracker by one confirmed bar; returns a completed Leg or na
+f_track(Tracker z, float thr, float bsz) =>
+    Leg done = na
+    float v = nz(volume)
+    if z.zdir == 0
+        z.zdir := close >= open ? 1 : -1
+        z.extP := z.zdir == 1 ? high : low
+        z.legS := z.zdir == 1 ? low : high
+        f_addBin(z.A, hlc3, v, bsz)
+        z.pendMin := low
+        z.pendMax := high
+    else if z.zdir == 1
+        if high > z.extP
+            f_merge(z.A, z.B)
+            z.B.clear()
+            f_addBin(z.A, hlc3, v, bsz)
+            z.extP := high
+            z.pendMin := low
+            z.pendMax := high
+        else
+            f_addBin(z.B, hlc3, v, bsz)
+            z.pendMin := math.min(z.pendMin, low)
+            if z.extP - low >= thr
+                done := Leg.new(d = 1, S = z.legS, E = z.extP, t = time, scale = z.scale, hist = z.A)
+                z.zdir := -1
+                z.legS := z.extP
+                z.A := z.B
+                z.B := map.new<int, float>()
+                z.extP := z.pendMin
+                z.pendMax := high
+    else
+        if low < z.extP
+            f_merge(z.A, z.B)
+            z.B.clear()
+            f_addBin(z.A, hlc3, v, bsz)
+            z.extP := low
+            z.pendMax := high
+            z.pendMin := low
+        else
+            f_addBin(z.B, hlc3, v, bsz)
+            z.pendMax := math.max(z.pendMax, high)
+            if high - z.extP >= thr
+                done := Leg.new(d = -1, S = z.legS, E = z.extP, t = time, scale = z.scale, hist = z.A)
+                z.zdir := 1
+                z.legS := z.extP
+                z.A := z.B
+                z.B := map.new<int, float>()
+                z.extP := z.pendMax
+                z.pendMin := low
+    done
+
+// ════════════════════════════ STATE ════════════════════════════
+var array<Node>  nodes = array.new<Node>()
+var array<float> epP   = array.new<float>()
+var array<float> epW   = array.new<float>()
+var array<Lvl>   lvls  = array.new<Lvl>()
+var array<Leg>   pend  = array.new<Leg>()
+var Tracker trkS = Tracker.new(scale = 0, A = map.new<int, float>(), B = map.new<int, float>())
+var Tracker trkM = Tracker.new(scale = 1, A = map.new<int, float>(), B = map.new<int, float>())
+var matrix<float> nbM = matrix.new<float>(30, 400, na)
+var array<float> curMv = array.new<float>(400, na)
+var int   nbRow = 0
+var int   nbFilled = 0
+var int   rthK = 0
+var float rthOpen = na
+var float oOpen = na
+
+// ════════════════════════════ DATA ════════════════════════════
+float adr = request.security(syminfo.tickerid, "D", ta.sma(high - low, adrLen)[1], lookahead = barmerge.lookahead_on)
+float adv = request.security(syminfo.tickerid, "D", ta.sma(volume, adrLen)[1], lookahead = barmerge.lookahead_on)
+[oO, oC] = request.security(corrSym, timeframe.period, [open, close], ignore_invalid_symbol = true)
+float vol = nz(volume)
+float rngNow = high - low
+float bodyAbs = math.abs(close - open)
+
+float rngBase = ta.sma(rngNow, hmmLen)
+float xr = na
+if not na(rngBase)
+    xr := math.log(math.max(rngNow, syminfo.mintick) / math.max(rngBase, syminfo.mintick))
+var float pV = 0.5
+if not na(xr)
+    float priC = (1.0 - pV) * pStay + pV * (1.0 - pStay)
+    float priV = pV * pStay + (1.0 - pV) * (1.0 - pStay)
+    float aC = priC * f_gauss(xr, muC, sdC)
+    float aVv = priV * f_gauss(xr, muV, sdV)
+    if aC + aVv > 0
+        pV := aVv / (aC + aVv)
+bool isVolatile = bar_index > hmmLen and pV > 0.5
+bool newEpoch = timeframe.change(epochTF)
+
+// ════════════════════════════ SHORT-TERM CROWD: v1 engine ════════════════════════════
+if newEpoch and barstate.isconfirmed and epP.size() > 20
+    float lo = epP.min()
+    float hi = epP.max()
+    float bs = (hi - lo) / nBins
+    if bs > 0
+        array<float> prof = array.new<float>(nBins, 0.0)
+        float tot = 0.0
+        for i = 0 to epP.size() - 1
+            int b = math.max(0, math.min(nBins - 1, int(math.floor((epP.get(i) - lo) / bs))))
+            prof.set(b, prof.get(b) + epW.get(i))
+            tot += epW.get(i)
+        if tot > 0
+            array<float> smo = array.new<float>(nBins, 0.0)
+            for b = 0 to nBins - 1
+                float lv = b > 0 ? prof.get(b - 1) : prof.get(b)
+                float rv = b < nBins - 1 ? prof.get(b + 1) : prof.get(b)
+                smo.set(b, 0.25 * lv + 0.5 * prof.get(b) + 0.25 * rv)
+            float meanSm = smo.avg()
+            array<float> pkP = array.new<float>()
+            array<float> pkM = array.new<float>()
+            for b = 1 to nBins - 2
+                float v = smo.get(b)
+                if v >= smo.get(b - 1) and v > smo.get(b + 1) and v > meanSm * peakMult
+                    float w0 = prof.get(b - 1)
+                    float w1 = prof.get(b)
+                    float w2 = prof.get(b + 1)
+                    float ws = w0 + w1 + w2
+                    if ws > 0
+                        float c0 = lo + (b - 0.5) * bs
+                        float c1 = lo + (b + 0.5) * bs
+                        float c2 = lo + (b + 1.5) * bs
+                        pkP.push((w0 * c0 + w1 * c1 + w2 * c2) / ws)
+                        pkM.push(ws / tot * nBins / 3.0)
+            if pkM.size() > 0
+                array<int> ordPk = pkM.sort_indices(order.descending)
+                int take = math.min(topK, ordPk.size())
+                float hgt = close * (isVolatile ? wVolPct : wCalmPct) / 100.0
+                for j = 0 to take - 1
+                    int q = ordPk.get(j)
+                    float np = pkP.get(q)
+                    float nm = pkM.get(q)
+                    bool inBand = math.abs(np - close) / close * 100.0 <= nodeBand
+                    bool merged = false
+                    if inBand and nodes.size() > 0
+                        for k = 0 to nodes.size() - 1
+                            Node e = nodes.get(k)
+                            if math.abs(e.p - np) <= e.w
+                                e.m := math.min(e.m + 0.5 * nm, 12.0)
+                                merged := true
+                                break
+                    if inBand and not merged and math.abs(np - close) > hgt / 2.0
+                        if nodes.size() >= maxNodes
+                            int lowI = 0
+                            float lowM = 1e10
+                            for k = 0 to nodes.size() - 1
+                                Node ek = nodes.get(k)
+                                if ek.m < lowM
+                                    lowM := ek.m
+                                    lowI := k
+                            f_killNode(nodes, lowI)
+                        int sd = np > close ? 1 : -1
+                        box nbx = na
+                        if showShort
+                            color base = sd == 1 ? colRes : colSup
+                            nbx := box.new(bar_index, np + hgt / 2.0, bar_index + 1, np - hgt / 2.0, border_color = color.new(base, 75), bgcolor = color.new(base, 93), extend = extend.right)
+                        nodes.push(Node.new(p = np, m = nm, w = hgt / 2.0, t = time, side = sd, bx = nbx))
+
+if newEpoch and barstate.isconfirmed
+    epP.clear()
+    epW.clear()
+
+float uw = high - math.max(open, close)
+float lw = math.min(open, close) - low
+float absorb = rngNow > 0 ? vol * (1.0 - bodyAbs / rngNow) : 0.0
+if barstate.isconfirmed and absorb > 0 and uw + lw > 0
+    if uw > 0
+        epP.push(math.max(open, close) + uw / 2.0)
+        epW.push(absorb * uw / (uw + lw))
+    if lw > 0
+        epP.push(math.min(open, close) - lw / 2.0)
+        epW.push(absorb * lw / (uw + lw))
+while epP.size() > 20000
+    epP.shift()
+    epW.shift()
+
+if barstate.isconfirmed and nodes.size() > 0
+    for i = nodes.size() - 1 to 0
+        Node n = nodes.get(i)
+        bool closedThrough = (n.side == 1 and close > n.p + n.w) or (n.side == -1 and close < n.p - n.w)
+        bool tooOld = (time - n.t) > nodeAgeD * 86400000.0
+        bool tooFar = math.abs(n.p - close) / close * 100.0 > nodeBand
+        if closedThrough or tooOld or tooFar
+            f_killNode(nodes, i)
+
+// ════════════════════════════ TREND-DAY CONTEXT (noise area + divergence) ════════════════════════════
+int yy = year(time, tz)
+int mo = month(time, tz)
+int dd = dayofmonth(time, tz)
+int rS = timestamp(tz, yy, mo, dd, rStartH, rStartM)
+int rE = timestamp(tz, yy, mo, dd, rEndH, rEndM)
+bool inRth = rE > rS and time >= rS and time < rE
+bool rthStart = inRth and not inRth[1]
+bool rthEnd = inRth[1] and not inRth
+
+if rthEnd and barstate.isconfirmed
+    for k = 0 to 399
+        nbM.set(nbRow, k, curMv.get(k))
+        curMv.set(k, na)
+    nbRow := (nbRow + 1) % nbDays
+    nbFilled := math.min(nbFilled + 1, nbDays)
+if rthStart
+    rthOpen := open
+    rthK := 0
+    oOpen := oO
+
+float band = na
+if inRth and not na(rthOpen) and rthK < 400
+    float acc = 0.0
+    int cnt = 0
+    for r = 0 to nbDays - 1
+        float v = nbM.get(r, rthK)
+        if not na(v)
+            acc += v
+            cnt += 1
+    if cnt >= 5
+        band := acc / cnt * nbMult
+if inRth and barstate.isconfirmed and not na(rthOpen)
+    if rthK < 400
+        curMv.set(rthK, math.abs(close - rthOpen))
+    rthK += 1
+
+bool outside = inRth and not na(band) and math.abs(close - rthOpen) > band
+float chartPct = inRth and not na(rthOpen) and rthOpen > 0 ? (close - rthOpen) / rthOpen * 100.0 : na
+float otherPct = inRth and not na(oOpen) and nz(oOpen) > 0 and not na(oC) ? (oC - oOpen) / oOpen * 100.0 : na
+float relPct = na(chartPct) or na(otherPct) ? na : chartPct - betaRel * otherPct
+bool divUp = useDiv and not na(relPct) and relPct > divPct and chartPct > 0
+bool divDn = useDiv and not na(relPct) and relPct < -divPct and chartPct < 0
+bool trendUp = useTrend and ((outside and close > rthOpen) or divUp)
+bool trendDn = useTrend and ((outside and close < rthOpen) or divDn)
+
+// ════════════════════════════ FAILED LEGS -> ZONES AT THE TRAPPED CROWD'S BREAKEVEN ════════════════════════════
+if barstate.isconfirmed and nz(adr) > 0 and pend.size() > 0
+    for i = pend.size() - 1 to 0
+        Leg L = pend.get(i)
+        bool drop = false
+        bool fail = false
+        float R = L.d == 1 ? L.S + (1.0 - failFrac) * (L.E - L.S) : L.S - (1.0 - failFrac) * (L.S - L.E)
+        if L.d == 1
+            if high > L.E
+                drop := true
+            else if low <= R
+                fail := true
+        else
+            if low < L.E
+                drop := true
+            else if high >= R
+                fail := true
+        if not drop and not fail and (time - L.t) > pendDays * 86400000.0
+            drop := true
+        if fail
+            // only the volume now underwater is trapped: above today's low for a failed rally, below the high for a failed selloff
+            float cut = L.d == 1 ? low : high
+            float sv = 0.0
+            float spv = 0.0
+            float sp2v = 0.0
+            array<int> ks = L.hist.keys()
+            if ks.size() > 0
+                for j = 0 to ks.size() - 1
+                    int k = ks.get(j)
+                    float pr = (k + 0.5) * binSz
+                    bool trapped = L.d == 1 ? pr > cut : pr < cut
+                    if trapped
+                        float vv = nz(L.hist.get(k), 0.0)
+                        sv += vv
+                        spv += pr * vv
+                        sp2v += pr * pr * vv
+            if sv > 0
+                float vw = spv / sv
+                float sdv = math.sqrt(math.max(sp2v / sv - vw * vw, 0.0))
+                float half = math.max(close * minPct / 100.0, math.min(close * maxPct / 100.0, widthSig * sdv))
+                int sd = L.d == 1 ? 1 : -1
+                bool outsideOk = sd == 1 ? close < vw - half : close > vw + half
+                bool inBand = math.abs(vw - close) / close * 100.0 <= bandPct
+                if outsideOk and inBand
+                    bool merged = false
+                    if lvls.size() > 0
+                        for k = 0 to lvls.size() - 1
+                            Lvl e = lvls.get(k)
+                            if e.side == sd and not e.spent and math.abs(e.p - vw) <= e.w + half
+                                e.q := e.q + sv
+                                if e.horizon != L.scale
+                                    e.stacked := true
+                                e.horizon := math.max(e.horizon, L.scale)
+                                merged := true
+                                break
+                    if not merged
+                        color base = sd == 1 ? colRes : colSup
+                        box bx = box.new(bar_index, vw + half, bar_index + 1, vw - half, border_color = color.new(base, 25), border_style = line.style_dashed, border_width = L.scale == 1 ? 2 : 1, bgcolor = color.new(base, 90), extend = extend.right)
+                        lvls.push(Lvl.new(p = vw, w = half, side = sd, t = time, q = sv, bornBar = bar_index, horizon = L.scale, bx = bx))
+        if drop or fail
+            pend.remove(i)
+
+// ════════════════════════════ TRACK LEGS AT BOTH CROWD SIZES ════════════════════════════
+if barstate.isconfirmed and nz(adr) > 0 and binSz > 0
+    Leg ls = f_track(trkS, legThr * adr, binSz)
+    if not na(ls)
+        pend.push(ls)
+    if useMajor
+        Leg lm = f_track(trkM, majThr * adr, binSz)
+        if not na(lm)
+            pend.push(lm)
+while pend.size() > 80
+    pend.shift()
+
+// ════════════════════════════ ZONE LIFECYCLE: touch -> spent, sweep-tolerant death ════════════════════════════
+if barstate.isconfirmed and lvls.size() > 0
+    for i = lvls.size() - 1 to 0
+        Lvl Z = lvls.get(i)
+        bool inZone = high >= Z.p - Z.w and low <= Z.p + Z.w
+        if inZone and not Z.touched and bar_index > Z.bornBar
+            Z.touched := true
+        if Z.touched and not Z.spent and not inZone and math.abs(close - Z.p) > 2.0 * Z.w
+            Z.spent := true
+        float far = Z.side == 1 ? Z.p + Z.w : Z.p - Z.w
+        float decisiveLvl = Z.side == 1 ? far + breakMult * 2.0 * Z.w : far - breakMult * 2.0 * Z.w
+        bool beyond = Z.side == 1 ? close > far : close < far
+        bool decisive = Z.side == 1 ? close > decisiveLvl : close < decisiveLvl
+        bool dead = false
+        if beyond
+            if Z.beyondT == 0
+                Z.beyondT := time_close
+            dead := (time_close - Z.beyondT) >= acceptMin * 60000 or decisive
+        else
+            Z.beyondT := 0
+        bool tooOld = (time - Z.t) > maxAgeD * 86400000.0
+        bool tooFar = math.abs(Z.p - close) / close * 100.0 > bandPct
+        if dead or tooOld or tooFar
+            Lvl gone = lvls.remove(i)
+            box.delete(gone.bx)
+
+if lvls.size() > 0
+    for sp = 0 to 1
+        int sdq = sp == 0 ? 1 : -1
+        int cnt = 0
+        for i = 0 to lvls.size() - 1
+            Lvl e = lvls.get(i)
+            if e.side == sdq
+                cnt += 1
+        while cnt > maxPerSide and lvls.size() > 0
+            int wI = -1
+            float wS = 1e18
+            for i = 0 to lvls.size() - 1
+                Lvl e = lvls.get(i)
+                if e.side == sdq
+                    float sc = f_decayed(e)
+                    if sc < wS
+                        wS := sc
+                        wI := i
+            if wI < 0
+                break
+            Lvl gone = lvls.remove(wI)
+            box.delete(gone.bx)
+            cnt -= 1
+
+// ════════════════════════════ FLAGS + STYLING ════════════════════════════
+if barstate.isconfirmed and lvls.size() > 0
+    float bigU = -1.0
+    float bigD = -1.0
+    for i = 0 to lvls.size() - 1
+        Lvl e = lvls.get(i)
+        e.inPath := (e.side == 1 and trendUp) or (e.side == -1 and trendDn)
+        bool dbl = false
+        if not e.spent and nodes.size() > 0
+            for k = 0 to nodes.size() - 1
+                Node n = nodes.get(k)
+                if n.side == e.side and math.abs(n.p - e.p) <= e.w + n.w
+                    dbl := true
+                    break
+        e.dbl := dbl
+        if not e.spent and not e.inPath
+            float sc = f_decayed(e)
+            if e.side == 1 and sc > bigU
+                bigU := sc
+            if e.side == -1 and sc > bigD
+                bigD := sc
+    for i = 0 to lvls.size() - 1
+        Lvl e = lvls.get(i)
+        color base = e.side == 1 ? colRes : colSup
+        float sc = f_decayed(e)
+        bool top = not e.spent and not e.inPath and ((e.side == 1 and sc == bigU) or (e.side == -1 and sc == bigD))
+        bool heavy = e.horizon == 1 or e.stacked
+        if e.spent
+            box.set_bgcolor(e.bx, color.new(color.gray, 97))
+            box.set_border_color(e.bx, color.new(color.gray, 60))
+            box.set_border_style(e.bx, line.style_dotted)
+            box.set_border_width(e.bx, 1)
+        else if e.inPath
+            box.set_bgcolor(e.bx, color.new(base, 96))
+            box.set_border_color(e.bx, color.new(base, 60))
+            box.set_border_style(e.bx, line.style_dotted)
+            box.set_border_width(e.bx, 1)
+        else if e.dbl
+            box.set_bgcolor(e.bx, color.new(base, 82))
+            box.set_border_color(e.bx, colDbl)
+            box.set_border_style(e.bx, line.style_solid)
+            box.set_border_width(e.bx, heavy ? 3 : 2)
+        else
+            box.set_bgcolor(e.bx, color.new(base, heavy ? 85 : 90))
+            box.set_border_color(e.bx, color.new(base, top or heavy ? 0 : 25))
+            box.set_border_style(e.bx, top or heavy ? line.style_solid : line.style_dashed)
+            box.set_border_width(e.bx, heavy ? 2 : top ? 2 : 1)
+
+// ════════════════════════════ LABELS + DASHBOARD ════════════════════════════
+var array<label> tags = array.new<label>()
+var table dash = table.new(position.bottom_left, 2, 7, bgcolor = color.new(color.black, 20), border_width = 1)
+
+if barstate.islast
+    if tags.size() > 0
+        for i = tags.size() - 1 to 0
+            label.delete(tags.get(i))
+        tags.clear()
+    int nLive = 0
+    int nDbl = 0
+    int nMaj = 0
+    float bestUpD = 1e18
+    float bestDnD = 1e18
+    string nearUp = "-"
+    string nearDn = "-"
+    if lvls.size() > 0
+        for i = 0 to lvls.size() - 1
+            Lvl e = lvls.get(i)
+            float pctAdv = nz(adv) > 0 ? f_decayed(e) / adv * 100.0 : na
+            string state = e.spent ? "spent" : e.inPath ? "trend path" : e.dbl ? "DOUBLE" : "fresh"
+            string size_ = e.stacked ? "STACKED" : e.horizon == 1 ? "MAJOR" : "swing"
+            string txt = str.tostring(e.p, format.mintick) + "  " + state + " · " + size_ + (na(pctAdv) or e.spent ? "" : " · trapped " + str.tostring(pctAdv, "#") + "% of a day's volume")
+            if not e.spent
+                nLive += 1
+                if e.dbl and not e.inPath
+                    nDbl += 1
+                if e.horizon == 1 or e.stacked
+                    nMaj += 1
+                float dist = math.abs(e.p - close)
+                if e.p > close and dist < bestUpD
+                    bestUpD := dist
+                    nearUp := txt
+                if e.p < close and dist < bestDnD
+                    bestDnD := dist
+                    nearDn := txt
+            if showLabels and nz(adr) > 0 and math.abs(e.p - close) <= labelWithin * adr
+                color base = e.spent ? color.gray : e.dbl and not e.inPath ? colDbl : e.side == 1 ? colRes : colSup
+                bool big = not e.spent and not e.inPath and (e.dbl or e.horizon == 1 or e.stacked)
+                tags.push(label.new(bar_index + 12, e.p, "LEDGER  " + txt, style = label.style_label_left, color = color.new(color.black, 100), textcolor = base, size = big ? size.normal : size.small))
+    if showTable
+        string ctx = not useTrend ? "off" : not inRth ? "outside RTH" : na(band) ? "learning (" + str.tostring(nbFilled) + "/5 sessions)" : trendUp ? "TREND UP" : trendDn ? "TREND DOWN" : "BALANCED"
+        color ctxC = trendUp or trendDn ? color.orange : color.silver
+        string divTxt = not useDiv ? "off" : na(relPct) ? "-" : (divUp ? "leading UP vs " : divDn ? "leading DOWN vs " : "in line with ") + syminfo.ticker(corrSym)
+        f_row(dash, 0, "LEDGER v3", str.tostring(nLive) + " live · " + str.tostring(nMaj) + " major/stacked · " + str.tostring(nDbl) + " DOUBLE", color.white)
+        f_row(dash, 1, "Context", ctx, ctxC)
+        f_row(dash, 2, "Divergence", divTxt, divUp or divDn ? color.orange : color.silver)
+        f_row(dash, 3, "Nearest above", nearUp, colRes)
+        f_row(dash, 4, "Nearest below", nearDn, colSup)
+        f_row(dash, 5, "Swing / major legs", str.tostring(legThr * nz(adr), "#") + " / " + (useMajor ? str.tostring(majThr * nz(adr), "#") : "off") + " pts", color.silver)
+        f_row(dash, 6, "Cost resolution", str.tostring(binSz, "#.##") + " pts", color.silver)

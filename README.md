@@ -1,6 +1,12 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Quant Engine
 
-Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
+Two Pine Script v6 indicators:
+
+- **Alpha Predictive Limit Matrix** — everything up to the LEDGER section.
+- **LEDGER · Trapped-Crowd Reversal Zones** — see
+  [its section](#ledger--trapped-crowd-reversal-zones) at the end.
+
+**Alpha Predictive Limit Matrix** is a Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
 fixed risk:reward target, then **grades its own historical signals** and shows
 the results in an on-chart dashboard.
@@ -231,3 +237,121 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+## LEDGER — Trapped-Crowd Reversal Zones
+
+- **Maintained script:** `indicators/ledger.pine` (v3.1)
+- **Original submission:** `indicators/legacy/ledger_v3.pine`, kept for reference only.
+
+Two zigzag trackers (swing, 0.2× ADR, and MAJOR, 0.4× ADR) build a
+volume-at-price histogram for every leg. When a completed leg then gives back
+80% of its move, the volume now underwater is a **trapped crowd**. The zone is
+drawn at that crowd's volume-weighted breakeven, ± half the spread of its
+entries, because that is where its members get out flat. Zones get tested,
+then spent. They die only on an accepted break (a quick sweep and reclaim
+leaves them alive), decay with a half-life, and are dimmed when a trend day
+is heading into them. **DOUBLE** marks a zone that also overlaps a
+short-term absorption node from the v1 engine.
+
+Reading the chart: purple = trapped buyers above price (resistance), orange =
+trapped sellers below (support). A solid frame means MAJOR, stacked (both
+crowd sizes) or ×N (several distinct crowds), or the strongest fresh zone on
+its side. Gold frame = DOUBLE. Dotted and faded = spent, or in the path of a
+trend day. Labels read `▼ 21,532.50  MAJOR · DOUBLE · 38% ADV`, where the
+percentage is the decayed trapped volume relative to an average day.
+
+### v3 → v3.1 audit: bugs fixed
+
+1. **Trend-day context was dead on RTH-only charts.** Sessions were found only
+   by price moving in or out of RTH. Charts with no bars between sessions
+   (stocks without extended hours, futures on an RTH session) have back-to-back
+   "in RTH" days. So after day one the RTH open never reset, the noise area
+   never learned, and the bar counter ran off its 400-slot table. On 33
+   synthetic RTH-only sessions the old logic found 1 session start and 0 ends;
+   v3.1 finds 33 starts and 32 ends (the last session is still open). A date
+   change now also starts a session.
+2. **The noise area was indexed by bar count, not time of day.** One missing
+   bar (an illiquid minute) shifted every later bar of that day onto the wrong
+   historical slot. Sub-minute charts, or RTH windows longer than 400 minutes,
+   lost the band part-way through the day. It is now indexed by minute of the
+   session and sized to the session.
+3. **The first session in the chart history used a mid-session bar as its
+   "RTH open".** A session seen from partway through is now skipped.
+4. **No zones at all on symbols without volume** (SPX, most FX and CFD feeds).
+   Every histogram weight was `nz(volume) = 0`, so the trapped volume was always
+   0. The short-term nodes were empty too, so DOUBLE never fired either. On
+   symbols that report no volume, every bar now weighs 1.
+5. **Crowds were double-counted on merges.** A swing leg inside a MAJOR leg is
+   the same traders, but the merge added both, inflating the "% of a day's
+   volume" figure and the zone ranking. Zones now carry the time span of their
+   volume: overlapping merges keep the larger count, disjoint ones add. In
+   the synthetic runs, 9 of 10 merges were overlaps.
+6. **Merges decayed fresh volume as if it were old.** `q += sv` against the
+   zone's birth time decayed a crowd trapped today by the zone's whole age, and
+   a zone could reach max age right after being reinforced. v3.1 decays the old
+   mass first, adds the new crowd, and restarts the clock. A merged zone also
+   re-centres on the pooled crowd (volume-weighted mean and pooled spread)
+   instead of ignoring where the new crowd sits. It stays put when moving it
+   would drop it onto price.
+7. **"Spent" also fired on breakouts.** After a touch, any close more than two
+   half-heights away counted as spent, including closes *through* the zone. So
+   a zone that was being broken got labelled as one that had already worked.
+   Only a reaction on the rejection side counts now.
+8. **Each tracker's first leg was bogus.** It started on whatever bar the chart
+   history began with and had a partial histogram, so it could file a zone from
+   a leg smaller than the threshold. That leg is no longer emitted.
+9. **Divergence was meaningless on ES and on non-NQ charts.** The correlated
+   symbol defaulted to ES on every chart. On ES it compared ES with itself, which
+   can never trigger. The move ratio was also fixed at NQ/ES's 1.25. Auto mode
+   now picks NQ for S&P charts and ES for everything else, and estimates the
+   ratio from the two symbols' average daily range in %. A custom symbol equal
+   to the chart's own is detected and turned off.
+10. **The dashboard showed "0 pts" on FX and other low-priced symbols**
+    (`"#"` / `"#.##"` formats). Prices are now tick-formatted.
+11. **Map-size runtime error risk.** A Pine map holds at most 50,000 keys, and
+    very fine tick sizes on long legs could approach that (BTC at $0.01 × 8
+    gives $0.08 bins). Bins are now floored at ADR/400, fixed once per chart,
+    and writes are capped.
+12. **Contradictory inputs.** A MAJOR size ≤ the swing size duplicated every
+    zone as STACKED, and a min height above the max height inverted the clamp.
+    MAJOR tracking now switches off in that case, and the clamp orders its
+    bounds.
+13. **Trend context ran on daily and higher charts**, where an intraday noise
+    area means nothing. It is intraday-only now.
+
+### Improvements
+
+- **Better cost basis:** each bar's volume is spread across its range by exact
+  bin overlap, not dropped at `hlc3`. This matters from 15m up, where one bar
+  spans many bins and would otherwise fall entirely on one side of the
+  "underwater" cut.
+- **Simpler tracker:** `pendMin`/`pendMax` are gone. The first bar to reverse
+  by the threshold is always the furthest bar since the extreme: any earlier
+  one would have triggered first. So that bar's low or high is the new
+  extreme. On 10 synthetic runs (~1,300 legs) the legs are identical to v3's,
+  apart from the dropped first leg.
+- **Alerts:** `alert()` on a zone's first test (optionally also on new zones),
+  plus `alertcondition()`s for resistance and support tests.
+- **Cleaner display:** consistent visual hierarchy, shorter labels (spent zones
+  unlabelled), a dashboard showing the nearest zone each side with its distance
+  in ADR, dashboard position and text-size inputs, and tooltips on the
+  non-obvious inputs.
+
+Behaviour changes you may notice against v3: zone heights on 15m+ charts
+shift slightly (range-spread volume); stacked zones show a lower (correct)
+"% ADV"; the divergence ratio defaults to auto (set it to 1.25 to match v3 on
+NQ).
+
+### Verification and limits
+
+- No TradingView compiler is available offline. The script was syntax-checked
+  with the `pynescript` parser, and its engine (trackers, trap/merge,
+  lifecycle, pruning, session detection) was ported line by line to Python.
+  Invariants were checked on synthetic 1-minute data, both 24h futures and
+  RTH-only: legs alternate; each starts at the previous extreme and is at
+  least its threshold; bar weight is conserved; zones sit inside the leg they
+  came from.
+- These are logic checks, not an edge study. Nothing here measures how often
+  price actually reverses at these zones.
+- RTH windows that cross midnight aren't supported. The dashboard says "check
+  the RTH hours".

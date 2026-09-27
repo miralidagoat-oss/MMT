@@ -1,0 +1,737 @@
+//@version=6
+indicator("LEDGER v3.1 · Trapped-Crowd Reversal Zones", shorttitle = "LEDGER", overlay = true, max_boxes_count = 300, max_labels_count = 100)
+
+// ============================================================================
+// LEDGER — trapped-crowd reversal zones
+//   1. Two zigzag trackers (swing and MAJOR, sized in ADR) build a
+//      volume-at-price histogram for every leg, from its start to its extreme.
+//   2. A completed leg that then gives back most of its move has failed: the
+//      volume now underwater is a trapped crowd.
+//   3. The zone sits at that crowd's volume-weighted breakeven, ± a fraction
+//      of the spread of its entries. Price returning there meets the crowd's
+//      exits at breakeven.
+//   4. Zones get tested, then spent; die only on an accepted break (a quick
+//      sweep and reclaim doesn't kill them); decay with a half-life; and are
+//      dimmed when a trend day is heading into them.
+//   DOUBLE = a zone that also overlaps a short-term absorption node.
+// All state changes on confirmed bars only, so nothing repaints.
+// README.md lists the v3 -> v3.1 fixes.
+// ============================================================================
+
+// ═══════════════════════════ INPUTS ═══════════════════════════
+string GL = "Trapped crowds"
+float legThr   = input.float(0.20, "Swing leg size (× ADR)", minval = 0.05, maxval = 1.0, step = 0.01, group = GL, tooltip = "A swing crowd is everyone who traded during a leg of at least this size. A leg is confirmed once price reverses by the same amount.")
+bool  useMajor = input.bool(true, "Track MAJOR crowds", group = GL)
+float majThr   = input.float(0.40, "MAJOR leg size (× ADR)", minval = 0.1, maxval = 2.0, step = 0.05, group = GL, tooltip = "Must be larger than the swing size, otherwise MAJOR tracking stays off.")
+float failFrac = input.float(0.80, "Trapped after giving back (share of leg)", minval = 0.5, maxval = 1.0, step = 0.05, group = GL, tooltip = "Once price retraces this much of a completed leg, the volume now underwater is a trapped crowd.")
+int   binTicks = input.int(8, "Cost-basis bin (ticks)", minval = 1, maxval = 100, group = GL, tooltip = "Price resolution of the volume histograms. On symbols with very fine ticks it is coarsened to at least ADR / 400.")
+float widthSig = input.float(0.5, "Zone half-height (× entry spread)", minval = 0.1, maxval = 2.0, step = 0.1, group = GL, tooltip = "Multiple of the standard deviation of the trapped crowd's entry prices.")
+float minPct   = input.float(0.02, "Min half-height (% of price)", minval = 0.005, maxval = 0.5, step = 0.005, group = GL)
+float maxPct   = input.float(0.12, "Max half-height (% of price)", minval = 0.01, maxval = 1.0, step = 0.01, group = GL)
+float pendDays = input.float(5.0, "Forget legs that haven't failed after (days)", minval = 0.5, maxval = 30.0, step = 0.5, group = GL)
+int   adrLen   = input.int(14, "ADR / average volume length (days)", minval = 2, group = GL)
+
+string GZ = "Zone lifecycle"
+int   maxPerSide = input.int(8, "Max live zones per side", minval = 1, maxval = 20, group = GZ)
+float maxAgeD    = input.float(10.0, "Max zone age (days)", minval = 1.0, group = GZ, tooltip = "Counted from the zone's last reinforcement by a new trapped crowd.")
+float halfLifeD  = input.float(4.0, "Crowd size half-life (days)", minval = 0.5, group = GZ)
+float bandPct    = input.float(6.0, "Distance band (% of price)", minval = 0.5, group = GZ, tooltip = "Zones farther than this from price are dropped.")
+int   acceptMin  = input.int(10, "Dies after closes hold beyond it for (minutes)", minval = 1, maxval = 240, group = GZ, tooltip = "Measured from the first close beyond the zone. A sweep that is reclaimed sooner leaves the zone alive.")
+float breakMult  = input.float(1.0, "…or at once on a close this far past (× zone height)", minval = 0.25, maxval = 5.0, step = 0.25, group = GZ)
+bool  alertTouch = input.bool(true, "alert() on the first test of a zone", group = GZ, tooltip = "Fires through an alert set to 'Any alert() function call'.")
+bool  alertNew   = input.bool(false, "alert() when a new zone forms", group = GZ)
+
+string G1 = "Short-term crowd (v1 engine, used for DOUBLE)"
+bool   showShort = input.bool(false, "Also draw the short-term nodes (off if v1 is on the chart)", group = G1)
+string epochTF   = input.timeframe("1D", "Epoch (node birth cadence)", group = G1)
+int    nBins     = input.int(48, "Profile bins per epoch", minval = 12, maxval = 200, group = G1)
+float  peakMult  = input.float(1.35, "Peak threshold (x mean density)", minval = 1.0, step = 0.05, group = G1)
+int    topK      = input.int(3, "Nodes born per epoch", minval = 1, maxval = 10, group = G1)
+float  wCalmPct  = input.float(0.068, "Node height % of price (calm)", minval = 0.005, step = 0.001, group = G1)
+float  wVolPct   = input.float(0.102, "Node height % of price (volatile)", minval = 0.005, step = 0.001, group = G1)
+int    maxNodes  = input.int(60, "Max live nodes", minval = 5, maxval = 150, group = G1)
+float  nodeAgeD  = input.float(20.0, "Max node age (days)", minval = 1.0, group = G1)
+float  nodeBand  = input.float(10.0, "Node distance band (% of price)", minval = 1.0, group = G1)
+int    hmmLen    = input.int(100, "Range baseline length", minval = 20, group = G1)
+float  muC       = input.float(-0.25, "Calm state mean", step = 0.05, group = G1)
+float  sdC       = input.float(0.45, "Calm state sd", minval = 0.05, step = 0.05, group = G1)
+float  muV       = input.float(0.45, "Volatile state mean", step = 0.05, group = G1)
+float  sdV       = input.float(0.60, "Volatile state sd", minval = 0.05, step = 0.05, group = G1)
+float  pStay     = input.float(0.98, "State persistence", minval = 0.5, maxval = 0.999, step = 0.005, group = G1)
+
+string GT = "Trend-day context"
+bool   useTrend = input.bool(true, "Dim zones in the path of a trend day", group = GT, tooltip = "Intraday charts only. A trend day is price outside its time-of-day noise area, or leading the correlated index.")
+string tz       = input.string("America/New_York", "Timezone", group = GT)
+int    rStartH  = input.int(9, "RTH start", minval = 0, maxval = 23, inline = "rs", group = GT)
+int    rStartM  = input.int(30, ":", minval = 0, maxval = 59, inline = "rs", group = GT)
+int    rEndH    = input.int(16, "RTH end", minval = 0, maxval = 23, inline = "re", group = GT)
+int    rEndM    = input.int(0, ":", minval = 0, maxval = 59, inline = "re", group = GT)
+int    nbDays   = input.int(14, "Noise-area lookback (sessions)", minval = 5, maxval = 30, group = GT)
+float  nbMult   = input.float(1.0, "Noise-area width (×)", minval = 0.5, maxval = 3.0, step = 0.1, group = GT)
+bool   useDiv   = input.bool(true, "Also flag a trend when leading the correlated index", group = GT)
+bool   corrAuto = input.bool(true, "Auto-pick the correlated index", group = GT, tooltip = "NQ on S&P charts (ES, MES, SPX, SPY…), ES on everything else. Turn off to use the symbol below.")
+string corrIn   = input.symbol("CME_MINI:ES1!", "Correlated index", group = GT)
+float  betaIn   = input.float(0.0, "Normal move ratio (this / correlated, 0 = auto)", minval = 0.0, maxval = 4.0, step = 0.05, group = GT, tooltip = "0 estimates it from the two symbols' average daily range in %. NQ vs ES is typically 1.2 to 1.35.")
+float  divPct   = input.float(0.40, "Divergence threshold (% of price)", minval = 0.05, maxval = 3.0, step = 0.05, group = GT)
+
+string GD = "Display"
+bool   showLabels  = input.bool(true, "Label zones near price", group = GD)
+float  labelWithin = input.float(1.5, "…within (× ADR of price)", minval = 0.2, maxval = 5.0, step = 0.1, group = GD)
+bool   showTable   = input.bool(true, "Dashboard", inline = "tb", group = GD)
+string tblPosIn    = input.string("Bottom left", "", options = ["Top left", "Top right", "Bottom left", "Bottom right"], inline = "tb", group = GD)
+string tblSizeIn   = input.string("Small", "", options = ["Tiny", "Small", "Normal"], inline = "tb", group = GD)
+color  colRes      = input.color(color.rgb(186, 104, 200), "Trapped buyers (resistance)", group = GD)
+color  colSup      = input.color(color.rgb(255, 167, 38), "Trapped sellers (support)", group = GD)
+color  colDbl      = input.color(color.rgb(255, 215, 0), "DOUBLE", group = GD)
+
+// ═══════════════════════════ CONSTANTS ═══════════════════════════
+float  DAY_MS  = 86400000.0
+int    MAP_CAP = 40000        // Pine maps hold at most 50,000 keys
+int    LBL_OFF = 12           // label offset right of the last bar
+float  loPct   = math.min(minPct, maxPct)
+float  hiPct   = math.max(minPct, maxPct)
+bool   majOn   = useMajor and majThr > legThr
+string tblPos  = switch tblPosIn
+    "Top left"     => position.top_left
+    "Top right"    => position.top_right
+    "Bottom right" => position.bottom_right
+    => position.bottom_left
+string tblSize = tblSizeIn == "Tiny" ? size.tiny : tblSizeIn == "Normal" ? size.normal : size.small
+
+// the correlated index must be a different market: NQ for the S&P family, ES for everything else
+string chartRoot = syminfo.root
+bool   chartIsSP = chartRoot == "ES" or chartRoot == "MES" or chartRoot == "SP" or chartRoot == "SPX" or chartRoot == "SPY" or chartRoot == "VOO" or chartRoot == "IVV" or chartRoot == "XSP" or chartRoot == "US500" or chartRoot == "SPX500" or chartRoot == "SPX500USD"
+string corrSym   = corrAuto ? (chartIsSP ? "CME_MINI:NQ1!" : "CME_MINI:ES1!") : corrIn
+array<string> corrParts = str.split(corrSym, ":")
+string corrName  = corrParts.size() > 0 ? corrParts.last() : corrSym
+bool   divOn     = useDiv and corrName != syminfo.ticker
+
+// ═══════════════════════════ TYPES ═══════════════════════════
+// short-term absorption node (v1 engine)
+type Node
+    float p
+    float m
+    float w
+    int   t
+    int   side
+    box   bx
+
+// trapped-crowd zone; side 1 = trapped buyers above price (resistance), -1 = trapped sellers below (support)
+type Zone
+    float p
+    float w
+    float sd
+    int   side
+    int   t
+    float q
+    int   spanS
+    int   spanE
+    int   bornBar
+    int   horizon = 0
+    bool  stacked = false
+    int   crowds  = 1
+    int   beyondT = 0
+    bool  touched = false
+    bool  spent   = false
+    bool  dbl     = false
+    bool  inPath  = false
+    box   bx
+
+// zigzag state at one crowd size; A = volume by price from the leg start to its extreme, B = after the extreme
+type Tracker
+    int   scale
+    int   dir    = 0
+    bool  primed = false
+    float legS   = na
+    float extP   = na
+    int   startT = 0
+    int   extT   = 0
+    map<int, float> A
+    map<int, float> B
+
+// completed leg with the volume-by-price histogram of its crowd
+type Leg
+    int   d
+    float S
+    float E
+    int   tS
+    int   tE
+    int   t
+    int   scale
+    map<int, float> hist
+
+// Zone field notes: p = the crowd's volume-weighted breakeven, w = half-height, sd = spread of its entries,
+// t = last reinforcement (decay and age clock), q = trapped volume as of t, spanS/spanE = time span of the
+// volume behind the zone (so merges don't count the same traders twice), horizon 0 = swing / 1 = MAJOR,
+// stacked = reinforced by the other crowd size, crowds = distinct crowds merged in, beyondT = time closes
+// beyond it began (0 = not beyond).
+// Tracker.primed: the first leg's true start is unknown, so it is never emitted.
+
+// ═══════════════════════════ DATA ═══════════════════════════
+[adr, adv, adrPct] = request.security(syminfo.tickerid, "D", [ta.sma(high - low, adrLen)[1], ta.sma(volume, adrLen)[1], ta.sma((high - low) / close, adrLen)[1]], lookahead = barmerge.lookahead_on)
+float corrAdrPct = request.security(corrSym, "D", ta.sma((high - low) / close, adrLen)[1], lookahead = barmerge.lookahead_on, ignore_invalid_symbol = true)
+[oO, oC] = request.security(corrSym, timeframe.period, [open, close], ignore_invalid_symbol = true)
+
+float beta   = betaIn > 0 ? betaIn : nz(corrAdrPct) > 0 and nz(adrPct) > 0 ? adrPct / corrAdrPct : na
+bool  hasVol = ta.cum(nz(volume)) > 0
+float wBar   = hasVol ? nz(volume) : 1.0      // symbols without volume weight every bar equally
+
+// ═══════════════════════════ STATE ═══════════════════════════
+var array<Node>  nodes = array.new<Node>()
+var array<float> epP   = array.new<float>()
+var array<float> epW   = array.new<float>()
+var array<Zone>  zones = array.new<Zone>()
+var array<Leg>   pend  = array.new<Leg>()
+var Tracker trkS = Tracker.new(scale = 0, A = map.new<int, float>(), B = map.new<int, float>())
+var Tracker trkM = Tracker.new(scale = 1, A = map.new<int, float>(), B = map.new<int, float>())
+
+// histogram bin, fixed once for the whole chart so bin keys stay comparable
+var float binSz = na
+if na(binSz) and nz(adr) > 0
+    binSz := syminfo.mintick * math.max(binTicks, math.ceil(adr / 400.0 / syminfo.mintick))
+
+// ═══════════════════════════ FUNCTIONS ═══════════════════════════
+f_gauss(float x, float mu, float sd) =>
+    math.exp(-0.5 * math.pow((x - mu) / sd, 2)) / sd
+
+f_px(float x) =>
+    str.tostring(x, format.mintick)
+
+f_put(map<int, float> m, int k, float v) =>
+    if m.size() < MAP_CAP or m.contains(k)
+        m.put(k, nz(m.get(k)) + v)
+    true
+
+// spread one bar's weight over its range: exact overlap for up to 16 bins, 16 even slices beyond that
+f_addBar(map<int, float> m, float bsz, float v) =>
+    float rng = high - low
+    int k0 = int(math.floor(low / bsz))
+    int k1 = int(math.floor(high / bsz))
+    if rng <= 0 or k0 == k1
+        f_put(m, k0, v)
+    else if k1 - k0 < 16
+        for k = k0 to k1
+            float ov = math.min(high, (k + 1) * bsz) - math.max(low, k * bsz)
+            if ov > 0
+                f_put(m, k, v * ov / rng)
+    else
+        for s = 0 to 15
+            f_put(m, int(math.floor((low + (s + 0.5) * rng / 16.0) / bsz)), v / 16.0)
+    true
+
+f_merge(map<int, float> dst, map<int, float> src) =>
+    for [k, v] in src
+        f_put(dst, k, v)
+    true
+
+// advance one tracker by one confirmed bar; returns the leg that just completed, or na
+f_track(Tracker z, float thr, float bsz, float v) =>
+    Leg done = na
+    if z.dir == 0
+        z.dir    := close >= open ? 1 : -1
+        z.legS   := z.dir == 1 ? low : high
+        z.extP   := z.dir == 1 ? high : low
+        z.startT := time
+        z.extT   := time
+        f_addBar(z.A, bsz, v)
+    else if (z.dir == 1 ? high > z.extP : low < z.extP)
+        // new extreme: everything traded since the old one joins the leg
+        f_merge(z.A, z.B)
+        z.B.clear()
+        f_addBar(z.A, bsz, v)
+        z.extP := z.dir == 1 ? high : low
+        z.extT := time
+    else
+        f_addBar(z.B, bsz, v)
+        // the first bar to reach thr against the leg is also the furthest bar since the extreme,
+        // so its low (high) is where the new leg's extreme starts
+        float counter = z.dir == 1 ? low : high
+        if z.dir * (z.extP - counter) >= thr
+            if z.primed
+                done := Leg.new(d = z.dir, S = z.legS, E = z.extP, tS = z.startT, tE = z.extT, t = time, scale = z.scale, hist = z.A)
+            z.primed := true
+            z.dir    := -z.dir
+            z.legS   := z.extP
+            z.startT := z.extT
+            z.extP   := counter
+            z.extT   := time
+            z.A      := z.B
+            z.B      := map.new<int, float>()
+    done
+
+f_mass(Zone z) =>
+    z.q * math.pow(0.5, (time - z.t) / DAY_MS / halfLifeD)
+
+f_score(Zone z) =>
+    f_mass(z) * (z.spent ? 0.3 : 1.0)
+
+f_half(float sd) =>
+    math.max(close * loPct / 100.0, math.min(close * hiPct / 100.0, widthSig * sd))
+
+// a pending leg just failed: price its trapped crowd, then file a new zone or reinforce an overlapping one
+f_trap(Leg L) =>
+    // only the volume now underwater is trapped: above this bar's low for a failed rally, below its high for a failed selloff
+    float cut = L.d == 1 ? low : high
+    float sv  = 0.0
+    float s1  = 0.0
+    float s2  = 0.0
+    map<int, float> h = L.hist
+    for [k, vv] in h
+        float pr = (k + 0.5) * binSz
+        if L.d * (pr - cut) > 0
+            float x = pr - L.E    // moments about the extreme stay well-conditioned at any price level
+            sv += vv
+            s1 += x * vv
+            s2 += x * x * vv
+    if sv > 0
+        float mu   = s1 / sv
+        float vw   = L.E + mu
+        float sdv  = math.sqrt(math.max(s2 / sv - mu * mu, 0.0))
+        float half = f_half(sdv)
+        bool  isClear = L.d == 1 ? close < vw - half : close > vw + half
+        bool  isNear  = math.abs(vw - close) / close * 100.0 <= bandPct
+        if isClear and isNear
+            int mi = -1
+            for [j, zz] in zones
+                if zz.side == L.d and not zz.spent and math.abs(zz.p - vw) <= zz.w + half
+                    mi := j
+                    break
+            if mi >= 0
+                Zone  zm = zones.get(mi)
+                float m0 = f_mass(zm)
+                // a swing leg inside a MAJOR leg is the same traders: overlap takes the larger count instead of the sum
+                bool  overlap = L.tS < zm.spanE and zm.spanS < L.tE
+                float wt = m0 + sv
+                float pN = (m0 * zm.p + sv * vw) / wt
+                float vN = (m0 * (zm.sd * zm.sd + math.pow(zm.p - pN, 2)) + sv * (sdv * sdv + math.pow(vw - pN, 2))) / wt
+                float sN = math.sqrt(math.max(vN, 0.0))
+                float wN = f_half(sN)
+                // re-centre on the pooled crowd unless that would drop the zone onto price
+                if (L.d == 1 ? close < pN - wN : close > pN + wN)
+                    zm.p  := pN
+                    zm.sd := sN
+                    zm.w  := wN
+                    box.set_top(zm.bx, pN + wN)
+                    box.set_bottom(zm.bx, pN - wN)
+                zm.q     := overlap ? math.max(m0, sv) : wt
+                zm.t     := time
+                zm.spanS := math.min(zm.spanS, L.tS)
+                zm.spanE := math.max(zm.spanE, L.tE)
+                if zm.horizon != L.scale
+                    zm.stacked := true
+                zm.horizon := math.max(zm.horizon, L.scale)
+                if not overlap
+                    zm.crowds := zm.crowds + 1
+            else
+                color base = L.d == 1 ? colRes : colSup
+                box bx = box.new(bar_index, vw + half, bar_index + 1, vw - half, border_color = color.new(base, 25), bgcolor = color.new(base, 90), border_style = line.style_dashed, extend = extend.right)
+                zones.push(Zone.new(p = vw, w = half, sd = sdv, side = L.d, t = time, q = sv, spanS = L.tS, spanE = L.tE, bornBar = bar_index, horizon = L.scale, bx = bx))
+                if alertNew
+                    alert("LEDGER: new " + (L.scale == 1 ? "MAJOR" : "swing") + (L.d == 1 ? " resistance (trapped buyers) at " : " support (trapped sellers) at ") + f_px(vw) + " on " + syminfo.ticker, alert.freq_once_per_bar_close)
+    true
+
+f_killZone(int i) =>
+    Zone gone = zones.remove(i)
+    box.delete(gone.bx)
+
+f_killNode(int i) =>
+    Node gone = nodes.remove(i)
+    if not na(gone.bx)
+        box.delete(gone.bx)
+    true
+
+f_heavy(Zone z) =>
+    z.horizon == 1 or z.stacked or z.crowds > 1
+
+f_tag(Zone z) =>
+    string s = z.stacked ? "STACKED" : z.horizon == 1 ? "MAJOR" : "swing"
+    if z.crowds > 1
+        s += " ×" + str.tostring(z.crowds)
+    if z.spent
+        s += " · spent"
+    else if z.inPath
+        s += " · trend path"
+    else
+        if z.dbl
+            s += " · DOUBLE"
+        if z.touched
+            s += " · tested"
+    s
+
+f_label(Zone z) =>
+    string pctTxt = nz(adv) > 0 ? " · " + str.tostring(f_mass(z) / adv * 100.0, "0") + "% ADV" : ""
+    (z.side == 1 ? "▼ " : "▲ ") + f_px(z.p) + "  " + f_tag(z) + pctTxt
+
+f_near(Zone z) =>
+    float d = nz(adr) > 0 ? (z.p - close) / adr : na
+    string dTxt = na(d) ? "" : "  " + (d >= 0 ? "+" : "−") + str.tostring(math.abs(d), "0.00") + " ADR"
+    f_px(z.p) + dTxt + "  " + f_tag(z)
+
+// visual hierarchy: spent and trend-path zones fade; DOUBLE gets the gold frame; MAJOR / stacked and the
+// strongest fresh zone per side get a solid frame; everything else is a light dashed box
+f_style(Zone z, bool isTop) =>
+    color base  = z.side == 1 ? colRes : colSup
+    bool  heavy = f_heavy(z)
+    color bg    = color.new(base, 91)
+    color bd    = color.new(base, 35)
+    string st   = line.style_dashed
+    int   wd    = 1
+    if z.spent
+        bg := color.new(color.gray, 96)
+        bd := color.new(color.gray, 65)
+        st := line.style_dotted
+    else if z.inPath
+        bg := color.new(base, 96)
+        bd := color.new(base, 65)
+        st := line.style_dotted
+    else if z.dbl
+        bg := color.new(base, 84)
+        bd := colDbl
+        st := line.style_solid
+        wd := heavy ? 3 : 2
+    else if heavy or isTop
+        bg := color.new(base, heavy ? 86 : 89)
+        bd := base
+        st := line.style_solid
+        wd := 2
+    box.set_bgcolor(z.bx, bg)
+    box.set_border_color(z.bx, bd)
+    box.set_border_style(z.bx, st)
+    box.set_border_width(z.bx, wd)
+
+f_row(table tb, int r, string k, string v, color c) =>
+    table.cell(tb, 0, r, k, text_color = color.new(color.gray, 15), text_size = tblSize, text_halign = text.align_left)
+    table.cell(tb, 1, r, v, text_color = c, text_size = tblSize, text_halign = text.align_left)
+
+// ═══════════════════════════ SHORT-TERM CROWD: v1 engine ═══════════════════════════
+float rngNow  = high - low
+float bodyAbs = math.abs(close - open)
+
+float rngBase = ta.sma(rngNow, hmmLen)
+float xr = na
+if not na(rngBase)
+    xr := math.log(math.max(rngNow, syminfo.mintick) / math.max(rngBase, syminfo.mintick))
+var float pV = 0.5
+if not na(xr)
+    float priC = (1.0 - pV) * pStay + pV * (1.0 - pStay)
+    float priV = pV * pStay + (1.0 - pV) * (1.0 - pStay)
+    float aC  = priC * f_gauss(xr, muC, sdC)
+    float aVv = priV * f_gauss(xr, muV, sdV)
+    if aC + aVv > 0
+        pV := aVv / (aC + aVv)
+bool isVolatile = bar_index > hmmLen and pV > 0.5
+bool newEpoch   = timeframe.change(epochTF)
+
+if newEpoch and barstate.isconfirmed and epP.size() > 20
+    float lo = epP.min()
+    float hi = epP.max()
+    float bs = (hi - lo) / nBins
+    if bs > 0
+        array<float> prof = array.new<float>(nBins, 0.0)
+        float tot = 0.0
+        for i = 0 to epP.size() - 1
+            int b = math.max(0, math.min(nBins - 1, int(math.floor((epP.get(i) - lo) / bs))))
+            prof.set(b, prof.get(b) + epW.get(i))
+            tot += epW.get(i)
+        if tot > 0
+            array<float> smo = array.new<float>(nBins, 0.0)
+            for b = 0 to nBins - 1
+                float lv = b > 0 ? prof.get(b - 1) : prof.get(b)
+                float rv = b < nBins - 1 ? prof.get(b + 1) : prof.get(b)
+                smo.set(b, 0.25 * lv + 0.5 * prof.get(b) + 0.25 * rv)
+            float meanSm = smo.avg()
+            array<float> pkP = array.new<float>()
+            array<float> pkM = array.new<float>()
+            for b = 1 to nBins - 2
+                float v = smo.get(b)
+                if v >= smo.get(b - 1) and v > smo.get(b + 1) and v > meanSm * peakMult
+                    float w0 = prof.get(b - 1)
+                    float w1 = prof.get(b)
+                    float w2 = prof.get(b + 1)
+                    float ws = w0 + w1 + w2
+                    if ws > 0
+                        float c0 = lo + (b - 0.5) * bs
+                        float c1 = lo + (b + 0.5) * bs
+                        float c2 = lo + (b + 1.5) * bs
+                        pkP.push((w0 * c0 + w1 * c1 + w2 * c2) / ws)
+                        pkM.push(ws / tot * nBins / 3.0)
+            if pkM.size() > 0
+                array<int> ordPk = pkM.sort_indices(order.descending)
+                int take = math.min(topK, ordPk.size())
+                float hgt = close * (isVolatile ? wVolPct : wCalmPct) / 100.0
+                for j = 0 to take - 1
+                    int q = ordPk.get(j)
+                    float np = pkP.get(q)
+                    float nm = pkM.get(q)
+                    bool inBand = math.abs(np - close) / close * 100.0 <= nodeBand
+                    bool merged = false
+                    if inBand
+                        for e in nodes
+                            if math.abs(e.p - np) <= e.w
+                                e.m := math.min(e.m + 0.5 * nm, 12.0)
+                                merged := true
+                                break
+                    if inBand and not merged and math.abs(np - close) > hgt / 2.0
+                        if nodes.size() >= maxNodes
+                            int lowI = 0
+                            float lowM = 1e10
+                            for [k, ek] in nodes
+                                if ek.m < lowM
+                                    lowM := ek.m
+                                    lowI := k
+                            f_killNode(lowI)
+                        int sd = np > close ? 1 : -1
+                        box nbx = na
+                        if showShort
+                            color base = sd == 1 ? colRes : colSup
+                            nbx := box.new(bar_index, np + hgt / 2.0, bar_index + 1, np - hgt / 2.0, border_color = color.new(base, 75), bgcolor = color.new(base, 93), extend = extend.right)
+                        nodes.push(Node.new(p = np, m = nm, w = hgt / 2.0, t = time, side = sd, bx = nbx))
+
+if newEpoch and barstate.isconfirmed
+    epP.clear()
+    epW.clear()
+
+float uw = high - math.max(open, close)
+float lw = math.min(open, close) - low
+float absorb = rngNow > 0 ? wBar * (1.0 - bodyAbs / rngNow) : 0.0
+if barstate.isconfirmed and absorb > 0 and uw + lw > 0
+    if uw > 0
+        epP.push(math.max(open, close) + uw / 2.0)
+        epW.push(absorb * uw / (uw + lw))
+    if lw > 0
+        epP.push(math.min(open, close) - lw / 2.0)
+        epW.push(absorb * lw / (uw + lw))
+while epP.size() > 20000
+    epP.shift()
+    epW.shift()
+
+if barstate.isconfirmed and nodes.size() > 0
+    for i = nodes.size() - 1 to 0
+        Node n = nodes.get(i)
+        bool closedThrough = (n.side == 1 and close > n.p + n.w) or (n.side == -1 and close < n.p - n.w)
+        bool tooOld = (time - n.t) > nodeAgeD * DAY_MS
+        bool tooFar = math.abs(n.p - close) / close * 100.0 > nodeBand
+        if closedThrough or tooOld or tooFar
+            f_killNode(i)
+
+// ═══════════════════════════ TREND-DAY CONTEXT (noise area + divergence) ═══════════════════════════
+bool intraday = timeframe.isintraday
+int  sessMin  = (rEndH * 60 + rEndM) - (rStartH * 60 + rStartM)
+bool rthOk    = sessMin > 0
+int  nbCols   = math.max(sessMin, 1)
+// noise area: |close - RTH open| by minute of the session, one row per past session
+var matrix<float> nbM   = matrix.new<float>(30, nbCols, na)
+var array<float>  curMv = array.new<float>(nbCols, na)
+var int   nbRow    = 0
+var int   nbFilled = 0
+var float rthOpen  = na
+var float oOpen    = na
+
+int  rS       = timestamp(tz, year(time, tz), month(time, tz), dayofmonth(time, tz), rStartH, rStartM)
+bool inRth    = useTrend and intraday and rthOk and time >= rS and time < rS + sessMin * 60000
+// a date change also starts a session: RTH-only charts have no out-of-session bar between days
+bool newDate  = rS != rS[1]
+bool rthStart = inRth and (not inRth[1] or newDate)
+bool rthEnd   = inRth[1] and (not inRth or newDate)
+int  sessCol  = inRth ? int(math.floor((time - rS) / 60000.0)) : na
+
+if rthEnd and barstate.isconfirmed
+    bool keep = not na(rthOpen)
+    for c = 0 to nbCols - 1
+        if keep
+            nbM.set(nbRow, c, curMv.get(c))
+        curMv.set(c, na)
+    if keep
+        nbRow    := (nbRow + 1) % nbDays
+        nbFilled := math.min(nbFilled + 1, nbDays)
+if rthStart
+    // a session first seen mid-way (start of chart history) has no true open: skip it
+    rthOpen := time - rS <= math.max(timeframe.in_seconds() * 1000, 900000) ? open : na
+    oOpen   := oO
+
+float band = na
+if inRth and not na(rthOpen) and sessCol < nbCols
+    float acc = 0.0
+    int   cnt = 0
+    for r = 0 to nbDays - 1
+        float x = nbM.get(r, sessCol)
+        if not na(x)
+            acc += x
+            cnt += 1
+    if cnt >= 5
+        band := acc / cnt * nbMult
+if inRth and barstate.isconfirmed and not na(rthOpen) and sessCol < nbCols
+    curMv.set(sessCol, math.abs(close - rthOpen))
+
+bool  outside  = not na(band) and math.abs(close - rthOpen) > band
+float chartPct = inRth and nz(rthOpen) > 0 ? (close - rthOpen) / rthOpen * 100.0 : na
+float otherPct = inRth and nz(oOpen) > 0 and not na(oC) ? (oC - oOpen) / oOpen * 100.0 : na
+float relPct   = divOn ? chartPct - beta * otherPct : na
+bool  divUp    = not na(relPct) and relPct > divPct and chartPct > 0
+bool  divDn    = not na(relPct) and relPct < -divPct and chartPct < 0
+bool  trendUp  = inRth and ((outside and close > rthOpen) or divUp)
+bool  trendDn  = inRth and ((outside and close < rthOpen) or divDn)
+
+// ═══════════════════════════ FAILED LEGS -> ZONES AT THE TRAPPED CROWD'S BREAKEVEN ═══════════════════════════
+if barstate.isconfirmed and pend.size() > 0
+    for i = pend.size() - 1 to 0
+        Leg   L = pend.get(i)
+        float R = L.S + (1.0 - failFrac) * (L.E - L.S)
+        bool  extended = L.d == 1 ? high > L.E : low < L.E
+        bool  failed   = not extended and (L.d == 1 ? low <= R : high >= R)
+        bool  expired  = time - L.t > pendDays * DAY_MS
+        if failed
+            f_trap(L)
+        if extended or failed or expired
+            pend.remove(i)
+
+// ═══════════════════════════ TRACK LEGS AT BOTH CROWD SIZES ═══════════════════════════
+if barstate.isconfirmed and nz(adr) > 0 and not na(binSz)
+    Leg ls = f_track(trkS, legThr * adr, binSz, wBar)
+    if not na(ls)
+        pend.push(ls)
+    if majOn
+        Leg lm = f_track(trkM, majThr * adr, binSz, wBar)
+        if not na(lm)
+            pend.push(lm)
+    while pend.size() > 80
+        pend.shift()
+
+// ═══════════════════════════ ZONE LIFECYCLE: tested -> spent, sweep-tolerant death ═══════════════════════════
+bool hitRes = false
+bool hitSup = false
+if barstate.isconfirmed and zones.size() > 0
+    for i = zones.size() - 1 to 0
+        Zone  zz  = zones.get(i)
+        float top = zz.p + zz.w
+        float bot = zz.p - zz.w
+        bool  inZone = high >= bot and low <= top
+        if inZone and not zz.touched and bar_index > zz.bornBar
+            zz.touched := true
+            if zz.side == 1
+                hitRes := true
+            else
+                hitSup := true
+            if alertTouch
+                alert("LEDGER: " + syminfo.ticker + " is testing " + (zz.side == 1 ? "resistance (trapped buyers) " : "support (trapped sellers) ") + f_label(zz), alert.freq_once_per_bar_close)
+        // spent once price has reacted a full zone height away on the rejection side
+        bool away = zz.side == 1 ? high < bot and close < bot - zz.w : low > top and close > top + zz.w
+        if zz.touched and not zz.spent and away
+            zz.spent := true
+        float past = zz.side * (close - (zz.side == 1 ? top : bot))
+        bool  dead = false
+        if past > 0
+            int tNow = nz(time_close, time)
+            if zz.beyondT == 0
+                zz.beyondT := tNow
+            dead := past > breakMult * 2.0 * zz.w or tNow - zz.beyondT >= acceptMin * 60000
+        else
+            zz.beyondT := 0
+        bool tooOld = time - zz.t > maxAgeD * DAY_MS
+        bool tooFar = math.abs(zz.p - close) / close * 100.0 > bandPct
+        if dead or tooOld or tooFar
+            f_killZone(i)
+
+// keep the strongest maxPerSide zones on each side
+if zones.size() > 0
+    for side = -1 to 1 by 2
+        int cnt = 0
+        for zz in zones
+            if zz.side == side
+                cnt += 1
+        while cnt > maxPerSide
+            int   wI = -1
+            float wS = 0.0
+            for [i, zz] in zones
+                if zz.side == side
+                    float sc = f_score(zz)
+                    if wI < 0 or sc < wS
+                        wS := sc
+                        wI := i
+            f_killZone(wI)
+            cnt -= 1
+
+// ═══════════════════════════ FLAGS + STYLING ═══════════════════════════
+if barstate.isconfirmed and zones.size() > 0
+    int   topU  = -1
+    int   topD  = -1
+    float bestU = 0.0
+    float bestD = 0.0
+    for [i, zz] in zones
+        zz.inPath := zz.side == 1 ? trendUp : trendDn
+        bool dbl = false
+        if not zz.spent
+            for n in nodes
+                if n.side == zz.side and math.abs(n.p - zz.p) <= zz.w + n.w
+                    dbl := true
+                    break
+        zz.dbl := dbl
+        if not zz.spent and not zz.inPath
+            float sc = f_score(zz)
+            if zz.side == 1 and (topU < 0 or sc > bestU)
+                topU  := i
+                bestU := sc
+            if zz.side == -1 and (topD < 0 or sc > bestD)
+                topD  := i
+                bestD := sc
+    for [i, zz] in zones
+        f_style(zz, i == topU or i == topD)
+
+// ═══════════════════════════ LABELS + DASHBOARD ═══════════════════════════
+var array<label> tags = array.new<label>()
+var table dash = na
+
+if barstate.islast
+    for lb in tags
+        label.delete(lb)
+    tags.clear()
+    int   nLive  = 0
+    int   nHeavy = 0
+    int   nDbl   = 0
+    int   upI    = -1
+    int   dnI    = -1
+    float upP    = na
+    float dnP    = na
+    for [i, zz] in zones
+        if not zz.spent
+            nLive += 1
+            if f_heavy(zz)
+                nHeavy += 1
+            if zz.dbl and not zz.inPath
+                nDbl += 1
+            if zz.p > close and (na(upP) or zz.p < upP)
+                upP := zz.p
+                upI := i
+            if zz.p <= close and (na(dnP) or zz.p > dnP)
+                dnP := zz.p
+                dnI := i
+            if showLabels and nz(adr) > 0 and math.abs(zz.p - close) <= labelWithin * adr
+                color base = zz.side == 1 ? colRes : colSup
+                color tc   = zz.inPath ? color.new(base, 45) : zz.dbl ? colDbl : base
+                bool  big  = not zz.inPath and (zz.dbl or f_heavy(zz))
+                tags.push(label.new(bar_index + LBL_OFF, zz.p, f_label(zz), style = label.style_label_left, color = color.new(color.black, 100), textcolor = tc, size = big ? size.normal : size.small))
+    if showTable
+        if na(dash)
+            dash := table.new(tblPos, 2, 6, bgcolor = color.new(#0d1117, 12), frame_color = color.new(color.gray, 70), frame_width = 1, border_color = color.new(color.gray, 88), border_width = 1)
+        string ctx = not useTrend ? "off" : not intraday ? "intraday charts only" : not rthOk ? "check the RTH hours" : not inRth ? "outside RTH" : na(rthOpen) ? "waiting for a full session" : na(band) ? "learning · " + str.tostring(nbFilled) + "/5 sessions" : trendUp ? "TREND UP" : trendDn ? "TREND DOWN" : "balanced"
+        string divTxt = not useDiv ? "off" : not divOn ? "same symbol · off" : na(oC) ? "no data" : na(relPct) ? "—" : (divUp ? "leading ▲ " : divDn ? "leading ▼ " : "in line ") + (relPct >= 0 ? "+" : "−") + str.tostring(math.abs(relPct), "0.00") + "%"
+        string legTxt = nz(adr) > 0 and not na(binSz) ? "swing " + f_px(legThr * adr) + " · major " + (majOn ? f_px(majThr * adr) : "off") + " · bin " + f_px(binSz) : "waiting for " + str.tostring(adrLen + 1) + " daily bars"
+        f_row(dash, 0, "LEDGER v3.1", str.tostring(nLive) + " live · " + str.tostring(nHeavy) + " major/stacked · " + str.tostring(nDbl) + " DOUBLE", color.white)
+        string upTxt = "none"
+        string dnTxt = "none"
+        if upI >= 0
+            upTxt := f_near(zones.get(upI))
+        if dnI >= 0
+            dnTxt := f_near(zones.get(dnI))
+        f_row(dash, 1, "▼ Above", upTxt, colRes)
+        f_row(dash, 2, "▲ Below", dnTxt, colSup)
+        f_row(dash, 3, "Context", ctx, trendUp or trendDn ? color.orange : color.silver)
+        f_row(dash, 4, "vs " + corrName, divTxt, divUp or divDn ? color.orange : color.silver)
+        f_row(dash, 5, "Legs", legTxt, color.silver)
+    else if not na(dash)
+        table.delete(dash)
+        dash := na
+
+// ═══════════════════════════ ALERTS ═══════════════════════════
+alertcondition(hitRes, "LEDGER · resistance tested", "LEDGER: price reached a trapped-buyer (resistance) zone on {{ticker}} {{interval}}")
+alertcondition(hitSup, "LEDGER · support tested", "LEDGER: price reached a trapped-seller (support) zone on {{ticker}} {{interval}}")
