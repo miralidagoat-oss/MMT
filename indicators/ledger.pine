@@ -1,5 +1,5 @@
 //@version=6
-indicator("LEDGER v3.1 · Trapped-Crowd Reversal Zones", shorttitle = "LEDGER", overlay = true, max_boxes_count = 300, max_labels_count = 100)
+indicator("LEDGER v3.2 · Trapped-Crowd Reversal Zones", shorttitle = "LEDGER", overlay = true, max_boxes_count = 300, max_labels_count = 100)
 
 // ============================================================================
 // LEDGER — trapped-crowd reversal zones
@@ -15,7 +15,7 @@ indicator("LEDGER v3.1 · Trapped-Crowd Reversal Zones", shorttitle = "LEDGER", 
 //      dimmed when a trend day is heading into them.
 //   DOUBLE = a zone that also overlaps a short-term absorption node.
 // All state changes on confirmed bars only, so nothing repaints.
-// README.md lists the v3 -> v3.1 fixes.
+// README.md lists the v3 -> v3.1 fixes and how v3.2 grades each zone's hold rate.
 // ============================================================================
 
 // ═══════════════════════════ INPUTS ═══════════════════════════
@@ -40,6 +40,11 @@ int   acceptMin  = input.int(10, "Dies after closes hold beyond it for (minutes)
 float breakMult  = input.float(1.0, "…or at once on a close this far past (× zone height)", minval = 0.25, maxval = 5.0, step = 0.25, group = GZ)
 bool  alertTouch = input.bool(true, "alert() on the first test of a zone", group = GZ, tooltip = "Fires through an alert set to 'Any alert() function call'.")
 bool  alertNew   = input.bool(false, "alert() when a new zone forms", group = GZ)
+
+string GH = "Hold-rate estimate"
+bool  showOdds = input.bool(true, "Show each zone's chance of holding", group = GH, tooltip = "Learned from this chart's own history: of past zones in the same class (side, swing vs MAJOR/stacked, DOUBLE, trend path) that price reached, the share that held. Thin classes borrow strength from similar ones. Hover a zone label for the sample size and range.")
+float reactAdr = input.float(0.20, "Held = reaction of at least (× ADR)", minval = 0.05, maxval = 2.0, step = 0.05, group = GH, tooltip = "After price first reaches a zone, it has held once a bar closes this far beyond the zone's edge on the rejection side, before an accepted break kills the zone. A break first counts as a failure.")
+int   minTests = input.int(20, "Show rates after (graded tests)", minval = 5, maxval = 200, group = GH)
 
 string G1 = "Short-term crowd (v1 engine, used for DOUBLE)"
 bool   showShort = input.bool(false, "Also draw the short-term nodes (off if v1 is on the chart)", group = G1)
@@ -88,6 +93,7 @@ color  colDbl      = input.color(color.rgb(255, 215, 0), "DOUBLE", group = GD)
 float  DAY_MS  = 86400000.0
 int    MAP_CAP = 40000        // Pine maps hold at most 50,000 keys
 int    LBL_OFF = 12           // label offset right of the last bar
+float  PRIOR_K = 8.0          // pseudo-tests each hold-rate class borrows from its parent
 float  loPct   = math.min(minPct, maxPct)
 float  hiPct   = math.max(minPct, maxPct)
 bool   majOn   = useMajor and majThr > legThr
@@ -135,6 +141,8 @@ type Zone
     bool  spent   = false
     bool  dbl     = false
     bool  inPath  = false
+    int   cls     = -1
+    bool  graded  = false
     box   bx
 
 // zigzag state at one crowd size; A = volume by price from the leg start to its extreme, B = after the extreme
@@ -164,7 +172,8 @@ type Leg
 // t = last reinforcement (decay and age clock), q = trapped volume as of t, spanS/spanE = time span of the
 // volume behind the zone (so merges don't count the same traders twice), horizon 0 = swing / 1 = MAJOR,
 // stacked = reinforced by the other crowd size, crowds = distinct crowds merged in, beyondT = time closes
-// beyond it began (0 = not beyond).
+// beyond it began (0 = not beyond), cls = hold-rate class locked when price first reached it,
+// graded = its first test has been scored as held or failed.
 // Tracker.primed: the first leg's true start is unknown, so it is never emitted.
 
 // ═══════════════════════════ DATA ═══════════════════════════
@@ -184,6 +193,9 @@ var array<Zone>  zones = array.new<Zone>()
 var array<Leg>   pend  = array.new<Leg>()
 var Tracker trkS = Tracker.new(scale = 0, A = map.new<int, float>(), B = map.new<int, float>())
 var Tracker trkM = Tracker.new(scale = 1, A = map.new<int, float>(), B = map.new<int, float>())
+// hold-rate stats per class: first tests graded / held
+var array<int> stN = array.new<int>(16, 0)
+var array<int> stW = array.new<int>(16, 0)
 
 // histogram bin, fixed once for the whole chart so bin keys stay comparable
 var float binSz = na
@@ -343,6 +355,61 @@ f_killNode(int i) =>
 f_heavy(Zone z) =>
     z.horizon == 1 or z.stacked or z.crowds > 1
 
+// hold-rate class: side × size × DOUBLE × trend path (0-15)
+f_cls(Zone z) =>
+    (z.side == 1 ? 0 : 8) + (f_heavy(z) ? 4 : 0) + (z.dbl ? 2 : 0) + (z.inPath ? 1 : 0)
+
+f_clsName(int c) =>
+    string s = (c >= 8 ? "support" : "resistance") + " · " + (c % 8 >= 4 ? "MAJOR/stacked" : "swing")
+    if c % 4 >= 2
+        s += " · DOUBLE"
+    if c % 2 == 1
+        s += " · trend path"
+    s
+
+f_grade(Zone z, bool held) =>
+    if z.cls < 0
+        z.cls := f_cls(z)
+    stN.set(z.cls, stN.get(z.cls) + 1)
+    if held
+        stW.set(z.cls, stW.get(z.cls) + 1)
+    z.graded := true
+    true
+
+// hold rate of a class, shrunk toward the same class on both sides, which is shrunk toward the overall rate,
+// so a thin class leans on its neighbours until it has data of its own
+f_rate(int c) =>
+    float nAll = stN.sum()
+    float wAll = stW.sum()
+    int   c8   = c % 8
+    float n8   = stN.get(c8) + stN.get(c8 + 8)
+    float w8   = stW.get(c8) + stW.get(c8 + 8)
+    float pAll = (wAll + 1.0) / (nAll + 2.0)
+    float p8   = (w8 + PRIOR_K * pAll) / (n8 + PRIOR_K)
+    (stW.get(c) + PRIOR_K * p8) / (stN.get(c) + PRIOR_K)
+
+f_zoneCls(Zone z) =>
+    z.cls >= 0 ? z.cls : f_cls(z)
+
+f_odds(Zone z) =>
+    float nAll = stN.sum()
+    string txt = str.tostring(f_rate(f_zoneCls(z)) * 100.0, "0") + "% hold"
+    if nAll < minTests
+        txt := "hold ? (" + str.tostring(nAll, "0") + "/" + str.tostring(minTests) + " tests)"
+    txt
+
+f_oddsTip(Zone z) =>
+    int   c    = f_zoneCls(z)
+    float n    = stN.get(c)
+    float w    = stW.get(c)
+    float nAll = stN.sum()
+    float wAll = stW.sum()
+    float p    = f_rate(c)
+    float se   = math.sqrt(p * (1.0 - p) / (n + PRIOR_K))
+    string rng = str.tostring(math.max(p - 1.2816 * se, 0.0) * 100.0, "0") + "–" + str.tostring(math.min(p + 1.2816 * se, 1.0) * 100.0, "0") + "%"
+    string head = nAll < minTests ? "Still learning: " + str.tostring(nAll, "0") + " of " + str.tostring(minTests) + " tests graded so far.\n" : "Chance of holding: " + str.tostring(p * 100.0, "0") + "% (80% range " + rng + ")\n"
+    head + "Class: " + f_clsName(c) + "\nThis class held " + str.tostring(w, "0") + " of " + str.tostring(n, "0") + " tests on this chart; all zones " + str.tostring(wAll, "0") + " of " + str.tostring(nAll, "0") + ".\nHeld = a close " + str.tostring(reactAdr, "0.00") + " ADR beyond the zone on the rejection side before an accepted break."
+
 f_tag(Zone z) =>
     string s = z.stacked ? "STACKED" : z.horizon == 1 ? "MAJOR" : "swing"
     if z.crowds > 1
@@ -359,13 +426,14 @@ f_tag(Zone z) =>
     s
 
 f_label(Zone z) =>
-    string pctTxt = nz(adv) > 0 ? " · " + str.tostring(f_mass(z) / adv * 100.0, "0") + "% ADV" : ""
-    (z.side == 1 ? "▼ " : "▲ ") + f_px(z.p) + "  " + f_tag(z) + pctTxt
+    string pctTxt  = nz(adv) > 0 ? " · " + str.tostring(f_mass(z) / adv * 100.0, "0") + "% ADV" : ""
+    string oddsTxt = showOdds ? f_odds(z) + " · " : ""
+    (z.side == 1 ? "▼ " : "▲ ") + f_px(z.p) + "  " + oddsTxt + f_tag(z) + pctTxt
 
 f_near(Zone z) =>
     float d = nz(adr) > 0 ? (z.p - close) / adr : na
     string dTxt = na(d) ? "" : "  " + (d >= 0 ? "+" : "−") + str.tostring(math.abs(d), "0.00") + " ADR"
-    f_px(z.p) + dTxt + "  " + f_tag(z)
+    f_px(z.p) + dTxt + "  " + (showOdds ? f_odds(z) + " · " : "") + f_tag(z)
 
 // visual hierarchy: spent and trend-path zones fade; DOUBLE gets the gold frame; MAJOR / stacked and the
 // strongest fresh zone per side get a solid frame; everything else is a light dashed box
@@ -608,6 +676,7 @@ if barstate.isconfirmed and zones.size() > 0
         bool  inZone = high >= bot and low <= top
         if inZone and not zz.touched and bar_index > zz.bornBar
             zz.touched := true
+            zz.cls     := f_cls(zz)
             if zz.side == 1
                 hitRes := true
             else
@@ -618,6 +687,9 @@ if barstate.isconfirmed and zones.size() > 0
         bool away = zz.side == 1 ? high < bot and close < bot - zz.w : low > top and close > top + zz.w
         if zz.touched and not zz.spent and away
             zz.spent := true
+        // held: after the first test, a close reactAdr ADR beyond the zone edge on the rejection side
+        if zz.touched and not zz.graded and nz(adr) > 0 and zz.side * ((zz.side == 1 ? bot : top) - close) >= reactAdr * adr
+            f_grade(zz, true)
         float past = zz.side * (close - (zz.side == 1 ? top : bot))
         bool  dead = false
         if past > 0
@@ -627,6 +699,9 @@ if barstate.isconfirmed and zones.size() > 0
             dead := past > breakMult * 2.0 * zz.w or tNow - zz.beyondT >= acceptMin * 60000
         else
             zz.beyondT := 0
+        // an accepted break before the reaction is a failure, including a gap straight through an untested zone
+        if dead and not zz.graded
+            f_grade(zz, false)
         bool tooOld = time - zz.t > maxAgeD * DAY_MS
         bool tooFar = math.abs(zz.p - close) / close * 100.0 > bandPct
         if dead or tooOld or tooFar
@@ -709,14 +784,14 @@ if barstate.islast
                 color base = zz.side == 1 ? colRes : colSup
                 color tc   = zz.inPath ? color.new(base, 45) : zz.dbl ? colDbl : base
                 bool  big  = not zz.inPath and (zz.dbl or f_heavy(zz))
-                tags.push(label.new(bar_index + LBL_OFF, zz.p, f_label(zz), style = label.style_label_left, color = color.new(color.black, 100), textcolor = tc, size = big ? size.normal : size.small))
+                tags.push(label.new(bar_index + LBL_OFF, zz.p, f_label(zz), style = label.style_label_left, color = color.new(color.black, 100), textcolor = tc, size = big ? size.normal : size.small, tooltip = showOdds ? f_oddsTip(zz) : ""))
     if showTable
         if na(dash)
-            dash := table.new(tblPos, 2, 6, bgcolor = color.new(#0d1117, 12), frame_color = color.new(color.gray, 70), frame_width = 1, border_color = color.new(color.gray, 88), border_width = 1)
+            dash := table.new(tblPos, 2, 7, bgcolor = color.new(#0d1117, 12), frame_color = color.new(color.gray, 70), frame_width = 1, border_color = color.new(color.gray, 88), border_width = 1)
         string ctx = not useTrend ? "off" : not intraday ? "intraday charts only" : not rthOk ? "check the RTH hours" : not inRth ? "outside RTH" : na(rthOpen) ? "waiting for a full session" : na(band) ? "learning · " + str.tostring(nbFilled) + "/5 sessions" : trendUp ? "TREND UP" : trendDn ? "TREND DOWN" : "balanced"
         string divTxt = not useDiv ? "off" : not divOn ? "same symbol · off" : na(oC) ? "no data" : na(relPct) ? "—" : (divUp ? "leading ▲ " : divDn ? "leading ▼ " : "in line ") + (relPct >= 0 ? "+" : "−") + str.tostring(math.abs(relPct), "0.00") + "%"
         string legTxt = nz(adr) > 0 and not na(binSz) ? "swing " + f_px(legThr * adr) + " · major " + (majOn ? f_px(majThr * adr) : "off") + " · bin " + f_px(binSz) : "waiting for " + str.tostring(adrLen + 1) + " daily bars"
-        f_row(dash, 0, "LEDGER v3.1", str.tostring(nLive) + " live · " + str.tostring(nHeavy) + " major/stacked · " + str.tostring(nDbl) + " DOUBLE", color.white)
+        f_row(dash, 0, "LEDGER v3.2", str.tostring(nLive) + " live · " + str.tostring(nHeavy) + " major/stacked · " + str.tostring(nDbl) + " DOUBLE", color.white)
         string upTxt = "none"
         string dnTxt = "none"
         if upI >= 0
@@ -728,6 +803,20 @@ if barstate.islast
         f_row(dash, 3, "Context", ctx, trendUp or trendDn ? color.orange : color.silver)
         f_row(dash, 4, "vs " + corrName, divTxt, divUp or divDn ? color.orange : color.silver)
         f_row(dash, 5, "Legs", legTxt, color.silver)
+        if showOdds
+            float nAll = stN.sum()
+            float nHv  = 0.0
+            float wHv  = 0.0
+            for c = 0 to 15
+                if c % 8 >= 4
+                    nHv += stN.get(c)
+                    wHv += stW.get(c)
+            float nLt = nAll - nHv
+            float wLt = stW.sum() - wHv
+            string holdTxt = "learning · " + str.tostring(nAll, "0") + "/" + str.tostring(minTests) + " tests"
+            if nAll >= minTests
+                holdTxt := str.tostring(stW.sum() / nAll * 100.0, "0") + "% of " + str.tostring(nAll, "0") + " tests · swing " + (nLt > 0 ? str.tostring(wLt / nLt * 100.0, "0") + "%" : "—") + " · major " + (nHv > 0 ? str.tostring(wHv / nHv * 100.0, "0") + "%" : "—")
+            f_row(dash, 6, "Held", holdTxt, color.silver)
     else if not na(dash)
         table.delete(dash)
         dash := na

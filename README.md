@@ -240,7 +240,7 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
 
 ## LEDGER — Trapped-Crowd Reversal Zones
 
-- **Maintained script:** `indicators/ledger.pine` (v3.1)
+- **Maintained script:** `indicators/ledger.pine` (v3.2)
 - **Original submission:** `indicators/legacy/ledger_v3.pine`, kept for reference only.
 
 Two zigzag trackers (swing, 0.2× ADR, and MAJOR, 0.4× ADR) build a
@@ -341,6 +341,37 @@ Behaviour changes you may notice against v3: zone heights on 15m+ charts
 shift slightly (range-spread volume); stacked zones show a lower (correct)
 "% ADV"; the divergence ratio defaults to auto (set it to 1.25 to match v3 on
 NQ).
+
+### Hold-rate estimate (v3.2)
+
+Every zone label now leads with its **chance of holding**, e.g.
+`▼ 21,532.50  62% hold · MAJOR · DOUBLE · 38% ADV`. There is no fixed or
+backtested number behind it. The indicator grades its own zones on the chart
+you're looking at:
+
+- **Held:** after price first reaches the zone, a bar closes at least
+  `reactAdr` (default 0.20 × ADR) beyond the zone's edge on the rejection side,
+  before an accepted break kills the zone.
+- **Failed:** an accepted break comes first. A gap straight through an
+  untested zone also counts as a failure.
+- Zones that age out or get pruned while still undecided aren't counted.
+
+Zones are grouped into 16 classes: side × swing vs MAJOR/stacked × DOUBLE ×
+trend path. The class is fixed at the moment price first arrives. A class's
+rate is shrunk toward the same class on both sides, which is in turn shrunk
+toward the chart-wide rate (8 pseudo-tests each), so a thin class leans on its
+neighbours until it has data of its own. Hovering a label shows the class, its
+raw count ("held 37 of 60"), the chart-wide count and an 80% range. The
+dashboard's **Held** row shows the overall, swing and MAJOR rates. Nothing
+prints until `minTests` (default 20) tests have been graded.
+
+**Read it against the no-edge baseline, not against 50%.** On synthetic
+random-walk data (no trapped-crowd effect at all), the same grading gives a
+35% hold rate on 24h futures-style charts and 41% on RTH-only charts (6
+seeds × 60 days each; 511 and 1,077 graded tests). A class showing ~40% is
+noise. A class that stays well above that across a decent sample is where the
+edge is. The rates are measured over the history loaded on your chart, so they
+differ by symbol, timeframe and settings. A larger `reactAdr` lowers them.
 
 ### Verification and limits
 
