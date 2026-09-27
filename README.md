@@ -471,6 +471,61 @@ a far wall can only end the move if every nearer one breaks first.
 - **Honesty panel:** "zones held", swing vs major, reach said vs hit, and
   reach reliability, all measured on your chart.
 
+### Fade test and timeframe fit
+
+- **Fade test.** Every zone's first test inside the session is also graded as a
+  trade:
+  - **Entry:** a limit at the zone's near edge, or the open if price opened
+    inside the zone. There's no trade if the bar gapped past the zone.
+  - **Stop:** `stopMult` × zone height beyond the far edge, which is the same
+    distance as the decisive-break rule.
+  - **Target:** `tgtR` × risk.
+  - **Session exit:** anything still open exits at the session close.
+  - **Costs:** deducted in ticks.
+  - **Pessimistic fills:** the fill bar can only lose, the stop wins a bar that
+    prints both, and a gap through the stop fills at the open.
+
+  The dashboard's FADE TEST rows show trades, win rate against the breakeven
+  rate, expectancy per trade, net R and max drawdown. The terminus readout
+  shows its fade plan (entry, stop, target, drawn as lines) and the expected R
+  for its class.
+- **Fairness check.** On synthetic random-walk data, which has no edge by
+  construction, the port of this accounting returns −0.02R and +0.01R per trade
+  (about 1,400 trades, 2R target, 2-tick costs), with win rates at the 33%
+  breakeven. So the accounting doesn't manufacture profit. A positive
+  expectancy on real data is therefore evidence, not an artefact.
+- **Timeframe fit.** The dashboard row compares the average session bar range
+  with a zone's test span: the distance from its near edge to its decisive-break
+  level. When one bar can cover that span, a whole test happens inside a single
+  bar, and a sweep can't be told from a break ("too coarse"). With fewer than
+  `minTests` graded tests the row says "thin history" instead.
+
+### Which timeframe on MNQ
+
+This is an estimate from how the model is built, not a measurement; the fade
+test above is what settles it on your charts. At MNQ's recent levels:
+
+- Zones are typically 15–30 points tall, so a test spans roughly 30–60 points
+  from the near edge to a decisive break.
+- Typical RTH bar ranges are about 8–15 points on 1m, 15–25 on 3m, 20–35 on 5m,
+  40–65 on 15m and 90+ on 1h.
+- MNQ trades about 23 hours a day. With 20,000 bars loaded that is about 14
+  sessions on 1m, 43 on 3m, 72 on 5m and 217 on 15m.
+
+| timeframe | bars vs zones | history for the hold rates | verdict |
+|---|---|---|---|
+| 1m | fine | ~2–3 weeks: rates and the noise area barely learn | entries only |
+| 3m | fine | ~2 months | good |
+| **5m** | **fine to borderline** | **~3 months: plenty of graded tests** | **best balance** |
+| 15m | a bar can cover a whole test | long | too coarse |
+| 1h+ | far too coarse | long | not suited |
+
+Start on **5m** with the default 09:30–16:00 ET session, and use 3m if you want
+tighter entries. On each, look at the timeframe row and the FADE TEST
+expectancy once there are at least 100 trades. Keep whichever shows positive
+expectancy after costs. If neither does, the zones aren't a tradeable edge on
+MNQ with these settings.
+
 ### Verification and limits
 
 - Both scripts pass the `pynescript` parser. Neither has been compiled on

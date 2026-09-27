@@ -26,6 +26,11 @@ indicator("LEDGER·TERMINUS · Trapped-Crowd Reversal Map", shorttitle = "LEDGER
 // correlated index), DOUBLE (overlaps a short-term absorption node), stop fuel
 // (un-run pivot stops parked in front of the zone), exhaustion (effort vs
 // result, CVD and SMT divergence, efficiency collapse).
+// FADE TEST: every first test inside the session is also graded as a trade -
+// filled at the zone's near edge (or the open if price opened inside it), stop
+// beyond the zone, target a fixed R multiple, costs deducted, pessimistic
+// fills - so the dashboard shows whether fading these zones actually pays on
+// this symbol and timeframe, next to a timeframe-fit check.
 // The dashboard scores the model against what happened: hold model vs held,
 // reach said vs hit. All state changes on confirmed bars; nothing repaints.
 // ============================================================================
@@ -59,6 +64,14 @@ float fuelZone = input.float(3.0, "Stop fuel reach (× zone half-height)", minva
 int   pivLen   = input.int(5, "Stop-pool pivot length", minval = 2, group = GH)
 int   divLen   = input.int(20, "Exhaustion: extreme / divergence lookback", minval = 5, group = GH)
 int   erLen    = input.int(10, "Exhaustion: efficiency length", minval = 3, group = GH)
+
+string GB = "Fade test (self-graded trades)"
+bool  btOn     = input.bool(true, "Grade a fade trade at every first test", group = GB, tooltip = "At each zone's first test inside the session a fade is filled at the zone's near edge (or at the open if price opened inside the zone), with a stop beyond the zone and a target in R. Pessimistic: stop and target in one bar count as a loss, and the fill bar can only lose.")
+float stopMult = input.float(1.0, "Stop beyond the zone (× zone height)", minval = 0.0, maxval = 5.0, step = 0.25, group = GB)
+float tgtR     = input.float(2.0, "Target (R multiple)", minval = 0.5, maxval = 10.0, step = 0.5, group = GB)
+bool  eodExit  = input.bool(true, "Exit open trades at the session end", group = GB)
+float costTk   = input.float(2.0, "Round-trip costs (ticks)", minval = 0.0, step = 0.5, group = GB, tooltip = "Commission plus slippage per trade. On MNQ a ~$1.25 round-trip commission is 2.5 ticks.")
+bool  showPlan = input.bool(true, "Draw the fade plan at each terminus", group = GB)
 
 string GR = "Reach model · session"
 string tz      = input.string("America/New_York", "Session timezone", group = GR)
@@ -205,6 +218,15 @@ type Leg
     int   scale
     map<int, float> hist
 
+// a graded fade trade; side 1 = short at an upside wall, -1 = long at a downside wall
+type Trade
+    int   side
+    float entry
+    float stop
+    float target
+    float risk
+    int   cls
+
 // Zone field notes: p = the crowd's volume-weighted breakeven, w = half-height, sd = spread of its entries,
 // t = last reinforcement (decay and age clock), q = trapped volume as of t, spanS/spanE = time span of the
 // volume behind the zone (so merges don't count the same traders twice), horizon 0 = swing / 1 = MAJOR,
@@ -243,6 +265,12 @@ var array<bool>  rkHit = array.new<bool>()
 var array<float> rbN   = array.new<float>(10, 0.0)
 var array<float> rbP   = array.new<float>(10, 0.0)
 var array<float> rbH   = array.new<float>(10, 0.0)
+// fade test: open trades; bt = [trades, targets, stops, time exits, sum R, equity, peak, max drawdown];
+// tN / tR = trades and summed R per hold-rate class
+var array<Trade> trades = array.new<Trade>()
+var array<float> bt     = array.new<float>(8, 0.0)
+var array<float> tN     = array.new<float>(16, 0.0)
+var array<float> tR     = array.new<float>(16, 0.0)
 
 // histogram bin, fixed once for the whole chart so bin keys stay comparable
 var float binSz = na
@@ -512,6 +540,42 @@ f_learning() =>
 f_hPct(float h) =>
     (f_learning() ? "~" : "") + f_pct(h)
 
+f_zC16(Zone z) =>
+    z.cell >= 0 ? int(math.floor(z.cell / 4.0)) : f_cls(z)
+
+// fade plan for a zone: entry at the near edge, stop beyond the far edge, target in R
+f_entry(Zone z) =>
+    z.side == 1 ? z.p - z.w : z.p + z.w
+
+f_stop(Zone z) =>
+    z.side == 1 ? z.p + z.w + stopMult * 2.0 * z.w : z.p - z.w - stopMult * 2.0 * z.w
+
+f_target(Zone z) =>
+    f_entry(z) - z.side * tgtR * math.abs(f_stop(z) - f_entry(z))
+
+// book a closed fade (R after costs) into the totals, the per-class tallies and the drawdown;
+// kind 1 = target, 2 = stop, 3 = time exit
+f_book(int cls, float r, int kind) =>
+    bt.set(0, bt.get(0) + 1.0)
+    bt.set(kind, bt.get(kind) + 1.0)
+    bt.set(4, bt.get(4) + r)
+    float eq = bt.get(5) + r
+    bt.set(5, eq)
+    bt.set(6, math.max(bt.get(6), eq))
+    bt.set(7, math.max(bt.get(7), bt.get(6) - eq))
+    tN.set(cls, tN.get(cls) + 1.0)
+    tR.set(cls, tR.get(cls) + r)
+    true
+
+// expected R of a fade in this class, shrunk toward the chart-wide expectancy
+f_ev(int c16) =>
+    float n  = bt.get(0)
+    float eA = n > 0 ? bt.get(4) / n : 0.0
+    (tR.get(c16) + PRIOR_K * eA) / (tN.get(c16) + PRIOR_K)
+
+f_rTxt(float r) =>
+    na(r) ? "-" : (bt.get(0) < minTests ? "~" : "") + (r >= 0 ? "+" : "−") + str.tostring(math.abs(r), "0.00") + "R"
+
 f_tag(Zone z) =>
     string s = z.stacked ? "STACKED" : z.horizon == 1 ? "MAJOR" : "swing"
     if z.crowds > 1
@@ -745,6 +809,7 @@ if rollGap and barstate.isconfirmed
         for i = nodes.size() - 1 to 0
             f_killNode(i)
     pend.clear()
+    trades.clear()
     f_resetTracker(trkS)
     f_resetTracker(trkM)
     resH.clear()
@@ -921,6 +986,29 @@ if barstate.isconfirmed and nz(adr) > 0 and not na(binSz)
     while pend.size() > 80
         pend.shift()
 
+// ════════════════════════════ FADE TEST: manage open trades ════════════════════════════
+// runs before the lifecycle, so a trade can never be opened and closed on the same bar
+if barstate.isconfirmed and trades.size() > 0
+    for i = trades.size() - 1 to 0
+        Trade tx   = trades.get(i)
+        int   kind = 0
+        float r    = na
+        if eodExit and sessEnd
+            // the session closed on the previous bar: exit at its close
+            kind := 3
+            r    := tx.side * (tx.entry - close[1]) / tx.risk
+        else if (tx.side == 1 ? high >= tx.stop : low <= tx.stop)
+            // the stop wins whenever stop and target print in one bar; a gap through it fills at the open
+            float px = tx.side == 1 ? math.max(tx.stop, open) : math.min(tx.stop, open)
+            kind := 2
+            r    := tx.side * (tx.entry - px) / tx.risk
+        else if (tx.side == 1 ? low <= tx.target : high >= tx.target)
+            kind := 1
+            r    := tgtR
+        if kind > 0
+            f_book(tx.cls, r - costTk * syminfo.mintick / tx.risk, kind)
+            trades.remove(i)
+
 // ════════════════════════════ ZONE LIFECYCLE + HOLD GRADING ════════════════════════════
 bool hitRes = false
 bool hitSup = false
@@ -939,8 +1027,22 @@ if barstate.isconfirmed and zones.size() > 0
                 hitRes := true
             else
                 hitSup := true
+            // fade test: fill at the near edge, or at the open if price opened inside the zone;
+            // no trade when the bar opened beyond the zone (it gapped through)
+            if btOn and inSess and trades.size() < 100 and (zz.side == 1 ? open < top : open > bot)
+                float nearE = zz.side == 1 ? bot : top
+                float stopP = f_stop(zz)
+                float fill  = zz.side == 1 ? math.max(nearE, open) : math.min(nearE, open)
+                float risk  = zz.side * (stopP - fill)
+                if risk > 0
+                    int c16 = int(math.floor(zz.cell / 4.0))
+                    if (zz.side == 1 ? high >= stopP : low <= stopP)
+                        // the fill bar also reached the stop and its order is unknown: book the loss
+                        f_book(c16, -1.0 - costTk * syminfo.mintick / risk, 2)
+                    else
+                        trades.push(Trade.new(side = zz.side, entry = fill, stop = stopP, target = fill - zz.side * tgtR * risk, risk = risk, cls = c16))
             if alertTouch
-                alert("LEDGER·T: " + syminfo.ticker + " is testing the " + (zz.side == 1 ? "upside wall " : "downside wall ") + f_px(zz.p) + " · holds " + f_hPct(f_hold(zz, exh, true)) + " · " + f_tag(zz), alert.freq_once_per_bar_close)
+                alert("LEDGER·T: " + syminfo.ticker + " is testing the " + (zz.side == 1 ? "upside wall " : "downside wall ") + f_px(zz.p) + " · holds " + f_hPct(f_hold(zz, exh, true)) + " · " + f_tag(zz) + (btOn ? " · fade " + (zz.side == 1 ? "sell " : "buy ") + f_px(f_entry(zz)) + " stop " + f_px(f_stop(zz)) + " target " + f_px(f_target(zz)) : ""), alert.freq_once_per_bar_close)
         // spent once price has reacted a full zone height away on the rejection side
         bool away = zz.side == 1 ? high < bot and close < bot - zz.w : low > top and close > top + zz.w
         if zz.touched and not zz.spent and away
@@ -1085,9 +1187,13 @@ var line  exU = na
 var line  exD = na
 var label lbU = na
 var label lbD = na
+var line  plU1 = na
+var line  plU2 = na
+var line  plD1 = na
+var line  plD2 = na
 var array<label> ladder = array.new<label>()
 var array<line>  ladLn  = array.new<line>()
-var table dash = table.new(tblPos, 3, 40, bgcolor = color.new(colPanel, 12), border_width = 1, border_color = color.new(color.gray, 82), frame_width = 1, frame_color = color.new(color.gray, 68))
+var table dash = table.new(tblPos, 3, 50, bgcolor = color.new(colPanel, 12), border_width = 1, border_color = color.new(color.gray, 82), frame_width = 1, frame_color = color.new(color.gray, 68))
 
 if barstate.islast
     line.delete(pjU)
@@ -1096,6 +1202,10 @@ if barstate.islast
     line.delete(exD)
     label.delete(lbU)
     label.delete(lbD)
+    line.delete(plU1)
+    line.delete(plU2)
+    line.delete(plD1)
+    line.delete(plD2)
     for lb in ladder
         label.delete(lb)
     ladder.clear()
@@ -1152,11 +1262,17 @@ if barstate.islast
     if showProj and not na(tU)
         int xU = bar_index + int(math.max(5.0, math.min(nz(etaU, 20.0), 400.0)))
         pjU := line.new(bar_index, pxU, xU, pxU, color = color.new(colRes, 15), width = 2)
-        lbU := label.new(xU, pxU, "▲ TERMINUS  " + f_px(pxU) + "\n  reach·hold  " + f_pct(upP) + "\n  zone holds  " + f_hPct(tU.hold) + "\n  " + f_tag(tU) + "\n  " + f_crowd(tU) + "\n  eta " + f_fmtMin(etaU) + "  ·  gap " + f_sig(gapU, sigRem), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = tU.dbl ? colDbl : colRes, size = size.small, textalign = text.align_left, text_font_family = MONO, tooltip = f_holdTip(tU))
+        lbU := label.new(xU, pxU, "▲ TERMINUS  " + f_px(pxU) + "\n  reach·hold  " + f_pct(upP) + "\n  zone holds  " + f_hPct(tU.hold) + "\n  " + f_tag(tU) + "\n  " + f_crowd(tU) + "\n  eta " + f_fmtMin(etaU) + "  ·  gap " + f_sig(gapU, sigRem) + (btOn ? "\n  fade sell " + f_px(f_entry(tU)) + " · stop " + f_px(f_stop(tU)) + " · tgt " + f_px(f_target(tU)) + "\n  fade EV " + f_rTxt(f_ev(f_zC16(tU))) : ""), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = tU.dbl ? colDbl : colRes, size = size.small, textalign = text.align_left, text_font_family = MONO, tooltip = f_holdTip(tU))
+        if btOn and showPlan
+            plU1 := line.new(bar_index, f_stop(tU), xU, f_stop(tU), color = color.new(colNeut, 25), style = line.style_dashed, width = 1)
+            plU2 := line.new(bar_index, f_target(tU), xU, f_target(tU), color = color.new(colSup, 35), style = line.style_dotted, width = 1)
     if showProj and not na(tD)
         int xD = bar_index + int(math.max(5.0, math.min(nz(etaD, 20.0), 400.0)))
         pjD := line.new(bar_index, pxD, xD, pxD, color = color.new(colSup, 15), width = 2)
-        lbD := label.new(xD, pxD, "▼ TERMINUS  " + f_px(pxD) + "\n  reach·hold  " + f_pct(dnP) + "\n  zone holds  " + f_hPct(tD.hold) + "\n  " + f_tag(tD) + "\n  " + f_crowd(tD) + "\n  eta " + f_fmtMin(etaD) + "  ·  gap " + f_sig(gapD, sigRem), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = tD.dbl ? colDbl : colSup, size = size.small, textalign = text.align_left, text_font_family = MONO, tooltip = f_holdTip(tD))
+        lbD := label.new(xD, pxD, "▼ TERMINUS  " + f_px(pxD) + "\n  reach·hold  " + f_pct(dnP) + "\n  zone holds  " + f_hPct(tD.hold) + "\n  " + f_tag(tD) + "\n  " + f_crowd(tD) + "\n  eta " + f_fmtMin(etaD) + "  ·  gap " + f_sig(gapD, sigRem) + (btOn ? "\n  fade buy " + f_px(f_entry(tD)) + " · stop " + f_px(f_stop(tD)) + " · tgt " + f_px(f_target(tD)) + "\n  fade EV " + f_rTxt(f_ev(f_zC16(tD))) : ""), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = tD.dbl ? colDbl : colSup, size = size.small, textalign = text.align_left, text_font_family = MONO, tooltip = f_holdTip(tD))
+        if btOn and showPlan
+            plD1 := line.new(bar_index, f_stop(tD), xD, f_stop(tD), color = color.new(colNeut, 25), style = line.style_dashed, width = 1)
+            plD2 := line.new(bar_index, f_target(tD), xD, f_target(tD), color = color.new(colRes, 35), style = line.style_dotted, width = 1)
 
     // ── probability-weighted expectation: a hairline ──
     if showExp and not na(upE)
@@ -1194,7 +1310,7 @@ if barstate.islast
 
     // ── dashboard ──
     if showTable
-        table.clear(dash, 0, 0, 2, 39)
+        table.clear(dash, 0, 0, 2, 49)
         int cntU  = 0
         int cntD  = 0
         int cntHv = 0
@@ -1227,6 +1343,22 @@ if barstate.islast
         string ctx = not useTrend ? "off" : not intraday ? "intraday only" : not inSess ? "outside session" : na(sOpen) ? "waiting for a full session" : na(band) ? "learning " + str.tostring(nbFilled) + "/5" : trendUp ? "TREND UP" : trendDn ? "TREND DOWN" : "balanced"
         f_row(dash, r, "day type", ctx, trendUp or trendDn ? color.orange : colTxt)
         r += 1
+        // timeframe fit: when one bar can travel from a zone's near edge to its decisive-break level, a
+        // whole test (sweep or break) happens inside a single bar and can't be told apart; too little
+        // history can't teach the hold rates
+        float zSum = 0.0
+        float zCnt = 0.0
+        for z in zones
+            if not z.spent
+                zSum += 2.0 * z.w
+                zCnt += 1.0
+        float span   = zCnt > 0 ? (1.0 + breakMult) * zSum / zCnt : na
+        float barR   = trReady ? trSlow : nz(atrL, nz(atrS))
+        bool  tfBad  = not na(span) and barR > span
+        bool  tfThin = cN.sum() < minTests
+        string tfTxt = na(span) ? "-" : tfBad ? "too coarse · bar " + f_px(barR) + " > test span " + f_px(span) : tfThin ? "thin history · " + str.tostring(cN.sum()) + " tests" : "fits · bar " + f_px(barR) + " vs test span " + f_px(span)
+        f_row(dash, r, "timeframe", tfTxt, tfBad or tfThin ? color.orange : colTxt)
+        r += 1
         if tblFull
             string divTxt = not useDiv ? "off" : not corrOk ? "same symbol · off" : na(oC) ? "no data" : na(relPct) ? "-" : (divUp ? "leading ▲ " : divDn ? "leading ▼ " : "in line ") + (relPct >= 0 ? "+" : "−") + str.tostring(math.abs(relPct), "0.00") + "%"
             f_row(dash, r, "vs " + corrName, divTxt, divUp or divDn ? color.orange : colTxt)
@@ -1246,6 +1378,9 @@ if barstate.islast
                 r += 1
                 f_row(dash, r, "crowd", f_crowd(tU), colRes)
                 r += 1
+                if btOn
+                    f_row(dash, r, "fade EV", f_rTxt(f_ev(f_zC16(tU))) + "  (stop " + f_px(f_stop(tU)) + ")", colRes)
+                    r += 1
         if tblFull
             f_row(dash, r, "distance", na(gapU) ? "-" : f_px(gapU) + "  " + f_sig(gapU, sigRem), colRes)
             r += 1
@@ -1270,6 +1405,9 @@ if barstate.islast
                 r += 1
                 f_row(dash, r, "crowd", f_crowd(tD), colSup)
                 r += 1
+                if btOn
+                    f_row(dash, r, "fade EV", f_rTxt(f_ev(f_zC16(tD))) + "  (stop " + f_px(f_stop(tD)) + ")", colSup)
+                    r += 1
         if tblFull
             f_row(dash, r, "distance", na(gapD) ? "-" : f_px(gapD) + "  " + f_sig(gapD, sigRem), colSup)
             r += 1
@@ -1314,6 +1452,20 @@ if barstate.islast
         if tblFull
             f_row(dash, r, "reach reliability", rN > 0 ? str.tostring(rel / rN, "0.0000") : "-", colDim)
             r += 1
+
+        if btOn
+            f_sec(dash, r, "FADE TEST")
+            r += 1
+            float fN = bt.get(0)
+            float fW = bt.get(1)
+            float fL = bt.get(2)
+            f_row(dash, r, "trades", fN > 0 ? str.tostring(fN, "#") + " · won " + f_pct(fW / math.max(fW + fL, 1.0)) + " (breakeven " + f_pct(1.0 / (1.0 + tgtR)) + ")" : "none yet", colTxt)
+            r += 1
+            f_row(dash, r, "expectancy", fN > 0 ? f_rTxt(bt.get(4) / fN) + " per trade · net " + str.tostring(bt.get(4), "0.0") + "R" : "-", fN > 0 ? (bt.get(4) > 0 ? colSup : colRes) : colTxt)
+            r += 1
+            if tblFull
+                f_row(dash, r, "max drawdown", fN > 0 ? str.tostring(bt.get(7), "0.0") + "R · " + str.tostring(bt.get(3), "#") + " session exits" : "-", colDim)
+                r += 1
 
         if tblFull
             f_sec(dash, r, "FIELD")
