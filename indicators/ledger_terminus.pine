@@ -228,12 +228,13 @@ type Leg
 // Zone field notes: p = centre (a trapped crowd's volume-weighted breakeven), w = half-height, sd = spread
 // of the crowd's entries, t = last reinforcement (decay and age clock), q = trapped volume as of t,
 // spanS/spanE = time span of the volume behind a trapped zone (so merges don't count the same traders
-// twice), uid = shared by a zone and its random twin, note = what a structure level is, horizon 0 = swing / 1 = MAJOR, stacked = reinforced by the
-// other crowd size, crowds = distinct crowds merged in, conf = a trapped zone that absorbed a structure
-// level, beyondT = time closes beyond it began (0 = not beyond), spent = reacted after a test, fuel =
-// un-run stops parked in front of it, cell = reversal-rate cell locked at the first test, pC / pF = the
-// detailed and the plain family prediction made at that moment (scored out of sample), prob / hold =
-// last scan. Tracker.primed: the first leg's true start is unknown, so it is never emitted.
+// twice), uid = shared by a zone and its random twin, note = what a structure level is, horizon 0 = swing
+// / 1 = MAJOR, stacked = reinforced by the other crowd size, crowds = distinct crowds merged in, conf = a
+// trapped zone that absorbed a structure level, beyondT = time closes beyond it began (0 = not beyond),
+// spent = reacted after a test, fuel = un-run stops parked in front of it, cell = reversal-rate cell
+// locked at the first test, pC / pF = the detailed and the plain family prediction made at that moment
+// (scored out of sample), prob / hold = last scan. Tracker.primed: the first leg's true start is unknown,
+// so it is never emitted.
 
 // ════════════════════════════ DATA ════════════════════════════
 [adr, adv, adrPct, pdh, pdl] = request.security(syminfo.tickerid, "D", [ta.sma(high - low, adrLen)[1], ta.sma(volume, adrLen)[1], ta.sma((high - low) / close, adrLen)[1], high[1], low[1]], lookahead = barmerge.lookahead_on)
@@ -245,15 +246,15 @@ bool  hasVol = ta.cum(nz(volume)) > 0
 float wBar   = hasVol ? nz(volume) : 1.0      // symbols without volume weight every bar equally
 
 // ════════════════════════════ STATE ════════════════════════════
-var array<Node>  nodes = array.new<Node>()
-var array<float> epP   = array.new<float>()
-var array<float> epW   = array.new<float>()
-var array<Zone>  zones = array.new<Zone>()
-var array<Zone>  ctls  = array.new<Zone>()
-var array<int>   uidSeq = array.new<int>(1, 0)
-var array<Leg>   pend  = array.new<Leg>()
-var array<float> resH  = array.new<float>()
-var array<float> resL  = array.new<float>()
+var array<Node>  nodes  = array.new<Node>()
+var array<float> epP    = array.new<float>()
+var array<float> epW    = array.new<float>()
+var array<Zone>  zones  = array.new<Zone>()
+var array<Zone>  ctls   = array.new<Zone>()      // hidden random-level twins
+var array<int>   uidSeq = array.new<int>(1, 0)   // last zone id handed out
+var array<Leg>   pend   = array.new<Leg>()
+var array<float> resH   = array.new<float>()
+var array<float> resL   = array.new<float>()
 var Tracker trkS = Tracker.new(scale = 0, A = map.new<int, float>(), B = map.new<int, float>())
 var Tracker trkM = Tracker.new(scale = 1, A = map.new<int, float>(), B = map.new<int, float>())
 // reversal rates: 192 cells = family (3) × class (16: side × swing/MAJOR × DOUBLE × trend path) × stop fuel ×
@@ -1157,7 +1158,8 @@ if barstate.isconfirmed and usePD and dayChange and nz(adr) > 0
         f_level(2, pdl > close ? 1 : -1, pdl, 0, "prior-day low")
 
 // ════════════════════════════ ZONE LIFECYCLE + REVERSAL GRADING ════════════════════════════
-// the random-level twins run through exactly the same rules (first, so a twin tested on the bar its zone dies is kept)
+// the random-level twins run through exactly the same rules; first, so a twin tested on the bar its zone
+// dies is kept
 if barstate.isconfirmed and ctls.size() > 0
     for i = ctls.size() - 1 to 0
         Zone cz = ctls.get(i)
