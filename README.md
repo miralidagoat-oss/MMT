@@ -7,6 +7,10 @@ the results in an on-chart dashboard.
 
 - **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
 - **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
+- **Companion overlay:** `indicators/ict_concepts_amd_sessions.pine` — LuxAlgo's
+  ICT Concepts (CC BY-NC-SA 4.0) merged with the AMD Session Tracker (Asia /
+  London / NY session boxes, sweep detection, dashboard, alerts) into one
+  Pine v5 indicator
 
 ## Audit findings (why v1's "backtest" was fiction)
 
