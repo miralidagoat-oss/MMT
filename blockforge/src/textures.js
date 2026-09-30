@@ -718,6 +718,11 @@ function particle(t, name, r) {
     case 'p_rain': for (let y = 0; y < 16; y++) { t.set(7, y, [170, 200, 255], 200); t.set(8, y, [140, 170, 240], 160); } break;
     case 'p_snow': disc(8, 8, 5, [250, 252, 255]); t.set(6, 6, [255, 255, 255]); break;
     case 'p_spark': disc(8, 8, 3, [255, 255, 230]); for (let i = 1; i < 7; i++) { t.set(8, 8 + i, [255, 230, 150]); t.set(8, 8 - i, [255, 230, 150]); t.set(8 + i, 8, [255, 230, 150]); t.set(8 - i, 8, [255, 230, 150]); } break;
+    case 'p_portal': disc(8, 8, 4, [90, 110, 240]); disc(8, 8, 2, [190, 245, 255]); break;
+    case 'p_xp': disc(8, 8, 5, [150, 230, 40]); disc(7, 7, 3, [220, 255, 120]); t.set(6, 6, [255, 255, 220]); break;
+    case 'p_heart': for (const [x, y] of [[4, 5], [5, 4], [6, 4], [7, 5], [8, 5], [9, 4], [10, 4], [11, 5], [4, 6], [11, 6], [5, 8], [10, 8], [6, 9], [9, 9], [7, 10], [8, 10]]) t.set(x, y, [220, 40, 50]); for (let y = 5; y < 10; y++) for (let x = 5; x < 11; x++) if (!(y >= 8 && (x < 6 + y - 8 || x > 9 - (y - 8)))) t.set(x, y, [240, 70, 80]); break;
+    case 'p_glyph': for (let i = 0; i < 9; i++) { const x = 4 + Math.floor(r() * 8), y = 3 + Math.floor(r() * 10); t.set(x, y, [230, 230, 255]); t.set(x + (r() < 0.5 ? 1 : 0), y + 1, [200, 200, 255]); } break;
+    case 'p_crit': for (let i = 2; i < 14; i++) { t.set(i, 8, [255, 255, 200]); t.set(8, i, [255, 255, 200]); } t.set(6, 6, [255, 240, 180]); t.set(10, 10, [255, 240, 180]); t.set(6, 10, [255, 240, 180]); t.set(10, 6, [255, 240, 180]); break;
     case 'p_explosion':
       t.each((x, y) => { const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8); if (d < 7.5 && r() > 0.1) t.set(x, y, gray(255 - d * 14 - r() * 30)); });
       break;
@@ -748,6 +753,194 @@ function lava(t, frame) {
     if (w > 0.78) c = mix(c, [255, 236, 130], (w - 0.78) * 4);
     if (w < 0.22) c = mix(c, [120, 20, 8], (0.22 - w) * 3);
     t.set(x, y, c);
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// Farming, furniture, underworld and other added blocks
+
+function pathTop(t, r) {
+  sandLike(t, r, [150, 120, 74], 12);
+  for (let i = 0; i < 10; i++) { const x = Math.floor(r() * 16), y = Math.floor(r() * 16); t.set(x, y, mul(t.get(x, y), r() < 0.5 ? 0.85 : 1.1)); }
+}
+
+function pathSide(t, r) {
+  dirt(t, r);
+  for (let x = 0; x < 16; x++) for (let y = 1; y < 3 + (r() < 0.3 ? 1 : 0); y++) t.set(x, y, mul([150, 120, 74], 0.9 + r() * 0.15));
+}
+
+function farmland(t, r, wet) {
+  const base = wet ? [74, 48, 30] : [110, 76, 50];
+  t.each((x, y) => {
+    let v = 0.9 + (r() - 0.5) * 0.12;
+    if (y % 4 === 0) v *= 0.75;
+    if (y % 4 === 1) v *= 1.1;
+    if (x === 0 || x === 15) v *= 0.85;
+    t.set(x, y, mul(base, v));
+  });
+}
+
+function wheat(t, r, stage) {
+  t.fill([0, 0, 0], 0);
+  const h = 3 + Math.round(stage * 1.6);
+  const ripe = stage / 7;
+  const stalk = mix([70, 150, 40], [200, 170, 60], ripe);
+  const head = mix([110, 170, 60], [230, 200, 90], ripe);
+  for (const sx of [2, 5, 8, 11, 14]) {
+    const lean = (r() - 0.5) * 1.2;
+    let fx = sx;
+    const top = 16 - h - Math.floor(r() * 2);
+    for (let y = 15; y >= top; y--) { t.put(Math.round(fx), y, mul(stalk, 0.85 + r() * 0.3)); fx += lean * 0.12; }
+    if (stage >= 5) for (let y = top; y < top + 4; y++) { t.put(Math.round(fx) - 1, y, mul(head, 0.9 + r() * 0.2)); t.put(Math.round(fx) + 1, y + 1, mul(head, 0.8 + r() * 0.2)); }
+  }
+}
+
+function rootCrop(t, r, stage, root) {
+  t.fill([0, 0, 0], 0);
+  const leaf = [60, 150, 50];
+  const h = 3 + stage * 2;
+  for (const sx of [3, 7, 11]) {
+    for (let y = 15; y >= 16 - h; y--) t.put(sx + ((y % 3) - 1), y, mul(leaf, 0.8 + r() * 0.4));
+    t.put(sx - 1, 16 - h + 1, mul(leaf, 1.15)); t.put(sx + 1, 16 - h + 2, mul(leaf, 1.15));
+    if (stage === 3) { t.put(sx, 14, root); t.put(sx + 1, 14, mul(root, 0.85)); t.put(sx, 15, mul(root, 0.9)); }
+  }
+}
+
+function door(t, r, upper) {
+  planks(t, r, [166, 132, 80]);
+  // vertical boards with a frame
+  t.each((x, y) => {
+    let c = t.get(x, y);
+    if (x % 4 === 3) c = mul(c, 0.78);
+    t.set(x, y, c);
+  });
+  const frame = [110, 82, 48];
+  for (let i = 0; i < 16; i++) { t.set(0, i, frame); t.set(15, i, frame); t.set(1, i, mul(frame, 1.2)); }
+  if (upper) {
+    for (let i = 0; i < 16; i++) t.set(i, 0, frame);
+    for (const [x0, y0] of [[3, 3], [9, 3], [3, 9], [9, 9]]) {
+      for (let y = y0; y < y0 + 4; y++) for (let x = x0; x < x0 + 4; x++) t.set(x, y, [0, 0, 0], 0);
+    }
+  } else {
+    for (let i = 0; i < 16; i++) t.set(i, 15, frame);
+    for (let x = 3; x < 13; x++) { t.set(x, 5, frame); t.set(x, 11, frame); }
+    t.set(12, 1, [60, 60, 66]); t.set(12, 2, [150, 150, 160]); t.set(13, 2, [60, 60, 66]);
+  }
+}
+
+const RED = [178, 40, 38], REDD = [132, 26, 28], WOOD = [150, 112, 64], WOODD = [96, 68, 36], PILLOW = [236, 234, 228];
+function bedTop(t, r, head) {
+  t.each((x, y) => t.set(x, y, mul(RED, 0.92 + r() * 0.1)));
+  for (let y = 0; y < 16; y++) { t.set(0, y, REDD); t.set(15, y, REDD); }
+  if (head) {
+    for (let y = 1; y < 6; y++) for (let x = 2; x < 14; x++) t.set(x, y, mul(PILLOW, (y === 1 || y === 5 || x === 2 || x === 13) ? 0.85 : 0.97 + r() * 0.05));
+    for (let x = 0; x < 16; x++) t.set(x, 7, mul(RED, 1.15));
+  } else {
+    for (let x = 0; x < 16; x++) { t.set(x, 14, REDD); t.set(x, 15, mul(REDD, 0.85)); }
+  }
+}
+
+function bedSide(t, r, head) {
+  t.fill([0, 0, 0], 0);
+  for (let y = 7; y < 12; y++) for (let x = 0; x < 16; x++) t.set(x, y, mul(RED, 0.9 + r() * 0.1));
+  if (head) for (let y = 7; y < 10; y++) for (let x = 11; x < 15; x++) t.set(x, y, PILLOW);
+  for (let y = 12; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, mul(WOOD, 0.9 + r() * 0.15));
+  for (let x = 0; x < 16; x++) t.set(x, 12, WOODD);
+  for (let y = 13; y < 16; y++) { t.set(head ? 15 : 0, y, WOODD); t.set(head ? 14 : 1, y, WOODD); }
+}
+
+function bedEnd(t, r, head) {
+  t.fill([0, 0, 0], 0);
+  for (let y = 7; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, mul(WOOD, 0.9 + r() * 0.15));
+  if (!head) for (let y = 7; y < 11; y++) for (let x = 0; x < 16; x++) t.set(x, y, mul(RED, 0.9 + r() * 0.1));
+  for (let x = 0; x < 16; x++) t.set(x, head ? 7 : 11, WOODD);
+}
+
+function scorch(t, r, base = [110, 38, 34]) {
+  const n = fbm(Math.floor(r() * 1e9), [4, 8, 16], [0.4, 0.35, 0.25]);
+  t.each((x, y) => {
+    const v = 0.7 + n(x, y) * 0.55 + (r() - 0.5) * 0.1;
+    t.set(x, y, mul(base, v));
+  });
+  for (let i = 0; i < 12; i++) { const x = Math.floor(r() * 16), y = Math.floor(r() * 16); t.set(x, y, mul(base, 0.55)); }
+}
+
+function magma(t, r) {
+  scorch(t, r, [70, 30, 24]);
+  const n = valueNoise(Math.floor(r() * 1e9), 4);
+  t.each((x, y) => {
+    const v = Math.abs(n(x, y) - 0.5);
+    if (v < 0.05) t.set(x, y, [255, 150, 40]);
+    else if (v < 0.09) t.set(x, y, [200, 70, 20]);
+  });
+}
+
+function emberCrystal(t, r) {
+  const vor = voronoi(Math.floor(r() * 1e9), 7);
+  t.each((x, y) => {
+    const c = vor(x, y);
+    let col = mix([255, 170, 50], [255, 236, 150], c.v);
+    if (c.d2 - c.d1 < 1.1) col = [190, 90, 20];
+    col = mul(col, 0.9 + (-c.dx - c.dy) * 0.03);
+    t.set(x, y, col);
+  });
+}
+
+function glowcap(t, r) {
+  t.fill([0, 0, 0], 0);
+  const stem = [200, 190, 170];
+  for (let y = 8; y < 16; y++) { t.set(7, y, stem); t.set(8, y, mul(stem, 0.85)); }
+  for (let y = 3; y < 9; y++) for (let x = 2; x < 14; x++) {
+    const d = Math.hypot((x - 7.5) / 6, (y - 8.5) / 5.5);
+    if (d < 1) t.set(x, y, mix([60, 230, 210], [180, 255, 240], (8 - y) / 6 * 0.6 + r() * 0.2));
+  }
+  for (const [x, y] of [[5, 5], [9, 4], [10, 7], [4, 7]]) t.set(x, y, [230, 255, 250]);
+}
+
+function spawnerCage(t) {
+  t.fill([0, 0, 0], 0);
+  const bar = [44, 46, 58], hi = [90, 96, 116];
+  for (let i = 0; i < 16; i++) {
+    for (const k of [0, 5, 10, 15]) { t.set(k, i, i % 3 ? bar : hi); t.set(i, k, i % 3 ? bar : hi); }
+  }
+}
+
+function enchantTop(t, r) {
+  obsidian(t, r);
+  for (let i = 0; i < 16; i++) { t.set(i, 0, [150, 30, 36]); t.set(i, 15, [150, 30, 36]); t.set(0, i, [150, 30, 36]); t.set(15, i, [150, 30, 36]); }
+  for (let y = 5; y < 11; y++) for (let x = 3; x < 13; x++) t.set(x, y, x === 7 || x === 8 ? [150, 120, 90] : [236, 228, 206]);
+  for (let y = 6; y < 10; y += 2) for (let x = 4; x < 12; x++) if (x !== 7 && x !== 8 && r() < 0.7) t.set(x, y, [120, 110, 140]);
+}
+
+function enchantSide(t, r) {
+  obsidian(t, r);
+  for (let y = 4; y < 7; y++) for (let x = 0; x < 16; x++) t.set(x, y, mul([160, 34, 40], y === 6 ? 0.7 : 1));
+  for (let x = 1; x < 16; x += 3) t.set(x, 7, [180, 150, 60]);
+}
+
+function hay(t, r, top) {
+  t.each((x, y) => {
+    let c = mix([214, 176, 60], [236, 206, 96], r());
+    if (!top && (x % 3 === 0)) c = mul(c, 0.85);
+    if (top && ((x + y) % 4 === 0)) c = mul(c, 0.8);
+    t.set(x, y, c);
+  });
+  if (!top) for (const y of [3, 12]) for (let x = 0; x < 16; x++) t.set(x, y, [120, 40, 30]);
+  if (top) for (let i = 0; i < 16; i++) { t.set(i, 0, [170, 130, 40]); t.set(0, i, [170, 130, 40]); t.set(i, 15, [170, 130, 40]); t.set(15, i, [170, 130, 40]); }
+}
+
+function rift(t, frame) {
+  const P = Math.PI * 2, f = frame / 16;
+  t.each((x, y) => {
+    const u = x / 16 - 0.5, v = y / 16 - 0.5;
+    const a = Math.atan2(v, u), d = Math.hypot(u, v);
+    let w = Math.sin(a * 2 + d * 14 - f * P) * 0.5 + Math.sin(u * 9 + f * P * 2) * 0.25 + Math.sin(v * 7 - f * P) * 0.25;
+    w = w * 0.5 + 0.5;
+    // deep indigo swirling into pale cyan, with a few bright motes
+    let c = w < 0.5 ? mix([22, 10, 64], [70, 60, 190], w * 2) : mix([70, 60, 190], [140, 235, 255], (w - 0.5) * 2);
+    if (((x * 7 + y * 13 + frame * 3) % 37) === 0) c = [230, 250, 255];
+    t.set(x, y, c, 170 + w * 70);
   });
 }
 
@@ -853,11 +1046,43 @@ function paintBlock(name, frame) {
     case 'tnt_side': blastCrate(t, r, 'side'); break;
     case 'tnt_top': blastCrate(t, r, 'top'); break;
     case 'tnt_bottom': blastCrate(t, r, 'bottom'); break;
+    case 'dirt_path_top': pathTop(t, r); break;
+    case 'dirt_path_side': pathSide(t, r); break;
+    case 'farmland': farmland(t, r, false); break;
+    case 'farmland_wet': farmland(t, r, true); break;
+    case 'oak_door_top': door(t, r, true); break;
+    case 'oak_door_bottom': door(t, r, false); break;
+    case 'bed_head_top': bedTop(t, r, true); break;
+    case 'bed_foot_top': bedTop(t, r, false); break;
+    case 'bed_head_side': bedSide(t, r, true); break;
+    case 'bed_foot_side': bedSide(t, r, false); break;
+    case 'bed_head_end': bedEnd(t, r, true); break;
+    case 'bed_foot_end': bedEnd(t, r, false); break;
+    case 'scorchstone': scorch(t, r); break;
+    case 'cinder_sand': sandLike(t, r, [96, 78, 70], 18); for (let i = 0; i < 6; i++) t.set(Math.floor(r() * 16), Math.floor(r() * 16), [200, 90, 40]); break;
+    case 'ember_crystal': emberCrystal(t, r); break;
+    case 'magma_rock': magma(t, r); break;
+    case 'quartz_ore': scorch(t, r); for (let i = 0; i < 6; i++) { const x = 1 + Math.floor(r() * 13), y = 1 + Math.floor(r() * 13); t.set(x, y, [240, 236, 228]); t.set(x + 1, y, [220, 214, 206]); t.set(x, y + 1, [200, 194, 186]); } break;
+    case 'ember_gold_ore': scorch(t, r); for (let i = 0; i < 7; i++) { const x = 1 + Math.floor(r() * 14), y = 1 + Math.floor(r() * 14); t.set(x, y, [255, 214, 60]); if (r() < 0.5) t.set(x + 1, y, [220, 170, 30]); } break;
+    case 'glowcap': glowcap(t, r); break;
+    case 'ashen_shrub': deadBush(t, r); t.each((x, y) => { const c = t.get(x, y); if (c[3]) t.set(x, y, mul([120, 110, 104], 0.8 + r() * 0.4)); }); break;
+    case 'ember_bricks': bricks(t, r, [96, 30, 30], [40, 14, 16], 4, 8); break;
+    case 'spawner': spawnerCage(t); break;
+    case 'enchanting_table_top': enchantTop(t, r); break;
+    case 'enchanting_table_side': enchantSide(t, r); break;
+    case 'enchanting_table_bottom': obsidian(t, r); break;
+    case 'hay_side': hay(t, r, false); break;
+    case 'hay_top': hay(t, r, true); break;
+    case 'quartz_block': metalBlock(t, r, [232, 226, 216]); break;
+    case 'rift': rift(t, frame); break;
     case 'water': water(t, frame); break;
     case 'lava': lava(t, frame); break;
     case 'white': t.fill([255, 255, 255]); break;
     default:
       if (name.startsWith('crack')) crack(t, +name.slice(5));
+      else if (/^wheat\d$/.test(name)) wheat(t, r, +name.slice(5));
+      else if (/^carrots\d$/.test(name)) rootCrop(t, r, +name.slice(7), [240, 130, 30]);
+      else if (/^potatoes\d$/.test(name)) rootCrop(t, r, +name.slice(8), [200, 170, 100]);
       else if (name.startsWith('p_')) particle(t, name, r);
       else { t.fill([255, 0, 255]); }
   }
@@ -993,6 +1218,8 @@ function toolSprite(type, mat) {
       }
     } else if (type === 'axe') {
       s.poly([[8, 2], [12, 1], [14, 4], [13, 8], [10, 9], [9, 6]], m);
+    } else if (type === 'hoe') {
+      s.poly([[6, 2], [12, 2], [13, 3], [13, 5], [11, 5], [11, 4], [6, 4]], m);
     } else if (type === 'shovel') {
       s.poly([[9, 4], [12, 1], [14, 1], [15, 3], [15, 4], [12, 7]], m);
       s.put(10, 5, m);
@@ -1004,8 +1231,18 @@ function toolSprite(type, mat) {
 function paintItem(name) {
   const r = rng(hashSeed('item:' + name));
   const parts = name.split('_');
-  if (parts.length === 2 && MATERIAL[parts[0]] && ['pickaxe', 'axe', 'shovel', 'sword'].includes(parts[1])) {
+  if (parts.length === 2 && MATERIAL[parts[0]] && ['pickaxe', 'axe', 'shovel', 'sword', 'hoe'].includes(parts[1])) {
     return toolSprite(parts[1], parts[0]);
+  }
+  const ARMOR = { leather: [[92, 54, 30], [140, 88, 52], [178, 124, 80]], golden: MATERIAL.golden, iron: MATERIAL.iron, diamond: MATERIAL.diamond };
+  if (parts.length === 2 && ARMOR[parts[0]] && ['helmet', 'chestplate', 'leggings', 'boots'].includes(parts[1])) {
+    const sp = new Sprite();
+    const m = sp.mat(ARMOR[parts[0]]);
+    if (parts[1] === 'helmet') { sp.poly([[3, 4], [5, 2], [11, 2], [13, 4], [13, 11], [10, 11], [10, 8], [6, 8], [6, 11], [3, 11]], m); }
+    else if (parts[1] === 'chestplate') sp.poly([[2, 2], [6, 2], [7, 4], [9, 4], [10, 2], [14, 2], [14, 7], [12, 7], [12, 14], [4, 14], [4, 7], [2, 7]], m);
+    else if (parts[1] === 'leggings') sp.poly([[3, 2], [13, 2], [13, 14], [10, 14], [9, 6], [7, 6], [6, 14], [3, 14]], m);
+    else { sp.poly([[2, 6], [6, 6], [6, 10], [7, 10], [7, 14], [2, 14]], m); sp.poly([[10, 6], [14, 6], [14, 14], [9, 14], [9, 10], [10, 10]], m); }
+    return sp.render();
   }
   const s = new Sprite();
   switch (name) {
@@ -1119,6 +1356,71 @@ function paintItem(name) {
       s.poly([[9, 8], [13, 9], [13, 13], [9, 13]], s.mat([[30, 30, 34], [66, 64, 70], [120, 118, 126]]));
       break;
     }
+    case 'wheat_seeds': {
+      const m = s.mat([[90, 110, 40], [140, 170, 70], [190, 210, 120]]);
+      for (const [x, y] of [[4, 6], [8, 4], [11, 7], [6, 10], [10, 11], [3, 12], [13, 12]]) { s.put(x, y, m); s.put(x + 1, y, m); s.put(x, y + 1, m); }
+      break;
+    }
+    case 'wheat': {
+      const m = s.mat([[150, 110, 30], [214, 176, 60], [240, 214, 120]]);
+      for (let i = 0; i < 4; i++) s.line(3 + i * 2, 14, 7 + i * 2, 3, m);
+      s.line(5, 10, 11, 10, s.mat([[100, 60, 20], [140, 90, 40], [170, 120, 60]]));
+      break;
+    }
+    case 'bread': s.poly([[2, 9], [5, 5], [11, 4], [14, 7], [13, 11], [4, 12]], s.mat([[140, 80, 30], [196, 130, 60], [230, 180, 100]])); break;
+    case 'carrot': {
+      s.poly([[4, 13], [11, 5], [13, 7], [6, 14]], s.mat([[180, 80, 10], [240, 130, 30], [255, 180, 80]]));
+      s.line(11, 5, 14, 2, s.mat([[40, 110, 30], [70, 160, 50], [120, 200, 80]]));
+      s.put(13, 5, 1); s.put(12, 3, 1);
+      break;
+    }
+    case 'potato': s.disc(8, 8.5, 5, 4.2, s.mat([[150, 110, 60], [200, 160, 100], [230, 200, 140]])); break;
+    case 'baked_potato': {
+      s.disc(8, 8.5, 5, 4.2, s.mat([[140, 80, 30], [200, 130, 60], [236, 180, 100]]));
+      s.line(5, 8, 11, 8, s.mat([[240, 220, 140], [250, 236, 170], [255, 250, 200]]));
+      break;
+    }
+    case 'bone_meal': s.poly([[3, 12], [6, 7], [10, 6], [13, 12]], s.mat([[200, 200, 196], [236, 236, 232], [255, 255, 252]])); break;
+    case 'bow': {
+      const wood = s.mat(HANDLE);
+      for (let a = -Math.PI / 2; a <= 0.01; a += 0.05) s.put(Math.round(2 + Math.cos(a) * 11), Math.round(14 + Math.sin(a) * 11), wood);
+      const str = s.mat([[200, 200, 200], [230, 230, 230], [255, 255, 255]]);
+      s.line(3, 3, 13, 13, str);
+      return s.render(true);
+    }
+    case 'arrow': {
+      s.line(3, 12, 11, 4, s.mat(HANDLE));
+      s.poly([[10, 3], [13, 2], [12, 5]], s.mat(MATERIAL.stone));
+      const f = s.mat([[200, 200, 200], [236, 236, 236], [255, 255, 255]]);
+      s.put(2, 12, f); s.put(3, 13, f); s.put(2, 13, f); s.put(4, 14, f);
+      break;
+    }
+    case 'paper': s.poly([[3, 3], [12, 2], [13, 13], [4, 14]], s.mat([[200, 200, 190], [240, 238, 228], [255, 255, 250]])); break;
+    case 'book': {
+      s.poly([[3, 3], [12, 3], [12, 13], [3, 13]], s.mat([[100, 50, 30], [150, 80, 50], [190, 120, 80]]));
+      s.line(4, 12, 12, 12, s.mat([[220, 214, 200], [240, 236, 226], [255, 255, 250]]));
+      s.line(5, 5, 10, 5, s.mat([[200, 170, 60], [230, 200, 90], [250, 230, 140]]));
+      break;
+    }
+    case 'clock': {
+      s.disc(8, 8, 6, 6, s.mat(MATERIAL.golden));
+      s.disc(8, 8, 4.4, 4.4, s.mat([[40, 60, 120], [70, 100, 180], [120, 150, 220]]));
+      s.poly([[4, 8], [12, 8], [12, 12], [4, 12]], s.mat([[60, 130, 60], [90, 170, 90], [140, 210, 140]]));
+      s.put(8, 5, s.mat([[240, 220, 90], [255, 240, 120], [255, 250, 180]]));
+      break;
+    }
+    case 'compass': {
+      s.disc(8, 8, 6, 6, s.mat(MATERIAL.iron));
+      s.disc(8, 8, 4.4, 4.4, s.mat([[190, 190, 180], [220, 220, 210], [240, 240, 232]]));
+      s.line(8, 4, 8, 8, s.mat([[160, 20, 20], [220, 40, 40], [250, 90, 90]]));
+      s.line(8, 9, 8, 11, s.mat([[60, 60, 60], [90, 90, 90], [120, 120, 120]]));
+      break;
+    }
+    case 'ember_dust': s.poly([[3, 12], [7, 6], [9, 6], [13, 12]], s.mat([[200, 90, 20], [255, 150, 40], [255, 220, 120]])); break;
+    case 'quartz': s.poly([[5, 13], [4, 7], [8, 2], [11, 6], [11, 12]], s.mat([[190, 186, 178], [232, 228, 220], [255, 255, 250]])); break;
+    case 'gold_nugget': s.poly([[5, 10], [7, 6], [11, 7], [11, 11], [7, 12]], s.mat(MATERIAL.golden)); break;
+    case 'ember_brick': s.poly([[2, 8], [5, 5], [14, 5], [14, 8], [11, 11], [2, 11]], s.mat([[60, 20, 20], [110, 36, 34], [150, 60, 50]])); break;
+    case 'egg': s.disc(8, 8.5, 4, 5.2, s.mat([[200, 180, 150], [236, 220, 196], [255, 245, 230]])); break;
     default: s.disc(8, 8, 5, 5, s.mat([[255, 0, 255], [255, 0, 255], [255, 0, 255]]));
   }
   void r;

@@ -1,0 +1,20 @@
+// Milestones shown as toasts the first time they happen in a world.
+export const ADVANCEMENTS = {
+  log: ['First Timber', 'Collect a log'],
+  crafting_table: ['Workbench', 'Craft a crafting table'],
+  pickaxe: ['Break Ground', 'Craft a pickaxe'],
+  furnace: ['Fire It Up', 'Craft a furnace'],
+  iron: ['Metalworker', 'Smelt an iron ingot'],
+  diamond: ['Glittering Find', 'Pick up a diamond'],
+  armor: ['Suit Up', 'Put on a piece of armor'],
+  bread: ['Baker', 'Bake a loaf of bread'],
+  farm: ['Green Thumb', 'Plant a crop'],
+  hostile: ['Night Watch', 'Defeat a hostile creature'],
+  bow: ['Sharpshooter', 'Hit a target with an arrow'],
+  sleep: ['Sweet Dreams', 'Sleep through the night'],
+  trade: ['Fair Trade', 'Trade with a settler'],
+  breed: ['Growing Family', 'Breed two animals'],
+  underworld: ['Into the Depths', 'Enter the Underworld'],
+  enchant: ['Arcane Arts', 'Enchant an item'],
+  level: ['Experienced', 'Reach experience level 5'],
+};

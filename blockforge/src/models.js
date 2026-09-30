@@ -5,8 +5,13 @@ import { rng } from './noise.js';
 import { faceTexture, RENDER_TYPE, RENDER, BLOCKS, TINT } from './blocks.js';
 import { ITEMS } from './items.js';
 
-export const SKIN = { PLAYER: 0, PIG: 1, COW: 2, SHEEP: 3, CHICKEN: 4, GHOUL: 5, SHEEP_WOOL: 6 };
-const SKIN_COUNT = 7;
+export const SKIN = {
+  PLAYER: 0, PIG: 1, COW: 2, SHEEP: 3, CHICKEN: 4, GHOUL: 5, SHEEP_WOOL: 6,
+  FARMER: 7, SMITH: 8, SHEPHERD: 9, SCHOLAR: 10, ARCHER: 11, CRAWLER: 12, IMP: 13,
+  ARMOR: 14, // 4 materials x 2 layers: leather A,B, golden A,B, iron A,B, diamond A,B
+};
+const SKIN_COUNT = 22;
+export const ARMOR_SKIN = { leather: 14, golden: 16, iron: 18, diamond: 20 };
 
 // ---------------------------------------------------------------------------
 // Skin painting helpers (64x64 RGBA)
@@ -228,6 +233,137 @@ function paintGhoul() {
   return s.d;
 }
 
+
+// Settlers: villagers of original design. Same body, outfit by profession.
+function paintSettler(seed, outfit) {
+  const s = new Skin(seed);
+  const skinTones = [[230, 186, 150], [200, 150, 110], [150, 104, 74], [236, 200, 170]];
+  const skin = skinTones[seed % skinTones.length];
+  const hair = [[70, 44, 26], [30, 24, 20], [150, 110, 60], [200, 190, 180]][seed % 4];
+  const { tunic, trim, pants, hat, hatBand } = outfit;
+  s.box(0, 0, 8, 8, 8, (f, x, y) => {
+    if (f === 'top') return s.vary(hair, 0.08);
+    if (f === 'front') {
+      if (y < 2) return s.vary(hair, 0.08);
+      if (y === 3 && (x === 2 || x === 5)) return [40, 30, 26];
+      if (y === 4 && (x === 2 || x === 5)) return [250, 250, 250];
+      if (y === 5 && (x === 3 || x === 4)) return mixc(skin, [120, 70, 50], 0.35);
+      if (outfit.beard && y >= 6) return s.vary(hair, 0.08);
+      if (y === 6 && x >= 3 && x <= 4) return [140, 80, 70];
+      return s.vary(skin, 0.03);
+    }
+    if (f === 'back') return y < 6 ? s.vary(hair, 0.08) : skin;
+    return y < 3 ? s.vary(hair, 0.08) : s.vary(skin, 0.03);
+  });
+  // hat: brim 12x1x12 at (0,32), crown 8x3x8 at (32,0)
+  s.box(0, 32, 12, 1, 12, () => (hat ? s.vary(hat, 0.08) : null));
+  s.box(32, 0, 8, 3, 8, (f, x, y) => (hat ? (y === 2 && f !== 'top' && f !== 'bottom' ? hatBand : s.vary(hat, 0.08)) : null));
+  s.box(16, 16, 8, 12, 4, (f, x, y) => {
+    if (y === 8) return [60, 44, 30];
+    if (y > 8) return s.vary(pants, 0.05);
+    if (f === 'front' && (x === 3 || x === 4) && y > 1) return trim;
+    if (y === 0) return trim;
+    return s.vary(tunic, 0.05);
+  });
+  s.box(40, 16, 4, 12, 4, (f, x, y) => (y >= 9 ? s.vary(skin, 0.03) : y === 8 ? trim : s.vary(tunic, 0.05)));
+  s.box(0, 16, 4, 12, 4, (f, x, y) => (y >= 10 ? [70, 50, 34] : s.vary(pants, 0.05)));
+  return s.d;
+}
+
+function paintArcher() {
+  const s = new Skin(71);
+  const bone = [222, 216, 200], boneD = [170, 164, 150], hood = [52, 46, 58], hoodD = [36, 32, 42];
+  s.box(0, 0, 8, 8, 8, (f, x, y) => {
+    if (f === 'front') {
+      if (y < 2) return hoodD;
+      if ((x === 0 || x === 7) && y < 6) return hood;
+      if (y === 3 && (x === 2 || x === 5)) return [20, 16, 24];
+      if (y === 4 && (x === 2 || x === 5)) return [120, 200, 255];
+      if (y === 6 && x % 2 === 1 && x > 1 && x < 7) return [40, 36, 40];
+      return s.vary(bone, 0.04);
+    }
+    return s.vary(y < 6 || f === 'top' ? hood : bone, 0.06);
+  });
+  s.box(16, 16, 8, 12, 4, (f, x, y) => {
+    if (y < 3) return s.vary(hood, 0.06);
+    if (f === 'front' || f === 'back') {
+      if (x === 3 || x === 4) return boneD;
+      if (y % 2 === 0 && y < 9) return s.vary(bone, 0.04);
+      return null; // gaps between the ribs
+    }
+    return y % 2 === 0 ? bone : null;
+  });
+  s.box(40, 16, 2, 12, 2, (f, x, y) => (y < 3 ? hood : s.vary(bone, 0.05)));
+  s.box(0, 16, 2, 12, 2, (f, x, y) => s.vary(y < 2 ? boneD : bone, 0.05));
+  return s.d;
+}
+
+function paintCrawler() {
+  const s = new Skin(81);
+  const shell = [74, 40, 56], dark = [44, 24, 34], eye = [255, 180, 40];
+  s.box(0, 0, 8, 6, 8, (f, x, y) => {
+    if (f === 'front') {
+      if ((y === 2 && (x === 1 || x === 6)) || (y === 3 && (x === 2 || x === 5)) || (y === 1 && (x === 3 || x === 4))) return eye;
+      if (y === 5 && (x === 3 || x === 4)) return [30, 16, 20];
+    }
+    return s.vary(shell, 0.08);
+  });
+  s.box(0, 16, 6, 5, 6, () => s.vary(dark, 0.08));
+  s.box(24, 16, 10, 8, 12, (f, x, y) => ((x + y * 2) % 5 === 0 ? [110, 60, 70] : s.vary(shell, 0.08)));
+  s.box(48, 0, 2, 2, 14, (f, x, y) => s.vary(dark, 0.1));
+  return s.d;
+}
+
+function paintImp() {
+  const s = new Skin(91);
+  const skin = [196, 70, 40], skinD = [150, 44, 28], horn = [60, 40, 36], eye = [255, 230, 90];
+  s.box(0, 0, 6, 6, 6, (f, x, y) => {
+    if (f === 'front') {
+      if (y === 2 && (x === 1 || x === 4)) return eye;
+      if (y === 4 && x >= 1 && x <= 4) return x === 1 || x === 4 ? skinD : [40, 16, 12];
+    }
+    return s.vary(skin, 0.06);
+  });
+  s.box(24, 0, 1, 3, 1, () => horn);
+  s.box(16, 16, 6, 7, 3, (f, x, y) => (y > 4 ? s.vary(skinD, 0.06) : s.vary(skin, 0.06)));
+  s.box(40, 16, 2, 7, 2, () => s.vary(skinD, 0.06));
+  s.box(0, 16, 2, 6, 2, (f, x, y) => (y > 4 ? horn : s.vary(skinD, 0.06)));
+  s.box(48, 16, 1, 1, 6, (f, x, y) => (y === 0 ? skinD : horn));
+  return s.d;
+}
+
+// Armor overlays. Layer A: helmet (head), chestplate (body, arms), boots
+// (bottom of legs). Layer B: leggings (lower body, legs).
+function paintArmor(mat, layerB) {
+  const s = new Skin(101 + mat.length);
+  const base = { leather: [140, 88, 52], golden: [246, 206, 58], iron: [210, 212, 216], diamond: [96, 224, 220] }[mat];
+  const hi = mul(base, 1.2), lo = mul(base, 0.7);
+  const shade = (x, y, w, h) => (y === 0 || x === 0 ? hi : y === h - 1 || x === w - 1 ? lo : s.vary(base, 0.05));
+  if (!layerB) {
+    s.box(0, 0, 8, 8, 8, (f, x, y, w, h) => {
+      if (f === 'bottom') return null;
+      if (f === 'front' && y > 2 && y < 7 && x > 0 && x < 7) return null; // face opening
+      if (y > 5 && f !== 'top') return null;
+      return shade(x, y, w, h);
+    });
+    s.box(16, 16, 8, 12, 4, (f, x, y, w, h) => (y > 9 ? null : shade(x, y, w, h)));
+    s.box(40, 16, 4, 12, 4, (f, x, y, w, h) => (y > 5 ? null : shade(x, y, w, h)));
+    s.box(0, 16, 4, 12, 4, (f, x, y, w, h) => (y < 8 && f !== 'bottom' ? null : shade(x, y, w, h)));
+  } else {
+    s.box(16, 16, 8, 12, 4, (f, x, y, w, h) => (y < 8 || f === 'top' ? null : shade(x, y, w, h)));
+    s.box(0, 16, 4, 12, 4, (f, x, y, w, h) => (y > 8 || f === 'top' || f === 'bottom' ? null : shade(x, y, w, h)));
+  }
+  return s.d;
+}
+const mul = (c, f) => [Math.min(255, c[0] * f), Math.min(255, c[1] * f), Math.min(255, c[2] * f)];
+
+export const OUTFITS = {
+  farmer: { tunic: [96, 130, 60], trim: [150, 120, 70], pants: [110, 84, 56], hat: [226, 196, 110], hatBand: [150, 60, 40] },
+  smith: { tunic: [70, 64, 60], trim: [120, 80, 40], pants: [56, 52, 50], hat: [90, 70, 50], hatBand: [60, 44, 30], beard: true },
+  shepherd: { tunic: [226, 222, 210], trim: [140, 100, 60], pants: [120, 90, 60], hat: [120, 80, 50], hatBand: [226, 222, 210] },
+  scholar: { tunic: [60, 70, 140], trim: [220, 190, 90], pants: [50, 50, 70], hat: null, hatBand: null, beard: true },
+};
+
 export function generateSkins() {
   const out = new Array(SKIN_COUNT);
   out[SKIN.PLAYER] = paintPlayer();
@@ -237,6 +373,17 @@ export function generateSkins() {
   out[SKIN.CHICKEN] = paintChicken();
   out[SKIN.GHOUL] = paintGhoul();
   out[SKIN.SHEEP_WOOL] = paintSheepWool();
+  out[SKIN.FARMER] = paintSettler(3, OUTFITS.farmer);
+  out[SKIN.SMITH] = paintSettler(5, OUTFITS.smith);
+  out[SKIN.SHEPHERD] = paintSettler(2, OUTFITS.shepherd);
+  out[SKIN.SCHOLAR] = paintSettler(8, OUTFITS.scholar);
+  out[SKIN.ARCHER] = paintArcher();
+  out[SKIN.CRAWLER] = paintCrawler();
+  out[SKIN.IMP] = paintImp();
+  for (const [mat, layer] of Object.entries(ARMOR_SKIN)) {
+    out[layer] = paintArmor(mat, false);
+    out[layer + 1] = paintArmor(mat, true);
+  }
   return out;
 }
 
@@ -313,7 +460,7 @@ export const MODELS = {
     },
   },
   ghoul: {
-    skin: SKIN.GHOUL, width: 0.6, height: 1.9,
+    skin: SKIN.GHOUL, width: 0.6, height: 1.9, humanoid: true,
     parts: {
       head: { box: [-3.5, 24, -3.5, 7, 8, 7], uv: [0, 0], pivot: [0, 24, 0] },
       body: { box: [-4, 12, -2, 8, 12, 4], uv: [16, 16], pivot: [0, 24, 0] },
@@ -323,20 +470,96 @@ export const MODELS = {
       legL: { box: [0.5, 0, -1.5, 3, 12, 3], uv: [0, 32], pivot: [2, 12, 0], mirror: true },
     },
   },
+  settler: {
+    skin: SKIN.FARMER, width: 0.6, height: 1.9, humanoid: true,
+    parts: {
+      head: { box: [-4, 24, -4, 8, 8, 8], uv: [0, 0], pivot: [0, 24, 0] },
+      brim: { box: [-6, 30, -6, 12, 1, 12], uv: [0, 32], pivot: [0, 24, 0], parent: 'head', hat: true },
+      crown: { box: [-4, 31, -4, 8, 3, 8], uv: [32, 0], pivot: [0, 24, 0], parent: 'head', hat: true },
+      body: { box: [-4, 12, -2, 8, 12, 4], uv: [16, 16], pivot: [0, 24, 0] },
+      armR: { box: [-8, 12, -2, 4, 12, 4], uv: [40, 16], pivot: [-6, 22, 0] },
+      armL: { box: [4, 12, -2, 4, 12, 4], uv: [40, 16], pivot: [6, 22, 0], mirror: true },
+      legR: { box: [-4, 0, -2, 4, 12, 4], uv: [0, 16], pivot: [-2, 12, 0] },
+      legL: { box: [0, 0, -2, 4, 12, 4], uv: [0, 16], pivot: [2, 12, 0], mirror: true },
+    },
+  },
+  archer: {
+    skin: SKIN.ARCHER, width: 0.6, height: 1.95, humanoid: true,
+    parts: {
+      head: { box: [-4, 24, -4, 8, 8, 8], uv: [0, 0], pivot: [0, 24, 0] },
+      body: { box: [-4, 12, -2, 8, 12, 4], uv: [16, 16], pivot: [0, 24, 0] },
+      armR: { box: [-6, 12, -1, 2, 12, 2], uv: [40, 16], pivot: [-5, 22, 0] },
+      armL: { box: [4, 12, -1, 2, 12, 2], uv: [40, 16], pivot: [5, 22, 0], mirror: true },
+      legR: { box: [-3, 0, -1, 2, 12, 2], uv: [0, 16], pivot: [-2, 12, 0] },
+      legL: { box: [1, 0, -1, 2, 12, 2], uv: [0, 16], pivot: [2, 12, 0], mirror: true },
+    },
+  },
+  crawler: {
+    skin: SKIN.CRAWLER, width: 1.3, height: 0.8,
+    parts: {
+      head: { box: [-4, 5, -12, 8, 6, 8], uv: [0, 0], pivot: [0, 8, -5] },
+      thorax: { box: [-3, 5, -5, 6, 5, 6], uv: [0, 16], pivot: [0, 8, 0] },
+      abdomen: { box: [-5, 5, 1, 10, 8, 12], uv: [24, 16], pivot: [0, 8, 1] },
+      leg0: { box: [-17, 7, -3, 14, 2, 2], uv: [48, 0], pivot: [-3, 8, -2] },
+      leg1: { box: [3, 7, -3, 14, 2, 2], uv: [48, 0], pivot: [3, 8, -2] },
+      leg2: { box: [-17, 7, -1, 14, 2, 2], uv: [48, 0], pivot: [-3, 8, 0] },
+      leg3: { box: [3, 7, -1, 14, 2, 2], uv: [48, 0], pivot: [3, 8, 0] },
+      leg4: { box: [-17, 7, 1, 14, 2, 2], uv: [48, 0], pivot: [-3, 8, 2] },
+      leg5: { box: [3, 7, 1, 14, 2, 2], uv: [48, 0], pivot: [3, 8, 2] },
+      leg6: { box: [-17, 7, 3, 14, 2, 2], uv: [48, 0], pivot: [-3, 8, 4] },
+      leg7: { box: [3, 7, 3, 14, 2, 2], uv: [48, 0], pivot: [3, 8, 4] },
+    },
+  },
+  imp: {
+    skin: SKIN.IMP, width: 0.5, height: 1.1, humanoid: true,
+    parts: {
+      head: { box: [-3, 13, -3, 6, 6, 6], uv: [0, 0], pivot: [0, 13, 0] },
+      hornR: { box: [-3, 19, -1, 1, 3, 1], uv: [24, 0], pivot: [0, 13, 0], parent: 'head' },
+      hornL: { box: [2, 19, -1, 1, 3, 1], uv: [24, 0], pivot: [0, 13, 0], parent: 'head' },
+      body: { box: [-3, 6, -1.5, 6, 7, 3], uv: [16, 16], pivot: [0, 13, 0] },
+      armR: { box: [-5, 6, -1, 2, 7, 2], uv: [40, 16], pivot: [-4, 12, 0] },
+      armL: { box: [3, 6, -1, 2, 7, 2], uv: [40, 16], pivot: [4, 12, 0], mirror: true },
+      legR: { box: [-3, 0, -1, 2, 6, 2], uv: [0, 16], pivot: [-2, 6, 0] },
+      legL: { box: [1, 0, -1, 2, 6, 2], uv: [0, 16], pivot: [2, 6, 0], mirror: true },
+      tail: { box: [-0.5, 6, 1.5, 1, 1, 6], uv: [48, 16], pivot: [0, 7, 1.5] },
+    },
+  },
 };
 
+// Armor overlays for humanoid models: [part to follow, box, uv, inflate, layer B?]
+export const ARMOR_OVERLAYS = {
+  helmet: [['head', [-4, 24, -4, 8, 8, 8], [0, 0], 1.0, false]],
+  chestplate: [['body', [-4, 12, -2, 8, 12, 4], [16, 16], 1.0, false], ['armR', [-8, 12, -2, 4, 12, 4], [40, 16], 0.9, false], ['armL', [4, 12, -2, 4, 12, 4], [40, 16], 0.9, false, true]],
+  leggings: [['body', [-4, 12, -2, 8, 12, 4], [16, 16], 0.5, true], ['legR', [-4, 0, -2, 4, 12, 4], [0, 16], 0.5, true], ['legL', [0, 0, -2, 4, 12, 4], [0, 16], 0.5, true, true]],
+  boots: [['legR', [-4, 0, -2, 4, 12, 4], [0, 16], 1.0, false], ['legL', [0, 0, -2, 4, 12, 4], [0, 16], 1.0, false, true]],
+};
 // Build GPU meshes for each model part (lazily, per renderer).
 export function buildModelMeshes(renderer) {
   const out = {};
-  for (const [name, m] of Object.entries(MODELS)) {
+  // armor overlay meshes per material and piece
+  out.armor = {};
+  for (const [mat, layer] of Object.entries(ARMOR_SKIN)) {
+    out.armor[mat] = {};
+    for (const [piece, parts] of Object.entries(ARMOR_OVERLAYS)) {
+      out.armor[mat][piece] = parts.map(([follow, [x, y, z, w, h, d], [u, v], inflate, layerB, mirror]) => ({
+        follow, model: renderer.createModel(new Float32Array(skinBox(x, y, z, w, h, d, u, v, layerB ? layer + 1 : layer, 64, 64, inflate, !!mirror))),
+      }));
+    }
+  }
+  const build = (m, skinOverride) => {
     const parts = {};
     for (const [pn, p] of Object.entries(m.parts)) {
       const [x, y, z, w, h, d] = p.box;
-      const skin = p.skin ?? m.skin;
+      const skin = p.skin ?? skinOverride ?? m.skin;
       const data = skinBox(x, y, z, w, h, d, p.uv[0], p.uv[1], skin, 64, 64, p.inflate || 0, !!p.mirror);
       parts[pn] = renderer.createModel(new Float32Array(data));
     }
-    out[name] = parts;
+    return parts;
+  };
+  for (const [name, m] of Object.entries(MODELS)) out[name] = build(m);
+  // settler outfits share one model with different skins
+  for (const [prof, skin] of [['farmer', SKIN.FARMER], ['smith', SKIN.SMITH], ['shepherd', SKIN.SHEPHERD], ['scholar', SKIN.SCHOLAR]]) {
+    out[`settler:${prof}`] = build(MODELS.settler, skin);
   }
   return out;
 }

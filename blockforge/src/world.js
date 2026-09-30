@@ -5,6 +5,7 @@ import { OPACITY, EMIT, B, SOLID, isLiquid, RENDER_TYPE, RENDER } from './blocks
 import { WorkerPool } from './workerpool.js';
 import { rleEncode, rleDecode } from './storage.js';
 import { WorldGen } from './worldgen.js';
+import { UnderworldGen } from './underworld.js';
 
 export const STATE = { NEW: 0, GENERATING: 1, READY: 2 };
 const MAX_R = 34;
@@ -32,14 +33,17 @@ for (let dz = -MAX_R; dz <= MAX_R; dz++) for (let dx = -MAX_R; dx <= MAX_R; dx++
 ORDER.sort((a, b) => a[2] - b[2]);
 
 export class World {
-  constructor({ seed, worldId, storage, renderer, hooks = {} }) {
+  constructor({ seed, worldId, storage, renderer, hooks = {}, dim = 'overworld' }) {
     this.seed = seed;
-    this.worldId = worldId;
+    this.dim = dim;
+    this.noSky = dim === 'underworld';
+    // chunk saves for other dimensions live under their own key prefix
+    this.worldId = worldId && dim !== 'overworld' ? `${worldId}@${dim}` : worldId;
     this.storage = storage;
     this.renderer = renderer;
     this.hooks = hooks; // onBlockChanged(x,y,z,old,new), onChunkGenerated(chunk, spawns)
     this.chunks = new Map();
-    this.gen = new WorldGen(seed);
+    this.gen = dim === 'underworld' ? new UnderworldGen(seed) : new WorldGen(seed);
     this.results = [];
     this.urgent = new Set();
     this.pool = new WorkerPool((msg) => this.results.push(msg));
@@ -51,7 +55,7 @@ export class World {
     this.disposed = false;
   }
 
-  async start() { await this.pool.init(this.seed); }
+  async start() { await this.pool.init(this.seed, this.dim); }
 
   dispose() {
     this.disposed = true;
@@ -92,11 +96,12 @@ export class World {
 
   // Returns packed light (sky << 4 | block).
   getLight(x, y, z) {
-    if (y >= HEIGHT) return 0xf0;
+    const open = this.noSky ? 0 : 0xf0;
+    if (y >= HEIGHT) return open;
     if (y < 0) return 0;
     const c = this.chunks.get(chunkKey(x >> 4, z >> 4));
-    if (!c || !c.light) return 0xf0;
-    if (y >= c.lightRY) return 0xf0;
+    if (!c || !c.light) return open;
+    if (y >= c.lightRY) return open;
     return c.light[(y << 8) | ((z & 15) << 4) | (x & 15)];
   }
 
@@ -290,7 +295,7 @@ export class World {
       this.stats.gen++;
       if (!this.populated.has(c.key)) {
         this.populated.add(c.key);
-        if (this.hooks.onChunkGenerated) this.hooks.onChunkGenerated(c, saved ? [] : msg.spawns);
+        if (this.hooks.onChunkGenerated) this.hooks.onChunkGenerated(c, saved ? [] : msg.spawns, msg.chests || [], msg.spawners || []);
       }
     };
     c.savedPromise.then(finish, () => finish(null));

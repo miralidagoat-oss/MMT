@@ -110,6 +110,7 @@ async function boot() {
   let loadingSince = 0;
   async function enterWorld(meta, isNew) {
     ui.closeMenus();
+    ui.lastLoadingText = null;
     ui.showLoading(isNew ? 'Generating terrain' : 'Loading world', 0);
     game.state = 'loading';
     await game.startWorld(meta);
@@ -143,7 +144,8 @@ async function boot() {
       game.last = performance.now();
       input.reset();
       input.requestLock();
-      ui.message(`Welcome to Blockforge! Press T to chat, /help for commands.`, '#f2b33a');
+      if (!ui.lastLoadingText) ui.message(`Welcome to Blockforge! Press T to chat, /help for commands.`, '#f2b33a');
+      ui.lastLoadingText = null;
       if (performance.now() - loadingSince > 60000) console.warn('slow load');
     }
   }
@@ -169,7 +171,7 @@ async function boot() {
     }
   };
   requestAnimationFrame(loop);
-  window.__blockforge = { game, ui, renderer, settings };
+  window.__blockforge = { game, ui, renderer, settings, B, I };
 }
 
 boot().catch((err) => { console.error(err); fatal('Blockforge failed to start.', err); });

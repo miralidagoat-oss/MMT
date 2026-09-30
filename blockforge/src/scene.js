@@ -1,10 +1,10 @@
 // Draws entities, the third-person player and the first-person hand.
 import { mat4, identity, translate, scale, rotateX, rotateY, rotateZ } from './math.js';
-import { MODELS, buildModelMeshes, ItemMeshes } from './models.js';
+import { MODELS, buildModelMeshes, ItemMeshes, OUTFITS } from './models.js';
 import { cubeMesh } from './renderer.js';
-import { faceTexture, B } from './blocks.js';
-import { ITEMS } from './items.js';
-import { FallingBlock, PrimedCrate, Mob } from './entities.js';
+import { faceTexture, B, TEX } from './blocks.js';
+import { ITEMS, I, ARMOR_PIECES } from './items.js';
+import { FallingBlock, PrimedCrate, Mob, Projectile, Lightning } from './entities.js';
 
 const M = mat4(), P = mat4(), T = mat4();
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -21,6 +21,18 @@ export class SceneRenderer {
     this.models = buildModelMeshes(renderer);
     this.items = new ItemMeshes(renderer, blockTextures, itemTextures);
     this.blockCubes = new Map();
+    // arrow: shaft, head and two fletching fins (block texture layers)
+    const parts = [
+      cubeMesh(-0.02, -0.02, -0.3, 0.02, 0.02, 0.22, () => TEX.oak_planks),
+      cubeMesh(-0.04, -0.04, -0.36, 0.04, 0.04, -0.28, () => TEX.stone),
+      cubeMesh(-0.002, -0.07, 0.12, 0.002, 0.07, 0.28, () => TEX.white),
+      cubeMesh(-0.07, -0.002, 0.12, 0.07, 0.002, 0.28, () => TEX.white),
+    ];
+    const all = new Float32Array(parts.reduce((n, a) => n + a.length, 0));
+    let o = 0;
+    for (const a of parts) { all.set(a, o); o += a.length; }
+    this.arrowModel = renderer.createModel(all);
+    this.unitCube = renderer.createModel(cubeMesh(-0.5, 0, -0.5, 0.5, 1, 0.5, () => TEX.white));
   }
 
   blockCube(id, meta = 0) {
@@ -44,8 +56,10 @@ export class SceneRenderer {
     for (const e of game.entities) {
       const [x, y, z] = e.lerpPos(alpha);
       const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
-      if (dx * dx + dz * dz > 96 * 96) continue;
+      if (dx * dx + dz * dz > 96 * 96 && !(e instanceof Lightning)) continue;
       if (e instanceof Mob) this.drawMob(e, x, y, z, cam, env, alpha, world);
+      else if (e instanceof Projectile) this.drawProjectile(e, x, y, z, cam, env, world);
+      else if (e instanceof Lightning) this.drawLightning(e, cam, env);
       else if (e instanceof FallingBlock || e instanceof PrimedCrate) {
         const id = e instanceof FallingBlock ? e.block : B.tnt;
         identity(M);
@@ -69,6 +83,39 @@ export class SceneRenderer {
     if (game.perspective !== 0 && !game.player.dead) this.drawPlayer(game, cam, env, alpha);
   }
 
+  drawProjectile(e, x, y, z, cam, env, world) {
+    identity(M);
+    translate(M, M, x - cam.x, y - cam.y, z - cam.z);
+    const light = this.lightAt(world, x, y, z);
+    if (e.kind === 'arrow') {
+      rotateY(M, M, -e.yaw);
+      rotateX(M, M, e.pitch);
+      this.r.drawModel(this.arrowModel, M, 'block', light, env, { blockMode: 0 });
+      return;
+    }
+    const mesh = this.items.get(e.kind === 'egg' ? I.egg : I.snowball);
+    if (!mesh) return;
+    rotateY(M, M, -cam.yaw);
+    scale(M, M, 0.3, 0.3, 0.3);
+    this.r.drawModel(mesh.model, M, mesh.tex, light, env, { blockMode: mesh.blockMode, tintColor: mesh.tint, noCull: true });
+  }
+
+  drawLightning(e, cam, env) {
+    let seed = e.seed;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) | 0; return ((seed >>> 8) & 0xffff) / 65536; };
+    let px = e.x, pz = e.z;
+    const top = e.y + 90;
+    for (let yy = top; yy > e.y; yy -= 6) {
+      const nx = px + (rnd() - 0.5) * 3, nz = pz + (rnd() - 0.5) * 3;
+      const y0 = Math.max(e.y, yy - 6);
+      identity(M);
+      translate(M, M, (px + nx) / 2 - cam.x, y0 - cam.y, (pz + nz) / 2 - cam.z);
+      scale(M, M, 0.22 + Math.abs(nx - px) * 0.6, yy - y0, 0.22 + Math.abs(nz - pz) * 0.6);
+      this.r.drawModel(this.unitCube, M, 'block', [1, 1], env, { mode: 1 });
+      px = nx; pz = nz;
+    }
+  }
+
   drawItemEntity(it, x, y, z, cam, env, alpha, world) {
     const mesh = this.items.get(it.stack.id);
     if (!mesh) return;
@@ -90,24 +137,60 @@ export class SceneRenderer {
   }
 
   // Pose each part and draw it.
-  drawParts(name, poses, base, light, env, opts, hidden) {
+  // Transform for one posed part into P.
+  partMatrix(out, base, def, partName, poses) {
+    const p = def.parts[partName];
+    const pose = poses[p.parent || partName];
+    out.set(base);
+    if (pose) {
+      const [px, py, pz] = p.pivot;
+      translate(out, out, px, py, pz);
+      if (pose[1]) rotateY(out, out, pose[1]);
+      if (pose[0]) rotateX(out, out, pose[0]);
+      if (pose[2]) rotateZ(out, out, pose[2]);
+      translate(out, out, -px, -py, -pz);
+    }
+    return out;
+  }
+
+  drawParts(name, poses, base, light, env, opts, hidden, meshSet) {
     const def = MODELS[name];
-    const meshes = this.models[name];
+    const meshes = meshSet || this.models[name];
     for (const pn of Object.keys(def.parts)) {
       if (hidden && hidden.has(pn)) continue;
-      const p = def.parts[pn];
-      const pose = poses[p.parent || pn];
-      P.set(base);
-      if (pose) {
-        const [px, py, pz] = p.pivot;
-        translate(P, P, px, py, pz);
-        if (pose[1]) rotateY(P, P, pose[1]);
-        if (pose[0]) rotateX(P, P, pose[0]);
-        if (pose[2]) rotateZ(P, P, pose[2]);
-        translate(P, P, -px, -py, -pz);
-      }
+      this.partMatrix(P, base, def, pn, poses);
       this.r.drawModel(meshes[pn], P, 'skin', light, env, opts);
     }
+  }
+
+  // Worn armor over a humanoid model. ids: [helmet, chest, legs, boots]
+  drawArmor(name, ids, poses, base, light, env, opts) {
+    const def = MODELS[name];
+    for (let i = 0; i < 4; i++) {
+      const id = ids[i];
+      const a = id && ITEMS[id] && ITEMS[id].armor;
+      if (!a) continue;
+      for (const part of this.models.armor[a.mat][ARMOR_PIECES[i]]) {
+        if (!def.parts[part.follow]) continue;
+        this.partMatrix(P, base, def, part.follow, poses);
+        this.r.drawModel(part.model, P, 'skin', light, env, opts);
+      }
+    }
+  }
+
+  // Held item at the end of a humanoid's arm.
+  drawHeld(name, id, poses, base, light, env, arm = 'armR', bow = false) {
+    const mesh = this.items.get(id);
+    if (!mesh) return;
+    const def = MODELS[name];
+    this.partMatrix(P, base, def, arm, poses);
+    const pv = def.parts[arm].pivot;
+    const bx = def.parts[arm].box;
+    translate(P, P, pv[0], bx[1] + 1, 0);
+    if (bow) { rotateY(P, P, Math.PI / 2); rotateZ(P, P, -0.7); scale(P, P, 12, 12, 12); }
+    else if (mesh.kind === 'block') { scale(P, P, 6, 6, 6); rotateY(P, P, 0.785); }
+    else { rotateX(P, P, -1.3); scale(P, P, 10, 10, 10); translate(P, P, 0, 0.25, 0); }
+    this.r.drawModel(mesh.model, P, mesh.tex, light, env, { blockMode: mesh.blockMode, tintColor: mesh.tint, noCull: mesh.kind !== 'block' });
   }
 
   drawMob(e, x, y, z, cam, env, alpha, world) {
@@ -120,14 +203,22 @@ export class SceneRenderer {
       const t = Math.min(1, Math.sqrt(((e.deathTime + alpha) / 20) * 1.6));
       rotateZ(T, T, t * Math.PI / 2);
     }
-    scale(T, T, 1 / 16, 1 / 16, 1 / 16);
+    const sc = e.baby ? 0.5 : 1;
+    scale(T, T, sc / 16, sc / 16, sc / 16);
     const la = lerp(e.pLimbAmount, e.limbAmount, alpha);
     const ls = e.limbSwing + alpha * (e.limbAmount * 0.3);
     const sw = Math.cos(ls * 0.6662) * 1.2 * la;
     const poses = {};
     const headYaw = e.headYaw || 0, headPitch = e.headPitch || 0;
     poses.head = [headPitch, headYaw, 0];
-    if (def.parts.leg0) {
+    if (e.type === 'crawler') {
+      for (let i = 0; i < 8; i++) {
+        const side = i % 2 ? -1 : 1, pair = i >> 1;
+        const spread = [-0.55, -0.2, 0.2, 0.55][pair];
+        const walk = Math.sin(ls * 0.9 + (pair % 2) * Math.PI + (side > 0 ? 0 : Math.PI)) * 0.35 * la;
+        poses['leg' + i] = [0, (spread + walk) * side, (0.45 + Math.abs(Math.cos(ls * 0.9 + pair)) * 0.2 * la) * side];
+      }
+    } else if (def.parts.leg0) {
       poses.leg0 = [sw, 0, 0]; poses.leg3 = [sw, 0, 0];
       poses.leg1 = [-sw, 0, 0]; poses.leg2 = [-sw, 0, 0];
     }
@@ -137,17 +228,36 @@ export class SceneRenderer {
       poses.wingR = [0, 0, -Math.abs(flap)]; poses.wingL = [0, 0, Math.abs(flap)];
     }
     if (e.type === 'pig') poses.tail = [0, Math.sin((e.age + alpha) * 0.3) * 0.4, 0];
-    if (e.type === 'ghoul') {
+    if (def.humanoid && e.type !== 'crawler') {
       poses.legR = [sw, 0, 0]; poses.legL = [-sw, 0, 0];
+      poses.armR = [-sw * 0.7, 0, 0.05]; poses.armL = [sw * 0.7, 0, -0.05];
+    }
+    if (e.type === 'ghoul') {
       let arm = -0.25 - (e.target ? 0.9 : 0);
       if (e.swing > 0) arm -= Math.sin(((10 - e.swing + alpha) / 10) * Math.PI) * 0.8;
       poses.armR = [arm - sw * 0.5, 0, 0.05]; poses.armL = [arm + sw * 0.5, 0, -0.05];
     }
-    const light = this.lightAt(world, x, y + def.height * 0.6, z);
+    if (e.type === 'archer' && e.target) {
+      poses.armR = [-Math.PI / 2 + headPitch, -0.1, 0]; poses.armL = [-Math.PI / 2 + headPitch, 0.5, 0];
+    }
+    if (e.type === 'imp') {
+      poses.tail = [0.3, Math.sin((e.age + alpha) * 0.25) * 0.5, 0];
+      if (e.swing > 0) poses.armR = [-1.5 * Math.sin(((10 - e.swing + alpha) / 10) * Math.PI), 0, 0.05];
+    }
+    if (e.type === 'settler' && e.swing > 0) poses.armR = [-1.2, 0, 0];
+    const light = e.type === 'imp' ? [0.4, 1] : this.lightAt(world, x, y + def.height * 0.6, z);
     const hurt = e.hurtTime > 0 || e.dead;
     const opts = { tint: hurt ? [0.9, 0.1, 0.1, 0.45] : e.fire > 0 ? [1, 0.5, 0.1, 0.15] : undefined };
-    const hidden = e.type === 'sheep' && e.sheared ? new Set(['wool', 'headWool']) : null;
-    this.drawParts(e.def.model, poses, T, light, env, opts, hidden);
+    let hidden = e.type === 'sheep' && (e.sheared || e.baby) ? new Set(['wool', 'headWool']) : null;
+    let meshes = null;
+    if (e.type === 'settler') {
+      const prof = e.profession || 'farmer';
+      meshes = this.models[`settler:${prof}`] || this.models.settler;
+      if (!OUTFITS[prof] || !OUTFITS[prof].hat) hidden = new Set(['brim', 'crown']);
+    }
+    this.drawParts(e.def.model, poses, T, light, env, opts, hidden, meshes);
+    if (e.armor) this.drawArmor(e.def.model, e.armor, poses, T, light, env, opts);
+    if (e.type === 'archer') this.drawHeld('archer', I.bow, poses, T, light, env, 'armL', true);
   }
 
   playerPoses(p, alpha, swing) {
@@ -183,7 +293,11 @@ export class SceneRenderer {
     scale(T, T, 0.9375 / 16, 0.9375 / 16, 0.9375 / 16);
     const light = this.lightAt(game.world, x, y + 1, z);
     const poses = this.playerPoses(p, alpha, game.swingProgress(alpha));
-    this.drawParts('player', poses, T, light, env, { tint: p.hurtTime > 0 ? [0.9, 0.1, 0.1, 0.45] : undefined });
+    const popts = { tint: p.hurtTime > 0 ? [0.9, 0.1, 0.1, 0.45] : undefined };
+    this.drawParts('player', poses, T, light, env, popts);
+    const inv = p.inventory;
+    const worn = [inv.get(36), inv.get(37), inv.get(38), inv.get(39)].map((st) => (st ? st.id : 0));
+    if (worn.some(Boolean)) this.drawArmor('player', worn, poses, T, light, env, popts);
     // held item in the right hand
     const held = p.inventory.held;
     if (held) {
@@ -205,7 +319,7 @@ export class SceneRenderer {
   // First-person hand or held item (view space).
   drawHand(game, env, alpha) {
     const p = game.player;
-    if (p.dead || game.perspective !== 0 || game.hideHud) return;
+    if (p.dead || game.perspective !== 0 || game.hideHud || p.sleeping) return;
     const r = this.r;
     const light = this.lightAt(game.world, p.x, p.y + p.eye, p.z);
     const held = p.inventory.held;
@@ -235,6 +349,11 @@ export class SceneRenderer {
     if (!mesh) return;
     const def = ITEMS[held.id];
     let ex = 0, ey = 0, ez = 0;
+    if (game.bowDraw > 0) {
+      const f = Math.min(1, (game.bowDraw + alpha) / 20);
+      ex = -0.42 * Math.min(1, f * 3); ey = 0.08; ez = 0.1 + f * 0.12;
+      if (f >= 1) ex += Math.sin(performance.now() / 30) * 0.004;
+    }
     if (eating > 0) {
       ex = -0.35 * Math.min(1, eating * 4); ey = 0.12 * Math.min(1, eating * 4) + Math.abs(Math.sin(eating * 32)) * 0.05; ez = 0.1;
     }

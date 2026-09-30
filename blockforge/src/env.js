@@ -23,7 +23,7 @@ export function daylight(dayTime, rain = 0) {
   return d * (1 - rain * 0.25);
 }
 
-export function computeEnv(o, { dayTime, day, rain, thunder = 0, underwater, inLava, renderDist, gamma, flicker, blindness = 0, snow = false }) {
+export function computeEnv(o, { dayTime, day, rain, thunder = 0, underwater, inLava, renderDist, gamma, flicker, blindness = 0, snow = false, dim = 'overworld', flash = 0 }) {
   const sd = sunDirection(dayTime);
   const e = sd[1];
   const dayF = smoothstep(-0.2, 0.25, e);
@@ -71,6 +71,20 @@ export function computeEnv(o, { dayTime, day, rain, thunder = 0, underwater, inL
     o.fogMode = 1;
     o.fogColor = [0.7, 0.2, 0.02];
     o.fogStart = 0; o.fogEnd = 1.5;
+  }
+  o.ambient = [0.028, 0.028, 0.028];
+  if (dim === 'underworld' && !underwater && !inLava) {
+    o.fogMode = 1;
+    o.fogColor = [0.24, 0.055, 0.035];
+    o.zenith = o.fogColor;
+    o.fogStart = 6; o.fogEnd = Math.min(far, 110);
+    o.stars = 0; o.sunset = [0, 0, 0, 0]; o.day = 0; o.skyBright = 0;
+    o.ambient = [0.25, 0.16, 0.13];
+  } else if (dim === 'underworld') o.ambient = [0.25, 0.16, 0.13];
+  if (flash > 0 && dim === 'overworld') {
+    o.fogColor = mix3(o.fogColor, [0.85, 0.87, 1], flash * 0.55);
+    o.zenith = mix3(o.zenith, [0.8, 0.82, 1], flash * 0.5);
+    o.skyBright = Math.min(1, o.skyBright + flash * 0.6);
   }
   if (blindness) { o.fogMode = 1; o.fogColor = [0, 0, 0]; o.fogStart = 0; o.fogEnd = 5; }
   void thunder; void snow;

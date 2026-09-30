@@ -159,6 +159,18 @@ const BUBBLE = [
   '..XXXXX..',
 ];
 
+const VEST = [
+  '.XXX.XXX.',
+  'XAAAXAAAX',
+  'XAWAAAAAX',
+  'XAAAAAAAX',
+  '.XAAAAAX.',
+  '.XAAAAAX.',
+  '.XAAAAAX.',
+  '.XADDDAX.',
+  '..XXXXX..',
+];
+
 function halfOf(rows, fullKeys, emptyKey) {
   return rows.map((r) => r.split('').map((ch, x) => (x >= Math.floor(r.length / 2) && fullKeys.includes(ch) ? emptyKey : ch)).join(''));
 }
@@ -168,6 +180,7 @@ export function statusIcons() {
   const heartPal = { X: '#1a0608', R: '#e23a3a', W: '#ffb4b4', e: '#3a1a1c' };
   const emptyFood = FOOD.map((r) => r.replace(/[bBWd]/g, 'e'));
   const foodPal = { X: '#2a1606', b: '#d8984a', B: '#f2c27a', W: '#ffe2b0', d: '#9a5e24', e: '#3a2616' };
+  const armorPal = { X: '#0e1116', A: '#c9d2dc', W: '#ffffff', D: '#8a96a4', e: '#262c34' };
   return {
     heart: pixelIcon(HEART, heartPal),
     heartHalf: pixelIcon(halfOf(HEART, 'RW', 'e'), heartPal),
@@ -178,5 +191,8 @@ export function statusIcons() {
     foodEmpty: pixelIcon(emptyFood, foodPal),
     bubble: pixelIcon(BUBBLE, { X: '#0c2a5a', W: '#ffffff', B: '#62a6ff' }),
     bubblePop: pixelIcon(BUBBLE.map((r) => r.replace(/[WB]/g, '.')), { X: '#62a6ff' }),
+    armor: pixelIcon(VEST, armorPal),
+    armorHalf: pixelIcon(halfOf(VEST, 'AWD', 'e'), armorPal),
+    armorEmpty: pixelIcon(VEST.map((r) => r.replace(/[AWD]/g, 'e')), armorPal),
   };
 }

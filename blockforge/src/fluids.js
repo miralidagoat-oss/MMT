@@ -33,7 +33,7 @@ export class Fluids {
   }
 
   // Can a fluid flow into this block (air, or a passable non-liquid block)?
-  static open(id) { return id === 0 || (!SOLID[id] && !isLiquid(id) && id !== B.ladder) || (REPLACEABLE[id] && !isLiquid(id)); }
+  static open(id) { return id === 0 || (!SOLID[id] && !isLiquid(id) && id !== B.ladder && id !== B.rift) || (REPLACEABLE[id] && !isLiquid(id)); }
 
   flowInto(x, y, z, fluid, meta) {
     const g = this.game, w = g.world;

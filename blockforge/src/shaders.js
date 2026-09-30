@@ -9,6 +9,7 @@ uniform vec3 uFogColor;
 uniform vec4 uSunset;
 uniform vec3 uSunDir;
 uniform vec3 uFog; // start, end, mode (0 normal, 1 underwater, 2 lava)
+uniform vec3 uAmbient;
 
 float lmCurve(float l) { return l / (4.0 - 3.0 * l); }
 vec3 lightmap(float sky, float blk) {
@@ -17,7 +18,7 @@ vec3 lightmap(float sky, float blk) {
   vec3 c = s * uSkyLightColor + b * vec3(1.0, 0.84, 0.64);
   c = clamp(c, vec3(0.0), vec3(1.0));
   c = mix(c, vec3(1.0) - pow(vec3(1.0) - c, vec3(4.0)), uGamma);
-  return max(c, vec3(0.028));
+  return max(c, uAmbient);
 }
 vec3 fogColorFor(vec3 dir) {
   if (uFog.z > 0.5) return uFogColor;

@@ -3,7 +3,7 @@ import { ITEMS, maxStack } from './items.js';
 
 // A stack is { id, count, dur? } (dur = damage taken, for tools).
 export const cloneStack = (s) => (s ? { ...s } : null);
-export const sameItem = (a, b) => !!a && !!b && a.id === b.id && !a.dur && !b.dur && maxStack(a.id) > 1;
+export const sameItem = (a, b) => !!a && !!b && a.id === b.id && !a.dur && !b.dur && !a.ench && !b.ench && maxStack(a.id) > 1;
 
 export class Container {
   constructor(size) { this.slots = new Array(size).fill(null); }
@@ -16,10 +16,10 @@ export class Container {
     let left = stack.count;
     const idx = order || this.slots.map((_, i) => i);
     const max = maxStack(stack.id);
-    if (max > 1 && !stack.dur) {
+    if (max > 1 && !stack.dur && !stack.ench) {
       for (const i of idx) {
         const s = this.slots[i];
-        if (s && s.id === stack.id && !s.dur && s.count < max) {
+        if (s && s.id === stack.id && !s.dur && !s.ench && s.count < max) {
           const t = Math.min(max - s.count, left);
           s.count += t; left -= t;
           if (!left) return 0;
@@ -47,10 +47,10 @@ export class Container {
   }
 }
 
-// Player inventory: slots 0-8 hotbar, 9-35 main.
+// Player inventory: slots 0-8 hotbar, 9-35 main, 36-39 armor (head, chest, legs, feet).
 export class PlayerInventory extends Container {
   constructor() {
-    super(36);
+    super(40);
     this.selected = 0;
   }
   get held() { return this.slots[this.selected]; }

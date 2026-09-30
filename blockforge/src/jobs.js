@@ -1,16 +1,19 @@
 // Job handler shared by worker threads and the main-thread fallback.
 import './items.js'; // registers item ids used by block drop tables
 import { WorldGen } from './worldgen.js';
+import { UnderworldGen } from './underworld.js';
 import { Mesher } from './mesher.js';
 
 let gen = null;
 let mesher = null;
+let noSky = false;
 
 // Returns [result, transferList].
 export function handleJob(msg) {
   switch (msg.type) {
     case 'init':
-      gen = new WorldGen(msg.seed);
+      noSky = msg.dim === 'underworld';
+      gen = noSky ? new UnderworldGen(msg.seed) : new WorldGen(msg.seed);
       mesher = mesher || new Mesher();
       return [{ id: msg.id, type: 'init' }, []];
     case 'gen': {
@@ -19,6 +22,7 @@ export function handleJob(msg) {
         [r.blocks.buffer, r.meta.buffer, r.tints.buffer]];
     }
     case 'mesh': {
+      msg.noSky = noSky;
       const r = mesher.build(msg);
       return [{ id: msg.id, type: 'mesh', cx: msg.cx, cz: msg.cz, version: msg.version, ...r },
         [r.opaque.buffer, r.cutout.buffer, r.translucent.buffer, r.light.buffer]];

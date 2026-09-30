@@ -1,6 +1,7 @@
 // HTML user interface: HUD, menus, inventory screens, chat and debug text.
 import { ITEMS, I, matchRecipe, itemName, maxStack, SMELTING, fuelValue } from './items.js';
-import { BLOCKS } from './blocks.js';
+import { enchantOptions, enchantLabel, applicableEnchants } from './loot.js';
+import { BLOCKS, B } from './blocks.js';
 import { statusIcons, playerPortrait } from './icons.js';
 import { BIOMES } from './worldgen.js';
 import { DEFAULT_KEYS } from './input.js';
@@ -76,6 +77,8 @@ export class UI {
     this.heartEls = mk('#hearts', 10);
     this.foodEls = mk('#food', 10);
     this.airEls = mk('#air', 10);
+    this.armorEls = mk('#armor', 10);
+    $('#b-wake').addEventListener('click', () => { this.click(); if (this.game) this.game.wakeUp(); });
   }
 
   slotEl() {
@@ -85,12 +88,13 @@ export class UI {
   }
 
   fillSlot(s, stack) {
-    const key = stack ? `${stack.id}:${stack.count}:${stack.dur || 0}` : '';
+    const key = stack ? `${stack.id}:${stack.count}:${stack.dur || 0}:${stack.ench ? 1 : 0}` : '';
     if (s._key === key) return;
     s._key = key;
     const img = s.firstChild, cnt = s.children[1], dur = s.children[2];
-    if (!stack) { img.removeAttribute('src'); img.style.visibility = 'hidden'; cnt.textContent = ''; dur.style.display = 'none'; return; }
+    if (!stack) { img.removeAttribute('src'); img.style.visibility = 'hidden'; cnt.textContent = ''; dur.style.display = 'none'; s.classList.remove('ench'); return; }
     img.src = this.icons.get(stack.id); img.style.visibility = 'visible';
+    s.classList.toggle('ench', !!stack.ench);
     cnt.textContent = stack.count > 1 ? stack.count : '';
     const d = ITEMS[stack.id];
     if (d && d.durability && stack.dur) {
@@ -113,6 +117,9 @@ export class UI {
     $('#overlay-fire').style.opacity = !g.demo && p.fireTicks > 0 && !p.creative && g.perspective === 0 ? '1' : '0';
     const hurt = !g.demo && p.hurtTime > 0 ? p.hurtTime / 10 : 0;
     $('#overlay-hurt').style.opacity = String(hurt * 0.35);
+    $('#overlay-portal').style.opacity = !g.demo && env.portal > 0 ? String(0.25 + env.portal * 0.75) : '0';
+    $('#overlay-sleep').style.opacity = !g.demo && env.sleep > 0 ? String(Math.min(0.92, env.sleep * 0.92)) : '0';
+    $('#overlay-flash').style.opacity = !g.demo && g.flash > 0 && g.dim === 'overworld' ? String(g.flash * 0.5) : '0';
     $('#click-to-play').hidden = !(g.state === 'playing' && !g.input.locked && !g.input.dragLook && !g.input.touch.active);
     if (hud.hidden) { this.updateChat(); return; }
     // hotbar
@@ -132,7 +139,22 @@ export class UI {
     const survival = !p.creative && !p.spectator;
     $('#bars').hidden = !survival;
     $('#air').hidden = !survival || p.air >= 300;
+    $('#xp').hidden = !survival;
+    const armor = p.armorStats().points;
+    $('#armor').hidden = !survival || armor <= 0;
+    if (armor > 0) g.advance('armor');
     if (survival) {
+      const xkey = `${p.xpLevel}|${p.xpPoints}|${armor}`;
+      if (xkey !== this.hudCache.xp) {
+        this.hudCache.xp = xkey;
+        const xp = $('#xp');
+        xp.firstChild.style.width = `${Math.round(Math.min(1, p.xpProgress) * 1000) / 10}%`;
+        xp.lastChild.textContent = p.xpLevel > 0 ? p.xpLevel : '';
+        for (let i = 0; i < 10; i++) {
+          const v = armor - i * 2;
+          this.armorEls[i].src = v >= 2 ? this.status.armor : v === 1 ? this.status.armorHalf : this.status.armorEmpty;
+        }
+      }
       const hkey = `${p.health}|${p.food}|${p.hurtTime > 0}|${p.air}|${Math.floor(g.tickCount / 3) % 2}`;
       if (hkey !== this.hudCache.bars) {
         this.hudCache.bars = hkey;
@@ -158,9 +180,68 @@ export class UI {
       }
     }
     $('#crosshair').hidden = g.perspective !== 0;
+    this.updateGadget();
     this.updateDebug();
     this.updateChat();
     if (this.screen && this.screen.update) this.screen.update();
+  }
+
+  // Clock and compass readouts while one is held (or in the off hand of the hotbar).
+  updateGadget() {
+    const g = this.game, p = g.player;
+    const box = $('#gadget');
+    const inv = p.inventory;
+    const held = inv.held ? inv.held.id : 0;
+    const clock = held === I.clock, compass = held === I.compass;
+    box.hidden = !(clock || compass);
+    if (box.hidden) return;
+    const key = `${held}|${Math.floor(g.dayTime / 50)}|${Math.round(p.yaw * 20)}|${Math.floor(p.x / 4)}|${Math.floor(p.z / 4)}|${g.dim}`;
+    if (key === this.hudCache.gadget) return;
+    this.hudCache.gadget = key;
+    const wobble = g.dim !== 'overworld';
+    if (clock) {
+      // day starts at 6:00 in the morning
+      const mins = Math.floor(((g.dayTime / 24000) * 24 * 60 + 6 * 60) % (24 * 60));
+      const t = wobble ? '??:??' : `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+      const phase = g.dayTime < 12000 ? 'Day' : g.dayTime < 13800 ? 'Dusk' : g.dayTime < 22200 ? 'Night' : 'Dawn';
+      const hand = wobble ? (performance.now() / 3) % 360 : (mins / 720) * 360;
+      box.innerHTML = `<span class="needle" style="--a:${hand.toFixed(1)}deg"></span><span>${t} · ${wobble ? 'the hands spin wildly' : `${phase}, day ${g.day}`}</span>`;
+    } else {
+      const sp = p.worldSpawn || p.spawn || { x: 0, z: 0 };
+      const dx = sp.x - p.x, dz = sp.z - p.z;
+      const dist = Math.round(Math.hypot(dx, dz));
+      // needle relative to where the player faces (yaw 0 looks toward -Z)
+      const target = Math.atan2(dx, -dz);
+      const a = wobble ? (performance.now() / 5) % 360 : ((target - p.yaw) * 180) / Math.PI;
+      box.innerHTML = `<span class="needle" style="--a:${a.toFixed(1)}deg"></span><span>${wobble ? 'The needle spins' : `Spawn ${dist} m`}</span>`;
+    }
+  }
+
+  showSleep(v) {
+    const g = this.game;
+    const box = $('#sleep-ui');
+    if (v) {
+      if (this.screen) this.closeScreen(true);
+      g.input.exitLock();
+      g.input.reset();
+      g.state = 'screen';
+      this.screen = { name: 'sleep' };
+      box.hidden = false;
+    } else {
+      box.hidden = true;
+      if (this.screen && this.screen.name === 'sleep') {
+        this.screen = null;
+        if (g.state === 'screen') this.resume();
+      }
+    }
+  }
+
+  toast(title, desc) {
+    const box = $('#toasts');
+    const t = el('div', 'toast', `<small>Milestone reached!</small><b>${esc(title)}</b><span>${esc(desc)}</span>`);
+    box.appendChild(t);
+    setTimeout(() => t.remove(), 5200);
+    while (box.children.length > 3) box.firstChild.remove();
   }
 
   updateDebug() {
@@ -175,7 +256,7 @@ export class UI {
     const dirs = ['north (-Z)', 'east (+X)', 'south (+Z)', 'west (-X)'];
     const facing = dirs[Math.round(yawDeg / 90) % 4];
     const l = w.getLight(fx, Math.floor(p.y + 0.5), fz);
-    const bio = BIOMES[w.gen.biomeAt(fx, fz)];
+    const bio = w.gen.biomeName ? { name: w.gen.biomeName(fx, fz) } : BIOMES[w.gen.biomeAt(fx, fz)];
     const t = g.target;
     const left = [
       `Blockforge ${this.app.version}  ${g.fps} fps  (${g.frameMs.toFixed(1)} ms render)`,
@@ -188,7 +269,8 @@ export class UI {
       `Light: ${l >> 4} sky, ${l & 15} block`,
       `Biome: ${bio ? bio.name : '?'}`,
       `Day ${g.day}, time ${g.dayTime}${g.rain > 0.1 ? ', raining' : ''}`,
-      `Mode: ${p.mode}${p.flying ? ' (flying)' : ''}`,
+      `Mode: ${p.mode}${p.flying ? ' (flying)' : ''}  Dimension: ${g.dim}`,
+      `Level ${p.xpLevel} (${p.xpPoints}/${p.constructor.xpToNext(p.xpLevel)} xp)  Armor ${p.armorStats().points}`,
     ];
     const right = [
       `${r.width}x${r.height} (${(r.renderScale * 100).toFixed(0)}% scale, DPR ${(window.devicePixelRatio || 1).toFixed(2)})`,
@@ -509,10 +591,11 @@ export class UI {
     const rows = [
       ['W A S D', 'Move'], ['Space', 'Jump · swim up · double-tap to fly (Creative)'], ['Shift', 'Sneak (won’t fall off edges) · fly down'],
       ['Ctrl / double-tap W', 'Sprint'], ['Mouse', 'Look (arrow keys also work)'], ['Left click', 'Break block · attack'],
-      ['Right click', 'Place block · use · eat'], ['Middle click', 'Pick block'], ['1–9 · wheel', 'Choose hotbar slot'],
+      ['Right click', 'Place · use · eat · open doors · sleep · trade · hold to draw a bow'], ['Middle click', 'Pick block'], ['1–9 · wheel', 'Choose hotbar slot'],
       ['E', 'Inventory'], ['Q · Ctrl+Q', 'Drop item · drop stack'], ['T · /', 'Chat · command (/help)'],
       ['F1', 'Hide interface'], ['F2', 'Screenshot'], ['F3', 'Debug info'], ['F5', 'Change camera view'], ['Esc', 'Pause'],
       ['Inventory', 'Click: take/place · Right click: split/place one · Shift-click: move · Drag: spread · 1–9: swap to hotbar'],
+      ['Right click (hoe)', 'Till dirt into farmland; plant seeds on it'], ['Flint and steel', 'Light an obsidian frame to open a rift to the Underworld'],
     ];
     const m = this.menu(`<h2>Controls</h2><div class="keys">${rows.map(([a, b]) => `<div><kbd>${esc(a)}</kbd><span>${esc(b)}</span></div>`).join('')}</div>
       <button id="b-done" class="btn wide">Done</button>`, 'controls');
@@ -537,6 +620,8 @@ export class UI {
     const s = this.screen;
     if (!s) return;
     if (s.name === 'chat') { this.closeChat(false); return; }
+    if (s.name === 'sleep') { if (g.player.sleeping) g.wakeUp(); else this.showSleep(false); return; }
+    if (s.name === 'trade') g.tradingWith = null;
     if (s.name === 'chest' && !silent) g.audio.play('chest_close');
     // put back crafting ingredients and the cursor stack
     g.returnCraftingItems();
@@ -547,6 +632,7 @@ export class UI {
     }
     this.drag = null;
     this.hover = null;
+    this.offersEl = null; this.enchantEl = null;
     this.updateCursor();
     this.tooltip.hidden = true;
     this.screen = null;
@@ -564,7 +650,12 @@ export class UI {
     const p = g.player;
     const sc = this.screen;
     switch (kind) {
-      case 'inv': return { get: () => p.inventory.get(index), set: (s) => p.inventory.set(index, s) };
+      case 'inv': return {
+        get: () => p.inventory.get(index), set: (s) => p.inventory.set(index, s),
+        accept: index >= 36 ? (st) => !!(ITEMS[st.id].armor && ITEMS[st.id].armor.slot === index - 36) : undefined,
+        single: index >= 36,
+      };
+      case 'ench': return { get: () => g.enchantSlot.get(0), set: (s) => g.enchantSlot.set(0, s), accept: (st) => applicableEnchants(st.id).length > 0 && !st.ench, single: true };
       case 'c2': return { get: () => g.craft2.get(index), set: (s) => g.craft2.set(index, s) };
       case 'c3': return { get: () => g.craft3.get(index), set: (s) => g.craft3.set(index, s) };
       case 'box': {
@@ -606,7 +697,7 @@ export class UI {
     const panel = el('div', 'panel');
     m.appendChild(panel);
     this.panel = panel;
-    const title = { inventory: 'Inventory', crafting: 'Crafting', furnace: 'Furnace', chest: 'Chest', creative: 'Creative' }[name];
+    const title = { inventory: 'Inventory', crafting: 'Crafting', furnace: 'Furnace', chest: 'Chest', creative: 'Creative', trade: 'Trade', enchant: 'Enchanting' }[name];
     panel.appendChild(el('h3', 'ptitle', title));
     const mkGrid = (cls, cols, kind, from, count) => {
       const gr = el('div', `grid ${cls}`);
@@ -628,7 +719,12 @@ export class UI {
       const res = this.slotEl(); res.classList.add('result'); res.dataset.kind = 'result'; res.dataset.i = 0;
       cr.appendChild(res);
       top.appendChild(cr);
-      if (name === 'inventory') top.prepend(el('div', 'portrait', this.portrait ? `<img src="${this.portrait}" alt="Your character">` : ''));
+      if (name === 'inventory') {
+        top.prepend(el('div', 'portrait', this.portrait ? `<img src="${this.portrait}" alt="Your character">` : ''));
+        const armor = mkGrid('armor', 1, 'inv', 36, 4);
+        armor.querySelectorAll('.slot').forEach((sl, k) => sl.classList.add('armor-slot', ['a-head', 'a-chest', 'a-legs', 'a-feet'][k]));
+        top.prepend(armor);
+      }
     } else if (name === 'furnace') {
       const f = el('div', 'furnace');
       const col = el('div', 'fcol');
@@ -642,6 +738,19 @@ export class UI {
       top.appendChild(f);
     } else if (name === 'chest') {
       top.appendChild(mkGrid('chestgrid', 9, 'box', 0, 27));
+    } else if (name === 'trade') {
+      const list = el('div', 'offers');
+      this.offersEl = list;
+      top.appendChild(list);
+      this.buildOffers();
+    } else if (name === 'enchant') {
+      const box = el('div', 'enchant');
+      const slot = this.slotEl(); slot.dataset.kind = 'ench'; slot.dataset.i = 0; slot.classList.add('result');
+      const opts = el('div', 'eopts');
+      this.enchantEl = opts;
+      box.append(slot, opts);
+      top.appendChild(box);
+      this.lastEnchantKey = null;
     } else if (creative) {
       const bar = el('div', 'cbar', '<input id="c-search" placeholder="Search items…" autocomplete="off"><div class="slot trash" data-kind="trash" data-i="0" title="Destroy item"><span>✕</span></div>');
       top.appendChild(bar);
@@ -701,6 +810,17 @@ export class UI {
       this.fillSlot(s, this.stackIn(s));
       s.classList.toggle('drag', !!(this.drag && this.drag.slots.includes(s)));
     }
+    if (this.screen && this.screen.name === 'trade') {
+      const mob = this.screen.data.mob;
+      const p = this.game.player;
+      if (mob.dead || Math.hypot(mob.x - p.x, mob.y - p.y, mob.z - p.z) > 8) { this.closeScreen(); return; }
+      if (this.tradeKey() !== this.offerKey) this.buildOffers();
+    }
+    if (this.screen && this.screen.name === 'enchant' && this.enchantEl) {
+      const d = this.screen.data;
+      if (this.game.world.getBlock(d.x, d.y, d.z) !== B.enchanting_table) { this.closeScreen(); return; }
+      this.updateEnchant();
+    }
     if (this.screen && this.screen.name === 'furnace') {
       const be = this.screen.data.be;
       const fl = $('.flame i', this.panel), ar = $('.arrow.prog i', this.panel);
@@ -709,7 +829,137 @@ export class UI {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Trading with settlers
+  buildOffers() {
+    const g = this.game, p = g.player;
+    const mob = this.screen.data.mob;
+    const list = this.offersEl;
+    if (!list || !mob.trades) return;
+    list.innerHTML = '';
+    const prof = mob.profession || 'farmer';
+    list.appendChild(el('div', 'who', `${esc(prof[0].toUpperCase() + prof.slice(1))} · click to trade, shift-click to trade repeatedly`));
+    const mkIcon = (st) => {
+      const o = this.slotEl(); o.className = 'oslot';
+      this.fillSlot(o, st);
+      o._stack = st;
+      return o;
+    };
+    mob.trades.forEach((t, k) => {
+      const row = el('button', 'offer');
+      const gives = el('div', 'gives');
+      for (const st of t.give) gives.appendChild(mkIcon(st));
+      row.append(gives, el('i', 'to'), mkIcon(t.get));
+      const out = t.uses >= t.max;
+      row.appendChild(el('span', 'left', out ? 'Sold out' : `${t.max - t.uses} left`));
+      const can = !out && t.give.every((st) => countItem(p.inventory, st.id) >= st.count);
+      row.disabled = !can;
+      row.addEventListener('click', (e) => this.doTrade(k, e.shiftKey));
+      list.appendChild(row);
+    });
+    this.offerKey = this.tradeKey();
+  }
+
+  tradeKey() {
+    const g = this.game, mob = this.screen && this.screen.data.mob;
+    if (!mob || !mob.trades) return '';
+    return mob.trades.map((t) => `${t.uses}:${t.give.map((st) => countItem(g.player.inventory, st.id)).join(',')}`).join('|');
+  }
+
+  doTrade(k, repeat) {
+    const g = this.game, p = g.player;
+    const mob = this.screen.data.mob;
+    const t = mob.trades[k];
+    let n = 0;
+    while (n < (repeat ? 64 : 1)) {
+      if (t.uses >= t.max) break;
+      if (!t.give.every((st) => countItem(p.inventory, st.id) >= st.count)) break;
+      for (const st of t.give) takeItem(p.inventory, st.id, st.count);
+      const got = { id: t.get.id, count: t.get.count };
+      if (t.get.ench) got.ench = { ...t.get.ench };
+      const left = p.inventory.give(got);
+      if (left) g.dropItem(p.x, p.y + 1.2, p.z, { ...got, count: left });
+      t.uses++; n++;
+      g.spawnXp(mob.x, mob.y + 1.2, mob.z, t.xp || 1);
+    }
+    if (n) {
+      g.audio.play('trade', mob.x, mob.y + 1, mob.z);
+      for (let i = 0; i < 4; i++) g.particles.heart(mob.x + (Math.random() - 0.5) * 0.6, mob.y + 1.9 + Math.random() * 0.3, mob.z + (Math.random() - 0.5) * 0.6);
+      g.advance('trade');
+    } else g.audio.mob('settler', 'no', mob.x, mob.y, mob.z);
+    this.buildOffers();
+    this.refreshSlots();
+  }
+
+  // -------------------------------------------------------------------------
+  // Enchanting table
+  updateEnchant() {
+    const g = this.game, p = g.player;
+    const st = g.enchantSlot.get(0);
+    const shelves = this.screen.data.shelves || 0;
+    const key = `${st ? st.id : 0}|${st && st.ench ? 1 : 0}|${p.enchantSeed}|${p.xpLevel}|${p.creative}|${shelves}`;
+    if (key === this.lastEnchantKey) return;
+    this.lastEnchantKey = key;
+    const opts = st && !st.ench ? enchantOptions(st.id, shelves, p.enchantSeed ^ (st.id * 2654435761)) : [];
+    const box = this.enchantEl;
+    box.innerHTML = '';
+    for (let k = 0; k < 3; k++) {
+      const o = opts[k];
+      const b = el('button', 'eopt');
+      const runes = glyphs(p.enchantSeed + k * 7919 + (st ? st.id : 0), 14);
+      if (!o || !o.ench) {
+        b.disabled = true;
+        b.innerHTML = `<span class="lv"></span><span class="glyphs">${st && !st.ench ? runes : ''}</span>`;
+      } else {
+        const need = k + 1;
+        const ok = p.creative || p.xpLevel >= Math.max(o.cost, need);
+        b.disabled = !ok;
+        const first = Object.keys(o.ench)[0];
+        b.innerHTML = `<span class="lv">${o.cost}</span><span class="glyphs">${runes}</span><span class="cost">${need} level${need > 1 ? 's' : ''}</span>
+          <span class="hint">${esc(enchantLabel(first, o.ench[first]))}${Object.keys(o.ench).length > 1 ? ' … ?' : ''}</span>`;
+        b.title = ok ? '' : `Requires experience level ${Math.max(o.cost, need)}`;
+        b.addEventListener('click', () => this.doEnchant(k, o));
+      }
+      box.appendChild(b);
+    }
+  }
+
+  doEnchant(k, o) {
+    const g = this.game, p = g.player;
+    const st = g.enchantSlot.get(0);
+    if (!st || st.ench) return;
+    const need = k + 1;
+    if (!p.creative) {
+      if (p.xpLevel < Math.max(o.cost, need)) return;
+      p.xpLevel -= need;
+    }
+    g.enchantSlot.set(0, { ...st, ench: { ...o.ench } });
+    p.enchantSeed = (Math.random() * 0x7fffffff) | 0;
+    const d = this.screen.data;
+    g.audio.play('enchant', d.x + 0.5, d.y + 0.5, d.z + 0.5);
+    for (let i = 0; i < 16; i++) g.particles.glyph(d.x + 0.5 + (Math.random() - 0.5) * 3, d.y + 1 + Math.random() * 1.5, d.z + 0.5 + (Math.random() - 0.5) * 3, d.x + 0.5, d.y + 1.2, d.z + 0.5);
+    g.advance('enchant');
+    this.lastEnchantKey = null;
+    this.refreshSlots();
+  }
+
+  showTip(st, e) {
+    const d = ITEMS[st.id];
+    let t = esc(itemName(st.id));
+    if (st.ench) t = `<span class="en">${t}</span>` + Object.entries(st.ench).map(([k, v]) => `<br><small class="el">${esc(enchantLabel(k, v))}</small>`).join('');
+    if (d.armor) t += `<br><small>+${d.armor.points} armor${d.armor.tough ? `, +${d.armor.tough} toughness` : ''}</small>`;
+    if (d.durability) t += `<br><small>Durability ${d.durability - (st.dur || 0)} / ${d.durability}</small>`;
+    if (d.food) t += `<br><small>Restores ${d.food[0] / 2} food</small>`;
+    if (d.damage) t += `<br><small>${d.damage} attack damage</small>`;
+    this.tooltip.innerHTML = t;
+    this.tooltip.hidden = false;
+    const px = e.clientX ?? this.mx, py = e.clientY ?? this.my;
+    this.tooltip.style.transform = `translate(${px + 14}px, ${py - 28}px)`;
+  }
+
   onSlotOver(e) {
+    const os = e.target.closest('.oslot');
+    if (os && os._stack) { this.hover = null; this.showTip(os._stack, e); return; }
     const s = e.target.closest('.slot');
     this.hover = s || null;
     if (!s) { this.tooltip.hidden = true; return; }
@@ -718,17 +968,8 @@ export class UI {
       this.refreshSlots();
     }
     const st = this.stackIn(s);
-    if (st && !this.cursor) {
-      const d = ITEMS[st.id];
-      let t = esc(itemName(st.id));
-      if (d.durability) t += `<br><small>Durability ${d.durability - (st.dur || 0)} / ${d.durability}</small>`;
-      if (d.food) t += `<br><small>Restores ${d.food[0] / 2} food</small>`;
-      if (d.damage) t += `<br><small>${d.damage} attack damage</small>`;
-      this.tooltip.innerHTML = t;
-      this.tooltip.hidden = false;
-      const px = e.clientX ?? this.mx, py = e.clientY ?? this.my;
-      this.tooltip.style.transform = `translate(${px + 14}px, ${py - 28}px)`;
-    } else this.tooltip.hidden = true;
+    if (st && !this.cursor) this.showTip(st, e);
+    else this.tooltip.hidden = true;
   }
 
   onMouseMove(e) {
@@ -754,6 +995,7 @@ export class UI {
     if (kind === 'result' || kind === 'palette' || kind === 'trash') return false;
     const src = this.slotSource(kind, +s.dataset.i);
     if (!src || src.takeOnly) return false;
+    if (src.accept && !src.accept(this.cursor)) return false;
     const cur = src.get();
     return !cur || (cur.id === this.cursor.id && !cur.dur && cur.count < maxStack(cur.id));
   }
@@ -788,8 +1030,9 @@ export class UI {
       if (cur.count <= 0) break;
       const src = this.slotSource(s.dataset.kind, +s.dataset.i);
       if (!src || src.takeOnly) continue;
+      if (src.accept && !src.accept(cur)) continue;
       const st = src.get();
-      if (st && (st.id !== cur.id || st.dur)) continue;
+      if (st && (st.id !== cur.id || st.dur || st.ench || cur.ench)) continue;
       const room = maxStack(cur.id) - (st ? st.count : 0);
       const n = Math.min(each, room, cur.count);
       if (n <= 0) continue;
@@ -819,12 +1062,21 @@ export class UI {
     const src = this.slotSource(kind, i);
     if (!src) return;
     const st = src.get();
-    if (shift) { if (st) this.quickMove(kind, i, src, st); this.refreshSlots(); return; }
+    if (shift) {
+      if (st) {
+        this.quickMove(kind, i, src, st);
+        if (src.takeOnly) { const after = src.get(); g.onSmelted(st.id, st.count - (after ? after.count : 0)); }
+      }
+      this.refreshSlots(); return;
+    }
     const cur = this.cursor;
+    if (cur && src.accept && !src.accept(cur)) return;
     if (src.takeOnly) {
       if (!st) return;
+      const n = st.count;
       if (!cur) { this.cursor = st; src.set(null); }
-      else if (cur.id === st.id && !cur.dur && cur.count + st.count <= maxStack(cur.id)) { cur.count += st.count; src.set(null); }
+      else if (cur.id === st.id && !cur.dur && !cur.ench && !st.ench && cur.count + st.count <= maxStack(cur.id)) { cur.count += st.count; src.set(null); }
+      if (!src.get()) g.onSmelted(st.id, n);
     } else if (!cur) {
       if (st) {
         if (right) { const n = Math.ceil(st.count / 2); this.cursor = { ...st, count: n }; st.count -= n; src.set(st.count ? st : null); }
@@ -833,7 +1085,7 @@ export class UI {
     } else if (!st) {
       if (right) { src.set({ ...cur, count: 1 }); cur.count--; if (!cur.count) this.cursor = null; }
       else { src.set(cur); this.cursor = null; }
-    } else if (st.id === cur.id && !st.dur && !cur.dur) {
+    } else if (st.id === cur.id && !st.dur && !cur.dur && !st.ench && !cur.ench && maxStack(st.id) > 1) {
       const room = maxStack(st.id) - st.count;
       const n = right ? Math.min(1, room) : Math.min(room, cur.count);
       st.count += n; cur.count -= n;
@@ -865,6 +1117,7 @@ export class UI {
       if (cur) cur.count += res.count; else this.cursor = { id: res.id, count: res.count };
       this.consumeCraft(c, n);
     }
+    g.onCrafted(res.id);
     g.audio.play('click');
     this.updateCursor();
     this.refreshSlots();
@@ -876,7 +1129,14 @@ export class UI {
     const sc = this.screen.name;
     let left = st.count;
     const put = (container, order) => { left = container.add({ ...st, count: left }, order); };
-    if (kind === 'inv') {
+    const armor = ITEMS[st.id] && ITEMS[st.id].armor;
+    if (kind === 'inv' && i >= 36) {
+      put(inv, [...range(9, 36), ...range(0, 9)]);
+    } else if (kind === 'inv' && armor && (sc === 'inventory' || sc === 'enchant' && st.ench) && !inv.get(36 + armor.slot)) {
+      inv.set(36 + armor.slot, st); left = 0;
+    } else if (kind === 'inv' && sc === 'enchant' && !g.enchantSlot.get(0) && applicableEnchants(st.id).length && !st.ench) {
+      g.enchantSlot.set(0, st); left = 0;
+    } else if (kind === 'inv') {
       if (sc === 'chest') {
         const be = this.screen.data.be;
         const tmp = { slots: be.slots };
@@ -889,6 +1149,8 @@ export class UI {
       } else if (sc === 'creative') {
         src.set(null); return;
       } else put(inv, i < 9 ? range(9, 36) : range(0, 9));
+    } else if (kind === 'ench') {
+      put(inv, [...range(0, 9), ...range(9, 36)]);
     } else {
       put(inv, [...range(0, 9), ...range(9, 36)]);
     }
@@ -903,6 +1165,7 @@ export class UI {
     const src = this.slotSource(kind, i);
     if (!src || src.takeOnly) return;
     const a = src.get(), b = inv.get(h);
+    if (b && src.accept && !src.accept(b)) return;
     src.set(b); inv.set(h, a);
     this.refreshSlots();
   }
@@ -942,3 +1205,29 @@ function addTo(be, stack, order) {
   return left;
 }
 
+function countItem(inv, id) {
+  let n = 0;
+  for (let i = 0; i < 36; i++) { const s = inv.get(i); if (s && s.id === id && !s.ench) n += s.count; }
+  return n;
+}
+
+function takeItem(inv, id, count) {
+  for (let i = 35; i >= 0 && count > 0; i--) {
+    const s = inv.get(i);
+    if (!s || s.id !== id || s.ench) continue;
+    const t = Math.min(s.count, count);
+    s.count -= t; count -= t;
+    inv.set(i, s.count ? s : null);
+  }
+}
+
+// Decorative rune text for enchanting options.
+const RUNES = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ';
+function glyphs(seed, n) {
+  let s = seed | 0, out = '';
+  for (let i = 0; i < n; i++) {
+    s = (s * 1664525 + 1013904223) | 0;
+    out += (i && (s >>> 28) % 5 === 0) ? ' ' : RUNES[(s >>> 16) % RUNES.length];
+  }
+  return out;
+}

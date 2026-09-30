@@ -54,17 +54,17 @@ export class WorkerPool {
     return new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
   }
 
-  async init(seed) {
+  async init(seed, dim = 'overworld') {
     await this.ready;
     this.seed = seed;
     this.localQueue.length = 0;
-    if (this.fallback) { handleJob({ type: 'init', seed }); return; }
+    if (this.fallback) { handleJob({ type: 'init', seed, dim }); return; }
     // Wait until each worker has switched seeds so stale results are not mixed in.
     await Promise.all(this.workers.map((w) => new Promise((res) => {
       const id = this.nextId++;
       const onMsg = (e) => { if (e.data && e.data.id === id) { w.removeEventListener('message', onMsg); res(); } };
       w.addEventListener('message', onMsg);
-      w.postMessage({ type: 'init', seed, id });
+      w.postMessage({ type: 'init', seed, dim, id });
     })));
     this.inflight = this.workers.map(() => 0);
   }

@@ -10,6 +10,7 @@ import { buildMips, TS } from './textures.js';
 import { rng } from './noise.js';
 
 const WHITE = [1, 1, 1];
+const AMBIENT = [0.028, 0.028, 0.028];
 const CLOUD_Y = 192, CLOUD_CELL = 12, CLOUD_GRID = 96, CLOUD_H = 4;
 
 function compile(gl, type, src) {
@@ -285,6 +286,7 @@ export class Renderer {
     if (u.uSunset) gl.uniform4fv(u.uSunset, env.sunset);
     if (u.uSunDir) gl.uniform3fv(u.uSunDir, env.sunDir);
     if (u.uFog) gl.uniform3f(u.uFog, env.fogStart, env.fogEnd, env.fogMode);
+    if (u.uAmbient) gl.uniform3fv(u.uAmbient, env.ambient || AMBIENT);
   }
 
   // scene: { cam, env, chunks, renderDist, time, entities, particles, selection, breaking, hand }

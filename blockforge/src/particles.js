@@ -106,6 +106,22 @@ export class Particles {
     }
   }
 
+  heart(x, y, z) {
+    this.add({ x, y, z, vx: (Math.random() - 0.5) * 0.3, vy: 0.6, vz: (Math.random() - 0.5) * 0.3, size: 0.12, layer: TEX.p_heart, life: 1, collide: false, fullbright: true, drag: 0.95 });
+  }
+
+  crit(x, y, z) {
+    this.add({ x, y, z, vx: (Math.random() - 0.5) * 3, vy: Math.random() * 3, vz: (Math.random() - 0.5) * 3, size: 0.09, layer: TEX.p_crit, life: 0.5, gravity: 6, fullbright: true, r: 1, g: 0.95, b: 0.7 });
+  }
+
+  portal(x, y, z) {
+    this.add({ x, y, z, vx: (Math.random() - 0.5) * 1.2, vy: (Math.random() - 0.3) * 1.2, vz: (Math.random() - 0.5) * 1.2, size: 0.06, layer: TEX.p_portal, life: 1 + Math.random(), collide: false, fullbright: true, drag: 0.9 });
+  }
+
+  glyph(x, y, z, tx, ty, tz) {
+    this.add({ x, y, z, vx: (tx - x) * 1.2, vy: (ty - y) * 1.2 + 0.4, vz: (tz - z) * 1.2, size: 0.07, layer: TEX.p_glyph, life: 1, collide: false, fullbright: true, drag: 0.97 });
+  }
+
   explosion(x, y, z) {
     for (let i = 0; i < 30; i++) {
       const p = this.add({
@@ -162,10 +178,23 @@ export class Particles {
     list.length = j;
   }
 
-  // Fill the render buffer. Light is sampled per particle.
-  build(dayScale) {
+  // Fill the render buffer. Light is sampled per particle; experience orbs
+  // are drawn here too.
+  build(dayScale, orbs = [], alpha = 1) {
     const d = this.data, w = this.world;
     let n = 0;
+    const now = performance.now() / 1000;
+    for (const o of orbs) {
+      if (n >= MAX) break;
+      const [x, y, z] = o.lerpPos(alpha);
+      const k = n * STRIDE;
+      const pulse = 0.5 + 0.5 * Math.sin(now * 6 + o.id);
+      const sz = 0.18 + Math.min(0.2, o.value * 0.012);
+      d[k] = x; d[k + 1] = y + 0.12; d[k + 2] = z; d[k + 3] = sz;
+      d[k + 4] = 0; d[k + 5] = 0; d[k + 6] = 1; d[k + 7] = 1; d[k + 8] = TEX.p_xp;
+      d[k + 9] = 0.7 + pulse * 0.3; d[k + 10] = 1; d[k + 11] = 0.3 + pulse * 0.2; d[k + 12] = 1; d[k + 13] = 0;
+      n++;
+    }
     for (const p of this.list) {
       if (n >= MAX) break;
       const o = n * STRIDE;

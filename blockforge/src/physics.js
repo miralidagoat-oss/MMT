@@ -1,20 +1,46 @@
 // Block shapes, swept AABB collision and voxel raycasting.
-import { B, BLOCKS, SOLID, RENDER, RENDER_TYPE, isLiquid } from './blocks.js';
+import { B, BLOCKS, SOLID, RENDER, RENDER_TYPE, isLiquid, SHAPE_KIND, SHAPE_CTX } from './blocks.js';
+import { shapeBoxes, collisionBoxes, unionBox } from './shapes.js';
 
 const FULL = [0, 0, 0, 1, 1, 1];
 const S16 = 1 / 16;
 
-// Collision boxes (block-local) for a block, or null if passable.
-export function collisionBox(id, meta) {
+const CACTUS_BOX = [[S16, 0, S16, 1 - S16, 1 - S16, 1 - S16]];
+const FULL_LIST = [FULL];
+
+// Collision boxes (block-local) for the block at x,y,z, or null if passable.
+export function blockCollision(world, x, y, z, id) {
   if (!SOLID[id]) return null;
-  if (id === B.cactus) return [S16, 0, S16, 1 - S16, 1 - S16, 1 - S16];
+  if (id === B.cactus) return CACTUS_BOX;
+  if (SHAPE_KIND[id]) {
+    const meta = world.getMeta(x, y, z);
+    return collisionBoxes(SHAPE_CTX, id, meta, (dx, dy, dz) => world.getBlock(x + dx, y + dy, z + dz));
+  }
+  return FULL_LIST;
+}
+
+// Kept for callers that only know the id (plain cubes and cacti).
+export function collisionBox(id) {
+  if (!SOLID[id]) return null;
+  if (id === B.cactus) return CACTUS_BOX[0];
   return FULL;
 }
 
 // Outline / hit box used for targeting.
+export function selectionBoxAt(world, x, y, z, id, meta) {
+  if (RENDER_TYPE[id] === RENDER.SHAPE) {
+    const boxes = shapeBoxes(SHAPE_CTX, id, meta, (dx, dy, dz) => world.getBlock(x + dx, y + dy, z + dz));
+    return boxes ? unionBox(boxes) : FULL;
+  }
+  return selectionBox(id, meta);
+}
+
 export function selectionBox(id, meta) {
   if (id === 0 || isLiquid(id)) return null;
   const rt = RENDER_TYPE[id];
+  if (rt === RENDER.PORTAL) return null;
+  if (rt === RENDER.CROP) return [0, 0, 0, 1, 0.25 + (meta & 7) * 0.08, 1];
+  if (rt === RENDER.SHAPE) return FULL;
   if (rt === RENDER.CROSS) {
     if (id === B.sugar_cane) return [0.125, 0, 0.125, 0.875, 1, 0.875];
     if (id === B.tall_grass || id === B.fern || id === B.dead_bush) return [0.1, 0, 0.1, 0.9, 0.8, 0.9];
@@ -54,9 +80,9 @@ export function moveBox(world, e, dx, dy, dz) {
   for (let y = by0; y <= by1; y++) for (let z = bz0; z <= bz1; z++) for (let x = bx0; x <= bx1; x++) {
     const id = world.getBlockSolidCheck(x, y, z);
     if (id === 0) continue;
-    const b = collisionBox(id, 0);
-    if (!b) continue;
-    boxes.push(x + b[0], y + b[1], z + b[2], x + b[3], y + b[4], z + b[5]);
+    const list = blockCollision(world, x, y, z, id);
+    if (!list) continue;
+    for (const b of list) boxes.push(x + b[0], y + b[1], z + b[2], x + b[3], y + b[4], z + b[5]);
   }
   const ody = dy, odx = dx, odz = dz;
   const EPS = 1e-7;
@@ -93,13 +119,13 @@ export function moveBox(world, e, dx, dy, dz) {
 // Is the box at (x, y, z) free of solid blocks?
 export function boxFree(world, x, y, z, hw, h) {
   const x0 = x - hw, x1 = x + hw, y0 = y, y1 = y + h, z0 = z - hw, z1 = z + hw;
-  for (let by = Math.floor(y0); by <= Math.floor(y1 - 1e-6); by++)
+  for (let by = Math.floor(y0) - 1; by <= Math.floor(y1 - 1e-6); by++)
     for (let bz = Math.floor(z0); bz <= Math.floor(z1 - 1e-6); bz++)
       for (let bx = Math.floor(x0); bx <= Math.floor(x1 - 1e-6); bx++) {
         const id = world.getBlockSolidCheck(bx, by, bz);
-        const b = id && collisionBox(id, 0);
-        if (!b) continue;
-        if (x1 > bx + b[0] && x0 < bx + b[3] && y1 > by + b[1] && y0 < by + b[4] && z1 > bz + b[2] && z0 < bz + b[5]) return false;
+        const list = id && blockCollision(world, bx, by, bz, id);
+        if (!list) continue;
+        for (const b of list) if (x1 > bx + b[0] && x0 < bx + b[3] && y1 > by + b[1] && y0 < by + b[4] && z1 > bz + b[2] && z0 < bz + b[5]) return false;
       }
   return true;
 }
@@ -118,7 +144,7 @@ export function raycast(world, ox, oy, oz, dx, dy, dz, maxDist, opts = {}) {
     const id = world.getBlock(x, y, z);
     if (id > 0) {
       const liquidHit = opts.liquids && isLiquid(id) && (world.getMeta(x, y, z) & 15) === 0;
-      const box = liquidHit ? FULL : selectionBox(id, world.getMeta(x, y, z));
+      const box = liquidHit ? FULL : selectionBoxAt(world, x, y, z, id, world.getMeta(x, y, z));
       if (box) {
         const hit = rayBox(ox, oy, oz, dx, dy, dz, x + box[0], y + box[1], z + box[2], x + box[3], y + box[4], z + box[5]);
         if (hit && hit.t <= maxDist) return { x, y, z, id, face: hit.face, nx: hit.n[0], ny: hit.n[1], nz: hit.n[2], dist: hit.t, box, hx: ox + dx * hit.t, hy: oy + dy * hit.t, hz: oz + dz * hit.t };
@@ -153,3 +179,26 @@ export function rayBox(ox, oy, oz, dx, dy, dz, x0, y0, z0, x1, y1, z1) {
 }
 
 export const blockFriction = (id) => (BLOCKS[id] ? BLOCKS[id].friction : 0.6);
+
+// Movement with step assist: when blocked sideways on the ground, try again
+// lifted by up to `step` blocks (walks up slabs, stairs and paths).
+export function moveStep(world, e, dx, dy, dz, step) {
+  const x0 = e.x, y0 = e.y, z0 = e.z;
+  const wasGround = e.onGround;
+  const r = moveBox(world, e, dx, dy, dz);
+  if (!(step > 0 && (r.hitX || r.hitZ) && (wasGround || r.onGround))) return r;
+  const x1 = e.x, y1 = e.y, z1 = e.z;
+  e.x = x0; e.y = y0; e.z = z0;
+  const up = moveBox(world, e, 0, step, 0);
+  const hor = moveBox(world, e, dx, 0, dz);
+  const down = moveBox(world, e, 0, -up.dy + Math.min(0, dy), 0);
+  const d1 = (x1 - x0) ** 2 + (z1 - z0) ** 2, d2 = (e.x - x0) ** 2 + (e.z - z0) ** 2;
+  if (d2 <= d1 + 1e-9) { e.x = x1; e.y = y1; e.z = z1; return r; }
+  return { dx: e.x - x0, dy: e.y - y0, dz: e.z - z0, hitX: hor.hitX, hitZ: hor.hitZ, hitY: down.hitY, onGround: down.onGround };
+}
+
+// Horizontal slowdown from the block underfoot (cinder sand).
+export function surfaceSlow(world, e) {
+  const id = world.getBlock(Math.floor(e.x), Math.floor(e.y - 0.1), Math.floor(e.z)) || world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.01), Math.floor(e.z));
+  return BLOCKS[id] && BLOCKS[id].slow ? BLOCKS[id].slow : 1;
+}

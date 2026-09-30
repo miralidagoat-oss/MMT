@@ -83,6 +83,43 @@ for (const mat of Object.keys(TIERS)) {
   }
 }
 
+// --- added after the original set so saved item ids stay stable ---
+item('wheat_seeds', { plants: 75 });
+item('wheat');
+item('bread', { food: [5, 6] });
+item('carrot', { food: [3, 3.6], plants: 76 });
+item('potato', { food: [1, 0.6], plants: 77 });
+item('baked_potato', { food: [5, 6] });
+item('bone_meal');
+for (const mat of Object.keys(TIERS)) {
+  const t = TIERS[mat];
+  item(`${mat}_hoe`, { maxStack: 1, durability: t.durability, tool: { type: 'hoe', tier: t.tier, speed: t.speed }, damage: 1, fuel: mat === 'wooden' ? 200 : undefined });
+}
+item('bow', { maxStack: 1, durability: 384, fuel: 300 });
+item('arrow');
+export const ARMOR_MATS = {
+  leather: { pts: [1, 3, 2, 1], tough: 0, dur: 5, color: [140, 88, 52] },
+  golden: { pts: [2, 5, 3, 1], tough: 0, dur: 7, color: [246, 206, 58] },
+  iron: { pts: [2, 6, 5, 2], tough: 0, dur: 15, color: [210, 212, 216] },
+  diamond: { pts: [3, 8, 6, 3], tough: 2, dur: 33, color: [96, 224, 220] },
+};
+export const ARMOR_PIECES = ['helmet', 'chestplate', 'leggings', 'boots'];
+const ARMOR_BASE_DUR = [11, 16, 15, 13];
+for (const [mat, m] of Object.entries(ARMOR_MATS)) {
+  ARMOR_PIECES.forEach((piece, slot) => {
+    item(`${mat}_${piece}`, { maxStack: 1, durability: ARMOR_BASE_DUR[slot] * m.dur, armor: { slot, points: m.pts[slot], tough: m.tough, mat } });
+  });
+}
+item('paper');
+item('book');
+item('clock', { maxStack: 1 });
+item('compass', { maxStack: 1 });
+item('ember_dust');
+item('quartz');
+item('gold_nugget');
+item('ember_brick');
+item('egg', { maxStack: 16 });
+
 setItemLookup((name) => {
   if (I[name] === undefined) throw new Error('unknown item ' + name);
   return I[name];
@@ -140,7 +177,39 @@ shaped(['SS', 'SS'], { S: 'sand' }, 'sandstone');
 shaped(['BB', 'BB'], { B: 'brick' }, 'bricks');
 shaped(['SS', 'SS'], { S: 'snowball' }, 'snow_block');
 shaped(['SS', 'SS'], { S: 'string' }, 'white_wool');
-shaped(['PPP', 'SSS', 'PPP'], { P: PLANKS, S: 'stick' }, 'bookshelf');
+shaped(['PPP', 'BBB', 'PPP'], { P: PLANKS, B: 'book' }, 'bookshelf');
+shaped(['WWW'], { W: 'wheat' }, 'bread');
+shaped(['WWW', 'WWW', 'WWW'], { W: 'wheat' }, 'hay_bale');
+shapeless(['hay_bale'], 'wheat', 9);
+shaped([' SX', 'S X', ' SX'], { S: 'stick', X: 'string' }, 'bow');
+shaped(['F', 'S', 'E'], { F: 'flint', S: 'stick', E: 'feather' }, 'arrow', 4);
+shaped(['CCC'], { C: 'sugar_cane' }, 'paper', 3);
+shapeless(['paper', 'paper', 'paper', 'leather'], 'book');
+shaped([' B ', 'DOD', 'OOO'], { B: 'book', D: 'diamond', O: 'obsidian' }, 'enchanting_table');
+shaped(['WWW', 'PPP'], { W: ['white_wool', 'red_wool', 'orange_wool', 'yellow_wool', 'green_wool', 'blue_wool', 'purple_wool', 'black_wool'], P: PLANKS }, 'bed');
+shaped(['PP', 'PP', 'PP'], { P: PLANKS }, 'oak_door', 3);
+shaped(['PSP', 'PSP'], { P: PLANKS, S: 'stick' }, 'oak_fence', 3);
+shaped(['SPS', 'SPS'], { P: PLANKS, S: 'stick' }, 'oak_fence_gate');
+shaped(['M  ', 'MM ', 'MMM'], { M: PLANKS }, 'oak_stairs', 4);
+shaped(['M  ', 'MM ', 'MMM'], { M: 'cobblestone' }, 'cobblestone_stairs', 4);
+shaped(['M  ', 'MM ', 'MMM'], { M: 'stone_bricks' }, 'stone_brick_stairs', 4);
+shaped(['MMM'], { M: PLANKS }, 'oak_slab', 6);
+shaped(['MMM'], { M: 'cobblestone' }, 'cobblestone_slab', 6);
+shaped(['MMM'], { M: 'stone' }, 'stone_slab', 6);
+shaped([' G ', 'GCG', ' G '], { G: 'gold_ingot', C: 'copper_ingot' }, 'clock');
+shaped([' I ', 'ICI', ' I '], { I: 'iron_ingot', C: 'copper_ingot' }, 'compass');
+shapeless(['bone'], 'bone_meal', 3);
+shaped(['QQ', 'QQ'], { Q: 'quartz' }, 'quartz_block');
+shaped(['DD', 'DD'], { D: 'ember_dust' }, 'ember_crystal');
+shaped(['BB', 'BB'], { B: 'ember_brick' }, 'ember_bricks');
+shaped(['NNN', 'NNN', 'NNN'], { N: 'gold_nugget' }, 'gold_ingot');
+shapeless(['gold_ingot'], 'gold_nugget', 9);
+for (const [mat, key] of [['leather', 'leather'], ['golden', 'gold_ingot'], ['iron', 'iron_ingot'], ['diamond', 'diamond']]) {
+  shaped(['MMM', 'M M'], { M: key }, `${mat}_helmet`);
+  shaped(['M M', 'MMM', 'MMM'], { M: key }, `${mat}_chestplate`);
+  shaped(['MMM', 'M M', 'M M'], { M: key }, `${mat}_leggings`);
+  shaped(['M M', 'M M'], { M: key }, `${mat}_boots`);
+}
 shaped(['S S', 'SSS', 'S S'], { S: 'stick' }, 'ladder', 3);
 shaped(['GGG', 'GTG', 'GGG'], { G: 'glass', T: 'torch' }, 'lamp');
 shaped(['I I', ' I '], { I: 'iron_ingot' }, 'bucket');
@@ -168,6 +237,7 @@ for (const [mat, keys] of Object.entries(MATS)) {
   shaped(['MM', 'SM', 'S '], { M: keys, S: 'stick' }, `${mat}_axe`);
   shaped(['M', 'S', 'S'], { M: keys, S: 'stick' }, `${mat}_shovel`);
   shaped(['M', 'M', 'S'], { M: keys, S: 'stick' }, `${mat}_sword`);
+  shaped(['MM', ' S', ' S'], { M: keys, S: 'stick' }, `${mat}_hoe`);
 }
 shapeless(['cobblestone', 'fern'], 'mossy_cobblestone');
 
@@ -218,5 +288,6 @@ export const SMELTING = new Map([
   [B.spruce_log, I.charcoal], [I.clay_ball, I.brick], [I.raw_pork, I.cooked_pork],
   [I.raw_beef, I.cooked_beef], [I.raw_mutton, I.cooked_mutton], [I.raw_chicken, I.cooked_chicken],
   [B.diamond_ore, I.diamond], [B.emerald_ore, I.emerald], [B.coal_ore, I.coal], [B.stone_bricks, B.cobblestone],
+  [I.potato, I.baked_potato], [B.scorchstone, I.ember_brick], [B.quartz_ore, I.quartz], [B.ember_gold_ore, I.gold_ingot],
 ]);
 export const fuelValue = (id) => (ITEMS[id] && ITEMS[id].fuel) || 0;

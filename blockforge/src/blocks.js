@@ -24,8 +24,16 @@ const TEX_NAMES = [
   'crack0', 'crack1', 'crack2', 'crack3', 'crack4', 'crack5', 'crack6', 'crack7', 'crack8', 'crack9',
   'p_flame', 'p_smoke0', 'p_smoke1', 'p_smoke2', 'p_smoke3', 'p_bubble', 'p_splash', 'p_rain',
   'p_snow', 'p_spark', 'p_explosion', 'white',
+  'dirt_path_top', 'dirt_path_side', 'farmland', 'farmland_wet',
+  'wheat0', 'wheat1', 'wheat2', 'wheat3', 'wheat4', 'wheat5', 'wheat6', 'wheat7',
+  'carrots0', 'carrots1', 'carrots2', 'carrots3', 'potatoes0', 'potatoes1', 'potatoes2', 'potatoes3',
+  'oak_door_top', 'oak_door_bottom', 'bed_head_top', 'bed_foot_top', 'bed_head_side', 'bed_foot_side',
+  'bed_head_end', 'bed_foot_end', 'scorchstone', 'cinder_sand', 'ember_crystal', 'magma_rock',
+  'quartz_ore', 'ember_gold_ore', 'glowcap', 'ashen_shrub', 'ember_bricks', 'spawner',
+  'enchanting_table_top', 'enchanting_table_side', 'enchanting_table_bottom', 'hay_side', 'hay_top',
+  'quartz_block', 'p_portal', 'p_xp', 'p_heart', 'p_glyph', 'p_crit',
 ];
-const ANIM_NAMES = ['water', 'lava'];
+const ANIM_NAMES = ['water', 'lava', 'rift'];
 
 export const TEX = {};
 export const TEXTURE_LIST = []; // [{name, frame}] per layer
@@ -44,10 +52,14 @@ export const ALPHA_TEXTURES = new Set([
   'spruce_sapling', 'ladder', 'brown_mushroom', 'red_mushroom', 'ice', 'water',
   'p_flame', 'p_smoke0', 'p_smoke1', 'p_smoke2', 'p_smoke3', 'p_bubble', 'p_splash', 'p_rain',
   'p_snow', 'p_spark', 'p_explosion', 'cactus_side', 'cactus_top', 'cactus_bottom',
+  'wheat0', 'wheat1', 'wheat2', 'wheat3', 'wheat4', 'wheat5', 'wheat6', 'wheat7',
+  'carrots0', 'carrots1', 'carrots2', 'carrots3', 'potatoes0', 'potatoes1', 'potatoes2', 'potatoes3',
+  'oak_door_top', 'oak_door_bottom', 'glowcap', 'ashen_shrub', 'spawner', 'rift',
+  'p_portal', 'p_xp', 'p_heart', 'p_glyph', 'p_crit',
 ]);
 
 // ---------------------------------------------------------------------------
-export const RENDER = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, LADDER: 6 };
+export const RENDER = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, LADDER: 6, SHAPE: 7, CROP: 8, PORTAL: 9 };
 export const PASS = { OPAQUE: 0, CUTOUT: 1, TRANSLUCENT: 2 };
 
 export const B = {}; // name -> id
@@ -65,6 +77,7 @@ export const WAVE = new Uint8Array(MAX);       // 1 leaves, 2 plants
 export const SELF_CULL = new Uint8Array(MAX);  // faces between two blocks of the same id are hidden
 export const REPLACEABLE = new Uint8Array(MAX);
 export const FACE_TEX = new Uint16Array(MAX * 6);
+export const SHAPE_KIND = new Uint8Array(MAX); // shapes.js SHAPE for RENDER.SHAPE blocks
 
 const TOOL_NONE = null;
 
@@ -96,9 +109,11 @@ function def(id, name, o = {}) {
     item: o.item ?? true,       // obtainable as an inventory item
     flammable: o.flammable ?? false,
     creative: o.creative ?? true,
+    shape: o.shape || 0,
+    slow: o.slow || 0,
   };
   BLOCKS[id] = d; B[name] = id;
-  OPAQUE[id] = d.opaque && d.render === RENDER.CUBE ? 1 : 0;
+  OPAQUE[id] = d.opaque && d.render === RENDER.CUBE && d.pass === PASS.OPAQUE ? 1 : 0;
   SOLID[id] = d.solid ? 1 : 0;
   RENDER_TYPE[id] = d.render;
   RENDER_PASS[id] = d.pass;
@@ -108,6 +123,7 @@ function def(id, name, o = {}) {
   WAVE[id] = d.wave;
   SELF_CULL[id] = d.selfCull ? 1 : 0;
   REPLACEABLE[id] = d.replaceable ? 1 : 0;
+  SHAPE_KIND[id] = d.shape;
   // faces: string (all), or {top,bottom,side,front}
   const f = o.faces ?? name;
   const t = (n) => {
@@ -239,6 +255,42 @@ def(70, 'brown_mushroom', plant({ wave: 0, light: 1 }));
 def(71, 'red_mushroom', plant({ wave: 0 }));
 def(72, 'tnt', { display: 'Blast Crate', hardness: 0, sound: 'grass', faces: { top: 'tnt_top', bottom: 'tnt_bottom', side: 'tnt_side' } });
 
+// Shaped blocks (see shapes.js)
+const shaped = (shape, o = {}) => ({ render: RENDER.SHAPE, opaque: false, opacity: 0, shape, ...o });
+def(73, 'dirt_path', shaped(7, { hardness: 0.65, tool: 'shovel', sound: 'gravel', faces: { top: 'dirt_path_top', bottom: 'dirt', side: 'dirt_path_side' }, drops: () => [[B.dirt, 1]] }));
+def(74, 'farmland', shaped(7, { hardness: 0.6, tool: 'shovel', sound: 'gravel', faces: { top: 'farmland', bottom: 'dirt', side: 'dirt' }, drops: () => [[B.dirt, 1]] }));
+const crop = (o) => ({ render: RENDER.CROP, pass: PASS.CUTOUT, opaque: false, solid: false, hardness: 0, sound: 'grass', support: 'farmland', item: false, creative: false, ...o });
+def(75, 'wheat', crop({ faces: 'wheat0', drops: (r, m) => ((m & 7) === 7 ? [[I_('wheat'), 1], [I_('wheat_seeds'), Math.floor(r() * 4)]] : [[I_('wheat_seeds'), 1]]) }));
+def(76, 'carrots', crop({ faces: 'carrots0', drops: (r, m) => [[I_('carrot'), (m & 7) === 7 ? 2 + Math.floor(r() * 3) : 1]] }));
+def(77, 'potatoes', crop({ faces: 'potatoes0', drops: (r, m) => [[I_('potato'), (m & 7) === 7 ? 2 + Math.floor(r() * 3) : 1]] }));
+def(78, 'oak_door', shaped(5, { pass: PASS.CUTOUT, hardness: 3, tool: 'axe', sound: 'wood', faces: 'oak_door_bottom', display: 'Oak Door', drops: () => [[B.oak_door, 1]] }));
+def(79, 'oak_fence', shaped(3, { hardness: 2, tool: 'axe', sound: 'wood', faces: 'oak_planks', flammable: true }));
+def(80, 'oak_fence_gate', shaped(4, { hardness: 2, tool: 'axe', sound: 'wood', faces: 'oak_planks', orient: 'facing4' }));
+def(81, 'oak_stairs', shaped(2, { hardness: 2, tool: 'axe', sound: 'wood', faces: 'oak_planks', orient: 'stairs' }));
+def(82, 'cobblestone_stairs', shaped(2, { ...stoneLike({ hardness: 2 }), faces: 'cobblestone', orient: 'stairs' }));
+def(83, 'stone_brick_stairs', shaped(2, { ...stoneLike(), faces: 'stone_bricks', orient: 'stairs' }));
+def(84, 'oak_slab', shaped(1, { hardness: 2, tool: 'axe', sound: 'wood', faces: 'oak_planks', orient: 'slab' }));
+def(85, 'cobblestone_slab', shaped(1, { ...stoneLike({ hardness: 2 }), faces: 'cobblestone', orient: 'slab' }));
+def(86, 'stone_slab', shaped(1, { ...stoneLike({ hardness: 2 }), faces: 'stone', orient: 'slab' }));
+def(87, 'bed', shaped(6, { hardness: 0.2, sound: 'cloth', faces: 'bed_head_top', display: 'Bed', drops: () => [[B.bed, 1]] }));
+def(88, 'rift', {
+  render: RENDER.PORTAL, pass: PASS.TRANSLUCENT, opaque: false, solid: false, light: 11, hardness: -1,
+  sound: 'glass', faces: 'rift', item: false, creative: false, display: 'Rift',
+});
+def(89, 'scorchstone', stoneLike({ hardness: 0.4 }));
+def(90, 'cinder_sand', { hardness: 0.5, tool: 'shovel', sound: 'sand', shape: 9, slow: 0.4 });
+def(91, 'ember_crystal', { hardness: 0.3, light: 15, sound: 'glass', drops: (r) => [[I_('ember_dust'), 2 + Math.floor(r() * 3)]] });
+def(92, 'magma_rock', stoneLike({ hardness: 0.5, light: 3 }));
+def(93, 'quartz_ore', stoneLike({ hardness: 3, drops: () => [[I_('quartz'), 1]] }));
+def(94, 'ember_gold_ore', stoneLike({ hardness: 3, drops: (r) => [[I_('gold_nugget'), 2 + Math.floor(r() * 5)]] }));
+def(95, 'glowcap', plant({ wave: 0, light: 8, support: 'underworld' }));
+def(96, 'ashen_shrub', plant({ wave: 0, support: 'underworld', replaceable: true, drops: (r) => (r() < 0.3 ? [[I_('stick'), 1]] : []) }));
+def(97, 'ember_bricks', stoneLike({ hardness: 2 }));
+def(98, 'spawner', { pass: PASS.CUTOUT, opaque: false, opacity: 1, hardness: 5, tool: 'pickaxe', sound: 'metal', drops: () => [], display: 'Creature Spawner', creative: false });
+def(99, 'enchanting_table', shaped(8, { ...stoneLike({ hardness: 5 }), light: 7, faces: { top: 'enchanting_table_top', bottom: 'enchanting_table_bottom', side: 'enchanting_table_side' } }));
+def(100, 'hay_bale', { hardness: 0.5, sound: 'grass', orient: 'axis', faces: { top: 'hay_top', side: 'hay_side' } });
+def(101, 'quartz_block', stoneLike({ hardness: 0.8, display: 'Block of Quartz' }));
+
 export const BLOCK_COUNT = BLOCKS.length;
 
 // Item ids are resolved lazily (items.js registers them) so blocks.js has no
@@ -257,6 +309,8 @@ export const ROT = new Uint8Array(1);
 export function faceTexture(id, face, meta) {
   ROT[0] = 0;
   const d = BLOCKS[id];
+  if (id === 74 && face === 0 && (meta & 7)) return TEX.farmland_wet;
+  if (id === 78) return meta & 8 ? TEX.oak_door_top : TEX.oak_door_bottom;
   if (d.orient === 'axis' && meta) {
     // meta 1: log along X, 2: along Z
     const endFaces = meta === 1 ? [2, 3] : [4, 5];
@@ -273,6 +327,30 @@ export function faceTexture(id, face, meta) {
   }
   return FACE_TEX[id * 6 + face];
 }
+
+// Context object for shapes.js.
+export const FENCE_IDS = new Set([79, 80]);
+export const SHAPE_CTX = {
+  shape: SHAPE_KIND,
+  fences: FENCE_IDS,
+  opaque: OPAQUE,
+  doorTex: (id, meta) => {
+    const l = meta & 8 ? TEX.oak_door_top : TEX.oak_door_bottom;
+    return [l, l, l, l, l, l];
+  },
+  // Bed textures by part and facing: faces order +Y, -Y, +X, -X, +Z, -Z.
+  bedTex: (head, f) => {
+    const top = head ? TEX.bed_head_top : TEX.bed_foot_top;
+    const side = head ? TEX.bed_head_side : TEX.bed_foot_side;
+    const end = head ? TEX.bed_head_end : TEX.bed_foot_end;
+    const faces = [top, TEX.oak_planks, side, side, side, side];
+    // the outer end: toward the head for the head part, away from it for the foot
+    const endFace = [5, 2, 4, 3][head ? f : (f + 2) % 4];
+    faces[endFace] = end;
+    const r = [f, 0, 0, 0, 0, 0];
+    return { faces, rot: r };
+  },
+};
 
 // Liquid helpers. meta: 0 = source, 1..7 = flowing distance, bit 8 = falling.
 export const isLiquid = (id) => id === 12 || id === 13;

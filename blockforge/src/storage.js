@@ -77,7 +77,7 @@ export class Storage {
   async deleteWorld(id) {
     if (!this.db) {
       this.memWorlds.delete(id);
-      for (const k of [...this.memory.keys()]) if (k.startsWith(id + ':')) this.memory.delete(k);
+      for (const k of [...this.memory.keys()]) if (k.startsWith(id + ':') || k.startsWith(id + '@')) this.memory.delete(k);
       return;
     }
     try {
@@ -85,6 +85,8 @@ export class Storage {
       tx.objectStore('worlds').delete(id);
       const range = IDBKeyRange.bound(id + ':', id + ':￿');
       tx.objectStore('chunks').delete(range);
+      // chunks of other dimensions are stored as `${id}@dim:cx,cz`
+      tx.objectStore('chunks').delete(IDBKeyRange.bound(id + '@', id + '@\uffff'));
       await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
     } catch (err) { console.warn('delete failed', err); }
   }

@@ -7,6 +7,8 @@ import {
   faceTexture, ROT, RENDER, PASS, B, TEX,
 } from './blocks.js';
 import { HEIGHT } from './constants.js';
+import { shapeBoxes } from './shapes.js';
+import { SHAPE_CTX } from './blocks.js';
 import { BIRCH_TINT, SPRUCE_TINT } from './worldgen.js';
 
 const RX = 48, RZ = 48, LAYER = RX * RZ;
@@ -107,48 +109,50 @@ export class Mesher {
         }
       }
     }
-    this.computeLight(ry);
+    this.computeLight(ry, !!job.noSky);
     return this.mesh(job, ry);
   }
 
   // ---------------------------------------------------------------------------
-  computeLight(ry) {
+  computeLight(ry, noSky = false) {
     const R = this.blk, S = this.sky, L = this.bl, Q = this.queue, top = this.colTop;
     const size = LAYER * ry;
     S.fill(0, 0, size); L.fill(0, 0, size);
     const QM = Q.length - 1;
     let head = 0, tail = 0;
 
-    // Direct skylight down each column.
-    for (let z = 0; z < RZ; z++) for (let x = 0; x < RX; x++) {
-      let light = 15, y = ry - 1, i = (y * RZ + z) * RX + x;
-      for (; y >= 0; y--, i -= LAYER) {
-        if (OPACITY[R[i]] !== 0) break;
-        S[i] = 15;
+    if (!noSky) {
+      // Direct skylight down each column.
+      for (let z = 0; z < RZ; z++) for (let x = 0; x < RX; x++) {
+        let light = 15, y = ry - 1, i = (y * RZ + z) * RX + x;
+        for (; y >= 0; y--, i -= LAYER) {
+          if (OPACITY[R[i]] !== 0) break;
+          S[i] = 15;
+        }
+        top[z * RX + x] = y + 1;
+        for (; y >= 0; y--, i -= LAYER) {
+          const op = OPACITY[R[i]];
+          if (op >= 15) break;
+          light -= op;
+          if (light <= 0) break;
+          S[i] = light;
+        }
       }
-      top[z * RX + x] = y + 1;
-      for (; y >= 0; y--, i -= LAYER) {
-        const op = OPACITY[R[i]];
-        if (op >= 15) break;
-        light -= op;
-        if (light <= 0) break;
-        S[i] = light;
+      // Seed cells that can spread sideways or under overhangs.
+      for (let z = 0; z < RZ; z++) for (let x = 0; x < RX; x++) {
+        const c = z * RX + x;
+        let mt = top[c];
+        if (x > 0 && top[c - 1] > mt) mt = top[c - 1];
+        if (x < RX - 1 && top[c + 1] > mt) mt = top[c + 1];
+        if (z > 0 && top[c - RX] > mt) mt = top[c - RX];
+        if (z < RZ - 1 && top[c + RX] > mt) mt = top[c + RX];
+        for (let y = 0; y < mt && y < ry; y++) {
+          const i = y * LAYER + c;
+          if (S[i] > 1) { Q[tail] = x | (z << 6) | (y << 12); tail = (tail + 1) & QM; }
+        }
       }
+      this.flood(S, head, tail, ry);
     }
-    // Seed cells that can spread sideways or under overhangs.
-    for (let z = 0; z < RZ; z++) for (let x = 0; x < RX; x++) {
-      const c = z * RX + x;
-      let mt = top[c];
-      if (x > 0 && top[c - 1] > mt) mt = top[c - 1];
-      if (x < RX - 1 && top[c + 1] > mt) mt = top[c + 1];
-      if (z > 0 && top[c - RX] > mt) mt = top[c - RX];
-      if (z < RZ - 1 && top[c + RX] > mt) mt = top[c + RX];
-      for (let y = 0; y < mt && y < ry; y++) {
-        const i = y * LAYER + c;
-        if (S[i] > 1) { Q[tail] = x | (z << 6) | (y << 12); tail = (tail + 1) & QM; }
-      }
-    }
-    this.flood(S, head, tail, ry);
 
     // Block light from emitters.
     head = 0; tail = 0;
@@ -258,12 +262,13 @@ export class Mesher {
 
     // Emit an axis-aligned box face (coordinates in 1/16 block units, local to
     // the block) with flat lighting from the given cell.
-    const boxFace = (b, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, flags, tint, sky, bl, shade, shift) => {
+    const boxFace = (b, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, flags, tint, sky, bl, shade, shift, rotUV = 0) => {
       const F = FACES[f];
       for (let k = 0; k < 4; k++) {
         const c = F.c[k];
         let px = c[0] ? x1 : x0, py = c[1] ? y1 : y0, pz = c[2] ? z1 : z0;
-        const [u, v] = faceUV(f, px, py, pz);
+        let [u, v] = faceUV(f, px, py, pz);
+        for (let q = 0; q < rotUV; q++) { const t = u; u = 16 - v; v = t; }
         if (shift) { const s = shift(py); px += s[0]; pz += s[1]; py += s[2]; }
         b.push(pack0(lx * 16 + px, y * 16 + py, lz * 16 + pz), pack1(Math.max(0, Math.min(16, u)), Math.max(0, Math.min(16, v)), layer, f, flags), pack2(sky, bl, shade), tint);
       }
@@ -375,6 +380,55 @@ export class Mesher {
               const lc = f < 2 && ny < ry ? i + FACES[f].n[1] * LAYER : i;
               const sky = ny >= ry ? 15 : S[lc], bl = ny >= ry ? 0 : L[lc];
               boxFace(cut, lx, y, lz, f, 1, 0, 1, 15, 16, 15, layer, 0, 0xffffff, sky, bl, FACE_SHADE[f], null);
+            }
+          } else if (rt === RENDER.SHAPE) {
+            const boxes = shapeBoxes(SHAPE_CTX, id, meta, (dx, dy, dz) => blockAt(x + dx, y + dy, z + dz));
+            if (boxes) {
+              const tint = tintFor(id, lx, lz);
+              for (const bx of boxes) {
+                const [x0, y0, z0, x1, y1, z1] = bx.b;
+                for (let f = 0; f < 6; f++) {
+                  const boundary = (f === 0 && y1 === 16) || (f === 1 && y0 === 0) || (f === 2 && x1 === 16) ||
+                    (f === 3 && x0 === 0) || (f === 4 && z1 === 16) || (f === 5 && z0 === 0);
+                  let sky = S[i], bl = L[i];
+                  if (boundary) {
+                    const n = FACES[f].n;
+                    const nid = blockAt(x + n[0], y + n[1], z + n[2]);
+                    if (OPAQUE[nid]) continue;
+                    if (nid === id && id === B.bed) continue;
+                    sky = skyAt(x + n[0], y + n[1], z + n[2]); bl = blAt(x + n[0], y + n[1], z + n[2]);
+                  }
+                  const layer = bx.t ? bx.t[f] : faceTexture(id, f, meta);
+                  boxFace(b, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, 0, tint, sky, bl, FACE_SHADE[f], null, bx.r ? bx.r[f] : 0);
+                }
+              }
+            }
+          } else if (rt === RENDER.CROP) {
+            const age = meta & 7;
+            const layer = id === B.wheat ? TEX.wheat0 + age : (id === B.carrots ? TEX.carrots0 : TEX.potatoes0) + Math.min(3, age >> 1);
+            const sky = S[i], bl = L[i];
+            const planes = [[4, 0, 4, 16], [12, 0, 12, 16], [0, 4, 16, 4], [0, 12, 16, 12]];
+            for (const [ax, az, bx2, bz] of planes) {
+              const pts = [[ax, 0, az], [ax, 16, az], [bx2, 16, bz], [bx2, 0, bz]];
+              const uvs = [[0, 16], [0, 0], [16, 0], [16, 16]];
+              for (const order of [[0, 1, 2, 3], [3, 2, 1, 0]]) {
+                for (const k of order) {
+                  const p = pts[k];
+                  b.push(pack0(lx * 16 + p[0], Math.max(0, y * 16 + p[1] - 1), lz * 16 + p[2]), pack1(uvs[k][0], uvs[k][1], layer, 6, 0), pack2(sky, bl, 0.92), 0xffffff);
+                }
+              }
+            }
+            if (y < minY) minY = y;
+            if (y + 1 > maxY) maxY = y + 1;
+          } else if (rt === RENDER.PORTAL) {
+            const axisX = (meta & 1) === 0;
+            const bb = axisX ? [0, 0, 6, 16, 16, 10] : [6, 0, 0, 10, 16, 16];
+            for (let f = 0; f < 6; f++) {
+              const n = FACES[f].n;
+              const nid = blockAt(x + n[0], y + n[1], z + n[2]);
+              if (nid === id || OPAQUE[nid]) continue;
+              if (axisX ? (f === 2 || f === 3) : (f === 4 || f === 5)) { if (nid === B.obsidian) continue; }
+              boxFace(b, lx, y, lz, f, bb[0], bb[1], bb[2], bb[3], bb[4], bb[5], TEX.rift, FLAG.ANIM | FLAG.FULLBRIGHT, 0xffffff, 15, 15, 1, null);
             }
           } else if (rt === RENDER.LIQUID) {
             this.liquid(b, id, x, y, z, lx, lz, meta, blockAt, skyAt, blAt, pack0, pack1, pack2, tintFor(id, lx, lz));

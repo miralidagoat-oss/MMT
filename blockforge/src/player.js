@@ -1,12 +1,13 @@
 // Player movement and survival stats. Movement follows the classic voxel
 // sandbox feel: 20 ticks/s, ground friction, air control, sprint jumping.
 import { Entity } from './entities.js';
-import { moveBox, boxFree, blockFriction } from './physics.js';
+import { moveBox, moveStep, boxFree, blockFriction, surfaceSlow } from './physics.js';
 import { B, SOLID } from './blocks.js';
 import { PlayerInventory } from './inventory.js';
 import { ITEMS } from './items.js';
 
 export const EYE = 1.62, EYE_SNEAK = 1.32;
+const BYPASS_ARMOR = new Set(['void', 'kill', 'starve', 'drown', 'magic']);
 
 export class Player extends Entity {
   constructor(x, y, z) {
@@ -32,6 +33,41 @@ export class Player extends Entity {
     this.sprintJumped = false;
     this.fireTicks = 0;
     this.hurtDir = 0;
+    this.isPlayer = true;
+    this.xpLevel = 0; this.xpPoints = 0;
+    this.sleeping = 0; this.bed = null;
+    this.enchantSeed = (Math.random() * 0x7fffffff) | 0;
+    this.portalTicks = 0; this.portalCooldown = 0;
+    this.dim = 'overworld';
+  }
+
+  static xpToNext(level) { return level <= 15 ? 2 * level + 7 : level <= 30 ? 5 * level - 38 : 9 * level - 158; }
+
+  addXp(game, n) {
+    this.xpPoints += n;
+    let leveled = false;
+    while (this.xpPoints >= Player.xpToNext(this.xpLevel)) {
+      this.xpPoints -= Player.xpToNext(this.xpLevel);
+      this.xpLevel++;
+      leveled = true;
+    }
+    game.audio.play('orb', this.x, this.y + 1, this.z, 0.5);
+    if (leveled) { game.audio.play(this.xpLevel % 5 === 0 ? 'levelup_big' : 'levelup', this.x, this.y + 1, this.z); game.advance('level'); }
+  }
+
+  get xpProgress() { return this.xpPoints / Player.xpToNext(this.xpLevel); }
+
+  // Armor points and toughness from worn pieces (slots 36-39).
+  armorStats() {
+    let points = 0, tough = 0, prot = 0, feather = 0;
+    for (let i = 36; i < 40; i++) {
+      const s = this.inventory.get(i);
+      const a = s && ITEMS[s.id] && ITEMS[s.id].armor;
+      if (!a) continue;
+      points += a.points; tough += a.tough;
+      if (s.ench) { prot += s.ench.protection || 0; feather += s.ench.feather_falling || 0; }
+    }
+    return { points, tough, prot, feather };
   }
 
   get creative() { return this.mode === 'creative'; }
@@ -139,7 +175,8 @@ export class Player extends Entity {
         this.vx = mx; this.vz = mz;
       }
       const wasOnGround = this.onGround;
-      const r = moveBox(world, this, this.vx, this.vy, this.vz);
+      const slow = this.onGround ? surfaceSlow(world, this) : 1;
+      const r = moveStep(world, this, this.vx * slow, this.vy, this.vz * slow, 0.6);
       this.applyHits(r);
       if (this.onLadder && (this.hitX || this.hitZ)) this.vy = 0.2;
       if (!r.onGround && r.dy < 0) this.fallDistance -= r.dy;
@@ -177,6 +214,10 @@ export class Player extends Entity {
   land(game, dist, wasOnGround) {
     if (wasOnGround) return;
     const under = game.world.getBlock(Math.floor(this.x), Math.floor(this.y - 0.2), Math.floor(this.z));
+    if (under === B.farmland && dist > 0.75) {
+      const fx = Math.floor(this.x), fy = Math.floor(this.y - 0.2), fz = Math.floor(this.z);
+      game.world.setBlock(fx, fy, fz, B.dirt, 0);
+    }
     if (dist > 3 && !this.creative) {
       this.damage(game, Math.ceil(dist - 3), 'fall');
       game.audio.play('land', this.x, this.y, this.z, Math.min(1, dist / 10));
@@ -225,8 +266,9 @@ export class Player extends Entity {
       this.fireTicks--;
       if (this.fireTicks % 20 === 0) this.damage(game, 1, 'fire');
     }
-    // cactus contact
+    // cactus contact and hot magma rock underfoot
     if (this.touching(world, B.cactus)) this.damage(game, 1, 'cactus');
+    if (this.onGround && !this.sneaking && world.getBlock(Math.floor(this.x), Math.floor(this.y - 0.1), Math.floor(this.z)) === B.magma_rock && this.age % 10 === 0) this.damage(game, 1, 'magma');
   }
 
   eyesInWaterAt(world) {
@@ -247,7 +289,27 @@ export class Player extends Entity {
       if (source !== 'kill') return false;
     }
     if (this.invuln > 0 && source !== 'kill' && source !== 'void') return false;
+    if (this.sleeping) game.wakeUp();
+    const raw = amount;
+    if (amount > 0 && !BYPASS_ARMOR.has(source)) {
+      const a = this.armorStats();
+      if (source !== 'fall' && a.points > 0) {
+        amount *= 1 - Math.min(20, Math.max(a.points / 5, a.points - amount / (2 + a.tough / 4))) / 25;
+        // armor wears down
+        for (let i = 36; i < 40; i++) {
+          const s = this.inventory.get(i);
+          const d = s && ITEMS[s.id];
+          if (!d || !d.armor) continue;
+          const u = s.ench && s.ench.unbreaking ? s.ench.unbreaking : 0;
+          if (Math.random() < 1 / (u + 1)) s.dur = (s.dur || 0) + Math.max(1, Math.floor(raw / 4));
+          if (s.dur >= d.durability) { this.inventory.set(i, null); game.audio.material('metal', 'break', this.x, this.y + 1, this.z); }
+        }
+      }
+      const epf = Math.min(20, a.prot + (source === 'fall' ? a.feather * 3 : 0));
+      amount *= 1 - epf * 0.04;
+    }
     this.health -= amount;
+    this.health = Math.round(this.health * 100) / 100;
     this.hurtTime = 10; this.invuln = 10;
     this.lastDamageSource = source;
     this.addExhaustion(0.1);
@@ -265,6 +327,8 @@ export class Player extends Entity {
     this.dead = true;
     this.eating = 0;
     if (!game.keepInventory) {
+      if (this.xpLevel > 0 || this.xpPoints > 0) game.spawnXp(this.x, this.y + 1, this.z, Math.min(100, this.xpLevel * 7));
+      this.xpLevel = 0; this.xpPoints = 0;
       const inv = this.inventory;
       for (let i = 0; i < inv.size; i++) {
         const s = inv.get(i);
@@ -297,6 +361,7 @@ export class Player extends Entity {
       health: this.health, food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, air: this.air,
       mode: this.mode, flying: this.flying, spawn: this.spawn,
       inventory: this.inventory.toJSON(), selected: this.inventory.selected, dead: this.dead,
+      xpLevel: this.xpLevel, xpPoints: this.xpPoints, enchantSeed: this.enchantSeed, bed: this.bed, dim: this.dim, worldSpawn: this.worldSpawn || null,
     };
   }
 
@@ -308,6 +373,10 @@ export class Player extends Entity {
     });
     this.inventory.load(d.inventory);
     this.inventory.selected = d.selected || 0;
+    this.xpLevel = d.xpLevel || 0; this.xpPoints = d.xpPoints || 0;
+    if (d.enchantSeed) this.enchantSeed = d.enchantSeed;
+    this.bed = d.bed || null; this.dim = d.dim || 'overworld';
+    this.worldSpawn = d.worldSpawn || (d.bed ? null : d.spawn) || null;
     this.dead = false;
     if (d.dead || this.health <= 0) this.health = 20;
   }

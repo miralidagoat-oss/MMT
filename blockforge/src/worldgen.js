@@ -5,6 +5,7 @@ import { Simplex, rng, hash2, rand2, rand3 } from './noise.js';
 import { B } from './blocks.js';
 import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME } from './constants.js';
 import { smoothstep, lerp } from './math.js';
+import { Villages, placeDungeon } from './structures.js';
 
 const SEA = SEA_LEVEL;
 
@@ -88,6 +89,7 @@ export class WorldGen {
     this.nCaveC = new Simplex(s ^ 0xb00b);
     this.nSurf = new Simplex(s ^ 0xc00c);
     this.col = { h: 0, biome: 0, temp: 0, humid: 0, river: 0, mount: 0, cont: 0 };
+    this.villages = new Villages(this);
     this.caveGrid = new Float32Array(5 * 5 * 66 * 3);
   }
 
@@ -147,6 +149,17 @@ export class WorldGen {
   }
 
   heightAt(x, z) { return this.sampleColumn(x, z).h; }
+
+  // Building style for a village centred here, or null if villages don't form.
+  villageStyle(x, z) {
+    switch (this.biomeAt(x, z)) {
+      case BIOME.PLAINS: case BIOME.MEADOW: return 'oak';
+      case BIOME.SAVANNA: return 'birch';
+      case BIOME.DESERT: return 'sand';
+      case BIOME.TAIGA: case BIOME.SNOWY_PLAINS: case BIOME.SNOWY_TAIGA: return 'spruce';
+      default: return null;
+    }
+  }
   biomeAt(x, z) { return this.sampleColumn(x, z).biome; }
 
   // --- caves ---------------------------------------------------------------
@@ -201,6 +214,7 @@ export class WorldGen {
       if (o / 4294967296 < bd.trees * patch && o < hv) return null;
     }
     if (this.caveAt(x, colH, z, colH, false) || this.caveAt(x, colH - 1, z, colH, false)) return null;
+    if (this.villages.covers(x, z)) return null;
     let kind = bd.tree;
     const r2 = rand2(this.seed ^ 0x51, x, z);
     if (kind === 'mixed') kind = r2 < 0.2 ? 'birch' : r2 < 0.28 ? 'big_oak' : 'oak';
@@ -426,6 +440,12 @@ export class WorldGen {
       }
     }
 
+    // Dungeons deep in the rock.
+    const extra = { spawns: [], chests: [], spawners: [] };
+    let minH = 999;
+    for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) minH = Math.min(minH, colH(x, z));
+    placeDungeon(seed, cx, cz, blocks, meta, minH, extra);
+
     // 4. Trees (from columns in a border around the chunk).
     const ctx = {
       get: (wx, y, wz) => {
@@ -492,6 +512,9 @@ export class WorldGen {
         }
       }
     }
+    // Villages overlapping this chunk.
+    for (const v of this.villages.near(X0, Z0, X0 + 15, Z0 + 15)) this.villages.write(v, ctx, X0, Z0, extra);
+
     // cave mushrooms
     const mr = rng(hash2(seed ^ 0x3a1, cx, cz));
     for (let i = 0; i < 6; i++) {
@@ -544,7 +567,9 @@ export class WorldGen {
       }
     }
 
-    return { blocks, meta, tints, maxY, spawns };
+    const inChunk = (o) => Math.floor(o.x) >= X0 && Math.floor(o.x) < X0 + 16 && Math.floor(o.z) >= Z0 && Math.floor(o.z) < Z0 + 16;
+    spawns.push(...extra.spawns.filter(inChunk));
+    return { blocks, meta, tints, maxY, spawns, chests: extra.chests.filter(inChunk), spawners: extra.spawners };
   }
 
   // Find a dry spawn column near the origin.

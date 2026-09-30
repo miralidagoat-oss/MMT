@@ -84,6 +84,7 @@ export class Audio {
     const c = this.ctx;
     const src = c.createBufferSource();
     src.buffer = this.noise;
+    src.loop = true; // the noise buffer is one second; longer bursts wrap around
     src.playbackRate.value = 0.8 + Math.random() * 0.4;
     const f = c.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
     const g = c.createGain();
@@ -164,7 +165,7 @@ export class Audio {
 
   play(name, x, y, z, vol = 1) {
     if (!this.ctx) return;
-    const dest = this.out(x, y, z, vol, name === 'explode' ? 48 : 16);
+    const dest = this.out(x, y, z, vol, name === 'explode' ? 48 : name === 'thunder' ? 200 : name === 'portal_hum' ? 10 : 16);
     if (!dest) return;
     const t = this.ctx.currentTime + 0.001;
     const r = () => 0.9 + Math.random() * 0.2;
@@ -235,6 +236,69 @@ export class Audio {
       case 'lava_pop':
         this.burst(dest, t, 0.08, 'bandpass', 700 * r(), 4, 0.5);
         break;
+      case 'bow_draw':
+        this.burst(dest, t, 0.5, 'bandpass', 900, 6, 0.25, 0.3);
+        this.tone(dest, t, 0.5, 'triangle', 300, 420, 0.06, 0.3);
+        break;
+      case 'bow':
+        this.tone(dest, t, 0.18, 'triangle', 520 * r(), 180, 0.35);
+        this.burst(dest, t, 0.22, 'bandpass', 1800 * r(), 1.2, 0.5);
+        break;
+      case 'arrow_hit':
+        this.burst(dest, t, 0.06, 'bandpass', 2400 * r(), 3, 0.6);
+        this.tone(dest, t, 0.12, 'square', 190 * r(), 120, 0.12);
+        break;
+      case 'throw':
+        this.burst(dest, t, 0.2, 'bandpass', 1300 * r(), 1.5, 0.35, 0.05);
+        break;
+      case 'ignite':
+        this.burst(dest, t, 0.12, 'highpass', 3500, 0.8, 0.6);
+        this.burst(dest, t + 0.05, 0.5, 'lowpass', 900, 0.6, 0.35, 0.05);
+        break;
+      case 'door_open':
+        this.tone(dest, t, 0.35, 'sawtooth', 110 * r(), 160, 0.08, 0.05);
+        this.burst(dest, t, 0.3, 'bandpass', 600 * r(), 5, 0.35, 0.04);
+        break;
+      case 'door_close':
+        this.burst(dest, t, 0.12, 'lowpass', 500 * r(), 1, 0.9);
+        this.tone(dest, t, 0.1, 'triangle', 140, 90, 0.25);
+        break;
+      case 'portal':
+        this.tone(dest, t, 2.5, 'sine', 90, 480, 0.35, 0.8);
+        this.tone(dest, t, 2.5, 'sine', 137, 720, 0.2, 0.8);
+        this.burst(dest, t, 2.5, 'bandpass', 700, 0.8, 0.3, 1);
+        break;
+      case 'portal_hum':
+        this.tone(dest, t, 1.1, 'sine', 70 + Math.random() * 10, 64, 0.2, 0.3);
+        this.burst(dest, t, 1.1, 'bandpass', 380, 3, 0.12, 0.3);
+        break;
+      case 'thunder':
+        this.burst(dest, t, 0.25, 'highpass', 1800, 0.5, 1.2);
+        this.burst(dest, t + 0.05, 3.2, 'lowpass', 160, 0.7, 1.6, 0.08);
+        this.burst(dest, t + 0.4, 2.4, 'lowpass', 90, 0.7, 1.2, 0.3);
+        break;
+      case 'orb': {
+        const f = 1300 + Math.random() * 900;
+        this.tone(dest, t, 0.12, 'sine', f, f * 1.08, 0.16);
+        break;
+      }
+      case 'levelup':
+        [523, 659, 784].forEach((f, i) => this.tone(dest, t + i * 0.07, 0.35, 'triangle', f, f, 0.2));
+        break;
+      case 'levelup_big':
+        [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(dest, t + i * 0.08, 0.6, 'triangle', f, f, 0.2));
+        break;
+      case 'advance':
+        [659, 880, 1175].forEach((f, i) => this.tone(dest, t + i * 0.1, 0.5, 'sine', f, f, 0.18));
+        this.tone(dest, t, 0.9, 'triangle', 329, 329, 0.1, 0.05);
+        break;
+      case 'enchant':
+        for (let i = 0; i < 7; i++) { const f = 900 + Math.random() * 1400; this.tone(dest, t + i * 0.06, 0.4, 'sine', f, f * 1.5, 0.08); }
+        break;
+      case 'trade':
+        this.tone(dest, t, 0.08, 'triangle', 1500, 1500, 0.15);
+        this.tone(dest, t + 0.07, 0.15, 'triangle', 2000, 2000, 0.15);
+        break;
       default: break;
     }
   }
@@ -277,6 +341,23 @@ export class Audio {
         break;
       case 'chicken':
         for (let i = 0; i < (hurt ? 1 : 3); i++) this.tone(dest, t + i * 0.09, 0.07, 'triangle', 820 * pitch, 640 * pitch, 0.3);
+        break;
+      case 'settler':
+        // a questioning hum, falling for "no"
+        if (action === 'no') { voice('triangle', 190 * pitch, 130 * pitch, 0.3, 700, 1.5, 0.7, 6); break; }
+        voice('triangle', 150 * pitch, 190 * pitch, hurt ? 0.2 : 0.35, 800, 1.5, 0.7, 6);
+        voice('sawtooth', 150 * pitch, 190 * pitch, hurt ? 0.2 : 0.35, 1400, 3, 0.2);
+        break;
+      case 'archer':
+        for (let i = 0; i < (death ? 6 : 3); i++) this.burst(dest, t + i * 0.07, 0.05, 'bandpass', (1300 + Math.random() * 800) * pitch, 6, 0.6);
+        break;
+      case 'crawler':
+        this.burst(dest, t, hurt ? 0.25 : 0.5, 'highpass', 3000 * pitch, 1, 0.45, 0.05);
+        for (let i = 0; i < 4; i++) this.burst(dest, t + i * 0.05, 0.03, 'bandpass', 2600 * pitch, 8, 0.35);
+        break;
+      case 'imp':
+        voice('square', 330 * pitch, 520 * pitch, hurt ? 0.18 : 0.3, 1200, 2, 0.35, 22);
+        this.burst(dest, t, 0.35, 'bandpass', 900, 1, 0.3, 0.05);
         break;
       case 'ghoul':
         voice('sawtooth', 78 * pitch, 58 * pitch, death ? 1.6 : 1.1, 420, 1.2, 0.9, 5);
