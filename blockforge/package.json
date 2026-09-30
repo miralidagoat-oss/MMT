@@ -1,0 +1,15 @@
+{
+  "name": "blockforge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "An open-world voxel sandbox for the browser: procedural terrain, survival and creative modes, crafting, creatures, day/night and weather.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "python3 -m http.server 8123",
+    "textures": "node tools/texture-sheet.mjs textures.png"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
