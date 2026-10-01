@@ -27,4 +27,11 @@ export const ADVANCEMENTS = {
   wyrm: ['Wyrmslayer', 'Defeat the Void Wyrm'],
   glider: ['Wings of the Void', 'Glide with a glider'],
   map: ['Cartographer', 'Make a map'],
+  blaster: ['Pew Pew', 'Fire a photon blaster'],
+  tame: ['Best Friends', 'Tame a hound or a steed'],
+  golem: ['Guardian Maker', 'Build a sentinel'],
+  beacon: ['Light the Way', 'Power a beacon'],
+  biome: ['Explorer', 'Visit a jungle, the badlands or the mushroom fields'],
+  citadel: ['Into the Deep', 'Find a tide citadel'],
+  rocket: ['Afterburner', 'Boost a glide with a sky rocket'],
 };

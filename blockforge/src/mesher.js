@@ -403,8 +403,10 @@ export class Mesher {
               [4, 0, 0, d, 16, 16, d], [5, 0, 0, 16 - d, 16, 16, 16 - d],
             ][m];
             const [f, x0, y0, z0, x1, y1, z1] = spec;
-            boxFace(cut, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, 0, 0xffffff, sky, bl, FACE_SHADE[f], null);
-            boxFace(cut, lx, y, lz, f ^ 1, x0, y0, z0, x1, y1, z1, layer, 0, 0xffffff, sky, bl, FACE_SHADE[f ^ 1], null);
+            const ltint = TINT[id] ? tintFor(id, lx, lz) : 0xffffff; // vines take the foliage colour
+            const lflags = WAVE[id] ? FLAG.WAVE_LEAF : 0;
+            boxFace(cut, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, lflags, ltint, sky, bl, FACE_SHADE[f], null);
+            boxFace(cut, lx, y, lz, f ^ 1, x0, y0, z0, x1, y1, z1, layer, lflags, ltint, sky, bl, FACE_SHADE[f ^ 1], null);
           } else if (rt === RENDER.CACTUS) {
             for (let f = 0; f < 6; f++) {
               const ny = y + FACES[f].n[1];

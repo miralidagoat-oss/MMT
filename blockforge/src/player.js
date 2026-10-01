@@ -163,7 +163,8 @@ export class Player extends Entity {
 
     this.checkFluids(world);
     const feet = world.getBlock(Math.floor(this.x), Math.floor(this.y + 0.1), Math.floor(this.z));
-    this.onLadder = feet === B.ladder || world.getBlock(Math.floor(this.x), Math.floor(this.y + 1), Math.floor(this.z)) === B.ladder;
+    const head = world.getBlock(Math.floor(this.x), Math.floor(this.y + 1), Math.floor(this.z));
+    this.onLadder = feet === B.ladder || head === B.ladder || feet === B.vines || head === B.vines;
 
     const x0 = this.x, z0 = this.z;
     // start gliding: jump again while falling with a glider on
@@ -295,6 +296,15 @@ export class Player extends Entity {
       this.vy += climb * 3.2; this.vx -= lx * climb / horiz; this.vz -= lz * climb / horiz;
     }
     if (horiz > 0) { this.vx += (lx / horiz * speed - this.vx) * 0.1; this.vz += (lz / horiz * speed - this.vz) * 0.1; }
+    // a sky rocket pushes the glider along the look direction
+    if (this.rocketBoost > 0) {
+      this.rocketBoost--;
+      this.vx += lx * 0.1 + (lx * 1.5 - this.vx) * 0.5;
+      this.vy += ly * 0.1 + (ly * 1.5 - this.vy) * 0.5;
+      this.vz += lz * 0.1 + (lz * 1.5 - this.vz) * 0.5;
+      game.particles.rocketTrail(this.x - lx * 0.6, this.y + 0.6, this.z - lz * 0.6);
+      if (this.rocketBoost === 29) game.advance('rocket');
+    }
     this.vx *= 0.99; this.vy *= 0.98; this.vz *= 0.99;
     void ly;
     const before = Math.hypot(this.vx, this.vz);
@@ -306,7 +316,7 @@ export class Player extends Entity {
       const w = this.inventory.get(37);
       if (w) { w.dur = (w.dur || 0) + 1; if (w.dur >= ITEMS[w.id].durability - 1) game.audio.material('cloth', 'break', this.x, this.y, this.z); }
     }
-    if (r.onGround) this.gliding = false;
+    if (r.onGround) { this.gliding = false; this.rocketBoost = 0; }
   }
 
   land(game, dist, wasOnGround) {

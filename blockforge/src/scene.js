@@ -6,6 +6,7 @@ import { faceTexture, B, TEX, SOLID } from './blocks.js';
 import { DIRS } from './shapes.js';
 import { ITEMS, I, ARMOR_PIECES } from './items.js';
 import { FallingBlock, PrimedCrate, Mob, Projectile, Lightning } from './entities.js';
+import { LASER_COLOR } from './laser.js';
 
 const M = mat4(), P = mat4(), T = mat4();
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -75,6 +76,31 @@ export class SceneRenderer {
       -0.5, 0.5, 0, 0, 0, 1, 0, 0, 0, -0.5, -0.5, 0, 0, 0, 1, 0, 1, 0,
     ]));
     this.signTex = new Map(); // key -> { text, tex }
+    // The Photon Blaster, modelled in 1/16 block units pointing toward -Z: a lit
+    // body and an unlit glowing part drawn with bloom.
+    const u = 1 / 16;
+    const bx = (x0, y0, z0, x1, y1, z1, layer) => cubeMesh(x0 * u, y0 * u, z0 * u, x1 * u, y1 * u, z1 * u, () => layer);
+    const body = TEX.blaster_body, metal = TEX.blaster_metal, white = TEX.white;
+    this.blasterSolid = renderer.createModel(join([
+      bx(-1.5, 0, -6, 1.5, 3, 4, body),          // main body
+      bx(-1, 3, -4, 1, 3.8, 2, metal),           // top rail
+      bx(-0.7, 3.8, -2, 0.7, 5, 1, body),        // sight
+      bx(-1, 0.5, -11, 1, 2.5, -6, metal),       // barrel
+      bx(-1.2, 0.5, 4, 1.2, 2.6, 5.2, metal),    // back cap
+      bx(-1, -5, 1.4, 1, 0, 3.6, body),          // grip
+      bx(-0.4, -2.2, -1, 0.4, -1.6, 1.6, metal), // trigger guard
+      bx(-0.3, -1.6, -0.2, 0.3, 0, 0.3, metal),  // trigger
+    ]));
+    this.blasterGlow = renderer.createModel(join([
+      bx(-1.6, 0.2, -9.2, 1.6, 2.8, -8.4, white),   // emitter rings
+      bx(-1.6, 0.2, -11.6, 1.6, 2.8, -10.8, white),
+      bx(-0.7, 0.8, -11.9, 0.7, 2.2, -11.6, white), // muzzle
+      bx(1.5, 1.1, -4.5, 1.7, 1.9, 1.5, white),      // side strips
+      bx(-1.7, 1.1, -4.5, -1.5, 1.9, 1.5, white),
+      bx(-1.1, -1.6, -3.4, 1.1, 0, 0.6, white),      // energy canister
+      bx(-0.4, 4.2, -2.1, 0.4, 4.7, -2, white),      // sight lens
+    ]));
+    this.unitBox = renderer.createModel(cubeMesh(-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, () => TEX.white));
     // soft round shadow under creatures and players
     const sc = document.createElement('canvas');
     sc.width = sc.height = 32;
@@ -87,6 +113,14 @@ export class SceneRenderer {
       -0.5, 0, -0.5, 0, 1, 0, 0, 0, 0, -0.5, 0, 0.5, 0, 1, 0, 0, 1, 0,
       0.5, 0, 0.5, 0, 1, 0, 1, 1, 0, 0.5, 0, -0.5, 0, 1, 0, 1, 0, 0,
     ]));
+  }
+
+  // The blaster model with base matrix m (model units are blocks).
+  drawBlaster(m, light, env, opts = {}, charge = 1) {
+    this.r.drawModel(this.blasterSolid, m, 'block', light, env, { ...opts, blockMode: 1 });
+    const pulse = 0.75 + 0.25 * Math.sin(performance.now() / 160);
+    const g = 0.35 + 0.65 * charge;
+    this.r.drawModel(this.blasterGlow, m, 'block', [1, 1], env, { ...opts, mode: 1, glow: 1, tintColor: [LASER_COLOR[0] * g * pulse, LASER_COLOR[1] * g * pulse, LASER_COLOR[2] * g * pulse] });
   }
 
   // A round shadow on the ground under (x, y, z), fading with height.
@@ -194,6 +228,11 @@ export class SceneRenderer {
       else if (e.isOrb) { identity(M); translate(M, M, dx, dy, dz); rotateY(M, M, (e.age + alpha) * 0.3); rotateX(M, M, (e.age + alpha) * 0.2); this.r.drawModel(this.orbModel, M, 'block', [1, 1], env, { mode: 1, glow: 1 }); }
       else if (e.isBobber) this.drawBobber(e, x, y, z, cam, env, alpha, game);
       else if (e.isStarEye) this.drawFloatingItem(I.star_eye, x, y, z, cam, env, alpha, e.age, [1, 1]);
+      else if (e.isRocket) {
+        const mesh = this.items.get(I.sky_rocket);
+        identity(M); translate(M, M, dx, dy + 0.2, dz); rotateY(M, M, -cam.yaw); scale(M, M, 0.45, 0.45, 0.45);
+        if (mesh) this.r.drawModel(mesh.model, M, mesh.tex, [1, 1], env, { blockMode: mesh.blockMode, tintColor: mesh.tint, noCull: true });
+      }
       else if (e instanceof Projectile) this.drawProjectile(e, x, y, z, cam, env, world);
       else if (e instanceof Lightning) this.drawLightning(e, cam, env);
       else if (e instanceof FallingBlock || e instanceof PrimedCrate) {
@@ -231,6 +270,19 @@ export class SceneRenderer {
       this.r.drawModel(this.arrowModel, M, 'block', light, env, { blockMode: 0 });
       return;
     }
+    if (e.kind === 'laser') {
+      // a glowing core inside a softer halo, trailing behind the bolt's head
+      rotateY(M, M, -e.yaw);
+      rotateX(M, M, e.pitch);
+      const len = Math.min(1.6, 0.4 + e.age * 0.6);
+      translate(M, M, 0, 0, len * 0.5);
+      T.set(M);
+      scale(T, T, 0.18, 0.18, len + 0.1);
+      this.r.drawModel(this.unitBox, T, 'block', [1, 1], env, { mode: 1, glow: 1, blend: true, alpha: 0.28, tintColor: LASER_COLOR, noCull: true });
+      scale(M, M, 0.06, 0.06, len);
+      this.r.drawModel(this.unitBox, M, 'block', [1, 1], env, { mode: 1, glow: 1, tintColor: [0.85, 1, 1] });
+      return;
+    }
     const mesh = this.items.get(e.kind === 'egg' ? I.egg : e.kind === 'snowball' ? I.snowball : e.kind === 'pearl' ? I.void_pearl : e.item);
     if (!mesh) return;
     rotateY(M, M, -cam.yaw);
@@ -255,6 +307,15 @@ export class SceneRenderer {
   }
 
   drawItemEntity(it, x, y, z, cam, env, alpha, world) {
+    if (it.stack.id === I.photon_blaster) {
+      const age = it.age + alpha;
+      identity(M);
+      translate(M, M, x - cam.x, y - cam.y + Math.sin(age / 10 + it.spin) * 0.1 + 0.25, z - cam.z);
+      rotateY(M, M, age * 0.05 + it.spin);
+      scale(M, M, 0.75, 0.75, 0.75);
+      this.drawBlaster(M, this.lightAt(world, x, y + 0.2, z), env, {}, 1);
+      return;
+    }
     const mesh = this.items.get(it.stack.id);
     if (!mesh) return;
     const age = it.age + alpha;
@@ -371,23 +432,55 @@ export class SceneRenderer {
       poses.armR = [-sw * 0.7, 0, 0.05]; poses.armL = [sw * 0.7, 0, -0.05];
     }
     if (e.type === 'ghoul') {
-      let arm = -0.25 - (e.target ? 0.9 : 0);
-      if (e.swing > 0) arm -= Math.sin(((10 - e.swing + alpha) / 10) * Math.PI) * 0.8;
+      let arm = 0.25 + (e.target ? 1.15 : 0);
+      if (e.swing > 0) arm += Math.sin(((10 - e.swing + alpha) / 10) * Math.PI) * 0.8;
       poses.armR = [arm - sw * 0.5, 0, 0.05]; poses.armL = [arm + sw * 0.5, 0, -0.05];
     }
     if (e.type === 'archer' && e.target) {
-      poses.armR = [-Math.PI / 2 + headPitch, -0.1, 0]; poses.armL = [-Math.PI / 2 + headPitch, 0.5, 0];
+      poses.armR = [Math.PI / 2 - headPitch, -0.1, 0]; poses.armL = [Math.PI / 2 - headPitch, 0.5, 0];
     }
     if (e.type === 'imp') {
       poses.tail = [0.3, Math.sin((e.age + alpha) * 0.25) * 0.5, 0];
-      if (e.swing > 0) poses.armR = [-1.5 * Math.sin(((10 - e.swing + alpha) / 10) * Math.PI), 0, 0.05];
+      if (e.swing > 0) poses.armR = [1.5 * Math.sin(((10 - e.swing + alpha) / 10) * Math.PI), 0, 0.05];
     }
-    if (e.type === 'settler' && e.swing > 0) poses.armR = [-1.2, 0, 0];
+    if (e.type === 'settler' && e.swing > 0) poses.armR = [1.2, 0, 0];
+    const t = e.age + alpha;
+    if (e.type === 'hound') {
+      const wag = e.tamed ? Math.sin(t * 0.5) * 0.6 : e.angry > 0 ? 0 : Math.sin(t * 0.25) * 0.2;
+      poses.tail = [e.tamed ? -1.1 : e.angry > 0 ? -1.4 : -0.6, wag, 0];
+      if (e.sitting) {
+        translate(T, T, 0, -2.5, 0);
+        poses.body = [-0.45, 0, 0]; poses.mane = [-0.2, 0, 0]; poses.collar = [-0.2, 0, 0];
+        poses.leg2 = [1.35, 0, 0]; poses.leg3 = [1.35, 0, 0]; poses.leg0 = [-0.15, 0, 0]; poses.leg1 = [-0.15, 0, 0];
+        poses.tail = [-0.2, wag * 0.3, 0];
+      }
+    }
+    if (e.type === 'steed') {
+      poses.neck = [-0.25 + (e.headPitch || 0) * 0.4, (e.headYaw || 0) * 0.5, 0];
+      delete poses.head;
+      poses.tail = [-0.45 - la * 0.4, Math.sin(t * 0.2) * 0.25, 0];
+      if (e.bucking > 0) { translate(T, T, 0, 0, 8); rotateX(T, T, Math.min(0.5, e.bucking / 20) * Math.abs(Math.sin(t * 0.3))); translate(T, T, 0, 0, -8); }
+    }
+    if (e.type === 'sentinel') {
+      poses.armR = [-sw * 0.4, 0, 0.03]; poses.armL = [sw * 0.4, 0, -0.03];
+      if (e.swing > 0) { const k = Math.sin(((10 - e.swing + alpha) / 10) * Math.PI) * 1.8; poses.armR = [k, 0, 0.03]; poses.armL = [k, 0, -0.03]; }
+    }
+    if (e.type === 'frost_sentinel') { poses.armR = [0, 0, 0.3 + Math.sin(t * 0.1) * 0.05]; poses.armL = [0, 0, -0.3 - Math.sin(t * 0.1) * 0.05]; }
+    if (e.type === 'hexer') {
+      if (e.drinking > 0) poses.armR = [1.5, -0.3, 0];
+      else if (e.swing > 0) poses.armR = [1.4 * Math.sin(((10 - e.swing + alpha) / 10) * Math.PI), 0, 0];
+    }
+    if (e.type === 'tide_warden') { poses.tail = [0, Math.sin(e.limbSwing * 0.6 + t * 0.15) * 0.5, 0]; }
     const light = e.type === 'imp' ? [0.4, 1] : this.lightAt(world, x, y + def.height * 0.6, z);
     const hurt = e.hurtTime > 0 || e.dead;
     const opts = { tint: hurt ? [0.9, 0.1, 0.1, 0.45] : e.fire > 0 ? [1, 0.5, 0.1, 0.15] : undefined };
     let hidden = e.type === 'sheep' && (e.sheared || e.baby) ? new Set(['wool', 'headWool']) : null;
     let meshes = null;
+    if (e.type === 'hound' && !e.tamed) hidden = new Set(['collar']);
+    if (e.type === 'steed') {
+      if (!e.saddled) hidden = new Set(['saddle', 'strapR', 'strapL', 'bridle']);
+      if (e.variant && this.models['steed:' + e.variant]) meshes = this.models['steed:' + e.variant];
+    }
     if (e.type === 'settler') {
       const prof = e.profession || 'farmer';
       meshes = this.models[`settler:${prof}`] || this.models.settler;
@@ -396,6 +489,39 @@ export class SceneRenderer {
     this.drawParts(e.def.model, poses, T, light, env, opts, hidden, meshes);
     if (e.armor) this.drawArmor(e.def.model, e.armor, poses, T, light, env, opts);
     if (e.type === 'archer') this.drawHeld('archer', I.bow, poses, T, light, env, 'armL', true);
+    if (e.type === 'hexer' && e.drinking > 0) this.drawHeld('hexer', e.drinkKind === 'fire_resistance' ? I.potion_fire_resistance : I.potion_healing, poses, T, light, env, 'armR');
+    if (e.type === 'tide_warden' && e.beamTarget && e.beam > 0) {
+      // the warden's beam brightens from amber to white as it charges
+      const tg = e.beamTarget;
+      const [bx, by, bz] = tg.lerpPos ? tg.lerpPos(alpha) : [tg.x, tg.y, tg.z];
+      const f = Math.min(1, e.beam / 60);
+      this.segment([x, y + 0.45, z], [bx, by + 1.1, bz], cam, 0.06 + f * 0.06, [1, 1], env, { mode: 1, glow: 1, tintColor: [1, 0.55 + f * 0.45, 0.3 + f * 0.7] });
+    }
+    if (e.customName) this.nameTag(e.customName, x, y + def.height * (e.baby ? 0.5 : 1) + (e.type === 'hexer' ? 0.75 : 0.35), z, cam, env);
+  }
+
+  // A floating name label above a creature or player.
+  nameTag(name, x, y, z, cam, env) {
+    const key = 'tag:' + name;
+    let tag = this.signTex.get(key);
+    if (!tag) {
+      const c = document.createElement('canvas');
+      c.width = 256; c.height = 48;
+      const g = c.getContext('2d');
+      g.font = 'bold 26px "Pixelify Sans", "Trebuchet MS", sans-serif';
+      const wdt = Math.min(250, g.measureText(name).width + 16);
+      g.fillStyle = 'rgba(0,0,0,0.45)';
+      g.fillRect(128 - wdt / 2, 4, wdt, 40);
+      g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(name, 128, 25);
+      tag = { text: name, tex: this.r.createCanvasTexture(c) };
+      this.signTex.set(key, tag);
+    }
+    identity(M);
+    translate(M, M, x - cam.x, y - cam.y, z - cam.z);
+    rotateY(M, M, -cam.yaw);
+    scale(M, M, 1.6, 0.3, 1);
+    this.r.drawModel(this.textQuad, M, tag.tex, [1, 1], env, { blockMode: 0, mode: 1, blend: true, noCull: true });
   }
 
   playerPoses(p, alpha, swing) {
@@ -412,7 +538,7 @@ export class SceneRenderer {
     if (p.sneaking) { poses.body = [0.4, 0, 0]; }
     if (swing > 0) {
       const s = Math.sin(Math.sqrt(swing) * Math.PI);
-      poses.armR = [-1.2 * s - 0.3, -0.3 * s, 0.04];
+      poses.armR = [1.3 * s, -0.3 * s, 0.04];
     }
     return poses;
   }
@@ -442,7 +568,14 @@ export class SceneRenderer {
       poses.armR = [-0.5, 0, 0.1]; poses.armL = [-0.5, 0, -0.1];
     }
     if (p.gliding) { poses.legR = [0, 0, 0.1]; poses.legL = [0, 0, -0.1]; poses.armR = [0, 0, 0.5]; poses.armL = [0, 0, -0.5]; }
-    if (p.blocking) poses.armR = [-0.9, -0.5, 0];
+    if (p.blocking) poses.armR = [0.9, -0.5, 0];
+    const aiming = held && held.id === I.photon_blaster && !p.gliding && !p.sleeping;
+    if (aiming) {
+      // both hands on the blaster, aimed where the player looks
+      const pt = lerp(p.ppitch ?? p.pitch, p.pitch, alpha);
+      poses.armR = [Math.PI / 2 + pt, -0.06, 0];
+      poses.armL = [Math.PI / 2 + pt - 0.1, 0.62, 0];
+    }
     const popts = { tint: p.hurtTime > 0 ? [0.9, 0.1, 0.1, 0.45] : undefined };
     const invisible = p.effects && p.effects.invisibility;
     if (!invisible) this.drawParts('player', poses, T, light, env, popts, null, skinMeshes);
@@ -460,7 +593,18 @@ export class SceneRenderer {
       }
     }
     // held item in the right hand
-    if (held) {
+    if (aiming) {
+      P.set(T);
+      const pose = poses.armR;
+      translate(P, P, -6, 22, 0);
+      rotateX(P, P, pose[0]); rotateY(P, P, pose[1]); rotateZ(P, P, pose[2]);
+      translate(P, P, 6, -22, 0);
+      translate(P, P, -6, 11.5, -1);
+      rotateX(P, P, Math.PI / 2);
+      scale(P, P, 10, 10, 10);
+      translate(P, P, 0, -0.06, 0.16);
+      this.drawBlaster(P, light, env, popts, 1);
+    } else if (held) {
       const mesh = this.items.get(held.id);
       if (mesh) {
         P.set(T);
@@ -697,6 +841,26 @@ export class SceneRenderer {
     }
     if (eating > 0) {
       ex = -0.35 * Math.min(1, eating * 4); ey = 0.12 * Math.min(1, eating * 4) + Math.abs(Math.sin(eating * 32)) * 0.05; ez = 0.1;
+    }
+    if (held.id === I.photon_blaster) {
+      const kick = Math.max(0, (game.blasterKick || 0) - alpha * 0.25);
+      const rl = game.blasterReload > 0 ? Math.sin((1 - (game.blasterReload - alpha) / 26) * Math.PI) : 0;
+      translate(M, M, 0.3 + bx, -0.3 + by - equip * 0.6 - rl * 0.12, -0.56 + kick * 0.08);
+      rotateY(M, M, 0.05);
+      rotateX(M, M, kick * 0.16 - rl * 0.7);
+      rotateZ(M, M, rl * 0.6);
+      scale(M, M, 0.5, 0.5, 0.5);
+      const ch = held.charge === undefined ? 1 : held.charge / 48;
+      this.drawBlaster(M, light, env, opts, Math.max(0.15, ch));
+      if (game.blasterKick > 0.6) {
+        // muzzle flash
+        translate(M, M, 0, 1.5 / 16, -12.6 / 16);
+        rotateZ(M, M, performance.now() / 40);
+        const f = (game.blasterKick - 0.6) * 2.5;
+        scale(M, M, 0.22 * f + 0.05, 0.22 * f + 0.05, 0.1);
+        r.drawModel(this.unitBox, M, 'block', [1, 1], env, { ...opts, mode: 1, glow: 1, blend: true, alpha: Math.min(1, f + 0.2), tintColor: [0.7, 1, 1], noCull: true });
+      }
+      return;
     }
     if (held.id === I.shield) {
       const up = p.blocking ? 1 : 0;

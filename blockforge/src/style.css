@@ -296,3 +296,11 @@ body { font-family: var(--font-ui); -webkit-font-smoothing: antialiased; user-se
 .share-info span { color: var(--muted); font-size: calc(6.5 * var(--u)); overflow-wrap: anywhere; }
 .menu.share { width: min(100%, calc(260 * var(--u))); }
 .notice { margin-top: calc(2 * var(--u)) !important; }
+
+/* Blaster charge beside the crosshair */
+#ammo { position: absolute; left: calc(50% + 18 * var(--u)); top: calc(50% + 10 * var(--u)); display: flex; align-items: center; gap: calc(3 * var(--u)); padding: calc(1.5 * var(--u)) calc(3 * var(--u)); background: rgba(6, 16, 22, 0.55); border: var(--u) solid rgba(94, 240, 255, 0.45); font-size: calc(6.5 * var(--u)); color: #c8fbff; text-shadow: 0 0 calc(3 * var(--u)) rgba(94, 240, 255, 0.8); pointer-events: none; font-variant-numeric: tabular-nums; }
+#ammo i { display: block; width: 0; height: calc(3 * var(--u)); max-width: calc(30 * var(--u)); min-width: 0; background: linear-gradient(90deg, #1fc4ff, #a8fbff); box-shadow: 0 0 calc(4 * var(--u)) #5ef0ff; flex: none; }
+#ammo::before { content: ''; position: absolute; left: calc(3 * var(--u)); top: 50%; width: calc(30 * var(--u)); height: calc(3 * var(--u)); transform: translateY(-50%); background: rgba(94, 240, 255, 0.15); z-index: -1; }
+#ammo { padding-left: calc(3 * var(--u)); }
+#ammo span { min-width: calc(40 * var(--u)); }
+#ammo.low { border-color: rgba(255, 120, 90, 0.7); color: #ffd2c8; }

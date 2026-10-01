@@ -165,7 +165,7 @@ export class Audio {
 
   play(name, x, y, z, vol = 1) {
     if (!this.ctx) return;
-    const dest = this.out(x, y, z, vol, name === 'explode' ? 48 : name === 'thunder' ? 200 : name === 'portal_hum' ? 10 : 16);
+    const dest = this.out(x, y, z, vol, name === 'explode' ? 48 : name === 'thunder' ? 200 : name === 'portal_hum' ? 10 : name === 'firework' ? 96 : 16);
     if (!dest) return;
     const t = this.ctx.currentTime + 0.001;
     const r = () => 0.9 + Math.random() * 0.2;
@@ -367,6 +367,41 @@ export class Audio {
       case 'page':
         this.burst(dest, t, 0.2, 'highpass', 2500, 0.5, 0.3, 0.03);
         break;
+      case 'laser': {
+        // a bright downward zap with a buzzy undertone
+        this.tone(dest, t, 0.16, 'square', 1900 * r(), 260, 0.16);
+        this.tone(dest, t, 0.2, 'sawtooth', 1200 * r(), 140, 0.12);
+        this.tone(dest, t + 0.01, 0.1, 'sine', 3200, 900, 0.1);
+        this.burst(dest, t, 0.06, 'highpass', 5000, 0.7, 0.18);
+        break;
+      }
+      case 'laser_hit':
+        this.burst(dest, t, 0.12, 'bandpass', 3000 * r(), 2, 0.4);
+        this.tone(dest, t, 0.08, 'square', 700, 200, 0.08);
+        break;
+      case 'blaster_reload':
+        this.tone(dest, t, 1.1, 'sawtooth', 120, 1400, 0.07, 0.05);
+        this.tone(dest, t, 1.1, 'sine', 240, 2200, 0.08, 0.05);
+        for (let i = 0; i < 3; i++) this.burst(dest, t + i * 0.12, 0.04, 'bandpass', 2200, 4, 0.2);
+        break;
+      case 'blaster_ready':
+        this.tone(dest, t, 0.12, 'sine', 1320, 1320, 0.12);
+        this.tone(dest, t + 0.08, 0.16, 'sine', 1760, 1760, 0.12);
+        break;
+      case 'blaster_empty':
+        this.tone(dest, t, 0.05, 'square', 400, 300, 0.12);
+        this.burst(dest, t, 0.03, 'highpass', 3500, 0.7, 0.25);
+        break;
+      case 'rocket':
+        this.burst(dest, t, 0.9, 'bandpass', 1800, 0.7, 0.5, 0.02);
+        this.tone(dest, t, 0.9, 'sawtooth', 300, 900, 0.05, 0.1);
+        break;
+      case 'firework': {
+        this.burst(dest, t, 0.5, 'lowpass', 900, 0.8, 1.2);
+        this.tone(dest, t, 0.3, 'sine', 90, 40, 0.5);
+        for (let i = 0; i < 14; i++) this.burst(dest, t + 0.35 + Math.random() * 0.8, 0.04, 'highpass', 4000 + Math.random() * 3000, 1, 0.25);
+        break;
+      }
       default: break;
     }
   }
@@ -441,6 +476,33 @@ export class Audio {
         voice('sawtooth', 78 * pitch, 58 * pitch, death ? 1.6 : 1.1, 420, 1.2, 0.9, 5);
         voice('sawtooth', 81 * pitch, 60 * pitch, death ? 1.6 : 1.1, 300, 1.5, 0.6, 3);
         break;
+      case 'hound':
+        if (action === 'growl') { voice('sawtooth', 90 * pitch, 80 * pitch, 0.7, 300, 1.5, 0.8, 30); break; }
+        if (action === 'whine') { voice('sine', 700 * pitch, 520 * pitch, 0.5, 900, 2, 0.4, 6); break; }
+        for (let i = 0; i < (hurt ? 1 : 2); i++) {
+          this.tone(dest, t + i * 0.16, 0.09, 'square', 420 * pitch, 260 * pitch, 0.22);
+          this.burst(dest, t + i * 0.16, 0.08, 'bandpass', 900 * pitch, 2, 0.5);
+        }
+        break;
+      case 'steed':
+        voice('sawtooth', 520 * pitch, 300 * pitch, hurt ? 0.35 : 1.0, 1300, 2, 0.6, 14);
+        voice('square', 260 * pitch, 150 * pitch, hurt ? 0.35 : 1.0, 700, 2, 0.25, 9);
+        break;
+      case 'sentinel':
+        this.tone(dest, t, death ? 1.2 : 0.4, 'triangle', 70 * pitch, 50 * pitch, 0.5);
+        this.burst(dest, t, 0.25, 'bandpass', 2400, 4, 0.4);
+        this.burst(dest, t + 0.08, 0.2, 'bandpass', 3400, 6, 0.25);
+        break;
+      case 'frost':
+        this.burst(dest, t, 0.3, 'highpass', 2500, 0.8, 0.35, 0.03);
+        break;
+      case 'hexer':
+        for (let i = 0; i < (death ? 5 : 3); i++) voice('triangle', (460 + (i % 2) * 140) * pitch, (420 + (i % 2) * 120) * pitch, 0.12, 1400, 2, 0.5);
+        break;
+      case 'warden':
+        this.burst(dest, t, hurt ? 0.3 : 0.6, 'lowpass', 600 * pitch, 1.2, 0.6, 0.08);
+        this.tone(dest, t, 0.25, 'sine', 300 * pitch, 180 * pitch, 0.3);
+        break;
       default: break;
     }
   }
@@ -488,12 +550,12 @@ export class Audio {
     let deg = Math.floor(Math.random() * 5);
     for (let b = 0; b < bars; b++) {
       // bass note
-      this.note(root / 2 * Math.pow(2, scale[[0, 3, 4, 2][b % 4]] / 12), t, beat * 4, 0.12);
+      this.musicNote(root / 2 * Math.pow(2, scale[[0, 3, 4, 2][b % 4]] / 12), t, beat * 4, 0.12);
       for (let i = 0; i < 4; i++) {
         if (Math.random() < 0.3) continue;
         deg = Math.max(0, Math.min(scale.length - 1, deg + Math.floor(Math.random() * 5) - 2));
         const f = root * Math.pow(2, scale[deg] / 12);
-        this.note(f, t + i * beat + (Math.random() < 0.2 ? beat / 2 : 0), beat * 2.5, 0.1);
+        this.musicNote(f, t + i * beat + (Math.random() < 0.2 ? beat / 2 : 0), beat * 2.5, 0.1);
       }
       t += beat * 4;
     }
@@ -505,7 +567,7 @@ export class Audio {
   }
 
   // Soft mallet/piano-like voice.
-  note(freq, t, dur, vol) {
+  musicNote(freq, t, dur, vol) {
     const c = this.ctx;
     const g = c.createGain();
     g.gain.setValueAtTime(0, t);

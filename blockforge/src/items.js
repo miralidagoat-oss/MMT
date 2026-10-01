@@ -169,6 +169,20 @@ item('shield', { maxStack: 1, durability: 336 });
 item('bowl');
 item('mushroom_stew', { maxStack: 1, food: [6, 7.2], leaves: 'bowl' });
 
+// --- round four ---
+item('photon_blaster', { maxStack: 1, blaster: true, display: 'Photon Blaster' });
+item('energy_cell', { maxStack: 16 });
+item('sky_rocket', { display: 'Sky Rocket' });
+item('saddle', { maxStack: 1 });
+item('name_tag');
+item('item_frame');
+item('painting');
+item('star_core', { display: 'Star Core' });
+item('tide_shard');
+item('tide_crystal');
+export const BANNER_COLORS = ['white', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black'];
+BANNER_COLORS.forEach((c, i) => item(`${c}_banner`, { maxStack: 16, banner: i }));
+
 // Shaped blocks shown with their own sprite in the inventory and in hand.
 for (const b of BLOCKS) {
   if (!b || !b.item || !b.icon || b.icon === 'cube' || !ITEMS[b.id]) continue;
@@ -186,6 +200,7 @@ setItemLookup((name) => {
 const BLOCK_FUEL = {
   oak_planks: 300, birch_planks: 300, spruce_planks: 300, oak_log: 300, birch_log: 300,
   spruce_log: 300, crafting_table: 300, bookshelf: 300, chest: 300, ladder: 300,
+  jungle_planks: 300, jungle_log: 300, dark_oak_planks: 300, dark_oak_log: 300, jungle_sapling: 100, dark_oak_sapling: 100, loom: 300,
   oak_sapling: 100, birch_sapling: 100, spruce_sapling: 100, coal_block: 16000,
 };
 for (const [n, v] of Object.entries(BLOCK_FUEL)) ITEMS[B[n]].fuel = v;
@@ -220,7 +235,7 @@ function resolveKeys(keys) {
   return o;
 }
 
-const PLANKS = ['oak_planks', 'birch_planks', 'spruce_planks'];
+const PLANKS = ['oak_planks', 'birch_planks', 'spruce_planks', 'jungle_planks', 'dark_oak_planks'];
 shapeless(['oak_log'], 'oak_planks', 4);
 shapeless(['birch_log'], 'birch_planks', 4);
 shapeless(['spruce_log'], 'spruce_planks', 4);
@@ -353,6 +368,34 @@ shaped(['NNN', 'NTN', 'NNN'], { N: 'iron_nugget', T: 'torch' }, 'lantern');
 shaped(['P P', ' P '], { P: PLANKS }, 'bowl', 4);
 shapeless(['bowl', 'brown_mushroom', 'red_mushroom'], 'mushroom_stew');
 shaped(['SS', 'SS'], { S: 'string' }, 'cobweb');
+// Round four
+shaped(['IIG', 'SDI', 'I  '], { I: 'iron_ingot', G: 'glass', S: 'spark_block', D: 'diamond' }, 'photon_blaster');
+shaped(['NDN', 'DED', 'NDN'], { N: 'iron_nugget', D: 'spark_dust', E: 'ember_dust' }, 'energy_cell', 2);
+shapeless(['paper', 'blast_powder'], 'sky_rocket', 3);
+shaped(['ISI', 'S S', 'D D'], { I: 'iron_ingot', S: 'leather', D: 'string' }, 'saddle');
+shaped(['SSS', 'SLS', 'SSS'], { S: 'stick', L: 'leather' }, 'item_frame');
+shaped(['SSS', 'SWS', 'SSS'], { S: 'stick', W: ['white_wool', 'red_wool', 'orange_wool', 'yellow_wool', 'green_wool', 'blue_wool', 'purple_wool', 'black_wool'] }, 'painting');
+shaped(['PDP', 'DED', 'PDP'], { P: 'void_pearl', D: 'diamond', E: 'ember_crystal' }, 'star_core');
+shaped(['GGG', 'GSG', 'OOO'], { G: 'glass', S: 'star_core', O: 'obsidian' }, 'beacon');
+shaped(['BBB', ' I ', 'III'], { B: 'iron_block', I: 'iron_ingot' }, 'anvil');
+shaped(['OOO', 'OEO', 'OOO'], { O: 'obsidian', E: 'star_eye' }, 'void_chest');
+shaped(['SS', 'PP'], { S: 'string', P: PLANKS }, 'loom');
+shaped(['I I', 'I I', 'III'], { I: 'iron_ingot' }, 'cauldron');
+shaped(['CCC', 'SDS', 'CCC'], { C: 'cobblestone', S: 'spark_torch', D: 'quartz' }, 'comparator');
+shaped(['CCC', 'DDQ', 'CCC'], { C: 'cobblestone', D: 'spark_dust', Q: 'quartz' }, 'observer');
+shaped(['CCC', 'C C', 'CDC'], { C: 'cobblestone', D: 'spark_dust' }, 'dropper');
+shaped(['SS', 'SS'], { S: 'tide_shard' }, 'tidestone');
+shaped(['SSS', 'SSS', 'SSS'], { S: 'tide_shard' }, 'tidestone_bricks');
+shaped(['SSS', 'SBS', 'SSS'], { S: 'tide_shard', B: 'black_wool' }, 'dark_tidestone');
+shaped(['SCS', 'CCC', 'SCS'], { S: 'tide_shard', C: 'tide_crystal' }, 'lumen_lantern');
+shapeless(['jungle_log'], 'jungle_planks', 4);
+shapeless(['dark_oak_log'], 'dark_oak_planks', 4);
+shaped(['SS', 'SS'], { S: 'red_sand' }, 'sandstone');
+shapeless(['carved_pumpkin', 'torch'], 'jack_o_lantern');
+shaped(['SS', 'SS'], { S: 'snow_block' }, 'packed_ice');
+shaped(['SS', 'SS'], { S: 'sandstone' }, 'chiseled_sandstone', 4);
+
+for (const c of BANNER_COLORS) shaped(['WWW', 'WWW', ' S '], { W: `${c}_wool`, S: 'stick' }, `${c}_banner`);
 
 // Match a crafting grid (array of item ids or 0, size n*n) against recipes.
 export function matchRecipe(grid, n) {
@@ -397,12 +440,13 @@ export function matchRecipe(grid, n) {
 // Furnace recipes: input -> output
 export const SMELTING = new Map([
   [B.cobblestone, B.stone], [B.sand, B.glass], [B.iron_ore, I.iron_ingot], [B.gold_ore, I.gold_ingot],
-  [B.copper_ore, I.copper_ingot], [B.clay, B.bricks], [B.oak_log, I.charcoal], [B.birch_log, I.charcoal],
+  [B.copper_ore, I.copper_ingot], [B.clay, B.terracotta], [B.oak_log, I.charcoal], [B.birch_log, I.charcoal],
   [B.spruce_log, I.charcoal], [I.clay_ball, I.brick], [I.raw_pork, I.cooked_pork],
   [I.raw_beef, I.cooked_beef], [I.raw_mutton, I.cooked_mutton], [I.raw_chicken, I.cooked_chicken],
   [B.diamond_ore, I.diamond], [B.emerald_ore, I.emerald], [B.coal_ore, I.coal], [B.stone_bricks, B.cobblestone],
   [I.potato, I.baked_potato], [B.scorchstone, I.ember_brick], [B.quartz_ore, I.quartz], [B.ember_gold_ore, I.gold_ingot],
   [B.spark_ore, I.spark_dust], [I.raw_silverfin, I.cooked_silverfin], [I.raw_rosefin, I.cooked_rosefin],
-  [I.void_fruit, I.popped_void_fruit],
+  [I.void_fruit, I.popped_void_fruit], [B.jungle_log, I.charcoal], [B.dark_oak_log, I.charcoal],
+  [B.red_sand, B.glass], [B.wet_sponge, B.sponge],
 ]);
 export const fuelValue = (id) => (ITEMS[id] && ITEMS[id].fuel) || 0;

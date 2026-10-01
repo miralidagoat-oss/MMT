@@ -10,8 +10,10 @@ export const SKIN = {
   FARMER: 7, SMITH: 8, SHEPHERD: 9, SCHOLAR: 10, ARCHER: 11, CRAWLER: 12, IMP: 13,
   ARMOR: 14, // 4 materials x 2 layers: leather A,B, golden A,B, iron A,B, diamond A,B
   GLOAMER: 22, WYRM: 23, GLIDER: 24,
+  HOUND: 25, STEED_BROWN: 26, STEED_WHITE: 27, STEED_BLACK: 28, STEED_SADDLE: 29, SENTINEL: 30, SENTINEL_LIMBS: 31,
+  FROST: 32, HEXER: 33, WARDEN: 34, SHROOMCOW: 35,
 };
-const SKIN_COUNT = 25;
+const SKIN_COUNT = 36;
 export const ARMOR_SKIN = { leather: 14, golden: 16, iron: 18, diamond: 20 };
 
 // ---------------------------------------------------------------------------
@@ -310,8 +312,8 @@ function paintCrawler() {
     return s.vary(shell, 0.08);
   });
   s.box(0, 16, 6, 5, 6, () => s.vary(dark, 0.08));
-  s.box(24, 16, 10, 8, 12, (f, x, y) => ((x + y * 2) % 5 === 0 ? [110, 60, 70] : s.vary(shell, 0.08)));
-  s.box(48, 0, 2, 2, 14, (f, x, y) => s.vary(dark, 0.1));
+  s.box(0, 28, 10, 8, 12, (f, x, y) => ((x + y * 2) % 5 === 0 ? [110, 60, 70] : s.vary(shell, 0.08)));
+  s.box(0, 48, 14, 2, 2, (f, x, y) => s.vary(dark, 0.1));
   return s.d;
 }
 
@@ -408,6 +410,209 @@ function paintGlider() {
   return s.d;
 }
 
+
+// --- round four creatures ------------------------------------------------------
+function paintHound() {
+  const s = new Skin(71);
+  const fur = [168, 160, 150], furD = [120, 112, 104], belly = [214, 206, 194], nose = [36, 30, 30];
+  // head 6x6x4 at (0,0)
+  s.box(0, 0, 6, 6, 4, (f, x, y) => {
+    if (f === 'front') {
+      if (y === 2 && (x === 1 || x === 4)) return [30, 24, 20];
+      if (y === 2 && (x === 2 || x === 3)) return s.vary(fur, 0.05);
+      if (y >= 4) return s.vary(belly, 0.04);
+    }
+    if (f === 'top') return s.vary(furD, 0.06);
+    return s.vary(fur, 0.06);
+  });
+  // snout 3x3x3 at (20,0)
+  s.box(20, 0, 3, 3, 3, (f, x, y) => (f === 'front' && y === 0 ? nose : y === 2 ? s.vary(belly, 0.04) : s.vary(fur, 0.05)));
+  // ear 2x2x1 at (36,0)
+  s.box(36, 0, 2, 2, 1, () => s.vary(furD, 0.05));
+  // body 6x6x9 at (0,12)
+  s.box(0, 12, 6, 6, 9, (f, x, y) => (f === 'bottom' ? s.vary(belly, 0.05) : f === 'top' && (x + y) % 3 === 0 ? s.vary(furD, 0.05) : s.vary(fur, 0.06)));
+  // mane 8x7x6 at (32,10)
+  s.box(32, 10, 8, 7, 6, (f, x, y) => ((x * 3 + y * 5) % 4 === 0 ? s.vary(furD, 0.06) : s.vary(fur, 0.07)));
+  // leg 2x7x2 at (0,28)
+  s.box(0, 28, 2, 7, 2, (f, x, y) => (y >= 6 ? s.vary(furD, 0.05) : s.vary(fur, 0.05)));
+  // tail 2x8x2 at (10,28)
+  s.box(10, 28, 2, 8, 2, (f, x, y) => (y >= 6 ? s.vary(belly, 0.05) : s.vary(furD, 0.06)));
+  // collar 9x2x7 at (30,28)
+  s.box(30, 28, 9, 2, 7, (f, x) => (f === 'front' && x === 4 ? [240, 200, 60] : s.vary([200, 30, 34], 0.04)));
+  return s.d;
+}
+
+function paintSteed(seed, coat, coatD, mane, socks) {
+  const s = new Skin(seed);
+  // neck 4x12x7 at (0,0)
+  s.box(0, 0, 4, 12, 7, (f, x, y) => s.vary((x * 5 + y) % 9 === 0 ? coatD : coat, 0.05));
+  // head 6x6x8 at (22,0)
+  s.box(22, 0, 6, 6, 8, (f, x, y) => {
+    if ((f === 'left' || f === 'right') && y === 2 && (f === 'left' ? x === 1 : x === 6)) return [20, 16, 14];
+    if (f === 'front' && socks && x >= 2 && x <= 3) return [236, 232, 224];
+    return s.vary(coat, 0.05);
+  });
+  // ears 2x3x1 at (50,0)
+  s.box(50, 0, 2, 3, 1, () => s.vary(coatD, 0.05));
+  // muzzle 4x5x5 at (22,14)
+  s.box(22, 14, 4, 5, 5, (f, x, y) => (f === 'front' && y === 3 && (x === 0 || x === 3) ? [24, 20, 18] : s.vary(mul(coat, 0.9), 0.05)));
+  // mane 2x13x3 at (40,14)
+  s.box(40, 14, 2, 13, 3, (f, x, y) => s.vary((x + y) % 3 ? mane : mul(mane, 0.8), 0.06));
+  // tail 3x10x3 at (50,4)
+  s.box(50, 4, 3, 10, 3, (f, x, y) => s.vary((x + y) % 3 ? mane : mul(mane, 0.8), 0.07));
+  // leg 3x11x3 at (0,19)
+  s.box(0, 19, 3, 11, 3, (f, x, y) => (y >= 10 ? [50, 40, 34] : socks && y >= 7 ? s.vary([236, 232, 224], 0.03) : s.vary(coatD, 0.05)));
+  // body 10x10x20 at (0,34)
+  s.box(0, 34, 10, 10, 20, (f, x, y) => {
+    if (f === 'bottom') return s.vary(mul(coat, 0.85), 0.05);
+    const dapple = coat[0] > 200 && (x * 7 + y * 11) % 13 === 0;
+    return s.vary(dapple ? coatD : coat, 0.05);
+  });
+  return s.d;
+}
+
+function paintSaddle() {
+  const s = new Skin(77);
+  const lea = [120, 72, 36], leaD = [86, 50, 26], iron = [190, 190, 196];
+  // saddle 11x2x9 at (0,0)
+  s.box(0, 0, 11, 2, 9, (f, x, y) => (f === 'top' && (x === 0 || x === 10) ? leaD : s.vary(lea, 0.05)));
+  // strap 1x8x1 at (0,12)
+  s.box(0, 12, 1, 8, 1, (f, x, y) => (y === 7 ? iron : leaD));
+  // bridle 7x2x9 at (0,24)
+  s.box(0, 24, 7, 2, 9, () => s.vary(leaD, 0.04));
+  return s.d;
+}
+
+function paintSentinel() {
+  const s = new Skin(81);
+  const iron = [204, 198, 190], ironD = [158, 150, 142], rust = [150, 110, 70], vine = [70, 120, 40];
+  // head 8x10x8 at (0,0)
+  s.box(0, 0, 8, 10, 8, (f, x, y) => {
+    if (f === 'front') {
+      if (y === 4 && (x === 1 || x === 6)) return [200, 30, 20];
+      if (y === 3 && x >= 1 && x <= 6) return ironD;
+    }
+    return s.vary((x * 3 + y * 7) % 13 === 0 ? rust : iron, 0.05);
+  });
+  // nose 2x4x2 at (32,0)
+  s.box(32, 0, 2, 4, 2, () => s.vary(ironD, 0.05));
+  // waist 9x6x6 at (32,6)
+  s.box(32, 6, 9, 6, 6, (f, x, y) => s.vary(y === 0 ? ironD : iron, 0.05));
+  // body 18x12x11 at (0,41)
+  s.box(0, 41, 18, 12, 11, (f, x, y) => {
+    if ((f === 'front' || f === 'back') && (x * 5 + y * 3) % 17 === 0) return s.vary(vine, 0.1);
+    if (f === 'front' && y >= 3 && y <= 8 && (x === 6 || x === 11)) return ironD;
+    return s.vary((x + y * 2) % 11 === 0 ? rust : iron, 0.05);
+  });
+  return s.d;
+}
+function paintSentinelLimbs() {
+  const s = new Skin(83);
+  const iron = [204, 198, 190], ironD = [158, 150, 142], vine = [70, 120, 40];
+  // arm 4x30x6 at (0,0)
+  s.box(0, 0, 4, 30, 6, (f, x, y) => (y > 24 ? s.vary(ironD, 0.05) : (x * 5 + y * 3) % 19 === 0 ? s.vary(vine, 0.1) : s.vary(iron, 0.05)));
+  // leg 6x20x5 at (20,0)
+  s.box(20, 0, 6, 20, 5, (f, x, y) => (y > 17 ? s.vary(ironD, 0.05) : s.vary(iron, 0.05)));
+  return s.d;
+}
+
+function paintFrost() {
+  const s = new Skin(85);
+  const snow = [236, 242, 250], pump = [222, 124, 28], pumpD = [180, 90, 16];
+  // pumpkin head 8x8x8 at (0,0)
+  s.box(0, 0, 8, 8, 8, (f, x, y) => {
+    if (f === 'front' && ((y === 2 && (x === 1 || x === 2 || x === 5 || x === 6)) || (y === 5 && x >= 1 && x <= 6) || (y === 6 && x % 2 === 1))) return [40, 24, 8];
+    if (f === 'top' && x >= 3 && x <= 4 && y >= 3 && y <= 4) return [80, 70, 30];
+    return s.vary(x % 3 === 0 ? pumpD : pump, 0.05);
+  });
+  // stick arm 10x2x2 at (32,0)
+  s.box(32, 0, 10, 2, 2, () => s.vary([110, 80, 44], 0.08));
+  // upper ball 10x10x10 at (0,20)
+  s.box(0, 20, 10, 10, 10, () => s.vary(snow, 0.03));
+  // lower ball 12x12x12 at (0,40)
+  s.box(0, 40, 12, 12, 12, (f, x, y) => s.vary(f === 'bottom' ? mul(snow, 0.9) : snow, 0.03));
+  return s.d;
+}
+
+function paintHexer() {
+  const s = new Skin(87);
+  const skin = [150, 170, 120], robe = [70, 46, 90], robeD = [50, 32, 66], hat = [36, 30, 40], band = [120, 80, 160];
+  // head 8x8x8 at (0,0)
+  s.box(0, 0, 8, 8, 8, (f, x, y) => {
+    if (f === 'front') {
+      if (y === 3 && (x === 1 || x === 6)) return [230, 230, 120];
+      if (y === 3 && (x === 2 || x === 5)) return [40, 30, 20];
+      if (y === 6 && x >= 2 && x <= 5) return [90, 60, 50];
+      if (y === 7 && (x === 2 || x === 5)) return [60, 50, 40];
+    }
+    if (f === 'top' || y < 2) return s.vary([60, 50, 50], 0.06);
+    return s.vary(skin, 0.05);
+  });
+  // nose 2x4x2 at (32,0)
+  s.box(32, 0, 2, 4, 2, (f, x, y) => (y === 3 && x === 1 ? [90, 120, 60] : s.vary(skin, 0.05)));
+  // hat brim 10x1x10 at (0,16)
+  s.box(0, 16, 10, 1, 10, () => s.vary(hat, 0.05));
+  // hat middle 7x4x7 at (0,27)
+  s.box(0, 27, 7, 4, 7, (f, x, y) => (y === 3 ? band : s.vary(hat, 0.05)));
+  // hat tip 4x4x4 at (28,27)
+  s.box(28, 27, 4, 4, 4, () => s.vary(hat, 0.05));
+  // hat point 2x3x2 at (44,27)
+  s.box(44, 27, 2, 3, 2, () => s.vary(hat, 0.05));
+  // robe 8x12x6 at (0,38)
+  s.box(0, 38, 8, 12, 6, (f, x, y) => (y === 4 ? [140, 110, 60] : s.vary(y > 7 ? robeD : robe, 0.06)));
+  // leg 4x12x4 at (28,38)
+  s.box(28, 38, 4, 12, 4, (f, x, y) => (y > 10 ? [40, 30, 24] : s.vary(robeD, 0.06)));
+  // arm 4x12x4 at (44,38)
+  s.box(44, 38, 4, 12, 4, (f, x, y) => (y > 8 ? s.vary(skin, 0.05) : s.vary(robe, 0.06)));
+  return s.d;
+}
+
+function paintWarden() {
+  const s = new Skin(89);
+  const body = [96, 150, 132], bodyD = [64, 108, 96], belly = [170, 120, 90], eye = [250, 240, 220];
+  // body 12x12x12 at (0,0)
+  s.box(0, 0, 12, 12, 12, (f, x, y) => {
+    if (f === 'front') {
+      const d = Math.hypot(x - 5.5, y - 5.5);
+      if (d < 1.4) return [20, 20, 30];
+      if (d < 3.2) return eye;
+      if (d < 3.9) return bodyD;
+    }
+    if (f === 'bottom') return s.vary(belly, 0.06);
+    if ((x + y) % 4 === 0) return s.vary(bodyD, 0.06);
+    return s.vary(body, 0.06);
+  });
+  // tail 4x4x6 at (0,24)
+  s.box(0, 24, 4, 4, 6, () => s.vary(body, 0.06));
+  // tail2 3x3x5 at (20,24)
+  s.box(20, 24, 3, 3, 5, () => s.vary(bodyD, 0.06));
+  // fin 1x6x4 at (36,24)
+  s.box(36, 24, 1, 6, 4, () => s.vary(belly, 0.06));
+  // spike 1x4x1 at (48,0)
+  s.box(48, 0, 1, 4, 1, (f, x, y) => (y === 0 ? [240, 230, 210] : [200, 180, 150]));
+  return s.d;
+}
+
+function paintShroomcow() {
+  const s = new Skin(91);
+  const red = [180, 34, 30], spot = [236, 226, 214], muzzle = [190, 160, 150];
+  s.box(0, 0, 8, 8, 6, (f, x, y) => {
+    if (f === 'front') {
+      if (y >= 5) return y === 6 && (x === 2 || x === 5) ? [30, 20, 20] : s.vary(muzzle, 0.05);
+      if (y === 2 && (x === 1 || x === 6)) return [20, 16, 16];
+    }
+    return s.vary(red, 0.05);
+  });
+  s.box(28, 0, 1, 3, 1, () => [210, 200, 180]);
+  s.box(0, 16, 12, 10, 16, (f, x, y) => ((x * 7 + y * 5) % 9 === 0 ? spot : s.vary(red, 0.05)));
+  s.box(48, 0, 4, 10, 4, (f, x, y) => (y >= 8 ? [50, 40, 36] : s.vary(red, 0.05)));
+  s.box(48, 20, 4, 2, 3, () => [236, 170, 170]);
+  // mushroom cap 4x2x4 at (0,44) and stem 2x2x2 at (16,44)
+  s.box(0, 44, 4, 2, 4, (f, x, y) => (f === 'top' && (x + y) % 3 === 0 ? spot : [200, 36, 30]));
+  s.box(16, 44, 2, 2, 2, () => [222, 214, 196]);
+  return s.d;
+}
+
 export const OUTFITS = {
   farmer: { tunic: [96, 130, 60], trim: [150, 120, 70], pants: [110, 84, 56], hat: [226, 196, 110], hatBand: [150, 60, 40] },
   smith: { tunic: [70, 64, 60], trim: [120, 80, 40], pants: [56, 52, 50], hat: [90, 70, 50], hatBand: [60, 44, 30], beard: true },
@@ -438,6 +643,17 @@ export function generateSkins() {
   out[SKIN.GLOAMER] = paintGloamer();
   out[SKIN.WYRM] = paintWyrm();
   out[SKIN.GLIDER] = paintGlider();
+  out[SKIN.HOUND] = paintHound();
+  out[SKIN.STEED_BROWN] = paintSteed(93, [140, 92, 54], [104, 66, 38], [50, 36, 26], false);
+  out[SKIN.STEED_WHITE] = paintSteed(95, [226, 222, 214], [190, 184, 176], [210, 206, 196], false);
+  out[SKIN.STEED_BLACK] = paintSteed(97, [48, 42, 40], [30, 26, 24], [24, 20, 18], true);
+  out[SKIN.STEED_SADDLE] = paintSaddle();
+  out[SKIN.SENTINEL] = paintSentinel();
+  out[SKIN.SENTINEL_LIMBS] = paintSentinelLimbs();
+  out[SKIN.FROST] = paintFrost();
+  out[SKIN.HEXER] = paintHexer();
+  out[SKIN.WARDEN] = paintWarden();
+  out[SKIN.SHROOMCOW] = paintShroomcow();
   return out;
 }
 
@@ -553,15 +769,15 @@ export const MODELS = {
     parts: {
       head: { box: [-4, 5, -12, 8, 6, 8], uv: [0, 0], pivot: [0, 8, -5] },
       thorax: { box: [-3, 5, -5, 6, 5, 6], uv: [0, 16], pivot: [0, 8, 0] },
-      abdomen: { box: [-5, 5, 1, 10, 8, 12], uv: [24, 16], pivot: [0, 8, 1] },
-      leg0: { box: [-17, 7, -3, 14, 2, 2], uv: [48, 0], pivot: [-3, 8, -2] },
-      leg1: { box: [3, 7, -3, 14, 2, 2], uv: [48, 0], pivot: [3, 8, -2] },
-      leg2: { box: [-17, 7, -1, 14, 2, 2], uv: [48, 0], pivot: [-3, 8, 0] },
-      leg3: { box: [3, 7, -1, 14, 2, 2], uv: [48, 0], pivot: [3, 8, 0] },
-      leg4: { box: [-17, 7, 1, 14, 2, 2], uv: [48, 0], pivot: [-3, 8, 2] },
-      leg5: { box: [3, 7, 1, 14, 2, 2], uv: [48, 0], pivot: [3, 8, 2] },
-      leg6: { box: [-17, 7, 3, 14, 2, 2], uv: [48, 0], pivot: [-3, 8, 4] },
-      leg7: { box: [3, 7, 3, 14, 2, 2], uv: [48, 0], pivot: [3, 8, 4] },
+      abdomen: { box: [-5, 5, 1, 10, 8, 12], uv: [0, 28], pivot: [0, 8, 1] },
+      leg0: { box: [-17, 7, -3, 14, 2, 2], uv: [0, 48], pivot: [-3, 8, -2] },
+      leg1: { box: [3, 7, -3, 14, 2, 2], uv: [0, 48], pivot: [3, 8, -2] },
+      leg2: { box: [-17, 7, -1, 14, 2, 2], uv: [0, 48], pivot: [-3, 8, 0] },
+      leg3: { box: [3, 7, -1, 14, 2, 2], uv: [0, 48], pivot: [3, 8, 0] },
+      leg4: { box: [-17, 7, 1, 14, 2, 2], uv: [0, 48], pivot: [-3, 8, 2] },
+      leg5: { box: [3, 7, 1, 14, 2, 2], uv: [0, 48], pivot: [3, 8, 2] },
+      leg6: { box: [-17, 7, 3, 14, 2, 2], uv: [0, 48], pivot: [-3, 8, 4] },
+      leg7: { box: [3, 7, 3, 14, 2, 2], uv: [0, 48], pivot: [3, 8, 4] },
     },
   },
   imp: {
@@ -591,6 +807,115 @@ MODELS.gloamer = {
     legL: { box: [1, 0, -1, 2, 26, 2], uv: [0, 16], pivot: [2, 26, 0], mirror: true },
   },
 };
+
+// --- round four creatures ---------------------------------------------------------
+MODELS.hound = {
+  skin: SKIN.HOUND, width: 0.6, height: 0.85,
+  parts: {
+    body: { box: [-3, 7, -4, 6, 6, 9], uv: [0, 12], pivot: [0, 10, 0] },
+    mane: { box: [-4, 7, -7, 8, 7, 6], uv: [32, 10], pivot: [0, 10, 0] },
+    collar: { box: [-4.5, 12, -7.5, 9, 2, 7], uv: [30, 28], pivot: [0, 10, 0], tamedOnly: true },
+    head: { box: [-3, 10, -11, 6, 6, 4], uv: [0, 0], pivot: [0, 13, -7] },
+    snout: { box: [-1.5, 10, -14, 3, 3, 3], uv: [20, 0], pivot: [0, 13, -7], parent: 'head' },
+    earR: { box: [-3, 16, -9, 2, 2, 1], uv: [36, 0], pivot: [0, 13, -7], parent: 'head' },
+    earL: { box: [1, 16, -9, 2, 2, 1], uv: [36, 0], pivot: [0, 13, -7], parent: 'head' },
+    leg0: { box: [-3, 0, -6, 2, 7, 2], uv: [0, 28], pivot: [-2, 7, -5] },
+    leg1: { box: [1, 0, -6, 2, 7, 2], uv: [0, 28], pivot: [2, 7, -5] },
+    leg2: { box: [-3, 0, 2, 2, 7, 2], uv: [0, 28], pivot: [-2, 7, 3] },
+    leg3: { box: [1, 0, 2, 2, 7, 2], uv: [0, 28], pivot: [2, 7, 3] },
+    tail: { box: [-1, 4, 5, 2, 8, 2], uv: [10, 28], pivot: [0, 12, 6] },
+  },
+};
+MODELS.steed = {
+  skin: SKIN.STEED_BROWN, width: 1.3, height: 1.6,
+  parts: {
+    body: { box: [-5, 11, -10, 10, 10, 20], uv: [0, 34], pivot: [0, 16, 0] },
+    neck: { box: [-2, 16, -14, 4, 12, 7], uv: [0, 0], pivot: [0, 20, -9] },
+    head: { box: [-3, 25, -18, 6, 6, 8], uv: [22, 0], pivot: [0, 20, -9], parent: 'neck' },
+    muzzle: { box: [-2, 23, -21, 4, 5, 5], uv: [22, 14], pivot: [0, 20, -9], parent: 'neck' },
+    earR: { box: [-2.5, 31, -12, 2, 3, 1], uv: [50, 0], pivot: [0, 20, -9], parent: 'neck' },
+    earL: { box: [0.5, 31, -12, 2, 3, 1], uv: [50, 0], pivot: [0, 20, -9], parent: 'neck' },
+    mane: { box: [-1, 18, -8, 2, 13, 3], uv: [40, 14], pivot: [0, 20, -9], parent: 'neck' },
+    tail: { box: [-1.5, 8, 10, 3, 10, 3], uv: [50, 4], pivot: [0, 19, 10] },
+    leg0: { box: [-4.5, 0, -9, 3, 11, 3], uv: [0, 19], pivot: [-3, 11, -7.5] },
+    leg1: { box: [1.5, 0, -9, 3, 11, 3], uv: [0, 19], pivot: [3, 11, -7.5] },
+    leg2: { box: [-4.5, 0, 6, 3, 11, 3], uv: [0, 19], pivot: [-3, 11, 7.5] },
+    leg3: { box: [1.5, 0, 6, 3, 11, 3], uv: [0, 19], pivot: [3, 11, 7.5] },
+    saddle: { box: [-5.5, 21, -5, 11, 2, 9], uv: [0, 0], pivot: [0, 16, 0], skin: SKIN.STEED_SADDLE, saddleOnly: true },
+    strapR: { box: [-5.6, 13, -1, 1, 8, 1], uv: [0, 12], pivot: [0, 16, 0], skin: SKIN.STEED_SADDLE, saddleOnly: true },
+    strapL: { box: [4.6, 13, -1, 1, 8, 1], uv: [0, 12], pivot: [0, 16, 0], skin: SKIN.STEED_SADDLE, saddleOnly: true },
+    bridle: { box: [-3.3, 24.7, -16, 6.6, 2, 6], uv: [0, 24], pivot: [0, 20, -9], parent: 'neck', skin: SKIN.STEED_SADDLE, saddleOnly: true },
+  },
+};
+MODELS.sentinel = {
+  skin: SKIN.SENTINEL, width: 1.4, height: 2.7, humanoid: true,
+  parts: {
+    head: { box: [-4, 38, -7.5, 8, 10, 8], uv: [0, 0], pivot: [0, 38, -2] },
+    nose: { box: [-1, 37, -9.5, 2, 4, 2], uv: [32, 0], pivot: [0, 38, -2], parent: 'head' },
+    body: { box: [-9, 26, -6, 18, 12, 11], uv: [0, 41], pivot: [0, 26, 0] },
+    waist: { box: [-4.5, 20, -3, 9, 6, 6], uv: [32, 6], pivot: [0, 26, 0] },
+    armR: { box: [-13, 4, -3, 4, 30, 6], uv: [0, 0], pivot: [-11, 35, 0], skin: SKIN.SENTINEL_LIMBS },
+    armL: { box: [9, 4, -3, 4, 30, 6], uv: [0, 0], pivot: [11, 35, 0], skin: SKIN.SENTINEL_LIMBS, mirror: true },
+    legR: { box: [-7, 0, -2.5, 6, 20, 5], uv: [20, 0], pivot: [-4, 20, 0], skin: SKIN.SENTINEL_LIMBS },
+    legL: { box: [1, 0, -2.5, 6, 20, 5], uv: [20, 0], pivot: [4, 20, 0], skin: SKIN.SENTINEL_LIMBS, mirror: true },
+  },
+};
+MODELS.frost_sentinel = {
+  skin: SKIN.FROST, width: 0.7, height: 1.9,
+  parts: {
+    lower: { box: [-6, 0, -6, 12, 12, 12], uv: [0, 40], pivot: [0, 6, 0] },
+    upper: { box: [-5, 11, -5, 10, 10, 10], uv: [0, 20], pivot: [0, 16, 0] },
+    head: { box: [-4, 20.5, -4, 8, 8, 8], uv: [0, 0], pivot: [0, 21, 0] },
+    armR: { box: [-15, 17, -1, 10, 2, 2], uv: [32, 0], pivot: [-5, 18, 0] },
+    armL: { box: [5, 17, -1, 10, 2, 2], uv: [32, 0], pivot: [5, 18, 0], mirror: true },
+  },
+};
+MODELS.hexer = {
+  skin: SKIN.HEXER, width: 0.6, height: 2.2, humanoid: true,
+  parts: {
+    head: { box: [-4, 24, -4, 8, 8, 8], uv: [0, 0], pivot: [0, 24, 0] },
+    nose: { box: [-1, 25, -6, 2, 4, 2], uv: [32, 0], pivot: [0, 24, 0], parent: 'head' },
+    brim: { box: [-5, 31, -5, 10, 1, 10], uv: [0, 16], pivot: [0, 24, 0], parent: 'head' },
+    hatMid: { box: [-3.5, 32, -3.5, 7, 4, 7], uv: [0, 27], pivot: [0, 24, 0], parent: 'head' },
+    hatTip: { box: [-2, 36, -1.5, 4, 4, 4], uv: [28, 27], pivot: [0, 24, 0], parent: 'head' },
+    hatPoint: { box: [-1, 40, 0, 2, 3, 2], uv: [44, 27], pivot: [0, 24, 0], parent: 'head' },
+    body: { box: [-4, 12, -3, 8, 12, 6], uv: [0, 38], pivot: [0, 24, 0] },
+    armR: { box: [-8, 12, -2, 4, 12, 4], uv: [44, 38], pivot: [-6, 22, 0] },
+    armL: { box: [4, 12, -2, 4, 12, 4], uv: [44, 38], pivot: [6, 22, 0], mirror: true },
+    legR: { box: [-4, 0, -2, 4, 12, 4], uv: [28, 38], pivot: [-2, 12, 0] },
+    legL: { box: [0, 0, -2, 4, 12, 4], uv: [28, 38], pivot: [2, 12, 0], mirror: true },
+  },
+};
+MODELS.tide_warden = {
+  skin: SKIN.WARDEN, width: 0.85, height: 0.85,
+  parts: {
+    body: { box: [-6, 1, -6, 12, 12, 12], uv: [0, 0], pivot: [0, 7, 0] },
+    tail: { box: [-2, 5, 6, 4, 4, 6], uv: [0, 24], pivot: [0, 7, 6] },
+    tail2: { box: [-1.5, 5.5, 12, 3, 3, 5], uv: [20, 24], pivot: [0, 7, 6], parent: 'tail' },
+    fin: { box: [-0.5, 4, 16, 1, 6, 4], uv: [36, 24], pivot: [0, 7, 6], parent: 'tail' },
+    spike0: { box: [-0.5, 13, -0.5, 1, 4, 1], uv: [48, 0], pivot: [0, 7, 0] },
+    spike1: { box: [-0.5, -3, -0.5, 1, 4, 1], uv: [48, 0], pivot: [0, 7, 0] },
+    spike2: { box: [-6.5, 13, -6.5, 1, 4, 1], uv: [48, 0], pivot: [0, 7, 0] },
+    spike3: { box: [5.5, 13, -6.5, 1, 4, 1], uv: [48, 0], pivot: [0, 7, 0] },
+    spike4: { box: [-6.5, 13, 5.5, 1, 4, 1], uv: [48, 0], pivot: [0, 7, 0] },
+    spike5: { box: [5.5, 13, 5.5, 1, 4, 1], uv: [48, 0], pivot: [0, 7, 0] },
+    spike6: { box: [-6.5, -3, -6.5, 1, 4, 1], uv: [48, 0], pivot: [0, 7, 0] },
+    spike7: { box: [5.5, -3, 5.5, 1, 4, 1], uv: [48, 0], pivot: [0, 7, 0] },
+  },
+};
+MODELS.shroomcow = {
+  ...MODELS.cow, skin: SKIN.SHROOMCOW,
+  parts: {
+    ...MODELS.cow.parts,
+    cap0: { box: [-4, 20, -4, 4, 2, 4], uv: [0, 44], pivot: [0, 15, 0] },
+    stem0: { box: [-3, 18, -3, 2, 2, 2], uv: [16, 44], pivot: [0, 15, 0] },
+    cap1: { box: [1, 20, 2, 4, 2, 4], uv: [0, 44], pivot: [0, 15, 0] },
+    stem1: { box: [2, 18, 3, 2, 2, 2], uv: [16, 44], pivot: [0, 15, 0] },
+    cap2: { box: [-2, 23, -12, 4, 2, 4], uv: [0, 44], pivot: [0, 18, -8], parent: 'head' },
+    stem2: { box: [-1, 21, -11, 2, 2, 2], uv: [16, 44], pivot: [0, 18, -8], parent: 'head' },
+  },
+};
+
 // Wyrm parts are modelled at a quarter scale and drawn four times larger.
 export const WYRM_PARTS = {
   head: { box: [-5, -3.5, -12, 10, 7, 12], uv: [0, 0] },
@@ -642,6 +967,9 @@ export function buildModelMeshes(renderer) {
     wingR: renderer.createModel(new Float32Array(skinBox(-10, 8, 2.2, 10, 16, 1, 0, 0, SKIN.GLIDER, 64, 64, 0, false))),
     wingL: renderer.createModel(new Float32Array(skinBox(0, 8, 2.2, 10, 16, 1, 0, 0, SKIN.GLIDER, 64, 64, 0, true))),
   };
+  // steed coats share one model
+  out['steed:white'] = build(MODELS.steed, SKIN.STEED_WHITE);
+  out['steed:black'] = build(MODELS.steed, SKIN.STEED_BLACK);
   // settler outfits share one model with different skins
   for (const [prof, skin] of [['farmer', SKIN.FARMER], ['smith', SKIN.SMITH], ['shepherd', SKIN.SHEPHERD], ['scholar', SKIN.SCHOLAR]]) {
     out[`settler:${prof}`] = build(MODELS.settler, skin);

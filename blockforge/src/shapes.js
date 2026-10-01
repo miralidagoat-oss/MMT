@@ -13,6 +13,7 @@ export const SHAPE = {
   NONE: 0, SLAB: 1, STAIRS: 2, FENCE: 3, GATE: 4, DOOR: 5, BED: 6, FLAT15: 7, TABLE12: 8, SINK14: 9,
   BUTTON: 10, PLATE: 11, REPEATER: 12, TRAPDOOR: 13, PISTON: 14, PISTON_HEAD: 15, LEVER: 16, BREWING: 17,
   SENSOR: 18, STAR_FRAME: 19, PANE: 20, STALK: 21, CAKE: 22, LANTERN: 23, SIGN: 24, HOPPER: 25, ROD: 26, EGG: 27,
+  COMPARATOR: 28, ANVIL: 29, BEACON: 30, BANNER: 31, CAULDRON: 32,
 };
 
 // Lever/button meta: bits 0-2 attach (0 floor, 1 wall at -X, 2 wall at +X, 3 wall at -Z, 4 wall at +Z,
@@ -312,6 +313,60 @@ export function shapeBoxes(ctx, id, meta, get) {
       const fn = (p) => facingPoint(p, f);
       const t = all6(ctx.tex('glow_rod'));
       return [orientBox([7, 1, 7, 9, 16, 9], t, fn, 'f6' + f), orientBox([6, 0, 6, 10, 1, 10], t, fn, 'f6' + f)];
+    }
+    case SHAPE.COMPARATOR: {
+      const f = meta & 3, sub = meta & 4, on = meta & 8;
+      const fn = (p) => rotY(p, f);
+      const top = on ? ctx.tex('comparator_on') : ctx.tex('comparator');
+      const st = ctx.tex('stone');
+      const torch = (lit) => {
+        const sd = ctx.tex(lit ? 'spark_torch' : 'spark_torch_off'), tt = ctx.tex(lit ? 'spark_torch_top' : 'spark_torch_top_off');
+        return [tt, sd, sd, sd, sd, sd];
+      };
+      // two input torches at the back, the mode torch at the front (lit in subtract mode)
+      return [
+        orientBox([0, 0, 0, 16, 2, 16], [top, st, st, st, st, st], fn, 'ry' + f),
+        orientBox([3, 2, 11, 5, 7, 13], torch(on), fn, 'ry' + f),
+        orientBox([11, 2, 11, 13, 7, 13], torch(on), fn, 'ry' + f),
+        orientBox([7, 2, 2, 9, sub ? 6 : 5, 4], torch(sub), fn, 'ry' + f),
+      ];
+    }
+    case SHAPE.ANVIL: {
+      const f = meta & 3;
+      const fn = (p) => rotY(p, f);
+      const top = ctx.tex('anvil_top'), side = ctx.tex('anvil_side');
+      const t = [top, side, side, side, side, side], s6 = all6(side);
+      return [
+        orientBox([2, 0, 2, 14, 4, 14], s6, fn, 'ry' + f),
+        orientBox([4, 4, 3, 12, 5, 13], s6, fn, 'ry' + f),
+        orientBox([6, 5, 4, 10, 10, 12], s6, fn, 'ry' + f),
+        orientBox([3, 10, 0, 13, 16, 16], t, fn, 'ry' + f),
+      ];
+    }
+    case SHAPE.BEACON: {
+      const glass = all6(ctx.tex('glass')), obs = all6(ctx.tex('obsidian')), core = all6(ctx.tex('beacon_core'));
+      return [box(0, 0, 0, 16, 16, 16, glass), box(2, 1, 2, 14, 3, 14, obs), box(3, 3, 3, 13, 13, 13, core)];
+    }
+    case SHAPE.BANNER: {
+      // the cloth is drawn separately (scene.js) from the banner's block entity
+      const pole = all6(ctx.tex('banner_pole'));
+      if (id === ctx.id('wall_banner')) return [{ b: rot([0, 14, 13, 16, 16, 15], meta & 3), t: pole, r: null }];
+      return [box(7, 0, 7, 9, 16, 9, pole), box(1, 14, 7, 15, 16, 9, pole)];
+    }
+    case SHAPE.CAULDRON: {
+      const side = ctx.tex('cauldron_side'), top = ctx.tex('cauldron_top'), inner = ctx.tex('cauldron_inner'), bot = ctx.tex('cauldron_bottom');
+      const wall = [top, bot, side, inner, side, side];
+      const out = [
+        box(0, 3, 0, 16, 16, 2, [top, bot, side, side, side, inner]), box(0, 3, 14, 16, 16, 16, [top, bot, side, side, inner, side]),
+        box(0, 3, 2, 2, 16, 14, [top, bot, inner, side, side, side]), box(14, 3, 2, 16, 16, 14, [top, bot, side, inner, side, side]),
+        box(2, 3, 2, 14, 4, 14, [inner, bot, inner, inner, inner, inner]),
+        box(0, 0, 0, 4, 3, 2, all6(side)), box(12, 0, 0, 16, 3, 2, all6(side)), box(0, 0, 14, 4, 3, 16, all6(side)), box(12, 0, 14, 16, 3, 16, all6(side)),
+        box(0, 0, 2, 2, 3, 4, all6(side)), box(14, 0, 2, 16, 3, 4, all6(side)), box(0, 0, 12, 2, 3, 14, all6(side)), box(14, 0, 12, 16, 3, 14, all6(side)),
+      ];
+      void wall;
+      const lvl = meta & 3;
+      if (lvl) out.push(box(2, 4, 2, 14, [0, 8, 11, 15][lvl], 14, all6(ctx.tex('cauldron_water'))));
+      return out;
     }
     case SHAPE.EGG:
       return [[6, 15, 6, 10, 16, 10], [5, 14, 5, 11, 15, 11], [4, 13, 4, 12, 14, 12], [3, 11, 3, 13, 13, 13], [2, 8, 2, 14, 11, 14], [1, 3, 1, 15, 8, 15], [2, 1, 2, 14, 3, 14], [3, 0, 3, 13, 1, 13]].map((b) => box(...b));

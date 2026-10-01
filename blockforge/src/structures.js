@@ -163,7 +163,7 @@ export class Villages {
       if (p.x1 < X0 - 1 || p.x0 > X0 + 16 || p.z1 < Z0 - 1 || p.z0 > Z0 + 16) continue;
       switch (p.kind) {
         case 'road': this.road(v, p, ctx, inChunk); break;
-        case 'well': this.well(v, p, ctx); break;
+        case 'well': this.well(v, p, ctx, out); break;
         case 'lamp': this.lamp(v, p, ctx); break;
         default: this.building(v, p, ctx, inChunk, out);
       }
@@ -196,8 +196,10 @@ export class Villages {
     }
   }
 
-  well(v, p, ctx) {
+  well(v, p, ctx, out) {
     const y = p.y;
+    // every village has an iron sentinel keeping watch beside the well
+    if (out) out.spawns.push({ type: 'sentinel', x: p.x0 - 1.5, y: y + 1, z: p.z0 + 2, persistent: true, home: true });
     for (let dx = 0; dx < 4; dx++) for (let dz = 0; dz < 4; dz++) {
       const x = p.x0 + dx, z = p.z0 + dz;
       const edge = dx === 0 || dz === 0 || dx === 3 || dz === 3;

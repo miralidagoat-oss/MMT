@@ -1,5 +1,6 @@
 // HTML user interface: HUD, menus, inventory screens, chat and debug text.
-import { ITEMS, I, matchRecipe, itemName, maxStack, SMELTING, fuelValue } from './items.js';
+import { ITEMS, I, matchRecipe, itemName, maxStack, SMELTING, fuelValue, BANNER_COLORS } from './items.js';
+import { BANNER_PATTERN_NAMES } from './decor.js';
 import { enchantOptions, enchantLabel, applicableEnchants } from './loot.js';
 import { isIngredient, potionLabel, fmtTime } from './effects.js';
 import { MAP_SIZE } from './maps.js';
@@ -107,7 +108,7 @@ export class UI {
   }
 
   fillSlot(s, stack) {
-    const key = stack ? `${stack.id}:${stack.count}:${stack.dur || 0}:${stack.ench ? 1 : 0}` : '';
+    const key = stack ? `${stack.id}:${stack.count}:${stack.dur || 0}:${stack.ench ? 1 : 0}:${stack.charge ?? ''}` : '';
     if (s._key === key) return;
     s._key = key;
     const img = s.firstChild, cnt = s.children[1], dur = s.children[2];
@@ -116,7 +117,11 @@ export class UI {
     s.classList.toggle('ench', !!stack.ench);
     cnt.textContent = stack.count > 1 ? stack.count : '';
     const d = ITEMS[stack.id];
-    if (d && d.durability && stack.dur) {
+    if (d && d.blaster && stack.charge !== undefined && stack.charge < 48) {
+      dur.style.display = 'block';
+      dur.firstChild.style.width = `${Math.round((stack.charge / 48) * 100)}%`;
+      dur.firstChild.style.background = '#5ef0ff';
+    } else if (d && d.durability && stack.dur) {
       const f = Math.max(0, 1 - stack.dur / d.durability);
       dur.style.display = 'block';
       dur.firstChild.style.width = `${Math.round(f * 100)}%`;
@@ -206,6 +211,7 @@ export class UI {
     $('#crosshair').hidden = g.perspective !== 0;
     this.updateGadget();
     this.updateEffects(g);
+    this.updateAmmo(g);
     this.updateBoss(env.boss);
     this.updateMap(g);
     this.updateDebug();
@@ -254,6 +260,24 @@ export class UI {
     if (key === this.hudCache.effects) return;
     this.hudCache.effects = key;
     box.innerHTML = list.map((e) => `<div class="fx${e.time < 200 && e.time % 20 < 10 ? ' blink' : ''}"><i style="background:rgb(${e.color.join(',')})"></i><span>${esc(e.label)}${e.amp ? ' ' + ['', 'II', 'III', 'IV'][e.amp] : ''}</span><b>${e.time > 32000 ? '**:**' : fmtTime(e.time)}</b></div>`).join('');
+  }
+
+  // Charge readout beside the crosshair while a blaster is in hand.
+  updateAmmo(g) {
+    const box = $('#ammo');
+    const p = g.player;
+    const held = p && p.inventory.held;
+    if (!held || held.id !== I.photon_blaster || g.state !== 'playing' || g.hideHud) { if (!box.hidden) box.hidden = true; return; }
+    const charge = held.charge === undefined ? 48 : held.charge;
+    const cells = p.inventory.count(I.energy_cell);
+    const reloading = g.blasterReload > 0;
+    const key = `${charge}:${cells}:${reloading}:${p.creative}`;
+    box.hidden = false;
+    if (key === this.hudCache.ammo) return;
+    this.hudCache.ammo = key;
+    box.classList.toggle('low', charge <= 8 && !p.creative);
+    box.firstChild.style.width = `calc(${(reloading ? 0 : charge / 48) * 30} * var(--u))`;
+    box.lastChild.textContent = p.creative ? '∞' : reloading ? 'Recharging…' : `${charge} · ${cells} cell${cells === 1 ? '' : 's'}`;
   }
 
   updateBoss(boss) {
@@ -1287,6 +1311,9 @@ export class UI {
     if (st.map) t += `<br><small>Map #${st.map}</small>`;
     if (d.armor && d.armor.points) t += `<br><small>+${d.armor.points} armor${d.armor.tough ? `, +${d.armor.tough} toughness` : ''}</small>`;
     if (st.id === I.glider) t += '<br><small>Wear in the chest slot; jump while falling to glide</small>';
+    if (d.blaster) t += `<br><small class="good">Charge ${st.charge ?? 48} / 48</small><br><small>Right-click to fire, hold for rapid fire. Recharges from energy cells.</small>`;
+    if (st.id === I.sky_rocket) t += '<br><small>Launch from the ground, or use while gliding for a boost</small>';
+    if (d.banner !== undefined && st.bn && st.bn.length) t += st.bn.map(([pat, c]) => `<br><small>${esc(BANNER_PATTERN_NAMES[pat] || pat)} (${esc(BANNER_COLORS[c] || '')})</small>`).join('');
     if (d.durability) t += `<br><small>Durability ${d.durability - (st.dur || 0)} / ${d.durability}</small>`;
     if (d.food) t += `<br><small>Restores ${d.food[0] / 2} food</small>`;
     if (d.damage) t += `<br><small>${d.damage} attack damage</small>`;

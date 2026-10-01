@@ -3,7 +3,8 @@
 // Void, maps, signs, fishing, drinking and shields.
 import { B, BLOCKS, SOLID, OPAQUE, REPLACEABLE, isLiquid, SHAPE_KIND } from './blocks.js';
 import { ITEMS, I, maxStack, POTION_KINDS } from './items.js';
-import { Mob, ItemEntity, PrimedCrate, Projectile } from './entities.js';
+import { Mob, MOB_TYPES, ItemEntity, PrimedCrate, Projectile } from './entities.js';
+import { golemAt } from './creatures.js';
 import { Minecart, Boat, placeRail, isRail, loadVehicle } from './vehicles.js';
 import { potionEffect, brew, isIngredient, addEffect, EFFECTS } from './effects.js';
 import { Pylon, Wyrm, StarEye, WYRM_HEALTH } from './voidboss.js';
@@ -47,8 +48,11 @@ const methods = {
     if (this.net && this.net.isGuest) this.net.claimVehicle(v);
     this.syncRider();
     p.px = p.x; p.py = p.y; p.pz = p.z;
-    this.advance(v.isBoat ? 'boat' : 'cart');
-    this.ui.message(v.isBoat ? 'Rowing: W/S to move, A/D to turn, Shift to get out' : 'Riding: W to push off, Shift to get out', '#9fb3c8');
+    if (!v.isMob) this.advance(v.isBoat ? 'boat' : 'cart');
+    const msg = v.isBoat ? 'Rowing: W/S to move, A/D to turn, Shift to get out'
+      : v.isMob ? (v.tamed && v.saddled ? 'Riding: WASD to ride, Space to jump, Shift to get off' : v.tamed ? 'Put a saddle on the steed to steer it. Shift to get off' : 'The steed is wild. Hold on, or Shift to get off')
+        : 'Riding: W to push off, Shift to get out';
+    this.ui.message(msg, '#9fb3c8');
   },
 
   dismount() {
@@ -389,6 +393,27 @@ const methods = {
   // ---------------------------------------------------------------------------
   // Items that act on their own when used (before any block placement).
   // Returns true when handled.
+  // A carved pumpkin on two snow blocks makes a frost sentinel; on a T of
+  // four iron blocks it makes an iron sentinel.
+  tryBuildGolem(x, y, z) {
+    if (this.net && this.net.isGuest) return false;
+    const g = golemAt(this.world, x, y, z);
+    if (!g) return false;
+    const w = this.world;
+    for (const [dx, dy, dz] of [[0, 0, 0], ...g.blocks]) {
+      const id = w.getBlock(x + dx, y + dy, z + dz);
+      w.setBlock(x + dx, y + dy, z + dz, 0, 0);
+      this.particles.blockBreak(x + dx, y + dy, z + dz, id, 0);
+    }
+    const mob = new Mob(g.type, x + 0.5, y - 2, z + 0.5, { persistent: true });
+    mob.playerBuilt = true;
+    mob.yaw = this.player.yaw + Math.PI;
+    this.entities.push(mob);
+    this.audio.mob(MOB_TYPES[g.type].sound, 'idle', x + 0.5, y, z + 0.5);
+    this.advance('golem');
+    return true;
+  },
+
   useItemFirst(held, hit) {
     const p = this.player, w = this.world;
     const d = ITEMS[held.id];
@@ -403,6 +428,19 @@ const methods = {
       this.startSwing();
     };
     if (held.id === I.void_pearl) { throwIt('pearl', 1.5); return true; }
+    // shears carve a face into a pumpkin
+    if (held.id === I.shears && hit && hit.id === B.pumpkin && !p.sneaking) {
+      const f = hit.face >= 2 ? hit.face : [4, 3, 5, 2][this.facingIndex()];
+      w.setBlock(hit.x, hit.y, hit.z, B.carved_pumpkin, f);
+      this.audio.play('shear', hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+      const n = [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]][f];
+      this.dropItem(hit.x + 0.5 + n[0] * 0.6, hit.y + 0.5, hit.z + 0.5 + n[2] * 0.6, { id: I.wheat_seeds, count: 2 + Math.floor(Math.random() * 3) }, true);
+      this.damageTool(1); this.startSwing();
+      this.tryBuildGolem(hit.x, hit.y, hit.z);
+      return true;
+    }
+    if (held.id === I.sky_rocket) return this.useRocket(held, hit);
+    if (held.id === I.photon_blaster || held.id === I.energy_cell) return true;
     if (d.splash) { throwIt('potion', 0.7, { item: held.id, pot: held.pot }); return true; }
     if (held.id === I.star_eye) {
       if (hit && hit.id === B.star_frame) return this.placeEye(hit);

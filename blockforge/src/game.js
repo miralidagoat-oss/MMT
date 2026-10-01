@@ -18,9 +18,10 @@ import { computeEnv, daylight } from './env.js';
 import { hashSeed, rng } from './noise.js';
 import { ADVANCEMENTS } from './advancements.js';
 import { newFurnace, newChest, Container } from './inventory.js';
-import { WorldGen } from './worldgen.js';
+import { WorldGen, BIOME } from './worldgen.js';
 import { Circuits } from './circuits.js';
 import { installNet } from './net.js';
+import { installBlaster } from './blaster.js';
 import { installFeatures, solidTop } from './features.js';
 import { isRail, Minecart, Boat } from './vehicles.js';
 import { potionEffect, EFFECTS, addEffect } from './effects.js';
@@ -187,7 +188,7 @@ export class Game {
   }
 
   serialize() {
-    const mobs = this.entities.filter((e) => e instanceof Mob && !e.dead && !e.hostile).map((m) => m.serialize());
+    const mobs = this.entities.filter((e) => e instanceof Mob && !e.dead && (!e.hostile || e.persistent)).map((m) => m.serialize());
     const dims = { ...(this.meta.dims || {}) };
     if (!this.meta.dims && this.meta.populated && this.dim !== 'overworld') dims.overworld = this.dimState(this.meta, 'overworld');
     dims[this.dim] = { populated: [...this.world.populated], blockEntities: [...this.world.blockEntities.entries()], mobs, objects: this.serializeObjects() };
@@ -288,7 +289,7 @@ export class Game {
     if (p.sleeping) { this.tickSleep(); input = { forward: 0, strafe: 0, jump: false, sneak: false, sprint: false }; }
     if (this.bowDraw > 0) { input.sprint = false; input.forward *= 0.3; input.strafe *= 0.3; }
     const chunkHere = this.world.chunkReady(Math.floor(p.x) >> 4, Math.floor(p.z) >> 4);
-    if (p.vehicle && (p.vehicle.removed || p.dead)) this.dismount();
+    if (p.vehicle && (p.vehicle.removed || p.vehicle.dead || p.dead)) this.dismount();
     if (p.vehicle) {
       p.rideTick(this);
       p.vehicle.riderInput = input;
@@ -441,6 +442,8 @@ export class Game {
     const def = held && ITEMS[held.id];
     const te = this.targetEntity;
     const interactive = (this.target && this.isInteractive(this.target) && !p.sneaking) || (te && ((te.def && te.def.villager) || te.vehicle));
+    // the photon blaster fires while the right button is held
+    if (this.tickBlaster(held, inp.mouse.right, clicks.right, interactive)) { this.eatTicks = 0; p.eating = 0; return; }
     // a raised shield
     p.blocking = !!(held && held.id === I.shield && inp.mouse.right && !interactive);
     if (p.blocking) { this.eatTicks = 0; p.eating = 0; return; }
@@ -669,8 +672,35 @@ export class Game {
     for (const [did, n] of drops) if (n > 0 && ITEMS[did]) this.dropItem(x + 0.5, y + 0.3, z + 0.5, { id: did, count: n }, true);
   }
 
+  // Names that tie tamed creatures to players.
+  localName() { return this.settings.playerName || 'Player'; }
+  nameOf(pl) { return pl === this.player ? this.localName() : pl && pl.name; }
+  ownerOf(name) {
+    if (!name) return null;
+    if (name === this.localName()) return this.player;
+    if (this.net) for (const rp of this.net.remotePlayers()) if (rp.name === name) return rp;
+    return null;
+  }
+
+  // A creature throws something (snowballs, splash potions) at a point.
+  // A mob lobs something at (tx, ty, tz): solve for the vertical speed that
+  // lands it there under gravity 0.03/tick with 1% drag.
+  mobThrow(owner, kind, tx, ty, tz, speed, extra = {}) {
+    const sx = owner.x, sy = owner.y + owner.h * 0.8, sz = owner.z;
+    const dx = tx - sx, dz = tz - sz, h = Math.hypot(dx, dz) || 0.01;
+    const hx = (dx / h) * 0.5, hz = (dz / h) * 0.5;
+    const t = Math.max(1, (h - 0.5) / (speed * 0.95));
+    const vy = (ty - sy) / t + 0.5 * 0.03 * t;
+    const pr = new Projectile(kind, sx + hx, sy, sz + hz, (dx / h) * speed, vy, (dz / h) * speed, owner, 0);
+    Object.assign(pr, extra);
+    this.entities.push(pr);
+    this.audio.play('throw', sx, sy, sz, 0.5);
+    return pr;
+  }
+
   attack(mob) {
     const p = this.player;
+    this.lastAttackTarget = mob;
     const held = p.inventory.held;
     const def = held && ITEMS[held.id];
     let dmg = def && def.damage ? def.damage : 1;
@@ -869,6 +899,7 @@ export class Game {
     this.audio.blockSound(id, 'place', tx + 0.5, ty + 0.5, tz + 0.5);
     this.startSwing();
     if (!p.creative) p.inventory.useHeld();
+    if (id === B.carved_pumpkin || id === B.jack_o_lantern) this.tryBuildGolem(tx, ty, tz);
   }
 
   // Is the block space free of the player and creatures?
@@ -1181,7 +1212,9 @@ export class Game {
     for (const s of spawns) {
       if (s.type === 'pylon') { if (this.meta.voidBoss !== 'dead') this.spawnPylon(s); continue; }
       if (this.entities.length > 220) break;
-      const mob = new Mob(s.type, s.x, s.y, s.z, { profession: s.profession, home: s.type === 'settler' ? { x: s.x, y: s.y, z: s.z } : null });
+      const home = s.type === 'settler' || s.home ? { x: s.x, y: s.y, z: s.z } : null;
+      const mob = new Mob(s.type, s.x, s.y, s.z, { profession: s.profession, home, persistent: !!s.persistent });
+      if (!boxFree(this.world, mob.x, mob.y, mob.z, mob.w, mob.h) && mob.h > 2) mob.y = Math.ceil(mob.y);
       this.entities.push(mob);
     }
     const w = this.world;
@@ -1201,7 +1234,7 @@ export class Game {
     const all = this.players();
     const p = all[Math.floor(Math.random() * all.length)];
     for (const e of this.entities) {
-      if (!e.hostile) continue;
+      if (!e.hostile || e.persistent) continue;
       const d = this.net ? this.nearestPlayerDist(e.x, e.z) : Math.hypot(e.x - p.x, e.z - p.z);
       if (d > 128 || (d > 40 && Math.random() < 0.02)) e.removed = true;
     }
@@ -1236,7 +1269,8 @@ export class Game {
       if (Math.hypot(x + 0.5 - p.x, y - p.y, z + 0.5 - p.z) < 24) continue;
       if (this.net && this.nearestPlayerDist(x + 0.5, z + 0.5) < 24) continue;
       const r = Math.random();
-      const type = under ? (r < 0.75 ? 'imp' : 'archer') : (r < 0.47 ? 'ghoul' : r < 0.74 ? 'archer' : r < 0.97 ? 'crawler' : 'gloamer');
+      let type = under ? (r < 0.75 ? 'imp' : 'archer') : (r < 0.47 ? 'ghoul' : r < 0.74 ? 'archer' : r < 0.97 ? 'crawler' : 'gloamer');
+      if (!under && Math.random() < 0.3 && y >= w.surfaceY(x, z) - 1 && w.gen.biomeAt(x, z) === BIOME.SWAMP) type = 'hexer';
       const opts = {};
       if ((type === 'ghoul' || type === 'archer') && Math.random() < 0.06) opts.armor = [Math.random() < 0.5 ? I.iron_helmet : I.leather_helmet, Math.random() < 0.3 ? I.iron_chestplate : null, null, null];
       const mob = new Mob(type, x + 0.5, y, z + 0.5, opts);
@@ -2223,3 +2257,4 @@ export class Game {
 
 installFeatures(Game);
 installNet(Game);
+installBlaster(Game);

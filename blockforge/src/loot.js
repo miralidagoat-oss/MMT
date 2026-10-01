@@ -11,7 +11,7 @@ const TABLES = {
   village_house: { rolls: [2, 5], items: [[I.bread, 1, 4, 12], [I.wheat, 2, 7, 10], [I.wheat_seeds, 2, 6, 10], [I.carrot, 1, 4, 8], [I.potato, 1, 4, 8], [I.apple, 1, 3, 8], [I.emerald, 1, 1, 3], [B.torch, 2, 6, 6], [I.paper, 1, 5, 4], [I.book, 1, 1, 2]] },
   observatory: { rolls: [3, 6], items: [[I.void_pearl, 1, 2, 8], [I.iron_ingot, 1, 5, 10], [I.gold_ingot, 1, 3, 5], [I.bread, 1, 3, 12], [I.apple, 1, 3, 12], [I.spark_dust, 4, 9, 8], [I.diamond, 1, 3, 3], [I.iron_pickaxe, 1, 1, 5], [I.iron_sword, 1, 1, 5], [I.iron_chestplate, 1, 1, 4], [I.golden_apple, 1, 1, 2], [I.star_eye, 1, 1, 2], [B.rail, 4, 12, 6]] },
   observatory_library: { rolls: [2, 6], items: [[I.book, 1, 3, 20], [I.paper, 2, 7, 20], [I.empty_map, 1, 1, 6], [I.compass, 1, 1, 6], [I.glass_bottle, 1, 3, 6], [I.clock, 1, 1, 4], [I.star_eye, 1, 1, 3]] },
-  spire: { rolls: [3, 7], items: [[I.diamond, 2, 7, 5], [I.iron_ingot, 4, 8, 10], [I.gold_ingot, 2, 7, 10], [I.emerald, 2, 6, 6], [I.diamond_sword, 1, 1, 3], [I.diamond_chestplate, 1, 1, 3], [I.diamond_pickaxe, 1, 1, 3], [I.iron_helmet, 1, 1, 3], [I.void_pearl, 1, 3, 6], [I.popped_void_fruit, 2, 6, 6], [I.golden_apple, 1, 1, 2]] },
+  spire: { rolls: [3, 7], items: [[I.diamond, 2, 7, 5], [I.iron_ingot, 4, 8, 10], [I.gold_ingot, 2, 7, 10], [I.emerald, 2, 6, 6], [I.diamond_sword, 1, 1, 3], [I.diamond_chestplate, 1, 1, 3], [I.diamond_pickaxe, 1, 1, 3], [I.iron_helmet, 1, 1, 3], [I.void_pearl, 1, 3, 6], [I.popped_void_fruit, 2, 6, 6], [I.golden_apple, 1, 1, 2], [I.photon_blaster, 1, 1, 3], [I.energy_cell, 1, 4, 6]] },
   spire_glider: { rolls: [2, 4], always: [[I.glider, 1]], items: [[I.diamond, 1, 4, 5], [I.gold_ingot, 2, 6, 10], [I.void_pearl, 1, 3, 6], [I.emerald, 1, 4, 6]] },
   underworld: { rolls: [3, 6], items: [[I.gold_ingot, 2, 6, 10], [I.gold_nugget, 4, 12, 10], [I.quartz, 3, 9, 10], [B.obsidian, 1, 4, 6], [I.flint_and_steel, 1, 1, 5], [I.iron_ingot, 1, 5, 8], [I.diamond, 1, 3, 3], [I.golden_sword, 1, 1, 4], [I.golden_helmet, 1, 1, 3], [I.ember_dust, 2, 8, 8], [I.emerald, 1, 3, 3]] },
 };
@@ -108,10 +108,11 @@ export function makeTrades(profession, r = Math.random) {
 export const ENCHANTS = {
   efficiency: { name: 'Efficiency', max: 5, for: ['pickaxe', 'axe', 'shovel', 'hoe', 'shears'] },
   sharpness: { name: 'Sharpness', max: 5, for: ['sword', 'axe'] },
-  unbreaking: { name: 'Unbreaking', max: 3, for: ['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'bow', 'armor', 'shears'] },
+  unbreaking: { name: 'Unbreaking', max: 3, for: ['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'bow', 'armor', 'shears', 'blaster'] },
   protection: { name: 'Protection', max: 4, for: ['armor'] },
   feather_falling: { name: 'Feather Falling', max: 4, for: ['boots'] },
-  power: { name: 'Power', max: 5, for: ['bow'] },
+  power: { name: 'Power', max: 5, for: ['bow', 'blaster'] },
+  rapid_fire: { name: 'Rapid Fire', max: 2, for: ['blaster'] },
   fortune: { name: 'Fortune', max: 3, for: ['pickaxe'] },
   knockback: { name: 'Knockback', max: 2, for: ['sword'] },
 };
@@ -124,6 +125,7 @@ export function itemKind(id) {
   if (d.tool) return d.tool.type;
   if (d.armor) return d.armor.slot === 3 ? 'boots' : 'armor';
   if (id === I.bow) return 'bow';
+  if (ITEMS[id].blaster) return 'blaster';
   return null;
 }
 

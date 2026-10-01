@@ -616,9 +616,9 @@ function gourdTop(t, r, base, stripe) {
 
 function sapling(t, r, kind) {
   t.fill([0, 0, 0], 0);
-  const stem = kind === 'birch' ? [220, 216, 206] : [110, 80, 44];
+  const stem = kind === 'birch' ? [220, 216, 206] : kind === 'dark_oak' ? [70, 50, 30] : [110, 80, 44];
   for (let y = 9; y < 16; y++) t.put(7, y, stem);
-  const leaf = kind === 'birch' ? [130, 170, 80] : kind === 'spruce' ? [60, 110, 70] : [70, 140, 40];
+  const leaf = kind === 'birch' ? [130, 170, 80] : kind === 'spruce' ? [60, 110, 70] : kind === 'jungle' ? [50, 150, 30] : kind === 'dark_oak' ? [40, 100, 30] : [70, 140, 40];
   if (kind === 'spruce') {
     for (let y = 1; y < 12; y++) {
       const w = Math.floor((y - 1) / 2.4);
@@ -727,6 +727,7 @@ function particle(t, name, r) {
     case 'p_spark_dust': disc(8, 8, 2.5, [255, 60, 40]); t.set(7, 7, [255, 160, 140]); break;
     case 'p_void': disc(8, 8, 2, [230, 200, 255]); for (let i = 1; i < 5; i++) { t.set(8, 8 + i, [170, 120, 240]); t.set(8, 8 - i, [170, 120, 240]); t.set(8 + i, 8, [170, 120, 240]); t.set(8 - i, 8, [170, 120, 240]); } break;
     case 'p_fish': disc(8, 8, 3, [200, 230, 255]); t.set(7, 7, [255, 255, 255]); break;
+    case 'p_laser': t.each((x, y) => { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 6) t.set(x, y, [255, 255, 255], Math.round(255 * Math.min(1, (6 - d) / 3))); }); break;
     case 'p_crit': for (let i = 2; i < 14; i++) { t.set(i, 8, [255, 255, 200]); t.set(8, i, [255, 255, 200]); } t.set(6, 6, [255, 240, 180]); t.set(10, 10, [255, 240, 180]); t.set(6, 10, [255, 240, 180]); t.set(10, 6, [255, 240, 180]); break;
     case 'p_explosion':
       t.each((x, y) => { const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8); if (d < 7.5 && r() > 0.1) t.set(x, y, gray(255 - d * 14 - r() * 30)); });
@@ -1202,6 +1203,180 @@ function voidGate(t, frame) {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Round four: the blaster, circuit parts, utility blocks, new biomes.
+function panelMetal(t, r, base, seam) {
+  t.each((x, y) => {
+    let v = 1 + (r() - 0.5) * 0.05;
+    if (x % 8 === 0 || y % 8 === 0) v *= 0.72;
+    else if (x % 8 === 1 || y % 8 === 1) v *= 1.12;
+    t.set(x, y, mul(base, v));
+  });
+  if (seam) for (const [x, y] of [[3, 3], [12, 3], [3, 12], [12, 12]]) t.set(x, y, seam);
+}
+function comparatorTop(t, r, on) {
+  stone(t, r);
+  t.each((x, y) => t.set(x, y, mul(t.get(x, y), 1.05)));
+  const red = on ? [255, 60, 40] : [120, 30, 26];
+  // traces from the two back torches meet the front one
+  for (let x = 4; x <= 12; x++) t.set(x, 12, red);
+  for (let y = 4; y <= 12; y++) t.set(8, y, mul(red, 0.9));
+  t.set(4, 11, red); t.set(12, 11, red);
+  for (let x = 0; x < 16; x++) { t.set(x, 0, gray(150)); t.set(x, 15, gray(90)); }
+}
+function observerFront(t, r) {
+  stone(t, r);
+  t.each((x, y) => t.set(x, y, mul(t.get(x, y), 0.62)));
+  for (let x = 2; x < 14; x++) { t.set(x, 6, [24, 24, 26]); t.set(x, 7, [24, 24, 26]); t.set(x, 9, [24, 24, 26]); t.set(x, 10, [24, 24, 26]); }
+  for (let x = 3; x < 13; x += 3) { t.set(x, 8, [200, 200, 205]); t.set(x + 1, 8, [150, 150, 156]); }
+  for (let i = 0; i < 16; i++) { t.set(i, 0, gray(120)); t.set(0, i, gray(110)); t.set(i, 15, gray(48)); t.set(15, i, gray(52)); }
+}
+function observerBack(t, r, on) {
+  stone(t, r);
+  t.each((x, y) => t.set(x, y, mul(t.get(x, y), 0.7)));
+  t.rect(5, 5, 6, 6, [40, 40, 44]);
+  t.rect(6, 6, 4, 4, on ? [255, 70, 50] : [90, 30, 28]);
+  if (on) { t.set(7, 7, [255, 190, 170]); }
+  for (let i = 0; i < 16; i++) { t.set(i, 0, gray(120)); t.set(0, i, gray(110)); t.set(i, 15, gray(48)); t.set(15, i, gray(52)); }
+}
+function observerSide(t, r) {
+  stone(t, r);
+  t.each((x, y) => t.set(x, y, mul(t.get(x, y), 0.8)));
+  for (let y = 3; y < 13; y++) t.set(8, y, [210, 210, 214]);
+  for (let k = 0; k < 4; k++) { t.set(8 - k, 3 + k, [210, 210, 214]); t.set(8 + k, 3 + k, [210, 210, 214]); }
+  for (let i = 0; i < 16; i++) { t.set(i, 0, gray(130)); t.set(0, i, gray(120)); t.set(i, 15, gray(56)); t.set(15, i, gray(60)); }
+}
+function dropperFront(t, r, vertical) {
+  cobble(t, r, [120, 120, 120], [66, 66, 66], 9);
+  if (vertical) t.each((x, y) => { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 5) t.set(x, y, d < 3.6 ? [16, 16, 18] : [70, 70, 74]); });
+  else { t.rect(4, 4, 8, 8, [70, 70, 74]); t.rect(5, 5, 6, 6, [16, 16, 18]); }
+}
+function anvilTex(t, r, top) {
+  const n = valueNoise(Math.floor(r() * 1e9), 8);
+  t.each((x, y) => {
+    let v = 0.85 + n(x, y) * 0.3 + (r() - 0.5) * 0.05;
+    if (!top && (y === 0 || x === 0)) v *= 1.25;
+    t.set(x, y, mul([62, 62, 66], v));
+  });
+  if (top) for (let y = 3; y < 13; y++) for (let x = 4; x < 12; x++) t.set(x, y, mul([96, 96, 100], 0.9 + r() * 0.2));
+}
+function beaconCore(t) {
+  t.each((x, y) => {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    const star = Math.max(0, 1 - Math.min(Math.abs(x - 7.5), Math.abs(y - 7.5)) / 2.2) * Math.max(0, 1 - d / 8);
+    const c = mix([40, 150, 170], [235, 255, 255], Math.min(1, star + Math.max(0, 1 - d / 5) * 0.7));
+    t.set(x, y, c);
+  });
+}
+function voidChest(t, r, part) {
+  obsidian(t, r);
+  const trim = [120, 70, 190], lit = [210, 160, 255];
+  if (part === 'top') { for (let i = 0; i < 16; i++) { t.set(i, 0, trim); t.set(i, 15, trim); t.set(0, i, trim); t.set(15, i, trim); } t.rect(6, 6, 4, 4, lit); }
+  else {
+    for (let x = 0; x < 16; x++) { t.set(x, 0, trim); t.set(x, 15, trim); t.set(x, 5, mul(trim, 0.8)); }
+    for (let y = 0; y < 16; y++) { t.set(0, y, trim); t.set(15, y, trim); }
+    if (part === 'front') { t.rect(6, 3, 4, 5, [30, 20, 44]); t.rect(7, 4, 2, 3, lit); t.set(7, 6, [255, 240, 255]); }
+  }
+}
+function loomTex(t, r, part) {
+  planks(t, r, part === 'top' ? [150, 112, 64] : [166, 132, 80]);
+  const threads = [[220, 60, 50], [60, 120, 220], [240, 200, 60], [236, 236, 236]];
+  if (part === 'top') for (let x = 2; x < 14; x++) for (let y = 2; y < 14; y++) if (x % 2 === 0) t.set(x, y, threads[(x >> 1) % 4]);
+  if (part === 'front') { t.rect(2, 3, 12, 8, [70, 50, 30]); for (let x = 3; x < 13; x++) for (let y = 4; y < 10; y++) t.set(x, y, (x + y) % 3 ? [236, 236, 230] : [200, 70, 60]); }
+  if (part === 'side') { t.rect(2, 2, 2, 12, [96, 68, 36]); t.rect(12, 2, 2, 12, [96, 68, 36]); }
+}
+function poleTex(t, r) { planks(t, r, [150, 112, 64]); t.each((x, y) => { if (x % 4 === 0) t.set(x, y, mul(t.get(x, y), 0.85)); }); }
+function cauldronTex(t, r, part) {
+  const base = [56, 56, 62];
+  t.each((x, y) => t.set(x, y, mul(base, 0.85 + r() * 0.2)));
+  if (part === 'side') { for (let x = 0; x < 16; x++) { t.set(x, 0, mul(base, 1.4)); t.set(x, 15, mul(base, 0.6)); } t.rect(4, 13, 8, 3, [0, 0, 0], 0); }
+  if (part === 'top') t.rect(2, 2, 12, 12, [0, 0, 0], 0);
+  if (part === 'inner') t.each((x, y) => t.set(x, y, mul([40, 40, 46], 0.85 + r() * 0.2)));
+  if (part === 'bottom') t.each((x, y) => { if ((x - 7.5) ** 2 + (y - 7.5) ** 2 < 20) t.set(x, y, mul(base, 0.5)); });
+}
+function cauldronWater(t, r) {
+  const n = valueNoise(Math.floor(r() * 1e9), 8);
+  t.each((x, y) => t.set(x, y, mul([50, 96, 200], 0.85 + n(x, y) * 0.3)));
+}
+function vinesTex(t, r) {
+  t.fill([0, 0, 0], 0);
+  for (let k = 0; k < 6; k++) {
+    let x = Math.floor(r() * 16), y = 0;
+    while (y < 16) {
+      t.set(x, y, gray(110 + r() * 60));
+      if (r() < 0.45) { const lx = x + (r() < 0.5 ? -1 : 1); t.put(lx, y, gray(150 + r() * 80)); t.put(lx, y + 1, gray(130 + r() * 80)); }
+      if (r() < 0.25) x = (x + (r() < 0.5 ? -1 : 1) + 16) % 16;
+      y++;
+    }
+  }
+}
+function terracottaTex(t, r, base) {
+  const n = valueNoise(Math.floor(r() * 1e9), 8);
+  t.each((x, y) => t.set(x, y, mul(base, 0.94 + n(x, y) * 0.1 + (r() - 0.5) * 0.04)));
+}
+function myceliumTop(t, r) {
+  speckle(t, r, [110, 94, 112], 14, 1.2);
+  for (let i = 0; i < 26; i++) t.set(Math.floor(r() * 16), Math.floor(r() * 16), r() < 0.5 ? [150, 130, 156] : [84, 70, 88]);
+}
+function myceliumSide(t, r) {
+  dirt(t, r);
+  for (let x = 0; x < 16; x++) { const d = 2 + Math.floor(r() * 3); for (let y = 0; y < d; y++) t.set(x, y, mul([110, 94, 112], 0.85 + r() * 0.3)); }
+}
+function shroomBlock(t, r, red) {
+  const base = red ? [190, 40, 34] : [146, 108, 78];
+  speckle(t, r, base, 8, 0.6);
+  if (red) for (let i = 0; i < 6; i++) { const x = Math.floor(r() * 14) + 1, y = Math.floor(r() * 14) + 1; t.rect(x, y, 2, 2, [236, 230, 220]); }
+}
+function stemTex(t, r) {
+  t.each((x, y) => t.set(x, y, mul([214, 206, 188], 0.9 + r() * 0.12 - (x % 5 === 0 ? 0.08 : 0))));
+}
+function packedIce(t, r) {
+  const n = valueNoise(Math.floor(r() * 1e9), 8);
+  t.each((x, y) => t.set(x, y, mul([150, 186, 236], 0.92 + n(x, y) * 0.14)));
+  for (let i = 0; i < 5; i++) { let x = Math.floor(r() * 16), y = Math.floor(r() * 16); for (let k = 0; k < 6; k++) { t.set(x, y, [220, 236, 255]); x = (x + (r() < 0.5 ? 1 : 0)) % 16; y = (y + 1) % 16; } }
+}
+function tidestone(t, r) {
+  const n = fbm(Math.floor(r() * 1e9), [4, 8], [0.6, 0.4]);
+  t.each((x, y) => { const v = n(x, y); t.set(x, y, mix([70, 140, 130], [110, 190, 170], v + (r() - 0.5) * 0.15)); });
+}
+function tideBricks(t, r) { bricks(t, r, [100, 176, 160], [56, 110, 100], 2, 8); }
+function darkTide(t, r) {
+  t.each((x, y) => {
+    let c = mul([46, 82, 72], 0.9 + r() * 0.15);
+    if (x === 0 || y === 0 || x === 15 || y === 15) c = mul([46, 82, 72], 0.7);
+    if ((x === 4 || x === 11) && y > 3 && y < 12) c = mul([46, 82, 72], 1.25);
+    t.set(x, y, c);
+  });
+}
+function lumenLantern(t, r) {
+  t.each((x, y) => {
+    const cell = ((x >> 2) + (y >> 2)) % 2;
+    let c = cell ? [190, 234, 226] : [220, 250, 244];
+    if (x % 4 === 0 || y % 4 === 0) c = [130, 180, 176];
+    t.set(x, y, mul(c, 0.94 + r() * 0.08));
+  });
+}
+function spongeTex(t, r, wet) {
+  const base = wet ? [170, 160, 60] : [214, 200, 70];
+  t.each((x, y) => t.set(x, y, mul(base, 0.9 + r() * 0.15)));
+  for (let i = 0; i < 18; i++) { const x = Math.floor(r() * 15), y = Math.floor(r() * 15); t.set(x, y, mul(base, 0.55)); if (r() < 0.5) t.set(x + 1, y, mul(base, 0.65)); }
+}
+function chiseledSandstone(t, r) {
+  sandLike(t, r, [216, 202, 150], 8);
+  const d = [168, 150, 100];
+  for (let i = 0; i < 16; i++) { t.set(i, 1, d); t.set(i, 14, d); }
+  for (const [x, y] of [[7, 4], [8, 4], [6, 5], [9, 5], [5, 6], [10, 6], [7, 7], [8, 7], [6, 8], [9, 8], [7, 9], [8, 9], [7, 10], [8, 10], [5, 11], [10, 11], [6, 11], [9, 11]]) t.set(x, y, d);
+}
+function pumpkinFace(t, r, lit) {
+  gourdSide(t, r, [222, 124, 28], [180, 90, 16]);
+  const c = lit ? [255, 220, 90] : [40, 24, 8];
+  for (const [x, y] of [[3, 4], [4, 4], [3, 5], [4, 5], [11, 4], [12, 4], [11, 5], [12, 5]]) t.set(x, y, c);
+  for (let x = 3; x < 13; x++) t.set(x, 10, c);
+  for (const x of [3, 5, 7, 9, 11]) t.set(x, 11, c);
+  for (const x of [4, 6, 8, 10, 12]) t.set(x, 9, c);
+}
+
 function paintBlock(name, frame) {
   const t = new Tex();
   const r = rng(hashSeed('bf:' + name) + frame * 7919);
@@ -1392,6 +1567,65 @@ function paintBlock(name, frame) {
     case 'water': water(t, frame); break;
     case 'lava': lava(t, frame); break;
     case 'white': t.fill([255, 255, 255]); break;
+    case 'blaster_body': panelMetal(t, r, [52, 58, 78], [120, 130, 160]); break;
+    case 'blaster_metal': panelMetal(t, r, [186, 194, 206], null); break;
+    case 'comparator': comparatorTop(t, r, false); break;
+    case 'comparator_on': comparatorTop(t, r, true); break;
+    case 'observer_front': observerFront(t, r); break;
+    case 'observer_back': observerBack(t, r, false); break;
+    case 'observer_back_on': observerBack(t, r, true); break;
+    case 'observer_side': observerSide(t, r); break;
+    case 'dropper_front': dropperFront(t, r, false); break;
+    case 'dropper_front_v': dropperFront(t, r, true); break;
+    case 'anvil_top': anvilTex(t, r, true); break;
+    case 'anvil_side': anvilTex(t, r, false); break;
+    case 'beacon_core': beaconCore(t); break;
+    case 'void_chest_top': voidChest(t, r, 'top'); break;
+    case 'void_chest_side': voidChest(t, r, 'side'); break;
+    case 'void_chest_front': voidChest(t, r, 'front'); break;
+    case 'loom_top': loomTex(t, r, 'top'); break;
+    case 'loom_side': loomTex(t, r, 'side'); break;
+    case 'loom_front': loomTex(t, r, 'front'); break;
+    case 'banner_pole': poleTex(t, r); break;
+    case 'cauldron_side': cauldronTex(t, r, 'side'); break;
+    case 'cauldron_top': cauldronTex(t, r, 'top'); break;
+    case 'cauldron_inner': cauldronTex(t, r, 'inner'); break;
+    case 'cauldron_bottom': cauldronTex(t, r, 'bottom'); break;
+    case 'cauldron_water': cauldronWater(t, r); break;
+    case 'jungle_log': logSide(t, r, [104, 82, 40], [58, 44, 18], [140, 116, 60]); break;
+    case 'jungle_log_top': logTop(t, r, [176, 132, 84], [100, 80, 40]); break;
+    case 'jungle_planks': planks(t, r, [168, 118, 82]); break;
+    case 'jungle_leaves': leaves(t, r, 0.12); break;
+    case 'jungle_sapling': sapling(t, r, 'jungle'); break;
+    case 'vines': vinesTex(t, r); break;
+    case 'red_sand': sandLike(t, r, [192, 102, 36]); break;
+    case 'terracotta': terracottaTex(t, r, [152, 94, 66]); break;
+    case 'white_terracotta': terracottaTex(t, r, [210, 178, 160]); break;
+    case 'orange_terracotta': terracottaTex(t, r, [162, 84, 38]); break;
+    case 'yellow_terracotta': terracottaTex(t, r, [186, 134, 36]); break;
+    case 'brown_terracotta': terracottaTex(t, r, [78, 52, 36]); break;
+    case 'red_terracotta': terracottaTex(t, r, [144, 62, 48]); break;
+    case 'light_gray_terracotta': terracottaTex(t, r, [136, 106, 98]); break;
+    case 'mycelium_top': myceliumTop(t, r); break;
+    case 'mycelium_side': myceliumSide(t, r); break;
+    case 'red_mushroom_block': shroomBlock(t, r, true); break;
+    case 'brown_mushroom_block': shroomBlock(t, r, false); break;
+    case 'mushroom_stem': stemTex(t, r); break;
+    case 'dark_oak_log': logSide(t, r, [62, 46, 28], [34, 24, 14], [80, 62, 40]); break;
+    case 'dark_oak_log_top': logTop(t, r, [94, 70, 42], [56, 40, 22]); break;
+    case 'dark_oak_planks': planks(t, r, [76, 52, 28]); break;
+    case 'dark_oak_leaves': leaves(t, r, 0.1); break;
+    case 'dark_oak_sapling': sapling(t, r, 'dark_oak'); break;
+    case 'packed_ice': packedIce(t, r); break;
+    case 'tidestone': tidestone(t, r); break;
+    case 'tidestone_bricks': tideBricks(t, r); break;
+    case 'dark_tidestone': darkTide(t, r); break;
+    case 'lumen_lantern': lumenLantern(t, r); break;
+    case 'sponge': spongeTex(t, r, false); break;
+    case 'wet_sponge': spongeTex(t, r, true); break;
+    case 'chiseled_sandstone': chiseledSandstone(t, r); break;
+    case 'pumpkin_face': pumpkinFace(t, r, false); break;
+    case 'pumpkin_face_lit': pumpkinFace(t, r, true); break;
     default:
       if (name.startsWith('crack')) crack(t, +name.slice(5));
       else if (/^wheat\d$/.test(name)) wheat(t, r, +name.slice(5));
@@ -1609,6 +1843,20 @@ function blockSprite(name, r) {
       s.poly([[1, 5], [15, 5], [15, 9], [1, 9]], s.mat([[220, 216, 210], [248, 244, 238], [255, 255, 255]]));
       const ch = s.mat([[160, 20, 30], [210, 30, 40], [250, 110, 110]]);
       s.put(4, 4, ch); s.put(8, 3, ch); s.put(12, 4, ch);
+      break;
+    }
+    case 'comparator': {
+      s.poly([[1, 9], [15, 9], [15, 13], [1, 13]], s.mat(stoneM));
+      const red = s.mat([[150, 20, 16], [230, 50, 36], [255, 140, 120]]);
+      s.line(4, 5, 4, 8, s.mat(HANDLE)); s.line(11, 5, 11, 8, s.mat(HANDLE)); s.line(8, 7, 8, 8, s.mat(HANDLE));
+      s.put(4, 4, red); s.put(11, 4, red); s.put(8, 6, red); s.line(4, 10, 11, 10, red);
+      break;
+    }
+    case 'cauldron': {
+      const m = s.mat([[40, 40, 46], [72, 72, 80], [110, 110, 120]]);
+      s.poly([[2, 3], [14, 3], [13, 12], [3, 12]], m);
+      s.poly([[4, 4], [12, 4], [12, 6], [4, 6]], s.mat([[16, 16, 20], [26, 26, 30], [40, 40, 46]]));
+      s.put(3, 13, m); s.put(4, 13, m); s.put(11, 13, m); s.put(12, 13, m);
       break;
     }
     default: s.disc(8, 8, 5, 5, s.mat([[255, 0, 255], [255, 0, 255], [255, 0, 255]]));
@@ -1940,7 +2188,87 @@ function paintItem(name) {
       s.line(3, 7, 13, 7, s.mat([[150, 100, 60], [190, 140, 90], [220, 180, 130]]));
       break;
     }
-    default: s.disc(8, 8, 5, 5, s.mat([[255, 0, 255], [255, 0, 255], [255, 0, 255]]));
+    case 'photon_blaster': {
+      const gun = s.mat([[30, 34, 48], [56, 62, 86], [96, 104, 132]]);
+      const steel = s.mat([[112, 120, 134], [176, 184, 198], [228, 234, 244]]);
+      const glow = s.mat([[20, 150, 190], [70, 226, 255], [210, 255, 255]]);
+      s.poly([[1, 6], [11, 6], [11, 9.5], [1, 9.5]], gun);            // body
+      s.poly([[11, 6.6], [15, 6.6], [15, 8.6], [11, 8.6]], steel);    // barrel
+      s.poly([[3, 3.6], [9, 3.6], [9, 6], [3, 6]], steel);            // sight rail
+      s.poly([[2.5, 9], [6, 9], [5, 14.5], [1.5, 14.5]], gun);        // grip
+      s.line(7, 9, 8, 11, steel);                                     // trigger guard
+      s.line(2, 7, 9, 7, glow);                                       // energy line
+      s.put(12, 6, glow); s.put(12, 9, glow); s.put(12, 7, glow); s.put(12, 8, glow); // emitter ring
+      s.put(15, 7, glow); s.put(15, 8, glow); s.put(9, 4, glow);
+      break;
+    }
+    case 'energy_cell': {
+      const steel = s.mat([[112, 120, 134], [176, 184, 198], [228, 234, 244]]);
+      const glow = s.mat([[20, 150, 190], [70, 226, 255], [210, 255, 255]]);
+      s.poly([[5, 4], [11, 4], [11, 13], [5, 13]], glow);
+      s.poly([[4.5, 2.5], [11.5, 2.5], [11.5, 4], [4.5, 4]], steel);
+      s.poly([[4.5, 13], [11.5, 13], [11.5, 14.5], [4.5, 14.5]], steel);
+      s.poly([[7, 1], [9, 1], [9, 2.5], [7, 2.5]], steel);
+      s.line(6, 6, 10, 6, steel); s.line(6, 9, 10, 9, steel);
+      break;
+    }
+    case 'sky_rocket': {
+      const tube = s.mat([[150, 30, 30], [210, 50, 46], [250, 120, 110]]);
+      const band = s.mat([[200, 170, 60], [240, 210, 90], [255, 245, 170]]);
+      const cone = s.mat([[110, 110, 120], [170, 170, 180], [220, 220, 230]]);
+      s.poly([[6, 5], [10, 5], [10, 12], [6, 12]], tube);
+      s.line(6, 8, 9, 8, band);
+      s.poly([[6, 5], [8, 1.5], [10, 5]], cone);
+      s.line(8, 12, 8, 15, s.mat(HANDLE));
+      break;
+    }
+    case 'saddle': {
+      const lea = s.mat([[96, 52, 26], [146, 86, 46], [190, 126, 80]]);
+      s.poly([[2, 7], [6, 4], [10, 4], [14, 7], [13, 10], [3, 10]], lea);
+      s.line(4, 10, 4, 14, s.mat([[60, 40, 24], [90, 60, 36], [120, 84, 54]]));
+      s.disc(4.5, 14, 1.5, 1.5, s.mat(MATERIAL.iron));
+      s.line(11, 10, 11, 14, s.mat([[60, 40, 24], [90, 60, 36], [120, 84, 54]]));
+      break;
+    }
+    case 'name_tag': {
+      s.poly([[3, 6], [12, 6], [14, 9], [12, 12], [3, 12]], s.mat([[180, 170, 150], [226, 218, 200], [250, 246, 236]]));
+      s.disc(11.5, 9, 1, 1, s.mat([[60, 60, 60], [90, 90, 90], [120, 120, 120]]));
+      s.line(12, 8, 14, 3, s.mat([[150, 150, 150], [200, 200, 200], [240, 240, 240]]));
+      break;
+    }
+    case 'item_frame': {
+      s.poly([[1, 1], [15, 1], [15, 15], [1, 15]], s.mat(HANDLE));
+      s.poly([[3, 3], [13, 3], [13, 13], [3, 13]], s.mat([[110, 70, 40], [150, 100, 62], [180, 130, 90]]));
+      break;
+    }
+    case 'painting': {
+      s.poly([[1, 2], [15, 2], [15, 14], [1, 14]], s.mat(HANDLE));
+      s.poly([[2.5, 3.5], [13.5, 3.5], [13.5, 8], [2.5, 8]], s.mat([[90, 150, 220], [130, 190, 240], [190, 220, 255]]));
+      s.poly([[2.5, 8], [13.5, 8], [13.5, 12.5], [2.5, 12.5]], s.mat([[60, 120, 40], [90, 160, 60], [130, 200, 90]]));
+      s.disc(10, 5.5, 1.5, 1.5, s.mat([[230, 200, 60], [255, 230, 90], [255, 250, 200]]));
+      break;
+    }
+    case 'star_core': {
+      const c = s.mat([[40, 150, 170], [120, 230, 240], [240, 255, 255]]);
+      s.poly([[8, 1], [10, 6], [15, 8], [10, 10], [8, 15], [6, 10], [1, 8], [6, 6]], c);
+      break;
+    }
+    case 'tide_shard': s.poly([[4, 13], [6, 4], [10, 2], [12, 8], [8, 13]], s.mat([[60, 130, 120], [100, 180, 166], [170, 230, 214]])); break;
+    case 'tide_crystal': {
+      const c = s.mat([[120, 200, 190], [190, 244, 232], [245, 255, 252]]);
+      s.disc(6, 9, 2.5, 3, c); s.disc(10.5, 7, 2, 3.2, c); s.disc(8.5, 11.5, 2, 2, c);
+      break;
+    }
+    default:
+      if (name.endsWith('_banner')) {
+        const BC = { white: [236, 236, 236], red: [176, 44, 40], orange: [232, 120, 30], yellow: [240, 200, 50], green: [84, 140, 40], blue: [52, 70, 170], purple: [124, 54, 170], black: [40, 40, 44] };
+        const col = BC[name.slice(0, -7)] || [200, 200, 200];
+        s.poly([[4, 2], [12, 2], [12, 13], [8, 11], [4, 13]], s.mat(tone3(col)));
+        s.line(2, 1, 13, 1, s.mat(HANDLE));
+        s.line(8, 13, 8, 15, s.mat(HANDLE));
+        break;
+      }
+      s.disc(8, 8, 5, 5, s.mat([[255, 0, 255], [255, 0, 255], [255, 0, 255]]));
   }
   void r;
   return s.render();

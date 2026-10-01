@@ -5,6 +5,8 @@ import { B, SOLID, isLiquid, REPLACEABLE, BLOCKS } from './blocks.js';
 import { I, ITEMS, maxStack } from './items.js';
 import { MODELS } from './models.js';
 import { potionEffect, addEffect, EFFECTS } from './effects.js';
+import { laserTrail, laserImpact, laserHitBlock } from './laser.js';
+import { CREATURE_TYPES } from './creatures.js';
 
 let nextEntityId = 1;
 
@@ -98,6 +100,7 @@ export const MOB_TYPES = {
   imp: { model: 'imp', health: 14, wander: 0.04, chase: 0.072, hostile: true, fireproof: true, ignites: true, damage: 3, xp: 6, drops: (r) => [[I.ember_dust, pick(r, 3)], [I.gold_nugget, pick(r, 2)], ...(r() < 0.3 ? [[I.imp_horn, 1]] : [])], sound: 'imp' },
   gloamer: { model: 'gloamer', health: 40, wander: 0.03, chase: 0.1, hostile: true, neutral: true, teleports: true, damage: 6, xp: 5, drops: (r) => (r() < 0.5 ? [[I.void_pearl, 1]] : []), sound: 'gloamer' },
 };
+Object.assign(MOB_TYPES, CREATURE_TYPES);
 // Creatures that are harmed by healing and healed by harming.
 export const UNDEAD = new Set(['ghoul', 'archer']);
 
@@ -121,14 +124,29 @@ export class Mob extends Entity {
     this.love = 0; this.breedCooldown = 0;
     this.eggTimer = 6000 + Math.floor(Math.random() * 6000);
     this.profession = opts.profession || null;
-    this.home = opts.home || (this.def.villager ? { x, y, z } : null);
+    this.home = opts.home || (this.def.villager || type === 'sentinel' ? { x, y, z } : null);
     this.trades = opts.trades || null;
     this.armor = opts.armor || null; // [helmet, chest, legs, boots] item ids
     this.aim = 0;
     this.lastHitBy = null;
     this.leapCooldown = 0;
+    // taming, riding and naming (round four creatures)
+    this.tamed = !!opts.tamed; this.owner = opts.owner || null; this.sitting = !!opts.sitting;
+    this.saddled = !!opts.saddled; this.temper = opts.temper || 0;
+    this.variant = opts.variant ?? (type === 'steed' ? ['brown', 'white', 'black'][Math.floor(Math.random() * 3)] : null);
+    this.speedAttr = opts.speedAttr ?? (type === 'steed' ? 0.2 + Math.random() * 0.1 : undefined);
+    this.jumpStr = opts.jumpStr ?? (type === 'steed' ? 0.55 + Math.random() * 0.2 : undefined);
+    this.maxHp = opts.maxHp;
+    this.customName = opts.customName || null;
+    this.persistent = !!opts.persistent;
+    this.rider = null;
     if (this.baby) this.resize();
   }
+
+  get maxHealth() { return this.maxHp ?? this.def.health; }
+  get vehicle() { return !!this.def.rideable && !this.baby; }
+  // where a rider sits
+  seat() { return [this.x, this.y + this.h * 0.72, this.z]; }
 
   get hostile() { return !!this.def.hostile; }
   get isMob() { return true; }
@@ -160,9 +178,18 @@ export class Mob extends Entity {
     this.w = (m.width / 2) * s; this.h = m.height * s;
   }
 
-  hurt(game, dmg, fromX, fromZ, source) {
+  hurt(game, dmg, fromX, fromZ, source, attacker = null) {
     if (this.dead || this.invuln > 0) return false;
     if (this.def.fireproof && (source === 'fire' || source === 'lava')) return false;
+    if (this.def.noFall && source === 'fall') return false;
+    if (source === 'fire' && this.effects && this.effects.fire_resistance) return false;
+    if (!attacker && (source === 'player' || source === 'arrow_player')) attacker = game.player;
+    if (!attacker && typeof source === 'string' && source.startsWith('remote:') && game.net) attacker = game.net.remote.get(source.slice(7)) || null;
+    // tame creatures never turn on their owner
+    if (this.tamed && attacker && attacker.isPlayer && this.owner === game.nameOf(attacker)) { if (source === 'player') return false; }
+    else if (attacker && (this.def.neutral || this.def.noPanic) && !this.def.hostile) { this.angry = 600; this.angerTarget = attacker; }
+    if (this.def.spiky && attacker && attacker.isPlayer && (source === 'player' || source.startsWith('remote:')) && attacker.damage) attacker.damage(game, 2, 'thorns', this.x, this.z);
+    if (this.sitting && attacker) this.sitting = false;
     if (this.def.teleports && (source === 'arrow_player' || source === 'arrow') && this.teleport(game)) return false;
     const byPlayer = source === 'player' || source === 'arrow_player' || (typeof source === 'string' && source.startsWith('remote:'));
     if (this.def.neutral && byPlayer) this.angry = 600;
@@ -173,8 +200,8 @@ export class Mob extends Entity {
       const dx = this.x - fromX, dz = this.z - fromZ, l = Math.hypot(dx, dz) || 1;
       this.vx += (dx / l) * 0.4; this.vz += (dz / l) * 0.4; this.vy = Math.max(this.vy, 0.36);
     }
-    if (!this.hostile) { this.panic = 60 + Math.floor(Math.random() * 40); this.love = 0; }
-    if (this.hostile && source === 'player') this.target = game.player;
+    if (!this.hostile && !this.def.noPanic && !this.tamed) { this.panic = 60 + Math.floor(Math.random() * 40); this.love = 0; }
+    if (this.hostile && attacker && attacker !== this) this.target = attacker;
     game.audio.mob(this.def.sound, 'hurt', this.x, this.y, this.z);
     if (this.health <= 0) {
       this.dead = true; this.deathTime = 0;
@@ -191,7 +218,7 @@ export class Mob extends Entity {
       const amt = Math.round(6 * (1 << fx.amp) * scale);
       const harm = (fx.effect === 'instant_damage') !== undead;
       if (harm) this.hurt(game, amt, undefined, undefined, 'magic');
-      else this.health = Math.min(this.def.health, this.health + amt * 0.67);
+      else this.health = Math.min(this.maxHealth, this.health + amt * 0.67);
       return;
     }
     if (fx.effect === 'poison' && undead) return;
@@ -233,12 +260,13 @@ export class Mob extends Entity {
       }
       return;
     }
+    if (this.noAI) { this.physics(world, 0, 0); return; }
     if (this.growth < 0) { this.growth++; if (this.growth === 0) this.resize(); }
     if (this.angry > 0) this.angry--;
     if (this.effects) {
       for (const [name, e] of Object.entries(this.effects)) {
         if (name === 'poison' && this.age % Math.max(1, 25 >> e.amp) === 0 && this.health > 1) this.hurt(game, 1, undefined, undefined, 'magic');
-        if (name === 'regeneration' && this.age % Math.max(1, 50 >> e.amp) === 0) this.health = Math.min(this.def.health, this.health + 1);
+        if (name === 'regeneration' && this.age % Math.max(1, 50 >> e.amp) === 0) this.health = Math.min(this.maxHealth, this.health + 1);
         if (--e.time <= 0) delete this.effects[name];
       }
     }
@@ -256,8 +284,10 @@ export class Mob extends Entity {
     const p = game.focusPlayer ? game.focusPlayer(this) : game.player;
     const pdx = p.x - this.x, pdz = p.z - this.z, pdist = Math.hypot(pdx, pdz, p.y - this.y);
 
+    if (this.convertTo) { this.type = this.convertTo; this.def = MOB_TYPES[this.type]; this.convertTo = null; }
     if (this.hostile) {
-      if (this.target && (p.dead || p.creative || p.spectator || pdist > 40)) this.target = null;
+      const T0 = this.target;
+      if (T0 && (T0.removed || T0.dead || (!T0.isMob && (T0.creative || T0.spectator)) || Math.hypot(T0.x - this.x, T0.z - this.z) > 40)) this.target = null;
       if (!this.target && this.wantsTarget(game, p, pdist)) this.target = p;
       if (this.target && this.def.nightOnly && this.lastHitBy !== 'player' && game.isDay() && Math.random() < 0.01) this.target = null;
       if (this.def.burns && game.isDay() && !this.inWater && !(this.armor && this.armor[0])) {
@@ -282,35 +312,51 @@ export class Mob extends Entity {
       this.headPitch = Math.max(-0.7, Math.min(0.7, -Math.atan2(y - (this.y + this.h * 0.85), Math.hypot(dx, dz))));
     };
 
-    if (this.target && this.def.ranged) {
+    const custom = this.def.ai ? this.def.ai(this, game, p, pdist, lookAt) : null;
+    if (custom && custom.moved) {
+      if (this.swing > 0) this.swing--;
+      if (this.hurtTime > 0 && this.y < -64) this.hurt(game, 100);
+      if (--this.idleSound <= 0) { this.idleSound = 160 + Math.floor(Math.random() * 300); if (pdist < 20) game.audio.mob(this.def.sound, 'idle', this.x, this.y, this.z); }
+      return;
+    }
+    const T = this.target;
+    const tdx = T ? T.x - this.x : 0, tdz = T ? T.z - this.z : 0, tdist = T ? Math.hypot(tdx, tdz, T.y - this.y) : 0;
+    if (custom) {
+      tx = custom.tx; tz = custom.tz; speed = custom.speed || 0;
+      if (custom.steer) this.steer = custom.steer;
+    } else if (T && this.def.ranged) {
       // keep a middle distance and shoot
-      const d = Math.hypot(pdx, pdz);
-      const see = game.canSee(this, p);
-      lookAt(p.x, p.y + 1.5, p.z, true);
-      if (d > 11 || !see) { tx = p.x; tz = p.z; speed = this.def.chase; }
-      else if (d < 5) { tx = this.x - pdx; tz = this.z - pdz; speed = this.def.chase; }
-      else { const s = Math.sin(this.age / 30) > 0 ? 1 : -1; tx = this.x - pdz * s; tz = this.z + pdx * s; speed = this.def.wander; }
+      const d = Math.hypot(tdx, tdz);
+      const see = game.canSee(this, T);
+      lookAt(T.x, T.y + (T.h || 1.8) * 0.8, T.z, true);
+      if (d > 11 || !see) { tx = T.x; tz = T.z; speed = this.def.chase; }
+      else if (d < 5) { tx = this.x - tdx; tz = this.z - tdz; speed = this.def.chase; }
+      else { const s = Math.sin(this.age / 30) > 0 ? 1 : -1; tx = this.x - tdz * s; tz = this.z + tdx * s; speed = this.def.wander; }
       if (see && d < 16) {
         this.aim++;
         if (this.aim >= 30 && this.attackCooldown <= 0) {
           this.attackCooldown = 20 + Math.floor(Math.random() * 20);
           this.aim = 0;
-          game.shootArrow(this, p.x, p.y + p.h * 0.6, p.z, 1.6, 6);
+          game.shootArrow(this, T.x, T.y + (T.h || 1.8) * 0.6, T.z, 1.6, 6);
         }
       } else this.aim = 0;
-    } else if (this.target) {
-      tx = p.x; tz = p.z; speed = this.def.chase;
-      lookAt(p.x, p.y + 1.5, p.z, false);
-      if (this.def.climb && pdist < 3.5 && pdist > 1.2 && this.onGround && this.leapCooldown <= 0) {
-        const l = Math.hypot(pdx, pdz) || 1;
-        this.vx += (pdx / l) * 0.35; this.vz += (pdz / l) * 0.35; this.vy = 0.36;
+    } else if (T) {
+      tx = T.x; tz = T.z; speed = this.def.chase;
+      lookAt(T.x, T.y + (T.h || 1.8) * 0.8, T.z, false);
+      if (this.def.climb && tdist < 3.5 && tdist > 1.2 && this.onGround && this.leapCooldown <= 0) {
+        const l = Math.hypot(tdx, tdz) || 1;
+        this.vx += (tdx / l) * 0.35; this.vz += (tdz / l) * 0.35; this.vy = 0.36;
         this.leapCooldown = 30;
       }
-      const reach = this.def.climb ? 1.8 : 1.6;
-      if (pdist < reach && Math.abs(p.y - this.y) < 1.5 && this.attackCooldown <= 0) {
+      const reach = (this.def.climb ? 1.8 : 1.6) + (T.isMob ? T.w : 0);
+      if (tdist < reach && Math.abs(T.y - this.y) < 1.5 && this.attackCooldown <= 0) {
         this.attackCooldown = 20;
         this.swing = 10;
-        if (p.damage(game, this.def.damage, 'mob:' + this.type, this.x, this.z) && this.def.ignites) p.fireTicks = Math.max(p.fireTicks || 0, 80);
+        if (T.isMob) T.hurt(game, this.def.damage, this.x, this.z, 'mob:' + this.type, this);
+        else {
+          if (T === game.player) game.lastHurtBy = this;
+          if (T.damage(game, this.def.damage, 'mob:' + this.type, this.x, this.z) && this.def.ignites) T.fireTicks = Math.max(T.fireTicks || 0, 80);
+        }
       }
     } else if (this.panic > 0) {
       this.panic--;
@@ -362,11 +408,11 @@ export class Mob extends Entity {
       const dx = tx - this.x, dz = tz - this.z, d = Math.hypot(dx, dz);
       if (d > 0.6) {
         const want = Math.atan2(dx, -dz);
-        if (!(this.target && this.def.ranged)) this.bodyYaw += wrap(want - this.bodyYaw) * 0.3;
+        if (!(this.target && this.def.ranged)) this.bodyYaw += wrap(want - this.bodyYaw) * (this.steer || 0.3);
         const mv = this.target && this.def.ranged ? want : this.bodyYaw;
         ax = Math.sin(mv) * speed; az = -Math.cos(mv) * speed;
         // don't walk off ledges higher than 3 blocks unless chasing
-        if (!this.target && this.onGround) {
+        if (!this.target && this.onGround && !this.rider) {
           const fx = Math.floor(this.x + Math.sin(mv) * 0.8), fz = Math.floor(this.z - Math.cos(mv) * 0.8);
           let drop = 0;
           for (let y = Math.floor(this.y) - 1; y > Math.floor(this.y) - 5; y--) { const id = world.getBlock(fx, y, fz); if (SOLID[id] || isLiquid(id)) break; drop++; }
@@ -395,8 +441,10 @@ export class Mob extends Entity {
     else if (this.inWater) this.vy += 0.02;
     if (this.inLava && this.def.fireproof) this.vy += 0.05;
 
+    this.steer = 0;
+    if (this.rider && (this.rider.removed || this.rider.vehicle !== this)) this.rider = null;
     if (this.onGround) {
-      if (this.fallDistance > 3 && !isChicken) this.hurt(game, Math.ceil(this.fallDistance - 3), undefined, undefined, 'fall');
+      if (this.fallDistance > 3 && !isChicken) this.hurt(game, Math.ceil(this.fallDistance - (this.def.rideable ? 5 : 3)), undefined, undefined, 'fall');
       this.fallDistance = 0;
     }
     if (this.y < -64) this.hurt(game, 100);
@@ -450,6 +498,15 @@ export class Mob extends Entity {
 
   interact(game, stack) {
     if (this.dead) return false;
+    if (stack && stack.id === I.name_tag && !this.hostile) {
+      this.customName = (stack.label || '').slice(0, 24) || this.customName || 'Buddy';
+      this.persistent = true;
+      return 'consume';
+    }
+    if (this.def.interact) {
+      const r = this.def.interact(this, game, stack);
+      if (r !== undefined) return r;
+    }
     if (this.type === 'cow' && !this.baby && stack && stack.id === I.bucket) {
       game.replaceHeld({ id: I.milk_bucket, count: 1 });
       game.audio.play('milk', this.x, this.y + 1, this.z);
@@ -476,11 +533,18 @@ export class Mob extends Entity {
     return {
       type: this.type, x: this.x, y: this.y, z: this.z, health: this.health, sheared: this.sheared, yaw: this.yaw,
       growth: this.growth, profession: this.profession, home: this.home, trades: this.trades, armor: this.armor,
+      tamed: this.tamed || undefined, owner: this.owner || undefined, sitting: this.sitting || undefined, saddled: this.saddled || undefined,
+      temper: this.temper || undefined, variant: this.variant || undefined, speedAttr: this.speedAttr, jumpStr: this.jumpStr,
+      maxHp: this.maxHp, customName: this.customName || undefined, persistent: this.persistent || undefined,
     };
   }
 
   static load(m) {
-    const mob = new Mob(m.type, m.x, m.y, m.z, { profession: m.profession, home: m.home, trades: m.trades, armor: m.armor, baby: (m.growth || 0) < 0 });
+    const mob = new Mob(m.type, m.x, m.y, m.z, {
+      profession: m.profession, home: m.home, trades: m.trades, armor: m.armor, baby: (m.growth || 0) < 0,
+      tamed: m.tamed, owner: m.owner, sitting: m.sitting, saddled: m.saddled, temper: m.temper, variant: m.variant,
+      speedAttr: m.speedAttr, jumpStr: m.jumpStr, maxHp: m.maxHp, customName: m.customName, persistent: m.persistent,
+    });
     mob.health = m.health ?? mob.health; mob.sheared = !!m.sheared; mob.bodyYaw = mob.yaw = m.yaw || 0;
     if (m.growth) { mob.growth = m.growth; mob.resize(); }
     return mob;
@@ -553,6 +617,7 @@ export class Projectile extends Entity {
       consider(game.player);
       if (game.remotePlayers) for (const rp of game.remotePlayers()) if (rp !== this.owner) consider(rp);
       if (target) {
+        if (this.kind === 'laser') { this.x += dx * best; this.y += dy * best; this.z += dz * best; }
         this.hitEntity(game, target, sp);
         return;
       }
@@ -564,6 +629,12 @@ export class Projectile extends Entity {
       this.x += this.vx; this.y += this.vy; this.z += this.vz;
     }
     this.checkFluids(world);
+    if (this.kind === 'laser') {
+      // light travels straight, fizzles in water and fades after two seconds
+      laserTrail(this, game);
+      if (this.age > 40 || this.y < -64) this.removed = true;
+      return;
+    }
     const drag = this.inWater ? 0.6 : 0.99;
     this.vx *= drag; this.vy *= drag; this.vz *= drag;
     this.vy -= this.kind === 'arrow' ? 0.05 : 0.03;
@@ -574,6 +645,17 @@ export class Projectile extends Entity {
 
   hitEntity(game, e, speed) {
     this.removed = true;
+    if (this.kind === 'laser') {
+      const o = this.owner;
+      const src = o && o.isPlayer ? (o.isRemote ? 'remote:' + o.peer : 'player') : 'laser';
+      const dmg = Math.round(this.damage);
+      laserImpact(game, this.x, this.y, this.z);
+      if (e.isRemote) { if (game.net) game.net.hitRemote(e, dmg, 'laser', this.x - this.vx, this.z - this.vz); }
+      else if (e.isPlayer) e.damage(game, dmg, 'laser', this.x - this.vx, this.z - this.vz);
+      else if (e instanceof Mob) { if (e.hurt(game, dmg, this.x - this.vx, this.z - this.vz, src)) e.fire = Math.max(e.fire, 30); }
+      else if (e.hit) e.hit(game, dmg, src);
+      return;
+    }
     if (this.kind === 'arrow') {
       let dmg = Math.ceil(speed * this.damage);
       if (this.crit) dmg += Math.floor(Math.random() * (dmg / 2 + 2));
@@ -581,7 +663,7 @@ export class Projectile extends Entity {
       if (e.isRemote) game.net && game.net.hitRemote(e, dmg, 'arrow', this.x - this.vx, this.z - this.vz);
       else if (e.isPlayer) e.damage(game, dmg, 'arrow', this.x - this.vx, this.z - this.vz);
       else if (e instanceof Mob) {
-        if (e.hurt(game, dmg, this.x - this.vx, this.z - this.vz, src) || !e.def.teleports) game.audio.play('arrow_hit', this.x, this.y, this.z);
+        if (e.hurt(game, dmg, this.x - this.vx, this.z - this.vz, src, this.owner && this.owner.isMob ? this.owner : null) || !e.def.teleports) game.audio.play('arrow_hit', this.x, this.y, this.z);
         else this.removed = false; // dodged: keep flying
         return;
       } else if (e.hit) e.hit(game, dmg, src);
@@ -589,7 +671,9 @@ export class Projectile extends Entity {
     } else if (this.kind === 'pearl' || this.kind === 'potion') {
       this.land(game);
     } else {
+      const o = this.owner;
       if (e.isPlayer) e.damage(game, 0, 'thrown', this.x - this.vx, this.z - this.vz);
+      else if (o && o.isMob) e.hurt(game, e.type === 'imp' ? 3 : 0, this.x - this.vx, this.z - this.vz, 'mob:' + o.type, o);
       else e.hurt(game, 0, this.x - this.vx, this.z - this.vz, 'player');
       this.shatter(game);
     }
@@ -636,6 +720,11 @@ export class Projectile extends Entity {
   }
 
   hitBlock(game, hit) {
+    if (this.kind === 'laser') {
+      this.removed = true;
+      laserHitBlock(this, game, hit);
+      return;
+    }
     if (this.kind === 'pearl' || this.kind === 'potion') {
       this.x -= this.vx * 0.05; this.y -= this.vy * 0.05; this.z -= this.vz * 0.05;
       this.land(game);

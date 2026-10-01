@@ -368,7 +368,7 @@ in vec3 vShadow;
 out vec4 outColor;
 void main() {
   vec4 t = texture(uTex, vUV);
-  if (uMode == 1) { outColor = vec4(t.rgb * mix(1.0, uEmissive, uGlow), t.a * uAlpha); return; }
+  if (uMode == 1) { outColor = vec4(t.rgb * uTintColor * mix(1.0, uEmissive, uGlow), t.a * uAlpha); return; }
   vec3 base = t.rgb;
   float a = t.a;
   if (uBlockMode == 1) { base = t.rgb * mix(vec3(1.0), uTintColor, 1.0 - t.a); a = 1.0; }

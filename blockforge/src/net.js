@@ -12,11 +12,12 @@
 //
 // Transports: the claude.ai room of a shared artifact, other tabs of this
 // browser (BroadcastChannel), or a tiny relay server (tools/relay.mjs).
-import { BLOCKS, isLiquid } from './blocks.js';
+import { B, BLOCKS, isLiquid } from './blocks.js';
 import { ITEMS, I } from './items.js';
 import { Mob, ItemEntity, Projectile, PrimedCrate, FallingBlock, Lightning, MOB_TYPES } from './entities.js';
 import { Minecart, Boat } from './vehicles.js';
 import { Pylon, Wyrm, VoidOrb } from './voidboss.js';
+import { SkyRocket, burst } from './blaster.js';
 import { CHUNK_VOLUME, chunkKey } from './constants.js';
 import { STATE } from './world.js';
 
@@ -297,6 +298,7 @@ function entityEntry(e, ctrl) {
   }
   if (e.isOrb) return ['v', e.id, r2(e.x), r2(e.y), r2(e.z)];
   if (e instanceof Lightning) return ['l', e.id, r2(e.x), r2(e.y), r2(e.z), e.seed];
+  if (e.isRocket) return ['r', e.id, r2(e.x), r2(e.y), r2(e.z)];
   return null;
 }
 
@@ -322,6 +324,7 @@ function makeMirror(en) {
     case 'w': e = new Wyrm(a, b, c, en[7]); break;
     case 'v': e = new VoidOrb(a, b, c, 0, 0, 0); break;
     case 'l': e = new Lightning(a, b, c); e.seed = en[5]; break;
+    case 'r': e = new SkyRocket(a, b, c, 0.5); break;
     default: return null;
   }
   e.mirror = true;
@@ -368,7 +371,7 @@ function updateMirror(e, en) {
       }
       break;
     }
-    case 'v': case 'l': e.tx = en[2]; e.ty = en[3]; e.tz = en[4]; break;
+    case 'v': case 'l': case 'r': e.tx = en[2]; e.ty = en[3]; e.tz = en[4]; break;
     default: break;
   }
 }
@@ -380,7 +383,7 @@ function tickMirror(e, game) {
   const k = e.netKind === 'p' && !e.stuck ? 1 : 0.35;
   if (e.netKind === 'p' && !e.stuck) {
     // keep arrows flying between snapshots
-    e.x += e.vx; e.y += e.vy; e.z += e.vz; e.vy -= 0.03;
+    e.x += e.vx; e.y += e.vy; e.z += e.vz; if (e.kind !== 'laser') e.vy -= 0.03;
     if (e.tx !== undefined) { e.x += (e.tx - e.x) * 0.2; e.y += (e.ty - e.y) * 0.2; e.z += (e.tz - e.z) * 0.2; }
   } else if (e.tx !== undefined) {
     e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.z += (e.tz - e.z) * k;
@@ -687,6 +690,7 @@ export class NetSession {
             g.ui.onBlockEntityRemoved && g.ui.onBlockEntityRemoved(key);
           }
           w.setBlock(x, y, z, id, meta);
+          if ((id === B.carved_pumpkin || id === B.jack_o_lantern) && g.tryBuildGolem) g.tryBuildGolem(x, y, z);
         }
         break;
       }
@@ -913,10 +917,11 @@ export class NetSession {
         break;
       }
       case 'p': {
-        const kinds = ['arrow', 'egg', 'snowball', 'potion'];
+        const kinds = ['arrow', 'egg', 'snowball', 'potion', 'laser'];
         if (!kinds.includes(s.kind)) return;
         const pr = new Projectile(s.kind, x, y, z, num(s.vx), num(s.vy), num(s.vz), rp, Math.min(10, num(s.dmg) || 2));
         pr.crit = !!s.crit; pr.fire = !!s.fire; pr.item = s.item; pr.pot = s.pot;
+        if (pr.kind === 'laser') { pr.damage = Math.min(12, num(s.dmg) || 5); pr.pickup = false; }
         g.entities.push(pr);
         break;
       }
@@ -924,6 +929,7 @@ export class NetSession {
       case 'c': g.entities.push(new Minecart(x, y, z)); break;
       case 'o': g.entities.push(new Boat(x, y, z, num(s.yaw))); break;
       case 't': g.entities.push(new PrimedCrate(Math.floor(x), y, Math.floor(z), s.fuse | 0 || 80)); break;
+      case 'r': g.entities.push(new SkyRocket(x, y, z, num(s.seed) || Math.random())); break;
       default: break;
     }
   }
@@ -1160,6 +1166,7 @@ export class NetSession {
     if (e.isCart) return { k: 'c', ...base };
     if (e.isBoat) return { k: 'o', ...base, yaw: r3(e.yaw) };
     if (e instanceof PrimedCrate) return { k: 't', ...base, fuse: e.fuse };
+    if (e.isRocket) return { k: 'r', ...base, seed: e.seed };
     return null;
   }
 
@@ -1244,6 +1251,8 @@ export class NetSession {
       case 'fx':
         if (d.k === 'boom') { g.particles.explosion(d.x, d.y, d.z); g.audio.play('explode', d.x, d.y, d.z); g.shake = Math.max(g.shake || 0, Math.max(0, 1 - Math.hypot(d.x - p.x, d.z - p.z) / 24)); }
         else if (d.k === 'note' && g.playNote) g.particles.note(d.x, d.y + 1.2, d.z, d.pitch | 0);
+        else if (d.k === 'lz') { for (let i = 0; i < 12; i++) g.particles.laser(d.x, d.y, d.z, 1); g.audio.play('laser_hit', d.x, d.y, d.z, 0.6); }
+        else if (d.k === 'fw') burst({ particles: g.particles, audio: g.audio, net: null }, d.x, d.y, d.z, +d.s || 0.5);
         break;
       case 'travel': if (this.isGuest) { this.travelling = d.dim; g.ui.message('The host is travelling…', '#c8b8f0'); } break;
       case 'arrive': if (this.isGuest && this.onHostTravel) this.onHostTravel(d); break;

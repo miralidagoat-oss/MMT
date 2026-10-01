@@ -555,16 +555,21 @@ export class WorldGen {
     if (sr() < 0.12) {
       const bio = colB(8, 8);
       let types = ['pig', 'cow', 'sheep', 'chicken'];
-      if (bio === BIOME.SNOWY_PLAINS || bio === BIOME.SNOWY_TAIGA || bio === BIOME.MOUNTAINS) types = ['sheep'];
+      if (bio === BIOME.PLAINS || bio === BIOME.MEADOW) types = ['pig', 'cow', 'sheep', 'chicken', 'steed'];
+      else if (bio === BIOME.SAVANNA) types = ['cow', 'sheep', 'steed', 'steed'];
+      else if (bio === BIOME.FOREST || bio === BIOME.BIRCH_FOREST) types = ['pig', 'cow', 'sheep', 'chicken', 'hound'];
+      else if (bio === BIOME.TAIGA) types = ['sheep', 'hound', 'hound', 'pig'];
+      else if (bio === BIOME.SNOWY_TAIGA) types = ['sheep', 'hound'];
+      else if (bio === BIOME.SNOWY_PLAINS || bio === BIOME.MOUNTAINS) types = ['sheep'];
       if (bio === BIOME.DESERT || bio === BIOME.BEACH || bio === BIOME.SNOWY_BEACH || colH(8, 8) <= SEA) types = [];
       if (types.length) {
         const type = types[Math.floor(sr() * types.length)];
-        const n = 2 + Math.floor(sr() * 3);
+        const n = type === 'steed' ? 2 + Math.floor(sr() * 2) : 2 + Math.floor(sr() * 3);
         for (let i = 0; i < n; i++) {
           const x = Math.floor(sr() * 16), z = Math.floor(sr() * 16);
           const h = colH(x, z);
           const t = blocks[idx(x, h, z)];
-          if ((t === B.grass || t === B.snowy_grass) && h + 2 < HEIGHT && blocks[idx(x, h + 1, z)] !== B.oak_log) {
+          if ((t === B.grass || t === B.snowy_grass || t === B.mycelium) && h + 2 < HEIGHT && blocks[idx(x, h + 1, z)] !== B.oak_log) {
             spawns.push({ type, x: X0 + x + 0.5, y: h + 1, z: Z0 + z + 0.5 });
           }
         }

@@ -145,6 +145,29 @@ export class Particles {
     this.add({ x, y, z, vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5, vz: (Math.random() - 0.5) * 1.5, size: 0.08, layer: TEX.p_void, life: 0.8 + Math.random() * 0.6, collide: false, fullbright: true, drag: 0.92 });
   }
 
+  // Laser sparks: bright cyan, unlit; n is an optional surface normal to spray from.
+  laser(x, y, z, spread = 1, nx = 0, ny = 0, nz = 0) {
+    const s = spread * 3;
+    this.add({
+      x, y, z, vx: (Math.random() - 0.5) * s + nx * 2.5, vy: (Math.random() - 0.5) * s + ny * 2.5 + 0.4, vz: (Math.random() - 0.5) * s + nz * 2.5,
+      size: 0.03 + Math.random() * 0.035, layer: TEX.p_laser, life: 0.2 + Math.random() * 0.3, collide: false, fullbright: true, drag: 0.85,
+      r: 0.45, g: 1, b: 1, shrink: true, gravity: 2,
+    });
+  }
+
+  // A coloured firework star (c: 0-255 rgb).
+  spark(x, y, z, vx, vy, vz, c) {
+    this.add({
+      x, y, z, vx, vy, vz, size: 0.13, layer: TEX.p_laser, life: 1.1 + Math.random() * 0.8, collide: false, fullbright: true,
+      drag: 0.9, gravity: 2.2, shrink: true, r: c[0] / 255, g: c[1] / 255, b: c[2] / 255, twinkle: true,
+    });
+  }
+
+  rocketTrail(x, y, z) {
+    this.add({ x, y, z, vx: (Math.random() - 0.5) * 0.4, vy: -0.6, vz: (Math.random() - 0.5) * 0.4, size: 0.06, layer: TEX.p_laser, life: 0.4, collide: false, fullbright: true, shrink: true, r: 1, g: 0.75, b: 0.35 });
+    if (Math.random() < 0.4) this.smoke(x, y - 0.1, z);
+  }
+
   bubbleUp(x, y, z) {
     for (let i = 0; i < 3; i++) this.add({ x: x + (Math.random() - 0.5) * 0.3, y, z: z + (Math.random() - 0.5) * 0.3, vx: 0, vy: 0.5, vz: 0, size: 0.05, layer: TEX.p_bubble, life: 0.7, collide: false, lit: true });
   }
@@ -240,7 +263,7 @@ export class Particles {
       d[o] = p.x; d[o + 1] = p.y; d[o + 2] = p.z; d[o + 3] = size * 2;
       d[o + 4] = p.u0; d[o + 5] = p.v0; d[o + 6] = p.u1; d[o + 7] = p.v1; d[o + 8] = layer;
       d[o + 9] = p.r * br; d[o + 10] = p.g * br; d[o + 11] = p.b * br;
-      d[o + 12] = p.a * (p.smoke ? 1 - t * 0.5 : 1);
+      d[o + 12] = p.a * (p.smoke ? 1 - t * 0.5 : 1) * (p.twinkle && t > 0.6 && Math.random() < 0.4 ? 0.2 : 1);
       d[o + 13] = p.vertical || 0;
       d[o + 14] = p.fullbright ? 1 : 0;
       n++;

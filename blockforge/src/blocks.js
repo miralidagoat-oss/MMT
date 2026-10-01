@@ -46,6 +46,18 @@ const TEX_NAMES = [
   // everything else
   'cobweb', 'iron_bars', 'lantern', 'cake_top', 'cake_side', 'cake_inner', 'cake_bottom', 'chain',
   'p_effect', 'p_note', 'p_spark_dust', 'p_void', 'p_fish',
+  // round four: the blaster, circuit parts, utility blocks, new biomes and structures
+  'blaster_body', 'blaster_metal', 'p_laser',
+  'comparator', 'comparator_on', 'observer_front', 'observer_back', 'observer_back_on', 'observer_side',
+  'dropper_front', 'dropper_front_v', 'anvil_top', 'anvil_side', 'beacon_core', 'void_chest_top', 'void_chest_side',
+  'void_chest_front', 'loom_top', 'loom_side', 'loom_front', 'banner_pole', 'cauldron_side', 'cauldron_top',
+  'cauldron_inner', 'cauldron_bottom', 'cauldron_water',
+  'jungle_log', 'jungle_log_top', 'jungle_planks', 'jungle_leaves', 'jungle_sapling', 'vines',
+  'red_sand', 'terracotta', 'white_terracotta', 'orange_terracotta', 'yellow_terracotta', 'brown_terracotta',
+  'red_terracotta', 'light_gray_terracotta', 'mycelium_top', 'mycelium_side', 'red_mushroom_block',
+  'brown_mushroom_block', 'mushroom_stem', 'dark_oak_log', 'dark_oak_log_top', 'dark_oak_planks',
+  'dark_oak_leaves', 'dark_oak_sapling', 'packed_ice', 'tidestone', 'tidestone_bricks', 'dark_tidestone',
+  'lumen_lantern', 'sponge', 'wet_sponge', 'chiseled_sandstone', 'pumpkin_face', 'pumpkin_face_lit',
 ];
 const ANIM_NAMES = ['water', 'lava', 'rift', 'fire', 'void_gate'];
 
@@ -74,6 +86,8 @@ export const ALPHA_TEXTURES = new Set([
   'rail', 'rail_corner', 'powered_rail', 'powered_rail_on', 'detector_rail', 'detector_rail_on', 'brewing_rod',
   'void_stalk', 'glow_rod', 'cobweb', 'iron_bars', 'lantern', 'chain', 'fire', 'oak_trapdoor', 'hopper_top',
   'p_effect', 'p_note', 'p_spark_dust', 'p_void', 'p_fish',
+  'p_laser', 'banner_pole', 'jungle_leaves', 'jungle_sapling', 'vines', 'dark_oak_leaves', 'dark_oak_sapling',
+  'beacon_core', 'cauldron_inner',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -378,6 +392,60 @@ def(143, 'iron_bars', shaped0(20, { pass: PASS.CUTOUT, hardness: 5, tool: 'picka
 def(144, 'lantern', shaped0(23, { pass: PASS.CUTOUT, hardness: 3.5, tool: 'pickaxe', sound: 'metal', light: 15, faces: 'lantern', support: 'lantern', icon: 'lantern' }));
 def(145, 'cake', shaped0(22, { hardness: 0.5, sound: 'cloth', faces: { top: 'cake_top', bottom: 'cake_bottom', side: 'cake_side' }, support: 'plate', drops: () => [], icon: 'cake' }));
 
+// --- Round four: circuit parts ------------------------------------------------------
+// Comparator meta: bits 0-1 facing (output side), bit 2 subtract mode, bit 3 output on, bits 4-7 output level.
+def(146, 'comparator', shaped0(28, { pass: PASS.CUTOUT, hardness: 0, sound: 'stone', faces: { top: 'comparator', bottom: 'stone', side: 'stone' }, orient: 'facing4', support: 'repeater', spark: 'comparator', display: 'Spark Comparator', icon: 'comparator' }));
+// Observer meta: bits 0-2 the face it watches, bit 3 pulsing.
+def(147, 'observer', stoneLike({ hardness: 3, orient: 'facing6', spark: 'observer', faces: { top: 'observer_side', bottom: 'observer_side', side: 'observer_side', front: 'observer_front' } }));
+def(148, 'dropper', stoneLike({ hardness: 3.5, orient: 'facing6', iconMeta: 4, spark: 'dispenser', faces: { top: 'furnace_top', bottom: 'furnace_top', side: 'furnace_side', front: 'dropper_front' } }));
+
+// --- Utility blocks -------------------------------------------------------------------
+// Anvil meta: bits 0-1 facing, bits 2-3 wear (0 intact, 1 chipped, 2 damaged).
+def(149, 'anvil', shaped0(29, { ...stoneLike({ hardness: 5, sound: 'metal' }), faces: { top: 'anvil_top', bottom: 'anvil_side', side: 'anvil_side' }, orient: 'facing4', gravity: true, icon: 'cube' }));
+def(150, 'beacon', shaped0(30, { pass: PASS.CUTOUT, hardness: 3, sound: 'glass', light: 15, faces: 'glass', icon: 'cube' }));
+def(151, 'void_chest', stoneLike({ hardness: 22, orient: 'facing', light: 7, display: 'Void Chest', faces: { top: 'void_chest_top', bottom: 'void_chest_top', side: 'void_chest_side', front: 'void_chest_front' } }));
+// Banners: standing (meta rotation 0-15) and on walls (meta facing 0-3); colours and patterns live in a block entity.
+def(152, 'banner', shaped0(31, { ...flat, render: RENDER.SHAPE, hardness: 1, tool: 'axe', sound: 'wood', faces: 'banner_pole', support: 'sign', flammable: true, item: false, creative: false, drops: () => [] }));
+def(153, 'wall_banner', shaped0(31, { ...flat, render: RENDER.SHAPE, hardness: 1, tool: 'axe', sound: 'wood', faces: 'banner_pole', support: 'wall_sign', flammable: true, item: false, creative: false, display: 'Banner', drops: () => [] }));
+def(154, 'loom', woodLike({ hardness: 2.5, orient: 'facing', faces: { top: 'loom_top', bottom: 'oak_planks', side: 'loom_side', front: 'loom_front' } }));
+// Cauldron meta: water level 0-3.
+def(155, 'cauldron', shaped0(32, { pass: PASS.CUTOUT, ...stoneLike({ hardness: 2, sound: 'metal' }), faces: { top: 'cauldron_top', bottom: 'cauldron_bottom', side: 'cauldron_side' }, icon: 'cauldron' }));
+
+// --- New biomes ---------------------------------------------------------------------
+def(156, 'jungle_log', woodLike({ orient: 'axis', faces: { top: 'jungle_log_top', side: 'jungle_log' } }));
+def(157, 'jungle_planks', woodLike());
+def(158, 'jungle_leaves', {
+  pass: PASS.CUTOUT, opaque: false, opacity: 1, hardness: 0.2, tool: 'shears', sound: 'grass', tint: 2, wave: 1, flammable: true,
+  drops: (r) => (r() < 0.025 ? [[B.jungle_sapling, 1]] : []),
+});
+def(159, 'jungle_sapling', plant({ wave: 2 }));
+// Vines hang on a wall like ladders (meta = facing) and can be climbed.
+def(160, 'vines', { render: RENDER.LADDER, pass: PASS.CUTOUT, opaque: false, solid: false, hardness: 0.2, tool: 'shears', sound: 'grass', tint: 2, orient: 'wall', support: 'vine', replaceable: true, flammable: true, burn: 0.6, drops: () => [] });
+def(161, 'red_sand', { hardness: 0.5, tool: 'shovel', sound: 'sand', gravity: true });
+def(162, 'terracotta', stoneLike({ hardness: 1.25 }));
+['white', 'orange', 'yellow', 'brown', 'red', 'light_gray'].forEach((c, i) => def(163 + i, c + '_terracotta', stoneLike({ hardness: 1.25 })));
+def(169, 'mycelium', { hardness: 0.6, tool: 'shovel', sound: 'grass', faces: { top: 'mycelium_top', bottom: 'dirt', side: 'mycelium_side' }, drops: () => [[B.dirt, 1]] });
+def(170, 'red_mushroom_block', { hardness: 0.2, tool: 'axe', sound: 'wood', drops: (r) => (r() < 0.2 ? [[B.red_mushroom, 1 + Math.floor(r() * 2)]] : []) });
+def(171, 'brown_mushroom_block', { hardness: 0.2, tool: 'axe', sound: 'wood', drops: (r) => (r() < 0.2 ? [[B.brown_mushroom, 1 + Math.floor(r() * 2)]] : []) });
+def(172, 'mushroom_stem', { hardness: 0.2, tool: 'axe', sound: 'wood' });
+def(173, 'dark_oak_log', woodLike({ orient: 'axis', faces: { top: 'dark_oak_log_top', side: 'dark_oak_log' } }));
+def(174, 'dark_oak_planks', woodLike());
+def(175, 'dark_oak_leaves', {
+  pass: PASS.CUTOUT, opaque: false, opacity: 1, hardness: 0.2, tool: 'shears', sound: 'grass', tint: 2, wave: 1, flammable: true,
+  drops: (r) => { const o = []; if (r() < 0.05) o.push([B.dark_oak_sapling, 1]); if (r() < 0.02) o.push([I_('apple'), 1]); return o; },
+});
+def(176, 'dark_oak_sapling', plant({ wave: 2 }));
+def(177, 'packed_ice', { hardness: 0.5, tool: 'pickaxe', sound: 'glass', friction: 0.98, drops: () => [] });
+def(178, 'tidestone', stoneLike({ hardness: 1.5 }));
+def(179, 'tidestone_bricks', stoneLike({ hardness: 1.5 }));
+def(180, 'dark_tidestone', stoneLike({ hardness: 1.5 }));
+def(181, 'lumen_lantern', { hardness: 0.3, light: 15, sound: 'glass', drops: (r) => [[I_('tide_crystal'), 2 + Math.floor(r() * 2)]] });
+def(182, 'sponge', { hardness: 0.6, sound: 'grass' });
+def(183, 'wet_sponge', { hardness: 0.6, sound: 'grass' });
+def(184, 'chiseled_sandstone', stoneLike({ hardness: 0.8, faces: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'chiseled_sandstone' } }));
+def(185, 'carved_pumpkin', { hardness: 1, tool: 'axe', sound: 'wood', orient: 'facing', faces: { top: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_face' } });
+def(186, 'jack_o_lantern', { hardness: 1, tool: 'axe', sound: 'wood', orient: 'facing', light: 15, display: "Jack o'Lantern", faces: { top: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_face_lit' } });
+
 export const BLOCK_COUNT = BLOCKS.length;
 
 // Item ids are resolved lazily (items.js registers them) so blocks.js has no
@@ -413,9 +481,13 @@ export function faceTexture(id, face, meta) {
     if (face === front) return d.frontTex;
   }
   if (d.orient === 'facing6' && d.frontTex !== undefined && face === (meta & 7)) {
-    return face < 2 && id === B.dispenser ? TEX.dispenser_front_v : d.frontTex;
+    if (face < 2 && id === B.dispenser) return TEX.dispenser_front_v;
+    if (face < 2 && id === B.dropper) return TEX.dropper_front_v;
+    return d.frontTex;
   }
   if (id === B.spark_lamp_on) return TEX.spark_lamp_on;
+  if (id === B.observer && face === ((meta & 7) ^ 1)) return meta & 8 ? TEX.observer_back_on : TEX.observer_back;
+  if (id === B.dropper && face === (meta & 7) && face < 2) return TEX.dropper_front_v;
   return FACE_TEX[id * 6 + face];
 }
 
@@ -428,6 +500,7 @@ export const SHAPE_CTX = {
   tex: (n) => TEX[n],
   id: (n) => B[n],
   stalk: new Set([131, 132]),
+  climb: new Set([69, 160]),
   doorTex: (id, meta) => {
     const l = meta & 8 ? TEX.oak_door_top : TEX.oak_door_bottom;
     return [l, l, l, l, l, l];
