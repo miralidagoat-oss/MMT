@@ -3,10 +3,18 @@
 import { BLOCKS, RENDER_TYPE, RENDER, TINT, faceTexture } from './blocks.js';
 import { ITEMS } from './items.js';
 
-const SIZE = 64;
+const SIZE = 96;      // icon canvas size; drawing below is laid out on a 64 grid
+const SC = SIZE / 64;
+
+const side = (data) => Math.round(Math.sqrt(data.length / 4));
 
 export class Icons {
   constructor(blockTextures, itemTextures) {
+    this.setTextures(blockTextures, itemTextures);
+  }
+
+  // New textures (a different detail level): forget the painted icons.
+  setTextures(blockTextures, itemTextures) {
     this.bt = blockTextures; this.it = itemTextures;
     this.cache = new Map();
   }
@@ -19,7 +27,6 @@ export class Icons {
     const c = document.createElement('canvas');
     c.width = c.height = SIZE;
     const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
     if (def.block !== undefined && def.sprite) this.flat(g, this.it[def.tex].data, null, false);
     else if (def.block !== undefined) {
       const rt = RENDER_TYPE[def.block];
@@ -31,16 +38,30 @@ export class Icons {
     return u;
   }
 
-  flat(g, data, tint, blockTex) {
-    const s = SIZE / 16;
-    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-      const i = (y * 16 + x) * 4;
-      if (data[i + 3] < (blockTex ? 128 : 20)) continue;
-      let r = data[i], gg = data[i + 1], b = data[i + 2];
-      if (tint) { r *= tint[0]; gg *= tint[1]; b *= tint[2]; }
-      g.fillStyle = `rgb(${r | 0},${gg | 0},${b | 0})`;
-      g.fillRect(x * s, y * s, s, s);
+  // A texture as a canvas: tinted, shaded and with its alpha resolved.
+  // cutout: alpha is transparency; otherwise alpha marks where the tint goes.
+  texCanvas(data, { tint = null, shade = 1, cutout = false, sprite = false } = {}) {
+    const S = side(data);
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+    const img = g.createImageData(S, S), o = img.data;
+    for (let i = 0; i < S * S; i++) {
+      let r = data[i * 4], gg = data[i * 4 + 1], b = data[i * 4 + 2], a = data[i * 4 + 3];
+      if (sprite) { if (a < 20) continue; }
+      else if (cutout) { if (a < 128) continue; a = 255; if (tint) { r *= tint[0]; gg *= tint[1]; b *= tint[2]; } }
+      else { if (tint && a < 255) { const m = 1 - a / 255; r *= 1 - m + m * tint[0]; gg *= 1 - m + m * tint[1]; b *= 1 - m + m * tint[2]; } a = 255; }
+      o[i * 4] = r * shade; o[i * 4 + 1] = gg * shade; o[i * 4 + 2] = b * shade; o[i * 4 + 3] = a;
     }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+
+  flat(g, data, tint, blockTex) {
+    const c = this.texCanvas(data, { tint, cutout: blockTex, sprite: !blockTex });
+    g.imageSmoothingEnabled = c.width > 16;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(c, 0, 0, SIZE, SIZE);
   }
 
   cube(g, id) {
@@ -49,50 +70,46 @@ export class Icons {
     const cutout = bd.pass === 1;
     const tint = tintOf(id);
     // corners of the isometric cube
-    const T = [32, 3], L = [5, 17.5], R = [59, 17.5], C = [32, 32], LB = [5, 47], RB = [59, 47], CB = [32, 61.5];
+    const T = [32, 3], L = [5, 17.5], R = [59, 17.5], C = [32, 32], LB = [5, 47], CB = [32, 61.5];
     const faces = [
-      { tex: faceTexture(id, 0, im), o: T, u: [R[0] - T[0], R[1] - T[1]], v: [L[0] - T[0], L[1] - T[1]], shade: 1, top: true },
+      { tex: faceTexture(id, 0, im), o: T, u: [R[0] - T[0], R[1] - T[1]], v: [L[0] - T[0], L[1] - T[1]], shade: 1 },
       { tex: faceTexture(id, 4, im), o: L, u: [C[0] - L[0], C[1] - L[1]], v: [LB[0] - L[0], LB[1] - L[1]], shade: 0.78 },
       { tex: faceTexture(id, 2, im), o: C, u: [R[0] - C[0], R[1] - C[1]], v: [CB[0] - C[0], CB[1] - C[1]], shade: 0.6 },
     ];
-    void RB;
     for (const f of faces) {
-      const data = this.bt[f.tex].data;
-      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-        const i = (y * 16 + x) * 4;
-        const a = data[i + 3];
-        let r = data[i], gg = data[i + 1], b = data[i + 2];
-        if (cutout) { if (a < 128) continue; if (tint) { r *= tint[0]; gg *= tint[1]; b *= tint[2]; } }
-        else if (tint && a < 255) { const m = 1 - a / 255; r *= 1 - m + m * tint[0]; gg *= 1 - m + m * tint[1]; b *= 1 - m + m * tint[2]; }
-        r *= f.shade; gg *= f.shade; b *= f.shade;
-        const p = (uu, vv) => [f.o[0] + f.u[0] * uu / 16 + f.v[0] * vv / 16, f.o[1] + f.u[1] * uu / 16 + f.v[1] * vv / 16];
-        const p0 = p(x, y), p1 = p(x + 1, y), p2 = p(x + 1, y + 1), p3 = p(x, y + 1);
-        g.fillStyle = `rgb(${r | 0},${gg | 0},${b | 0})`;
-        g.beginPath();
-        g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]); g.lineTo(p3[0], p3[1]);
-        g.closePath();
-        g.fill();
-        // cover hairline seams between texels
-        g.strokeStyle = g.fillStyle; g.lineWidth = 0.6; g.stroke();
-      }
+      const c = this.texCanvas(this.bt[f.tex].data, { tint, shade: f.shade, cutout });
+      const S = c.width;
+      g.imageSmoothingEnabled = S > 16;
+      g.imageSmoothingQuality = 'high';
+      g.setTransform((SC * f.u[0]) / S, (SC * f.u[1]) / S, (SC * f.v[0]) / S, (SC * f.v[1]) / S, SC * f.o[0], SC * f.o[1]);
+      // a hair larger than the face so neighbouring faces meet without seams
+      g.drawImage(c, -0.35 * S / 64, -0.35 * S / 64, S * (1 + 0.7 / 64), S * (1 + 0.7 / 64));
     }
+    g.setTransform(1, 0, 0, 1, 0, 0);
   }
 }
 
-// Front view of the player figure, cut from its box-unwrapped skin.
+// Front view of the player figure, cut from its box-unwrapped skin (any
+// detail level: the skin is 64 texels across).
 export function playerPortrait(skin) {
+  const S = side(skin), k = S / 64;
+  const src = document.createElement('canvas');
+  src.width = src.height = S;
+  const sg = src.getContext('2d');
+  const img = sg.createImageData(S, S);
+  img.data.set(skin);
+  sg.putImageData(img, 0, 0);
   const c = document.createElement('canvas');
-  const S = 8;
-  c.width = 16 * S; c.height = 32 * S;
+  const P = 8; // portrait pixels per skin texel
+  c.width = 16 * P; c.height = 32 * P;
   const g = c.getContext('2d');
+  g.imageSmoothingEnabled = k > 1;
+  g.imageSmoothingQuality = 'high';
   const blit = (u, v, w, h, dx, dy, mirror = false) => {
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const sx = mirror ? u + w - 1 - x : u + x;
-      const i = ((v + y) * 64 + sx) * 4;
-      if (skin[i + 3] < 10) continue;
-      g.fillStyle = `rgb(${skin[i]},${skin[i + 1]},${skin[i + 2]})`;
-      g.fillRect((dx + x) * S, (dy + y) * S, S, S);
-    }
+    g.save();
+    if (mirror) { g.translate((dx + w) * P, dy * P); g.scale(-1, 1); } else g.translate(dx * P, dy * P);
+    g.drawImage(src, u * k, v * k, w * k, h * k, 0, 0, w * P, h * P);
+    g.restore();
   };
   blit(8, 8, 8, 8, 4, 0);        // head
   blit(20, 20, 8, 12, 4, 8);     // body

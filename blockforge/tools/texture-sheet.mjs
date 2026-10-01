@@ -1,18 +1,26 @@
 // Renders every procedural texture into a PNG contact sheet for review.
-// Usage: node tools/texture-sheet.mjs out.png
+// Usage: node tools/texture-sheet.mjs out.png [detail 1|2|4] [tile px] [name filter]
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 import { generateBlockTextures, generateItemTextures } from '../src/textures.js';
 
-const SCALE = 4, TS = 16, COLS = 16;
-const tiles = [...generateBlockTextures().filter((t) => t.frame === 0 || t.frame === 8), ...generateItemTextures()];
+const DETAIL = +(process.argv[3] || 1), TILE = +(process.argv[4] || 64), FILTER = process.argv[5] || '';
+const COLS = Math.max(4, Math.floor(1100 / (TILE + 4)));
+const t0 = Date.now();
+const blocks = generateBlockTextures(DETAIL);
+const t1 = Date.now();
+const items = generateItemTextures(DETAIL);
+console.log('generated in', t1 - t0, 'ms (blocks)', Date.now() - t1, 'ms (items)');
+const tiles = [...blocks.filter((t) => t.frame === 0 || t.frame === 8), ...items].filter((t) => !FILTER || FILTER.split(',').some((f) => t.name.includes(f)))
+  .slice(+(process.env.START || 0), +(process.env.START || 0) + +(process.env.COUNT || 1e9));
 const rows = Math.ceil(tiles.length / COLS);
-const W = COLS * (TS * SCALE + 4), H = rows * (TS * SCALE + 4);
+const W = COLS * (TILE + 4), H = rows * (TILE + 4);
 const img = new Uint8Array(W * H * 4);
 tiles.forEach((t, i) => {
-  const ox = (i % COLS) * (TS * SCALE + 4) + 2, oy = Math.floor(i / COLS) * (TS * SCALE + 4) + 2;
-  for (let y = 0; y < TS * SCALE; y++) for (let x = 0; x < TS * SCALE; x++) {
-    const s = ((y / SCALE | 0) * TS + (x / SCALE | 0)) * 4;
+  const ox = (i % COLS) * (TILE + 4) + 2, oy = Math.floor(i / COLS) * (TILE + 4) + 2;
+  const size = t.size || 16;
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const s = ((y * size / TILE | 0) * size + (x * size / TILE | 0)) * 4;
     const d = ((oy + y) * W + ox + x) * 4;
     const checker = ((x >> 3) + (y >> 3)) % 2 ? 60 : 90;
     const a = t.transparent || t.data[s + 3] === 0 && !t.name.startsWith('grass') ? t.data[s + 3] / 255 : 1;

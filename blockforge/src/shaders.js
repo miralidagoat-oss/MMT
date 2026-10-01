@@ -146,8 +146,11 @@ uniform vec3 uZenith;
 uniform float uRain;
 uniform float uTime;
 uniform float uWaterFx;
+uniform sampler2DArray uNormTex;
+uniform float uRelief;
 ${COMMON}
 ${SHADOW_FN}
+const vec3 FACE_NF[6] = vec3[6](vec3(0.0, 1.0, 0.0), vec3(0.0, -1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(-1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, -1.0));
 in vec3 vUV;
 in vec3 vLight;
 in vec3 vTint;
@@ -171,10 +174,42 @@ void main() {
     col = t.rgb * mix(vec3(1.0), vTint, 1.0 - t.a);
   }
   uint face = (vFlags >> 16u) & 7u;
-  float sm = vLight.x > 0.02 ? sunMul(vShadow, vNdl) : 1.0;
+  float ndl = vNdl;
+  float gloss = 0.0;
+  vec3 Np = vec3(0.0, 1.0, 0.0);
   bool selfLit = (vFlags & 16u) != 0u;
+  // relief: per-pixel normals from the relief map, in a tangent frame built
+  // from screen-space derivatives; fades out with distance
+  if (uRelief > 0.5) {
+    // derivatives and the fetch stay in uniform control flow
+    vec4 nm = texture(uNormTex, vUV);
+    vec3 dp1 = dFdx(vRel), dp2 = dFdy(vRel);
+    vec2 du1 = dFdx(vUV.xy), du2 = dFdy(vUV.xy);
+    float fade = 1.0 - smoothstep(40.0, 96.0, length(vRel));
+    if (fade > 0.0 && face < 6u && uPass != 2 && !selfLit) {
+      vec3 N = FACE_NF[face];
+      vec3 dp2p = cross(dp2, N), dp1p = cross(N, dp1);
+      vec3 T = dp2p * du1.x + dp1p * du2.x;
+      vec3 B = dp2p * du1.y + dp1p * du2.y;
+      float im = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-14));
+      vec2 nxy = (nm.xy * 2.0 - 1.0) * fade;
+      Np = normalize(T * im * nxy.x + B * im * nxy.y + N * sqrt(max(0.05, 1.0 - dot(nxy, nxy))));
+      vec3 Ld = normalize(uSunDir.y > -0.05 ? uSunDir + vec3(0.0, 0.25, 0.0) : -uSunDir + vec3(0.0, 0.25, 0.0));
+      float rel = dot(Np, Ld) - dot(N, Ld);
+      col *= clamp(1.0 + rel * 0.75, 0.62, 1.4) * (1.0 + (nm.b - 0.5) * 0.22 * fade);
+      if (uShadowParams.x > 0.0) ndl = dot(Np, uSunDir.y > -0.05 ? uSunDir : -uSunDir);
+      gloss = nm.a * fade;
+    }
+  }
+  float sm = vLight.x > 0.02 ? sunMul(vShadow, ndl) : 1.0;
   vec3 L = selfLit ? vec3(1.0) : lightmapS(vLight.x, vLight.y, sm);
   col *= L * vLight.z;
+  if (gloss > 0.01 && uSunDir.y > 0.0) {
+    vec3 V = normalize(-vRel);
+    float sp = pow(max(dot(reflect(-uSunDir, Np), V), 0.0), 40.0) * gloss;
+    float vis = uShadowParams.x > 0.0 ? shadowAt(vShadow) : 1.0;
+    col += vec3(1.0, 0.95, 0.85) * sp * lmCurve(vLight.x) * uSkyBright * vis * (1.0 - uRain) * 0.9 * uEmissive;
+  }
   if (selfLit || (vFlags & 64u) != 0u) col *= uEmissive;
   // water: rippled sky reflection and a glint of sun
   if ((vFlags & 32u) != 0u && uWaterFx > 0.5 && face == 0u && uFog.z < 0.5) {

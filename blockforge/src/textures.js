@@ -1,19 +1,147 @@
-// Procedural pixel-art textures. Every texture is painted in code from seeded
-// noise and simple shapes; there are no image assets. Pure JS (no DOM) so it
-// can also run in Node for previews.
+// Procedural textures. Every texture is painted in code from seeded noise and
+// simple shapes; there are no image assets. Pure JS (no DOM) so it can also
+// run in Node for previews.
+//
+// Painters draw on a 16x16 grid of texels. At higher detail levels each texel
+// is painted as DETAIL x DETAIL pixels: noise is sampled at every pixel, the
+// random numbers a painter draws per texel blend smoothly into the next
+// texel's, and shapes drawn texel by texel are smoothed (Scale2x), so the art
+// keeps its design without looking blocky.
 import { TEXTURE_LIST, ALPHA_TEXTURES } from './blocks.js';
 import { ITEM_TEXTURES } from './items.js';
 import { rng, hashSeed } from './noise.js';
 
-export const TS = 16; // texture size
+export const TS = 16; // texels per texture side
+
+let K = 1;           // pixels per texel while painting
+let SX = 0, SY = 0;  // offset of the pixel being painted from its texel centre
+let RHOOK = null;    // routes painter random numbers while painting in detail
+
+// Random numbers for painters (see Tex.each for how they are blended).
+function paintRng(seed) {
+  const base = rng(seed);
+  return () => (RHOOK ? RHOOK(base) : base());
+}
+
+// Colours this close (summed over r, g, b) count as one colour when shapes
+// are smoothed and gradients blended.
+const SIMILAR = 60;
+const similar = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) <= SIMILAR && (a[3] > 127) === (b[3] > 127);
+
+// One Scale2x (AdvMAME2x) pass over a w x h map of values; eq(a, b) decides
+// whether two values belong together. Returns the 2w x 2h map.
+export function scale2x(src, w, h, eq, wrap = true) {
+  const out = new Int32Array(w * h * 4), W = w * 2;
+  const at = (x, y, fallback) => {
+    if (wrap) return src[((y + h) % h) * w + ((x + w) % w)];
+    return x < 0 || y < 0 || x >= w || y >= h ? fallback : src[y * w + x];
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const P = src[y * w + x];
+    const up = at(x, y - 1, P), dn = at(x, y + 1, P), lf = at(x - 1, y, P), rt = at(x + 1, y, P);
+    let e0 = P, e1 = P, e2 = P, e3 = P;
+    if (!eq(up, dn) && !eq(lf, rt)) {
+      if (eq(lf, up)) e0 = lf;
+      if (eq(up, rt)) e1 = rt;
+      if (eq(lf, dn)) e2 = lf;
+      if (eq(dn, rt)) e3 = rt;
+    }
+    const o = y * 2 * W + x * 2;
+    out[o] = e0; out[o + 1] = e1; out[o + W] = e2; out[o + W + 1] = e3;
+  }
+  return out;
+}
+
+// Small deterministic hash -> [0, 1) for pixel grain.
+function grain(x, y, s) {
+  let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(s, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// Upscale texel art (rgba, w x h) by k for skins: Scale2x keeps edges
+// between colours crisp but smooths their staircases, and texels of similar
+// colour blend into gradients. `region` (one id per texel) keeps separately
+// mapped faces from bleeding into each other.
+export function upscaleArt(src, w, h, k, region, seed = 1) {
+  if (k === 1) return src;
+  const n = w * h, cols = new Array(n);
+  for (let i = 0; i < n; i++) cols[i] = [src[i * 4], src[i * 4 + 1], src[i * 4 + 2], src[i * 4 + 3]];
+  const eq = (a, b) => a === b || (region[a] === region[b] && similar(cols[a], cols[b]));
+  let map = new Int32Array(n);
+  for (let i = 0; i < n; i++) map[i] = i;
+  for (let mw = w, mh = h; mw < w * k; mw *= 2, mh *= 2) {
+    // neighbours from another face count as the texel itself
+    const out = new Int32Array(mw * mh * 4), W = mw * 2;
+    for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
+      const P = map[y * mw + x];
+      const at = (xx, yy) => { if (xx < 0 || yy < 0 || xx >= mw || yy >= mh) return P; const v = map[yy * mw + xx]; return region[v] === region[P] ? v : P; };
+      const up = at(x, y - 1), dn = at(x, y + 1), lf = at(x - 1, y), rt = at(x + 1, y);
+      let e0 = P, e1 = P, e2 = P, e3 = P;
+      if (!eq(up, dn) && !eq(lf, rt)) {
+        if (eq(lf, up)) e0 = lf;
+        if (eq(up, rt)) e1 = rt;
+        if (eq(lf, dn)) e2 = lf;
+        if (eq(dn, rt)) e3 = rt;
+      }
+      const o = y * 2 * W + x * 2;
+      out[o] = e0; out[o + 1] = e1; out[o + W] = e2; out[o + W + 1] = e3;
+    }
+    map = out;
+  }
+  const S = w * k, out = new Uint8ClampedArray(S * h * k * 4);
+  for (let py = 0; py < h * k; py++) for (let px = 0; px < S; px++) {
+    const cs = map[py * S + px], me = cols[cs], i = (py * S + px) * 4;
+    const u = (px + 0.5) / k - 0.5, v = (py + 0.5) / k - 0.5;
+    const x0 = Math.floor(u), y0 = Math.floor(v), fx = u - x0, fy = v - y0;
+    let r = 0, g = 0, b = 0, W = 0;
+    for (let j = 0; j < 4; j++) {
+      const cx = x0 + (j & 1), cy = y0 + (j >> 1);
+      if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
+      const c = cy * w + cx;
+      if (region[c] !== region[cs] || !similar(cols[c], me)) continue;
+      const wt = ((j & 1) ? fx : 1 - fx) * ((j >> 1) ? fy : 1 - fy);
+      r += cols[c][0] * wt; g += cols[c][1] * wt; b += cols[c][2] * wt; W += wt;
+    }
+    const gr = 1 + (grain(px, py, seed) * 0.6 + grain(px >> 1, py >> 1, seed + 3) * 0.4 - 0.5) * 0.07;
+    if (W > 0.001) { out[i] = (r / W) * gr; out[i + 1] = (g / W) * gr; out[i + 2] = (b / W) * gr; }
+    else { out[i] = me[0] * gr; out[i + 1] = me[1] * gr; out[i + 2] = me[2] * gr; }
+    out[i + 3] = me[3];
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 class Tex {
-  constructor(w = TS, h = TS) { this.w = w; this.h = h; this.d = new Uint8ClampedArray(w * h * 4); }
+  constructor(w = TS, h = TS) {
+    this.w = w; this.h = h; this.k = K;
+    this.pw = w * K; this.ph = h * K;
+    this.px = new Uint8ClampedArray(this.pw * this.ph * 4);
+    this.mode = 0;           // 0 shapes, 1 recording texel randoms, 2 painting pixels
+    this.sx = 0; this.sy = 0; // the pixel within its texel being painted in mode 2
+    this.ov = null;          // texel layer for shapes, merged in by flush()
+  }
+
+  // The finished pixels.
+  get d() { this.flush(); return this.px; }
+
+  pix(x, y, sx, sy) { return ((y * this.k + sy) * this.pw + x * this.k + sx) * 4; }
+
   set(x, y, c, a = 255) {
     x = ((x % this.w) + this.w) % this.w; y = ((y % this.h) + this.h) % this.h;
-    const i = (y * this.w + x) * 4;
-    this.d[i] = c[0]; this.d[i + 1] = c[1]; this.d[i + 2] = c[2]; this.d[i + 3] = c.length > 3 ? c[3] : a;
+    const al = c.length > 3 ? c[3] : a;
+    if (this.k === 1) {
+      const i = (y * this.w + x) * 4;
+      this.px[i] = c[0]; this.px[i + 1] = c[1]; this.px[i + 2] = c[2]; this.px[i + 3] = al;
+      return;
+    }
+    if (this.mode === 1 || !Number.isInteger(x) || !Number.isInteger(y)) return;
+    if (this.mode === 2) {
+      const i = this.pix(x, y, this.sx, this.sy);
+      this.px[i] = c[0]; this.px[i + 1] = c[1]; this.px[i + 2] = c[2]; this.px[i + 3] = al;
+      return;
+    }
+    this.shape(x, y, c, al);
   }
   // set without wrapping; ignores out of range
   put(x, y, c, a = 255) {
@@ -22,16 +150,144 @@ class Tex {
   }
   get(x, y) {
     x = ((x % this.w) + this.w) % this.w; y = ((y % this.h) + this.h) % this.h;
-    const i = (y * this.w + x) * 4;
-    return [this.d[i], this.d[i + 1], this.d[i + 2], this.d[i + 3]];
+    if (this.k === 1) {
+      const i = (y * this.w + x) * 4;
+      return [this.px[i], this.px[i + 1], this.px[i + 2], this.px[i + 3]];
+    }
+    if (this.mode === 2) {
+      const i = this.pix(x, y, this.sx, this.sy);
+      return [this.px[i], this.px[i + 1], this.px[i + 2], this.px[i + 3]];
+    }
+    const o = this.ov, cell = y * this.w + x;
+    if (o && o.mask[cell]) return this.shapeColor(cell);
+    return this.average(x, y);
   }
   alpha(x, y) {
     if (x < 0 || y < 0 || x >= this.w || y >= this.h) return 0;
-    return this.d[(y * this.w + x) * 4 + 3];
+    if (this.k === 1) return this.px[(y * this.w + x) * 4 + 3];
+    return this.get(x, y)[3];
   }
   fill(c, a = 255) { for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) this.set(x, y, c, a); }
-  each(fn) { for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) fn(x, y); }
   rect(x0, y0, w, h, c, a = 255) { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) this.put(x, y, c, a); }
+
+  // Paint every texel: fn(x, y, fx, fy) gets the texel and, in detail, the
+  // exact position of the pixel being painted (use fx, fy for anything
+  // computed from position, such as distances).
+  each(fn) {
+    const w = this.w, h = this.h, k = this.k;
+    if (k === 1) { for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) fn(x, y, x, y); return; }
+    this.flush();
+    // 1. once per texel at its centre, recording the random numbers it draws
+    //    (this also leaves the painter's generator where the 16px paint would)
+    const seqs = new Array(w * h);
+    let rec = null;
+    const outer = RHOOK;
+    RHOOK = (base) => { const v = base(); rec.push(v); return v; };
+    this.mode = 1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { rec = seqs[y * w + x] = []; fn(x, y, x, y); }
+    // 2. every pixel, with each random number blended bilinearly with the
+    //    same draw of the neighbouring texels
+    let own = null, nx = null, ny = null, nxy = null, wo = 1, wa = 0, wb = 0, wc = 0, n = 0, extra = 1;
+    RHOOK = () => {
+      const i = n++;
+      if (i >= own.length) { extra = (Math.imul(extra, 1103515245) + 12345) >>> 0; return extra / 4294967296; }
+      const v = own[i];
+      return v * wo + (i < nx.length ? nx[i] : v) * wa + (i < ny.length ? ny[i] : v) * wb + (i < nxy.length ? nxy[i] : v) * wc;
+    };
+    this.mode = 2;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      own = seqs[y * w + x];
+      for (let sy = 0; sy < k; sy++) for (let sx = 0; sx < k; sx++) {
+        const ox = (sx + 0.5) / k - 0.5, oy = (sy + 0.5) / k - 0.5;
+        const xn = (x + (ox < 0 ? -1 : 1) + w) % w, yn = (y + (oy < 0 ? -1 : 1) + h) % h;
+        const ax = Math.abs(ox), ay = Math.abs(oy);
+        nx = seqs[y * w + xn]; ny = seqs[yn * w + x]; nxy = seqs[yn * w + xn];
+        wo = (1 - ax) * (1 - ay); wa = ax * (1 - ay); wb = (1 - ax) * ay; wc = ax * ay;
+        n = 0; extra = (x * 31 + y * 977 + sx * 7 + sy * 13) | 1;
+        SX = ox; SY = oy; this.sx = sx; this.sy = sy;
+        fn(x, y, x + ox, y + oy);
+      }
+    }
+    SX = 0; SY = 0; this.mode = 0; RHOOK = outer;
+  }
+
+  // Mean colour of a texel's pixels.
+  average(x, y) {
+    const k = this.k, s = [0, 0, 0, 0];
+    for (let sy = 0; sy < k; sy++) for (let sx = 0; sx < k; sx++) {
+      const i = this.pix(x, y, sx, sy);
+      s[0] += this.px[i]; s[1] += this.px[i + 1]; s[2] += this.px[i + 2]; s[3] += this.px[i + 3];
+    }
+    const q = 1 / (k * k);
+    return [s[0] * q, s[1] * q, s[2] * q, s[3] * q];
+  }
+
+  // A texel drawn outside each(). Darkening or lightening what is there
+  // keeps the detail underneath (a ratio); anything else paints a colour.
+  shape(x, y, c, a) {
+    const w = this.w, n = w * this.h, cell = y * w + x;
+    let o = this.ov;
+    if (!o) {
+      o = this.ov = { mask: new Uint8Array(n), mod: new Uint8Array(n), col: new Float32Array(n * 4), ratio: new Float32Array(n * 3), avg: new Float32Array(n * 4), any: false };
+    }
+    if (!o.mask[cell]) { const av = this.average(x, y); o.avg.set(av, cell * 4); }
+    o.mask[cell] = 1; o.any = true;
+    o.col[cell * 4] = c[0]; o.col[cell * 4 + 1] = c[1]; o.col[cell * 4 + 2] = c[2]; o.col[cell * 4 + 3] = a;
+    const av = o.avg.subarray(cell * 4, cell * 4 + 4);
+    let mod = 0;
+    if (a >= 250 && av[3] >= 250 && av[0] + av[1] + av[2] > 30) {
+      const r0 = c[0] / Math.max(av[0], 1), r1 = c[1] / Math.max(av[1], 1), r2 = c[2] / Math.max(av[2], 1);
+      const lo = Math.min(r0, r1, r2), hi = Math.max(r0, r1, r2);
+      if (lo > 0.3 && hi < 2.4 && hi / lo < 1.22) { mod = 1; o.ratio[cell * 3] = r0; o.ratio[cell * 3 + 1] = r1; o.ratio[cell * 3 + 2] = r2; }
+    }
+    o.mod[cell] = mod;
+  }
+  shapeColor(cell) {
+    const o = this.ov, i = cell * 4;
+    if (o.mod[cell]) return [o.avg[i] * o.ratio[cell * 3], o.avg[i + 1] * o.ratio[cell * 3 + 1], o.avg[i + 2] * o.ratio[cell * 3 + 2], o.avg[i + 3]];
+    return [o.col[i], o.col[i + 1], o.col[i + 2], o.col[i + 3]];
+  }
+
+  // Merge the shapes drawn since the last flush into the pixels.
+  flush() {
+    const o = this.ov;
+    if (!o || !o.any) return;
+    const w = this.w, h = this.h, k = this.k, pw = this.pw, ph = this.ph, P = this.px;
+    const cols = new Array(w * h);
+    for (let c = 0; c < w * h; c++) if (o.mask[c]) cols[c] = this.shapeColor(c);
+    const eq = (a, b) => {
+      const ma = o.mask[a], mb = o.mask[b];
+      if (!ma || !mb) return ma === mb;
+      return similar(cols[a], cols[b]);
+    };
+    let map = new Int32Array(w * h);
+    for (let i = 0; i < map.length; i++) map[i] = i;
+    for (let mw = w, mh = h; mw < pw; mw *= 2, mh *= 2) map = scale2x(map, mw, mh, eq);
+    for (let py = 0; py < ph; py++) for (let px = 0; px < pw; px++) {
+      const cs = map[py * pw + px];
+      if (!o.mask[cs]) continue;
+      const i = (py * pw + px) * 4;
+      if (o.mod[cs]) {
+        P[i] *= o.ratio[cs * 3]; P[i + 1] *= o.ratio[cs * 3 + 1]; P[i + 2] *= o.ratio[cs * 3 + 2];
+        continue;
+      }
+      // blend with neighbouring painted texels of a similar colour
+      const me = cols[cs];
+      const u = (px + 0.5) / k - 0.5, v = (py + 0.5) / k - 0.5;
+      const x0 = Math.floor(u), y0 = Math.floor(v), fx = u - x0, fy = v - y0;
+      let r = 0, g = 0, b = 0, W = 0;
+      for (let j = 0; j < 4; j++) {
+        const cx = ((x0 + (j & 1)) % w + w) % w, cy = ((y0 + (j >> 1)) % h + h) % h, c = cy * w + cx;
+        if (!o.mask[c] || o.mod[c] || !similar(cols[c], me)) continue;
+        const wt = ((j & 1) ? fx : 1 - fx) * ((j >> 1) ? fy : 1 - fy);
+        r += cols[c][0] * wt; g += cols[c][1] * wt; b += cols[c][2] * wt; W += wt;
+      }
+      const gr = 1 + (grain(px, py, cs) - 0.5) * 0.05;
+      if (W > 0.001) { P[i] = (r / W) * gr; P[i + 1] = (g / W) * gr; P[i + 2] = (b / W) * gr; } else { P[i] = me[0] * gr; P[i + 1] = me[1] * gr; P[i + 2] = me[2] * gr; }
+      P[i + 3] = me[3];
+    }
+    o.mask.fill(0); o.mod.fill(0); o.any = false;
+  }
 }
 
 const hex = (h) => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
@@ -39,27 +295,38 @@ const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[
 const mul = (c, f) => [c[0] * f, c[1] * f, c[2] * f];
 const gray = (v) => [v, v, v];
 
-// Tileable value noise with a period of `p` cells across the texture.
+// Tileable value noise with a period of `p` cells across the texture. The
+// returned function samples at the pixel being painted; .at() samples
+// exactly where asked.
 function valueNoise(seed, p) {
   const r = rng(seed);
   const g = new Float32Array(p * p);
   for (let i = 0; i < g.length; i++) g[i] = r();
-  return (x, y) => {
+  const at = (x, y) => {
     const fx = (x / TS) * p, fy = (y / TS) * p;
     const x0 = Math.floor(fx), y0 = Math.floor(fy);
     const tx = fx - x0, ty = fy - y0;
     const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
-    const at = (a, b) => g[(((b % p) + p) % p) * p + (((a % p) + p) % p)];
-    const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * sx;
-    const b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * sx;
+    const cell = (a, b) => g[(((b % p) + p) % p) * p + (((a % p) + p) % p)];
+    const a = cell(x0, y0) + (cell(x0 + 1, y0) - cell(x0, y0)) * sx;
+    const b = cell(x0, y0 + 1) + (cell(x0 + 1, y0 + 1) - cell(x0, y0 + 1)) * sx;
     return a + (b - a) * sy;
   };
+  const f = (x, y) => at(x + SX, y + SY);
+  f.at = at;
+  return f;
 }
 
+// In detail, fbm gains a finer octave so the extra pixels carry real grain.
 function fbm(seed, ps, weights) {
+  ps = ps.slice(); weights = weights.slice();
+  if (K > 1) { const top = Math.max(...ps); ps.push(Math.min(TS * K, top * 2)); weights.push(weights.reduce((a, b) => a + b, 0) * 0.2); }
   const ns = ps.map((p, i) => valueNoise(seed + i * 101, p));
   const tot = weights.reduce((a, b) => a + b, 0);
-  return (x, y) => ns.reduce((s, n, i) => s + n(x, y) * weights[i], 0) / tot;
+  const at = (x, y) => ns.reduce((s, n, i) => s + n.at(x, y) * weights[i], 0) / tot;
+  const f = (x, y) => at(x + SX, y + SY);
+  f.at = at;
+  return f;
 }
 
 // Tileable Voronoi: returns {id, d1, d2, dx, dy} for a pixel.
@@ -67,7 +334,7 @@ function voronoi(seed, count) {
   const r = rng(seed);
   const pts = [];
   for (let i = 0; i < count; i++) pts.push([r() * TS, r() * TS, r()]);
-  return (x, y) => {
+  const at = (x, y) => {
     let d1 = 1e9, d2 = 1e9, id = 0, dx = 0, dy = 0;
     for (let i = 0; i < pts.length; i++) {
       for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
@@ -79,6 +346,9 @@ function voronoi(seed, count) {
     }
     return { id, d1, d2, dx, dy, v: pts[id][2] };
   };
+  const f = (x, y) => at(x + SX, y + SY);
+  f.at = at;
+  return f;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,8 +364,11 @@ function speckle(t, r, base, amt, n) {
 
 function stone(t, r) {
   const n = fbm(Math.floor(r() * 1e9), [4, 8, 16], [0.45, 0.35, 0.2]);
+  // in detail: faint darker veins along the mid-line of a second noise
+  const veins = t.k > 1 ? fbm(hashSeed('veins') ^ Math.floor(n.at(3, 5) * 1e6), [2, 4, 8], [0.5, 0.3, 0.2]) : null;
   t.each((x, y) => {
     let v = 122 + (n(x, y) - 0.5) * 48 + (r() - 0.5) * 10;
+    if (veins) { const q = Math.abs(veins(x, y) - 0.5); v -= Math.max(0, 0.03 - q) * 520; }
     t.set(x, y, gray(v));
   });
   // darker flecks and short cracks
@@ -125,7 +398,7 @@ function bricks(t, r, brick, mortar, rows = 4, bw = 8) {
   const rh = TS / rows;
   const shades = [];
   for (let i = 0; i < 32; i++) shades.push(0.85 + r() * 0.3);
-  t.each((x, y) => {
+  t.each((x, y, fx, fy) => {
     const row = Math.floor(y / rh);
     const off = row % 2 ? bw / 2 : 0;
     const bx = (x + off) % TS;
@@ -133,8 +406,14 @@ function bricks(t, r, brick, mortar, rows = 4, bw = 8) {
     const ly = y % rh, lx = bx % bw;
     if (ly === rh - 1 || lx === bw - 1) { t.set(x, y, mix(mortar, [0, 0, 0], n(x, y) * 0.15)); return; }
     let v = shades[row * 4 + col] + (n(x, y) - 0.5) * 0.18;
-    if (ly === 0 || lx === 0) v *= 1.12;
-    if (ly === rh - 2 || lx === bw - 2) v *= 0.9;
+    if (t.k === 1) {
+      if (ly === 0 || lx === 0) v *= 1.12;
+      if (ly === rh - 2 || lx === bw - 2) v *= 0.9;
+    } else {
+      // smooth bevels: lit along the top and left, shaded along the bottom and right
+      const dl = lx + fx - x + 0.5, dt = ly + fy - y + 0.5, dr = bw - 1 - dl, db = rh - 1 - dt;
+      v *= 1 + 0.15 * Math.max(0, 1 - Math.min(dl, dt) / 1.2) - 0.13 * Math.max(0, 1 - Math.min(dr, db) / 1.5);
+    }
     t.set(x, y, mul(brick, v));
   });
 }
@@ -157,6 +436,7 @@ function dirt(t, r) {
 
 // grass top is painted in grayscale; alpha 0 marks it for biome tinting
 function grassTop(t, r) {
+  if (t.k > 1) { grassTopDetail(t, r); return; }
   const n = fbm(Math.floor(r() * 1e9), [4, 8, 16], [0.3, 0.3, 0.4]);
   t.each((x, y) => {
     const v = 150 + n(x, y) * 70 + (r() - 0.5) * 30;
@@ -168,6 +448,33 @@ function grassTop(t, r) {
     t.set(x, y, gray(r() < 0.5 ? 120 : 225), 0);
     t.set(x, y + 1, gray(r() < 0.5 ? 140 : 205), 0);
   }
+}
+
+// In detail: a mottled base covered in hundreds of tiny tapered blades,
+// some catching the light and some in shadow.
+function grassTopDetail(t, r) {
+  const S = t.pw, k = t.k, P = t.px;
+  const n = fbm(Math.floor(r() * 1e9), [4, 8, 16], [0.4, 0.35, 0.25]);
+  const v = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) v[y * S + x] = 150 + n.at((x + 0.5) / k - 0.5, (y + 0.5) / k - 0.5) * 60;
+  const blades = 520;
+  for (let i = 0; i < blades; i++) {
+    const cx = r() * S, cy = r() * S, ang = r() * Math.PI * 2;
+    const len = (0.7 + r() * 1.1) * k, wid = (0.16 + r() * 0.14) * k;
+    const lit = r() < 0.55, shade = lit ? 196 + r() * 50 : 104 + r() * 36;
+    const dx = Math.cos(ang), dy = Math.sin(ang), R = Math.ceil(len + wid) + 1;
+    for (let oy = -R; oy <= R; oy++) for (let ox = -R; ox <= R; ox++) {
+      const u = ox * dx + oy * dy, w = -ox * dy + oy * dx;
+      if (u < 0 || u > len) continue;
+      const half = wid * (1 - (u / len) * 0.85);       // tapers to a point
+      const cov = Math.max(0, Math.min(1, half + 0.5 - Math.abs(w)));
+      if (cov <= 0) continue;
+      const x = (((Math.floor(cx + ox) % S) + S) % S), y = (((Math.floor(cy + oy) % S) + S) % S);
+      const tip = shade * (1 + (u / len) * (lit ? 0.06 : -0.04));
+      v[y * S + x] += (tip - v[y * S + x]) * cov;
+    }
+  }
+  for (let i = 0; i < S * S; i++) { P[i * 4] = P[i * 4 + 1] = P[i * 4 + 2] = v[i]; P[i * 4 + 3] = 0; }
 }
 
 function grassSide(t, r, snowy) {
@@ -233,8 +540,8 @@ function logSide(t, r, base, crack, light) {
   const n = valueNoise(Math.floor(r() * 1e9), 16);
   const colShade = [];
   for (let x = 0; x < 16; x++) colShade.push(0.85 + r() * 0.3);
-  t.each((x, y) => {
-    let v = colShade[x] * (0.9 + n(x, y * 0.25) * 0.2);
+  t.each((x, y, fx, fy) => {
+    let v = colShade[x] * (0.9 + n.at(fx, fy * 0.25) * 0.2);
     t.set(x, y, mul(base, v));
   });
   // vertical fissures
@@ -263,9 +570,9 @@ function birchSide(t, r) {
 
 function logTop(t, r, wood, bark) {
   const n = valueNoise(Math.floor(r() * 1e9), 8);
-  t.each((x, y) => {
+  t.each((x, y, fx, fy) => {
     if (x === 0 || y === 0 || x === 15 || y === 15) { t.set(x, y, mul(bark, 0.9 + r() * 0.2)); return; }
-    const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)) + Math.hypot(x - 7.5, y - 7.5) * 0.35 + n(x, y) * 0.8;
+    const d = Math.max(Math.abs(fx - 7.5), Math.abs(fy - 7.5)) + Math.hypot(fx - 7.5, fy - 7.5) * 0.35 + n(x, y) * 0.8;
     const ring = Math.floor(d) % 3 === 0;
     t.set(x, y, mul(wood, (ring ? 0.82 : 1.0) + (r() - 0.5) * 0.06));
   });
@@ -275,9 +582,9 @@ function planks(t, r, base) {
   const n = valueNoise(Math.floor(r() * 1e9), 16);
   const boardShade = [0.95 + r() * 0.1, 0.92 + r() * 0.1, 0.95 + r() * 0.1, 0.9 + r() * 0.1];
   const seams = [Math.floor(r() * 16), Math.floor(r() * 16), Math.floor(r() * 16), Math.floor(r() * 16)];
-  t.each((x, y) => {
+  t.each((x, y, fx, fy) => {
     const b = y >> 2, ly = y & 3;
-    let v = boardShade[b] * (0.93 + n(x * 0.3, y * 2) * 0.14);
+    let v = boardShade[b] * (0.93 + n.at(fx * 0.3, fy * 2) * 0.14);
     if (ly === 3) v *= 0.68;
     else if (ly === 0) v *= 1.06;
     if (x === seams[b]) v *= 0.72;
@@ -293,8 +600,9 @@ function planks(t, r, base) {
 }
 
 function leaves(t, r, holeP, style) {
+  if (t.k > 1) { leafCanopy(t, r, holeP, style); return; }
   const n = valueNoise(Math.floor(r() * 1e9), 8);
-  t.each((x, y) => {
+  t.each((x, y, fx, fy) => {
     const v = 105 + n(x, y) * 110 + (r() - 0.5) * 40;
     let hole = r() < holeP * (0.6 + n(x + 3, y + 7) * 0.8);
     if (style === 'spruce') hole = ((x + y * 2) % 4 === 0 && r() < 0.6) || r() < holeP * 0.5;
@@ -305,6 +613,37 @@ function leaves(t, r, holeP, style) {
   for (let i = 0; i < 14; i++) {
     const x = Math.floor(r() * 16), y = Math.floor(r() * 16);
     if (t.alpha(x, y)) t.set(x, y, gray(80));
+  }
+}
+
+// In detail, leaves are a canopy of individual leaves (or needles) in three
+// depths, painted straight into the pixels; gaps let the light through.
+function leafCanopy(t, r, holeP, style) {
+  const S = t.pw, k = t.k, P = t.px;
+  P.fill(0);
+  const needle = style === 'spruce';
+  const area = needle ? 1.7 : 8.2;                       // texels per leaf
+  const total = Math.round((-Math.log(holeP) * TS * TS) / area);
+  for (let layer = 0; layer < 3; layer++) {
+    const depth = [0.6, 0.8, 1][layer];
+    const n = Math.round(total * [0.45, 0.33, 0.22][layer] * 1.25);
+    for (let i = 0; i < n; i++) {
+      const cx = r() * S, cy = r() * S, ang = r() * Math.PI;
+      const len = (needle ? 1.5 + r() * 0.5 : 2.2 + r() * 0.9) * k, wid = (needle ? 0.36 : 0.95 + r() * 0.35) * k;
+      const base = (118 + r() * 84) * depth;
+      const ca = Math.cos(ang), sa = Math.sin(ang), R = Math.ceil(len) + 1;
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+        const u = (dx * ca + dy * sa) / len, w = (-dx * sa + dy * ca) / wid;
+        const edge = 1 - u * u;
+        if (edge <= 0 || Math.abs(w) >= edge) continue;
+        // lit along one side, a darker midrib, slightly darker towards the tips
+        let v = base * (1.08 - w * 0.18 - (1 - edge) * 0.12);
+        if (!needle && Math.abs(w) < 0.1 && Math.abs(u) < 0.85) v *= 0.82;
+        const x = (((Math.floor(cx + dx) % S) + S) % S), y = (((Math.floor(cy + dy) % S) + S) % S);
+        const o = (y * S + x) * 4;
+        P[o] = v; P[o + 1] = v; P[o + 2] = v; P[o + 3] = 255;
+      }
+    }
   }
 }
 
@@ -360,8 +699,8 @@ function cactusSide(t, r) {
 }
 
 function cactusTop(t, r, dim) {
-  t.each((x, y) => {
-    const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+  t.each((x, y, fx, fy) => {
+    const d = Math.max(Math.abs(fx - 7.5), Math.abs(fy - 7.5));
     let v = d > 6.5 ? 0.78 : Math.floor(d) % 2 ? 0.95 : 1.05;
     t.set(x, y, mul([86, 146, 58], v * (dim ? 0.8 : 1) + (r() - 0.5) * 0.06));
   });
@@ -563,8 +902,8 @@ function torchTop(t) {
 }
 
 function lamp(t, r) {
-  t.each((x, y) => {
-    const d = Math.abs(x - 7.5) + Math.abs(y - 7.5);
+  t.each((x, y, fx, fy) => {
+    const d = Math.abs(fx - 7.5) + Math.abs(fy - 7.5);
     let c = mix([255, 236, 160], [214, 130, 40], Math.min(1, d / 11));
     if (Math.floor(d) % 4 === 0) c = mix(c, [255, 255, 220], 0.5);
     c = mul(c, 0.94 + r() * 0.1);
@@ -584,8 +923,18 @@ function wool(t, r, base) {
 }
 
 function metalBlock(t, r, base) {
-  t.each((x, y) => {
+  t.each((x, y, fx, fy) => {
     let v = 1 + (r() - 0.5) * 0.04;
+    if (t.k > 1) {
+      // bevelled plate with soft diagonal sheen bands
+      const e1 = Math.min(fx + 0.5, fy + 0.5), e2 = Math.min(15.5 - fx, 15.5 - fy);
+      const band = ((fx + fy) % 6 + 6) % 6;
+      if (e1 > 2 && e2 > 2) v *= 1 + 0.07 * Math.max(0, 1 - Math.abs(band - 3) / 0.6);
+      if (e1 < e2) v *= 1 + 0.25 * Math.max(0, 1 - e1) + 0.1 * Math.max(0, 1 - Math.abs(e1 - 1.5) * 2);
+      else v *= 1 - 0.28 * Math.max(0, 1 - e2) - 0.14 * Math.max(0, 1 - Math.abs(e2 - 1.5) * 2);
+      t.set(x, y, mul(base, v));
+      return;
+    }
     if ((x + y) % 6 === 0 && x > 1 && y > 1 && x < 14 && y < 14) v *= 1.07;
     if (x === 0 || y === 0) v *= 1.25;
     else if (x === 15 || y === 15) v *= 0.72;
@@ -606,8 +955,8 @@ function gourdSide(t, r, base, stripe) {
 }
 
 function gourdTop(t, r, base, stripe) {
-  t.each((x, y) => {
-    const a = Math.atan2(y - 7.5, x - 7.5);
+  t.each((x, y, fx, fy) => {
+    const a = Math.atan2(fy - 7.5, fx - 7.5);
     const rib = Math.abs(Math.sin(a * 4)) < 0.25;
     t.set(x, y, mul(rib ? stripe : base, 0.95 + r() * 0.08));
   });
@@ -684,8 +1033,30 @@ function crack(t, stage) {
       crackLines.push(line);
     }
   }
-  t.fill(gray(128));
   const n = Math.round(((stage + 1) / 10) * crackLines.length);
+  if (t.k > 1) {
+    // thin fracture lines with a lit edge, drawn straight into the pixels
+    const S = t.pw, k = t.k, P = t.px;
+    const val = new Float32Array(S * S).fill(128);
+    const stroke = (pts, ox, oy, rad, v) => {
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const ax = (pts[i][0] + 0.5 + ox) * k, ay = (pts[i][1] + 0.5 + oy) * k, bx = (pts[i + 1][0] + 0.5 + ox) * k, by = (pts[i + 1][1] + 0.5 + oy) * k;
+        const R = rad * k, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1;
+        for (let y = Math.floor(Math.min(ay, by) - R - 1); y <= Math.max(ay, by) + R + 1; y++) for (let x = Math.floor(Math.min(ax, bx) - R - 1); x <= Math.max(ax, bx) + R + 1; x++) {
+          if (x < 0 || y < 0 || x >= S || y >= S) continue;
+          const px = x + 0.5, py = y + 0.5, u = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2));
+          const d = Math.hypot(px - ax - dx * u, py - ay - dy * u);
+          const cov = Math.max(0, Math.min(1, R + 0.5 - d));
+          if (cov > 0) val[y * S + x] += (v - val[y * S + x]) * cov;
+        }
+      }
+    };
+    for (let i = 0; i < n; i++) stroke(crackLines[i], 0.35, 0.2, 0.42, 168);
+    for (let i = 0; i < n; i++) stroke(crackLines[i], 0, 0, 0.36 - (i % 3) * 0.06, 34);
+    for (let i = 0; i < S * S; i++) { P[i * 4] = P[i * 4 + 1] = P[i * 4 + 2] = val[i]; P[i * 4 + 3] = 255; }
+    return;
+  }
+  t.fill(gray(128));
   for (let i = 0; i < n; i++) for (const [x, y] of crackLines[i]) {
     t.set(x, y, gray(38));
     t.set(x + 1, y, t.get(x + 1, y)[0] === 128 ? gray(160) : t.get(x + 1, y));
@@ -694,19 +1065,19 @@ function crack(t, stage) {
 
 function particle(t, name, r) {
   t.fill([0, 0, 0], 0);
-  const disc = (cx, cy, rad, c, a = 255) => t.each((x, y) => { if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= rad) t.set(x, y, c, a); });
+  const disc = (cx, cy, rad, c, a = 255) => t.each((x, y, fx, fy) => { if (Math.hypot(fx + 0.5 - cx, fy + 0.5 - cy) <= rad) t.set(x, y, c, a); });
   switch (name) {
     case 'p_flame':
-      t.each((x, y) => {
-        const dx = (x + 0.5 - 8) / 5, dy = (y + 0.5 - 10) / 6;
+      t.each((x, y, fx, fy) => {
+        const dx = (fx + 0.5 - 8) / 5, dy = (fy + 0.5 - 10) / 6;
         const d = dx * dx + dy * dy * (y < 10 ? 0.6 : 1.4);
         if (d < 1) t.set(x, y, mix([255, 250, 200], [255, 120, 20], Math.min(1, d * 1.3)));
       });
       break;
     case 'p_smoke0': case 'p_smoke1': case 'p_smoke2': case 'p_smoke3': {
       const k = +name.slice(-1);
-      t.each((x, y) => {
-        const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8);
+      t.each((x, y, fx, fy) => {
+        const d = Math.hypot(fx + 0.5 - 8, fy + 0.5 - 8);
         if (d < 7 - k * 1.4 && r() > 0.12) t.set(x, y, gray(200 - d * 8 + (r() - 0.5) * 30));
       });
       break;
@@ -727,10 +1098,10 @@ function particle(t, name, r) {
     case 'p_spark_dust': disc(8, 8, 2.5, [255, 60, 40]); t.set(7, 7, [255, 160, 140]); break;
     case 'p_void': disc(8, 8, 2, [230, 200, 255]); for (let i = 1; i < 5; i++) { t.set(8, 8 + i, [170, 120, 240]); t.set(8, 8 - i, [170, 120, 240]); t.set(8 + i, 8, [170, 120, 240]); t.set(8 - i, 8, [170, 120, 240]); } break;
     case 'p_fish': disc(8, 8, 3, [200, 230, 255]); t.set(7, 7, [255, 255, 255]); break;
-    case 'p_laser': t.each((x, y) => { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 6) t.set(x, y, [255, 255, 255], Math.round(255 * Math.min(1, (6 - d) / 3))); }); break;
+    case 'p_laser': t.each((x, y, fx, fy) => { const d = Math.hypot(fx - 7.5, fy - 7.5); if (d < 6) t.set(x, y, [255, 255, 255], Math.round(255 * Math.min(1, (6 - d) / 3))); }); break;
     case 'p_crit': for (let i = 2; i < 14; i++) { t.set(i, 8, [255, 255, 200]); t.set(8, i, [255, 255, 200]); } t.set(6, 6, [255, 240, 180]); t.set(10, 10, [255, 240, 180]); t.set(6, 10, [255, 240, 180]); t.set(10, 6, [255, 240, 180]); break;
     case 'p_explosion':
-      t.each((x, y) => { const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8); if (d < 7.5 && r() > 0.1) t.set(x, y, gray(255 - d * 14 - r() * 30)); });
+      t.each((x, y, fx, fy) => { const d = Math.hypot(fx + 0.5 - 8, fy + 0.5 - 8); if (d < 7.5 && r() > 0.1) t.set(x, y, gray(255 - d * 14 - r() * 30)); });
       break;
     default: break;
   }
@@ -738,8 +1109,8 @@ function particle(t, name, r) {
 
 function water(t, frame) {
   const P = Math.PI * 2, f = frame / 16;
-  t.each((x, y) => {
-    const u = x / 16, v = y / 16;
+  t.each((x, y, fx, fy) => {
+    const u = fx / 16, v = fy / 16;
     let w = Math.sin(P * (u * 2 + f)) * 0.35 + Math.sin(P * (v * 3 - f * 2 + u)) * 0.3 +
       Math.sin(P * (u * 1 + v * 2 + f * 3)) * 0.25 + Math.sin(P * (u * 4 - v + f)) * 0.1;
     w = w * 0.5 + 0.5;
@@ -750,8 +1121,8 @@ function water(t, frame) {
 
 function lava(t, frame) {
   const P = Math.PI * 2, f = frame / 16;
-  t.each((x, y) => {
-    const u = x / 16, v = y / 16;
+  t.each((x, y, fx, fy) => {
+    const u = fx / 16, v = fy / 16;
     let w = Math.sin(P * (u * 2 + f)) * Math.cos(P * (v * 2 - f)) * 0.5 +
       Math.sin(P * (u * 3 + v * 1 + f * 2)) * 0.3 + Math.sin(P * (v * 4 + f)) * 0.2;
     w = w * 0.5 + 0.5;
@@ -938,8 +1309,8 @@ function hay(t, r, top) {
 
 function rift(t, frame) {
   const P = Math.PI * 2, f = frame / 16;
-  t.each((x, y) => {
-    const u = x / 16 - 0.5, v = y / 16 - 0.5;
+  t.each((x, y, fx, fy) => {
+    const u = fx / 16 - 0.5, v = fy / 16 - 0.5;
     const a = Math.atan2(v, u), d = Math.hypot(u, v);
     let w = Math.sin(a * 2 + d * 14 - f * P) * 0.5 + Math.sin(u * 9 + f * P * 2) * 0.25 + Math.sin(v * 7 - f * P) * 0.25;
     w = w * 0.5 + 0.5;
@@ -1044,7 +1415,7 @@ function trapdoor(t, r) {
 function dispenserFront(t, r, vertical) {
   cobble(t, r, [120, 120, 120], [66, 66, 66], 9);
   if (vertical) {
-    t.each((x, y) => { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 4.5) t.set(x, y, d < 3 ? [20, 20, 22] : [70, 70, 74]); });
+    t.each((x, y, fx, fy) => { const d = Math.hypot(fx - 7.5, fy - 7.5); if (d < 4.5) t.set(x, y, d < 3 ? [20, 20, 22] : [70, 70, 74]); });
   } else {
     t.rect(4, 5, 8, 6, [70, 70, 74]); t.rect(5, 6, 6, 4, [20, 20, 22]);
   }
@@ -1075,8 +1446,8 @@ function railCorner(t) {
       t.put(x, y, wood); t.put(x + 1, y, woodD);
     }
   }
-  t.each((x, y) => {
-    const d = Math.hypot(x + 0.5 - 16, y + 0.5 - 16);
+  t.each((x, y, fx, fy) => {
+    const d = Math.hypot(fx + 0.5 - 16, fy + 0.5 - 16);
     if (Math.abs(d - 3.5) < 0.8 || Math.abs(d - 13.5) < 0.8) t.set(x, y, iron);
     else if (Math.abs(d - 4.5) < 0.6 || Math.abs(d - 12.5) < 0.6) t.set(x, y, ironD);
   });
@@ -1091,7 +1462,7 @@ function duskstone(t, r) {
 }
 function starFrameTop(t, r) {
   speckle(t, r, [46, 92, 96], 12, 0.5);
-  t.each((x, y) => { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 4) t.set(x, y, [16, 30, 36]); else if (d < 5) t.set(x, y, [120, 200, 190]); });
+  t.each((x, y, fx, fy) => { const d = Math.hypot(fx - 7.5, fy - 7.5); if (d < 4) t.set(x, y, [16, 30, 36]); else if (d < 5) t.set(x, y, [120, 200, 190]); });
 }
 function starFrameSide(t, r) {
   duskstone(t, r);
@@ -1099,8 +1470,8 @@ function starFrameSide(t, r) {
   for (let x = 0; x < 16; x += 4) t.set(x + 1, 2, [150, 230, 220]);
 }
 function starFrameEye(t, r) {
-  t.each((x, y) => {
-    const d = Math.hypot(x - 7.5, y - 7.5) / 8;
+  t.each((x, y, fx, fy) => {
+    const d = Math.hypot(fx - 7.5, fy - 7.5) / 8;
     let c = mix([150, 120, 255], [20, 16, 60], Math.min(1, d * 1.4));
     if (r() < 0.04) c = [255, 255, 255];
     t.set(x, y, c);
@@ -1108,15 +1479,15 @@ function starFrameEye(t, r) {
   t.rect(7, 7, 2, 2, [255, 250, 220]);
 }
 function voidStalk(t, r) {
-  t.each((x, y) => {
-    const v = Math.sin(x * 1.3 + Math.floor(y / 3) * 2.1) * 0.5 + 0.5;
+  t.each((x, y, fx, fy) => {
+    const v = Math.sin(fx * 1.3 + Math.floor(y / 3) * 2.1) * 0.5 + 0.5;
     t.set(x, y, mix([70, 40, 90], [140, 100, 170], v * 0.7 + r() * 0.3));
   });
 }
 function voidBloom(t, r) {
-  t.each((x, y) => {
-    const d = Math.hypot(x - 7.5, y - 7.5);
-    const petal = Math.sin(Math.atan2(y - 7.5, x - 7.5) * 5) * 0.5 + 0.5;
+  t.each((x, y, fx, fy) => {
+    const d = Math.hypot(fx - 7.5, fy - 7.5);
+    const petal = Math.sin(Math.atan2(fy - 7.5, fx - 7.5) * 5) * 0.5 + 0.5;
     t.set(x, y, d < 3 ? [250, 236, 255] : mix([140, 90, 190], [220, 180, 250], petal * 0.8 + r() * 0.2));
   });
 }
@@ -1127,8 +1498,8 @@ function astralBricks(t, r) {
   });
 }
 function astralPillar(t, r, top) {
-  t.each((x, y) => {
-    if (top) { const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)); t.set(x, y, Math.floor(d) % 3 === 0 ? [80, 76, 150] : mix([116, 112, 196], [140, 136, 220], r() * 0.4)); }
+  t.each((x, y, fx, fy) => {
+    if (top) { const d = Math.max(Math.abs(fx - 7.5), Math.abs(fy - 7.5)); t.set(x, y, Math.floor(d) % 3 === 0 ? [80, 76, 150] : mix([116, 112, 196], [140, 136, 220], r() * 0.4)); }
     else t.set(x, y, x % 5 === 0 ? [80, 76, 150] : mix([116, 112, 196], [140, 136, 220], r() * 0.4));
   });
 }
@@ -1180,8 +1551,8 @@ function cakeTex(t, r, part) {
 function fireTex(t, frame) {
   clear(t);
   const P = Math.PI * 2, f = frame / 16;
-  t.each((x, y) => {
-    const u = x / 16, v = y / 16;
+  t.each((x, y, fx, fy) => {
+    const u = fx / 16, v = fy / 16;
     let h = 0.55 + Math.sin(P * (u * 2 + f)) * 0.12 + Math.sin(P * (u * 5 - f * 2)) * 0.08 + Math.sin(P * (u * 9 + f * 3)) * 0.05;
     const k = (v - (1 - h)) / h; // 0 at the flame tip, 1 at the base
     if (k < 0) return;
@@ -1194,7 +1565,7 @@ function fireTex(t, frame) {
 function voidGate(t, frame) {
   const f = frame / 16;
   const rr = rng(4242);
-  t.each((x, y) => t.set(x, y, mix([6, 8, 20], [16, 26, 44], (Math.sin((x + y * 0.7) * 0.5 + f * 6.28) * 0.5 + 0.5) * 0.6)));
+  t.each((x, y, fx, fy) => t.set(x, y, mix([6, 8, 20], [16, 26, 44], (Math.sin((fx + fy * 0.7) * 0.5 + f * 6.28) * 0.5 + 0.5) * 0.6)));
   for (let i = 0; i < 22; i++) {
     const sx = Math.floor(rr() * 16), sy = Math.floor(rr() * 16), ph = rr();
     const b = 0.5 + 0.5 * Math.sin((f + ph) * Math.PI * 2);
@@ -1249,7 +1620,7 @@ function observerSide(t, r) {
 }
 function dropperFront(t, r, vertical) {
   cobble(t, r, [120, 120, 120], [66, 66, 66], 9);
-  if (vertical) t.each((x, y) => { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 5) t.set(x, y, d < 3.6 ? [16, 16, 18] : [70, 70, 74]); });
+  if (vertical) t.each((x, y, fx, fy) => { const d = Math.hypot(fx - 7.5, fy - 7.5); if (d < 5) t.set(x, y, d < 3.6 ? [16, 16, 18] : [70, 70, 74]); });
   else { t.rect(4, 4, 8, 8, [70, 70, 74]); t.rect(5, 5, 6, 6, [16, 16, 18]); }
 }
 function anvilTex(t, r, top) {
@@ -1262,9 +1633,9 @@ function anvilTex(t, r, top) {
   if (top) for (let y = 3; y < 13; y++) for (let x = 4; x < 12; x++) t.set(x, y, mul([96, 96, 100], 0.9 + r() * 0.2));
 }
 function beaconCore(t) {
-  t.each((x, y) => {
-    const d = Math.hypot(x - 7.5, y - 7.5);
-    const star = Math.max(0, 1 - Math.min(Math.abs(x - 7.5), Math.abs(y - 7.5)) / 2.2) * Math.max(0, 1 - d / 8);
+  t.each((x, y, fx, fy) => {
+    const d = Math.hypot(fx - 7.5, fy - 7.5);
+    const star = Math.max(0, 1 - Math.min(Math.abs(fx - 7.5), Math.abs(fy - 7.5)) / 2.2) * Math.max(0, 1 - d / 8);
     const c = mix([40, 150, 170], [235, 255, 255], Math.min(1, star + Math.max(0, 1 - d / 5) * 0.7));
     t.set(x, y, c);
   });
@@ -1293,7 +1664,7 @@ function cauldronTex(t, r, part) {
   if (part === 'side') { for (let x = 0; x < 16; x++) { t.set(x, 0, mul(base, 1.4)); t.set(x, 15, mul(base, 0.6)); } t.rect(4, 13, 8, 3, [0, 0, 0], 0); }
   if (part === 'top') t.rect(2, 2, 12, 12, [0, 0, 0], 0);
   if (part === 'inner') t.each((x, y) => t.set(x, y, mul([40, 40, 46], 0.85 + r() * 0.2)));
-  if (part === 'bottom') t.each((x, y) => { if ((x - 7.5) ** 2 + (y - 7.5) ** 2 < 20) t.set(x, y, mul(base, 0.5)); });
+  if (part === 'bottom') t.each((x, y, fx, fy) => { if ((fx - 7.5) ** 2 + (fy - 7.5) ** 2 < 20) t.set(x, y, mul(base, 0.5)); });
 }
 function cauldronWater(t, r) {
   const n = valueNoise(Math.floor(r() * 1e9), 8);
@@ -1379,7 +1750,7 @@ function pumpkinFace(t, r, lit) {
 
 function paintBlock(name, frame) {
   const t = new Tex();
-  const r = rng(hashSeed('bf:' + name) + frame * 7919);
+  const r = paintRng(hashSeed('bf:' + name) + frame * 7919);
   switch (name) {
     case 'stone': stone(t, r); break;
     case 'cobblestone': cobble(t, r); break;
@@ -1666,11 +2037,78 @@ export function buildMips(data, size, transparent) {
   return levels;
 }
 
-export function generateBlockTextures() {
-  return TEXTURE_LIST.map(({ name, frame }) => {
-    const t = paintBlock(name, frame);
-    return { name, frame, data: t.d, transparent: ALPHA_TEXTURES.has(name) };
+// Fine grain over the finished pixels: what gives detailed textures their
+// crisp, material feel up close. Liquids, glass and effects stay clean.
+const NO_GRAIN = /^(water|lava|fire|crack|p_|rift|void_gate|glass|beacon_core|spawner|cauldron_water|lumen)/;
+const LIGHT_GRAIN = /wool|snow|terracotta|clay|quartz|_block$|lamp|ice|cake|bed_|banner|carpet/;
+function addGrain(t, name) {
+  if (t.k === 1 || NO_GRAIN.test(name)) return;
+  const amp = LIGHT_GRAIN.test(name) ? 0.045 : /sand|gravel|path|farmland|dirt/.test(name) ? 0.16 : 0.1;
+  const S = t.pw, P = t.d, seed = hashSeed('grain:' + name);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = (y * S + x) * 4;
+    if (!P[i + 3]) continue;
+    const g = grain(x, y, seed) * 0.6 + grain(x >> 1, y >> 1, seed + 1) * 0.4;
+    const f = 1 + (g - 0.5) * amp;
+    P[i] *= f; P[i + 1] *= f; P[i + 2] *= f;
+  }
+}
+
+// Relief maps for lighting: the height of each pixel is taken from its
+// brightness (mortar and cracks sit low, stone faces high). RG hold the
+// tangent-space normal, B the height and A how glossy the surface is.
+const FLAT_RELIEF = /^(water|lava|fire|crack|p_|rift|void_gate|glass|beacon_core|cauldron_water|lumen|lamp|spark_lamp|redstone_lamp|torch|spark_torch)/;
+function reliefOf(name) {
+  if (FLAT_RELIEF.test(name)) return { strength: 0, gloss: 0 };
+  if (/ore$|ore_/.test(name)) return { strength: 1.3, gloss: -1 };            // gloss from colour
+  if (/iron_block|gold_block|diamond_block|emerald_block|copper|anvil|blaster|rail|piston|hopper|observer|cauldron|chain|lantern|bars/.test(name)) return { strength: 0.75, gloss: 0.55 };
+  if (/ice|obsidian|quartz|amethyst|crystal|tide/.test(name)) return { strength: 0.6, gloss: 0.45 };
+  if (/brick|cobble|stone|gravel|bedrock|scorch|duskstone|astral|basalt|tuff|deepslate|blackstone|magma/.test(name)) return { strength: 1.3, gloss: 0.04 };
+  if (/wool|snow|sand|clay|terracotta|concrete|carpet|bed_|cake|sponge/.test(name)) return { strength: 0.5, gloss: 0 };
+  if (/leaves|grass|fern|flower|sapling|vine|wheat|carrot|potato|mushroom|bush|cane|cactus/.test(name)) return { strength: 0.55, gloss: 0.02 };
+  if (/log|planks|wood|door|trapdoor|table|shelf|chest|loom|barrel|fence|ladder|sign|note/.test(name)) return { strength: 0.95, gloss: 0.03 };
+  return { strength: 1, gloss: 0.03 };
+}
+
+export function generateNormalMaps(textures) {
+  return textures.map((t) => {
+    const S = t.size || TS, d = t.data, k = S / TS, n = S * S;
+    const out = new Uint8ClampedArray(n * 4);
+    const { strength, gloss } = reliefOf(t.name);
+    if (!strength) { for (let i = 0; i < n; i++) { out[i * 4] = 128; out[i * 4 + 1] = 128; out[i * 4 + 2] = 128; } return { name: t.name, data: out }; }
+    const h0 = new Float32Array(n), h = new Float32Array(n);
+    for (let i = 0; i < n; i++) h0[i] = d[i * 4 + 3] < 16 ? 0 : (0.3 * d[i * 4] + 0.59 * d[i * 4 + 1] + 0.11 * d[i * 4 + 2]) / 255;
+    const at = (a, x, y) => a[((y + S) % S) * S + ((x + S) % S)];
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      h[y * S + x] = (at(h0, x, y) * 4 + at(h0, x + 1, y) + at(h0, x - 1, y) + at(h0, x, y + 1) + at(h0, x, y - 1)) / 8;
+    }
+    const depth = 1.6 * strength * k;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = y * S + x;
+      const sx = (at(h, x + 1, y) - at(h, x - 1, y)) * 0.5 * depth, sy = (at(h, x, y + 1) - at(h, x, y - 1)) * 0.5 * depth;
+      const l = Math.hypot(sx, sy, 1);
+      out[i * 4] = (-sx / l) * 127.5 + 127.5; out[i * 4 + 1] = (-sy / l) * 127.5 + 127.5; out[i * 4 + 2] = h[i] * 255;
+      let g = gloss;
+      if (g < 0) { // ores: the coloured specks shine
+        const r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+        g = mx > 0 ? Math.max(0, Math.min(1, ((mx - mn) / mx) * 1.6 - 0.25)) * 0.8 : 0;
+      }
+      out[i * 4 + 3] = g * 255;
+    }
+    return { name: t.name, data: out };
   });
+}
+
+// Paint every block texture at `detail` pixels per texel (1, 2 or 4).
+export function generateBlockTextures(detail = 1) {
+  K = detail;
+  try {
+    return TEXTURE_LIST.map(({ name, frame }) => {
+      const t = paintBlock(name, frame);
+      addGrain(t, name);
+      return { name, frame, data: t.d, size: t.pw, transparent: ALPHA_TEXTURES.has(name) };
+    });
+  } finally { K = 1; }
 }
 
 // ---------------------------------------------------------------------------
@@ -1717,6 +2155,7 @@ class Sprite {
   // Render: per-material 3-tone shading from exposure to the top-left light,
   // plus a dark outline around the silhouette.
   render(outline = true) {
+    if (K > 1) return this.renderDetail(outline);
     const t = new Tex();
     t.fill([0, 0, 0], 0);
     for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
@@ -1738,6 +2177,59 @@ class Sprite {
         if (n !== undefined) o.set(x, y, mul(this.pal[n][0], 0.45));
       }
       return o;
+    }
+    return t;
+  }
+
+  // The same look at K pixels per texel: Scale2x smooths the silhouette and
+  // the edges between materials; bevels and the outline are drawn in pixels.
+  renderDetail(outline) {
+    const k = K, S = 16 * k;
+    const same = (a, b) => a === b || (a >= 0 && b >= 0 && this.pal[a] === this.pal[b]);
+    let map = Int32Array.from(this.m);
+    for (let w = 16; w < S; w *= 2) map = scale2x(map, w, w, same, false);
+    const at = (x, y) => (x < 0 || y < 0 || x >= S || y >= S ? -1 : map[y * S + x]);
+    const t = new Tex();
+    const P = t.px;
+    const bev = Math.max(1, Math.round(k * 0.75));
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const m = map[y * S + x];
+      if (m < 0) continue;
+      let ul = 0, dr = 0;
+      for (let d = 1; d <= bev && !ul; d++) if (!same(at(x, y - d), m) || !same(at(x - d, y), m)) ul = d;
+      for (let d = 1; d <= bev && !dr; d++) if (!same(at(x, y + d), m) || !same(at(x + d, y), m)) dr = d;
+      const pal = this.pal[m];
+      let c = pal[1];
+      if (ul) c = mix(pal[1], pal[2], 1 - ((ul - 1) / bev) * 0.45);
+      else if (dr) c = mix(pal[1], pal[0], 1 - ((dr - 1) / bev) * 0.45);
+      // a soft sheen towards the top left and a little grain
+      const sheen = 1 + (0.5 - (x + y) / (2 * S)) * 0.12, gr = 1 + (grain(x, y, m + 7) - 0.5) * 0.05;
+      const i = (y * S + x) * 4;
+      P[i] = c[0] * sheen * gr; P[i + 1] = c[1] * sheen * gr; P[i + 2] = c[2] * sheen * gr; P[i + 3] = 255;
+    }
+    if (!outline) return t;
+    // chamfer distance (in thirds of a pixel) to the nearest painted pixel
+    const INF = 1e9, dist = new Float64Array(S * S).fill(INF), src = new Int32Array(S * S).fill(-1);
+    for (let i = 0; i < S * S; i++) if (map[i] >= 0) { dist[i] = 0; src[i] = map[i]; }
+    const relax = (i, j, c) => { if (dist[j] + c < dist[i]) { dist[i] = dist[j] + c; src[i] = src[j]; } };
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const i = y * S + x;
+      if (x > 0) relax(i, i - 1, 3);
+      if (y > 0) { relax(i, i - S, 3); if (x > 0) relax(i, i - S - 1, 4); if (x < S - 1) relax(i, i - S + 1, 4); }
+    }
+    for (let y = S - 1; y >= 0; y--) for (let x = S - 1; x >= 0; x--) {
+      const i = y * S + x;
+      if (x < S - 1) relax(i, i + 1, 3);
+      if (y < S - 1) { relax(i, i + S, 3); if (x < S - 1) relax(i, i + S + 1, 4); if (x > 0) relax(i, i + S - 1, 4); }
+    }
+    const ow = k * 0.85;
+    for (let i = 0; i < S * S; i++) {
+      if (map[i] >= 0 || src[i] < 0) continue;
+      const d = dist[i] / 3;
+      if (d > ow + 0.5) continue;
+      const c = mul(this.pal[src[i]][0], 0.45);
+      P[i * 4] = c[0]; P[i * 4 + 1] = c[1]; P[i * 4 + 2] = c[2];
+      P[i * 4 + 3] = 255 * Math.min(1, Math.max(0, ow + 0.5 - d));
     }
     return t;
   }
@@ -1866,7 +2358,7 @@ function blockSprite(name, r) {
 }
 
 function paintItem(name) {
-  const r = rng(hashSeed('item:' + name));
+  const r = paintRng(hashSeed('item:' + name));
   const parts = name.split('_');
   if (name.startsWith('block_')) return blockSprite(name.slice(6), r);
   if (name.startsWith('potion_')) return bottleSprite(POTION_COLORS[name.slice(7)] || [200, 0, 200], false);
@@ -2274,6 +2766,10 @@ function paintItem(name) {
   return s.render();
 }
 
-export function generateItemTextures() {
-  return ITEM_TEXTURES.map((name) => ({ name, data: paintItem(name).d }));
+// Paint every item sprite at `detail` pixels per texel (1, 2 or 4).
+export function generateItemTextures(detail = 1) {
+  K = detail;
+  try {
+    return ITEM_TEXTURES.map((name) => { const t = paintItem(name); return { name, data: t.d, size: t.pw }; });
+  } finally { K = 1; }
 }

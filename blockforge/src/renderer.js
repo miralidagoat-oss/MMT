@@ -61,6 +61,8 @@ export class Renderer {
     this.progCloud = program(gl, S.CLOUD_VS, S.CLOUD_FS);
     // the shadow sampler lives on texture unit 1
     for (const pr of [this.progChunk, this.progModel]) { gl.useProgram(pr.p); gl.uniform1i(pr.u.uShadowMap, 1); }
+    // relief (normal) maps for the terrain live on texture unit 2
+    gl.useProgram(this.progChunk.p); gl.uniform1i(this.progChunk.u.uNormTex, 2);
     gl.useProgram(null);
     // optional passes: if a driver rejects them the game still runs without
     try {
@@ -131,32 +133,44 @@ export class Renderer {
 
   // ---------------------------------------------------------------------------
   // Textures
-  createArrayTexture(layers, size, transparentFlags, mipmaps = true) {
+  // smooth: linear filtering with anisotropy (detailed textures) instead of
+  // crisp nearest-texel sampling (classic 16px art).
+  createArrayTexture(layers, size, transparentFlags, mipmaps = true, smooth = false, maxLevel = -1) {
     const gl = this.gl;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
-    const levels = mipmaps ? Math.log2(size) + 1 : 1;
+    const levels = mipmaps ? (maxLevel >= 0 ? Math.min(maxLevel, Math.log2(size)) : Math.log2(size)) + 1 : 1;
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.RGBA8, size, size, layers.length);
     layers.forEach((data, i) => {
       const mips = mipmaps ? buildMips(data, size, transparentFlags ? transparentFlags[i] : true) : [data];
       mips.forEach((m, lvl) => {
+        if (lvl >= levels) return;
         const s = size >> lvl;
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, lvl, 0, 0, i, s, s, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(m.buffer, m.byteOffset, m.byteLength));
       });
     });
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, mipmaps ? gl.NEAREST_MIPMAP_LINEAR : gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, smooth ? gl.LINEAR : gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, mipmaps ? (smooth ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST_MIPMAP_LINEAR) : (smooth ? gl.LINEAR : gl.NEAREST));
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     if (mipmaps) gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAX_LEVEL, levels - 1);
+    const aniso = smooth && mipmaps && (this.anisoExt || (this.anisoExt = gl.getExtension('EXT_texture_filter_anisotropic')));
+    if (aniso) gl.texParameterf(gl.TEXTURE_2D_ARRAY, aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT) || 1));
     return tex;
   }
 
-  setTextures(blockTextures, itemTextures, skins) {
+  // Upload the painted textures (any detail level; replaces what was there).
+  setTextures(blockTextures, itemTextures, skins, normals = null) {
     if (blockTextures.length !== TEXTURE_COUNT) throw new Error('texture count mismatch');
-    this.blockTex = this.createArrayTexture(blockTextures.map((t) => t.data), TS, blockTextures.map((t) => t.transparent));
-    this.itemTex = this.createArrayTexture(itemTextures.map((t) => t.data), TS, null);
-    this.skinTex = this.createArrayTexture(skins, 64, null, false);
+    const gl = this.gl;
+    for (const t of [this.blockTex, this.itemTex, this.skinTex, this.normalTex]) if (t) gl.deleteTexture(t);
+    const bs = blockTextures[0].size || TS, is = itemTextures[0].size || TS;
+    const ss = Math.round(Math.sqrt(skins[0].length / 4));
+    this.texDetail = bs / TS;
+    this.blockTex = this.createArrayTexture(blockTextures.map((t) => t.data), bs, blockTextures.map((t) => t.transparent), true, bs > TS);
+    this.itemTex = this.createArrayTexture(itemTextures.map((t) => t.data), is, null, true, is > TS);
+    this.skinTex = this.createArrayTexture(skins, ss, null, ss > 64, ss > 64, 2);
+    this.normalTex = normals ? this.createArrayTexture(normals.map((t) => t.data), bs, null, true, bs > TS) : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -676,6 +690,11 @@ export class Renderer {
     gl.uniform1f(pc.u.uWaterFx, this.quality.waterFx ? 1 : 0);
     gl.uniform3fv(pc.u.uZenith, env.zenith);
     gl.uniform1f(pc.u.uRain, env.rain || 0);
+    const relief = !!(this.quality.relief && this.normalTex);
+    gl.uniform1f(pc.u.uRelief, relief ? 1 : 0);
+    gl.uniform3fv(pc.u.uLightDir, this.lightDir);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, relief ? this.normalTex : this.blockTex);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blockTex);
     gl.uniform1i(pc.u.uTex, 0);

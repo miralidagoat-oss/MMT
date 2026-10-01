@@ -2,6 +2,7 @@
 // and mesh builders for held/dropped items. All designs are original.
 import { skinBox, cubeMesh } from './renderer.js';
 import { rng } from './noise.js';
+import { upscaleArt } from './textures.js';
 import { faceTexture, RENDER_TYPE, RENDER, BLOCKS, TINT } from './blocks.js';
 import { ITEMS } from './items.js';
 
@@ -18,12 +19,21 @@ export const ARMOR_SKIN = { leather: 14, golden: 16, iron: 18, diamond: 20 };
 
 // ---------------------------------------------------------------------------
 // Skin painting helpers (64x64 RGBA)
+// Skins are painted on a 64x64 texel grid; at higher detail the result is
+// upscaled per face (see upscaleArt) when it is read.
+let SKIN_K = 1;
 class Skin {
-  constructor(seed) { this.d = new Uint8ClampedArray(64 * 64 * 4); this.r = rng(seed); }
+  constructor(seed) {
+    this.t = new Uint8ClampedArray(64 * 64 * 4); this.r = rng(seed); this.seed = seed;
+    this.region = new Int32Array(64 * 64).fill(-1); this.face = -1; this.faces = 0;
+  }
+  get d() { return SKIN_K === 1 ? this.t : upscaleArt(this.t, 64, 64, SKIN_K, this.region, this.seed); }
   px(x, y, c, a = 255) {
     if (x < 0 || y < 0 || x >= 64 || y >= 64) return;
     const i = (y * 64 + x) * 4;
-    this.d[i] = c[0]; this.d[i + 1] = c[1]; this.d[i + 2] = c[2]; this.d[i + 3] = a;
+    this.t[i] = c[0]; this.t[i + 1] = c[1]; this.t[i + 2] = c[2]; this.t[i + 3] = a;
+    if (this.face >= 0) this.region[y * 64 + x] = this.face;
+    else if (this.region[y * 64 + x] < 0) this.region[y * 64 + x] = 10000 + y * 64 + x;
   }
   // Paint every face of a box-unwrapped part. fn(face, x, y, w, h) -> color
   box(u, v, w, h, d, fn) {
@@ -33,11 +43,13 @@ class Skin {
       left: [u + d + w, v + d, d, h], back: [u + d + w + d, v + d, w, h],
     };
     for (const [face, [rx, ry, rw, rh]] of Object.entries(rects)) {
+      this.face = this.faces++;
       for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) {
         const c = fn(face, x, y, rw, rh);
         if (c) this.px(rx + x, ry + y, c, c[3] ?? 255);
       }
     }
+    this.face = -1;
   }
   vary(c, amt = 0.08) {
     const f = 1 + (this.r() - 0.5) * 2 * amt;
@@ -620,7 +632,12 @@ export const OUTFITS = {
   scholar: { tunic: [60, 70, 140], trim: [220, 190, 90], pants: [50, 50, 70], hat: null, hatBand: null, beard: true },
 };
 
-export function generateSkins() {
+export function generateSkins(detail = 1) {
+  SKIN_K = detail;
+  try { return paintSkins(); } finally { SKIN_K = 1; }
+}
+
+function paintSkins() {
   const out = new Array(SKIN_COUNT);
   out[SKIN.PLAYER] = paintPlayer();
   out[SKIN.PIG] = paintPig();
@@ -982,20 +999,40 @@ export function buildModelMeshes(renderer) {
 // sprite (1 texel thick) built from the texture's alpha.
 export function extrudedSprite(texData, layer) {
   const out = [];
-  const a = (x, y) => (x < 0 || y < 0 || x > 15 || y > 15 ? 0 : texData[(y * 16 + x) * 4 + 3]);
+  const S = Math.round(Math.sqrt(texData.length / 4));
+  const a = (x, y) => (x < 0 || y < 0 || x >= S || y >= S ? 0 : texData[(y * S + x) * 4 + 3]);
   const T = 1 / 32; // half thickness
   const P = (x, y, z, n, u, v) => out.push(x, y, z, n[0], n[1], n[2], u, v, layer);
   // front (+Z) and back (-Z) full quads
   P(-0.5, -0.5, T, [0, 0, 1], 0, 1); P(0.5, -0.5, T, [0, 0, 1], 1, 1); P(0.5, 0.5, T, [0, 0, 1], 1, 0); P(-0.5, 0.5, T, [0, 0, 1], 0, 0);
   P(0.5, -0.5, -T, [0, 0, -1], 1, 1); P(-0.5, -0.5, -T, [0, 0, -1], 0, 1); P(-0.5, 0.5, -T, [0, 0, -1], 0, 0); P(0.5, 0.5, -T, [0, 0, -1], 1, 0);
-  for (let py = 0; py < 16; py++) for (let px = 0; px < 16; px++) {
-    if (a(px, py) < 128) continue;
-    const x0 = px / 16 - 0.5, x1 = x0 + 1 / 16, y1 = 0.5 - py / 16, y0 = y1 - 1 / 16;
-    const u = (px + 0.5) / 16, v = (py + 0.5) / 16;
-    if (a(px, py - 1) < 128) { P(x0, y1, -T, [0, 1, 0], u, v); P(x0, y1, T, [0, 1, 0], u, v); P(x1, y1, T, [0, 1, 0], u, v); P(x1, y1, -T, [0, 1, 0], u, v); }
-    if (a(px, py + 1) < 128) { P(x0, y0, -T, [0, -1, 0], u, v); P(x1, y0, -T, [0, -1, 0], u, v); P(x1, y0, T, [0, -1, 0], u, v); P(x0, y0, T, [0, -1, 0], u, v); }
-    if (a(px + 1, py) < 128) { P(x1, y0, -T, [1, 0, 0], u, v); P(x1, y1, -T, [1, 0, 0], u, v); P(x1, y1, T, [1, 0, 0], u, v); P(x1, y0, T, [1, 0, 0], u, v); }
-    if (a(px - 1, py) < 128) { P(x0, y0, T, [-1, 0, 0], u, v); P(x0, y1, T, [-1, 0, 0], u, v); P(x0, y1, -T, [-1, 0, 0], u, v); P(x0, y0, -T, [-1, 0, 0], u, v); }
+  // side walls along the silhouette, merged into runs
+  const solid = (x, y) => a(x, y) >= 128;
+  for (let py = 0; py < S; py++) {
+    for (const [dy, ny] of [[-1, [0, 1, 0]], [1, [0, -1, 0]]]) {
+      for (let px = 0; px < S;) {
+        if (!(solid(px, py) && !solid(px, py + dy))) { px++; continue; }
+        let e = px; while (e + 1 < S && solid(e + 1, py) && !solid(e + 1, py + dy)) e++;
+        const x0 = px / S - 0.5, x1 = (e + 1) / S - 0.5, yy = dy < 0 ? 0.5 - py / S : 0.5 - (py + 1) / S;
+        const u0 = (px + 0.5) / S, u1 = (e + 0.5) / S, v = (py + 0.5) / S;
+        if (dy < 0) { P(x0, yy, -T, ny, u0, v); P(x0, yy, T, ny, u0, v); P(x1, yy, T, ny, u1, v); P(x1, yy, -T, ny, u1, v); }
+        else { P(x0, yy, -T, ny, u0, v); P(x1, yy, -T, ny, u1, v); P(x1, yy, T, ny, u1, v); P(x0, yy, T, ny, u0, v); }
+        px = e + 1;
+      }
+    }
+  }
+  for (let px = 0; px < S; px++) {
+    for (const [dx, nx] of [[1, [1, 0, 0]], [-1, [-1, 0, 0]]]) {
+      for (let py = 0; py < S;) {
+        if (!(solid(px, py) && !solid(px + dx, py))) { py++; continue; }
+        let e = py; while (e + 1 < S && solid(px, e + 1) && !solid(px + dx, e + 1)) e++;
+        const xx = dx > 0 ? (px + 1) / S - 0.5 : px / S - 0.5, y1 = 0.5 - py / S, y0 = 0.5 - (e + 1) / S;
+        const u = (px + 0.5) / S, v0 = (py + 0.5) / S, v1 = (e + 0.5) / S;
+        if (dx > 0) { P(xx, y0, -T, nx, u, v1); P(xx, y1, -T, nx, u, v0); P(xx, y1, T, nx, u, v0); P(xx, y0, T, nx, u, v1); }
+        else { P(xx, y0, T, nx, u, v1); P(xx, y1, T, nx, u, v0); P(xx, y1, -T, nx, u, v0); P(xx, y0, -T, nx, u, v1); }
+        py = e + 1;
+      }
+    }
   }
   return new Float32Array(out);
 }
@@ -1004,6 +1041,12 @@ export function extrudedSprite(texData, layer) {
 export class ItemMeshes {
   constructor(renderer, blockTextures, itemTextures) {
     this.r = renderer; this.bt = blockTextures; this.it = itemTextures;
+    this.cache = new Map();
+  }
+  // New textures: rebuild meshes on demand (sprite silhouettes follow the art).
+  setTextures(blockTextures, itemTextures) {
+    for (const m of this.cache.values()) if (this.r.deleteModel) this.r.deleteModel(m.model);
+    this.bt = blockTextures; this.it = itemTextures;
     this.cache = new Map();
   }
   get(id) {

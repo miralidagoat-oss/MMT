@@ -115,6 +115,11 @@ export class SceneRenderer {
     ]));
   }
 
+  // The textures were repainted at another detail level.
+  setTextures(blockTextures, itemTextures) {
+    this.items.setTextures(blockTextures, itemTextures);
+  }
+
   // The blaster model with base matrix m (model units are blocks).
   drawBlaster(m, light, env, opts = {}, charge = 1) {
     this.r.drawModel(this.blasterSolid, m, 'block', light, env, { ...opts, blockMode: 1 });

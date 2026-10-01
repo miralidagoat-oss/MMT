@@ -1,6 +1,6 @@
 // Boot: build textures, create the renderer and systems, run the frame loop.
 import { Renderer } from './renderer.js';
-import { generateBlockTextures, generateItemTextures } from './textures.js';
+import { generateBlockTextures, generateItemTextures, generateNormalMaps } from './textures.js';
 import { generateSkins, SKIN } from './models.js';
 import { SceneRenderer } from './scene.js';
 import { Audio } from './audio.js';
@@ -13,7 +13,7 @@ import { hashSeed } from './noise.js';
 import { WorldGen } from './worldgen.js';
 import { I } from './items.js';
 import { B } from './blocks.js';
-import { PRESETS, applyPreset, matchPreset, detectPreset, applyQuality } from './quality.js';
+import { PRESETS, VIDEO_KEYS, applyPreset, matchPreset, detectPreset, applyQuality } from './quality.js';
 import { NetSession, availableLinks, relayLink, makeCode } from './net.js';
 
 const VERSION = '1.0';
@@ -28,7 +28,13 @@ function loadSettings() {
   const s = { ...DEFAULTS };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) Object.assign(s, JSON.parse(raw));
+    if (raw) {
+      const saved = JSON.parse(raw);
+      Object.assign(s, saved);
+      // video options added since this was saved follow the saved preset
+      const p = PRESETS[saved.graphics];
+      if (p) for (const k of VIDEO_KEYS) if (!(k in saved)) s[k] = p[k];
+    }
   } catch { /* storage unavailable */ }
   return s;
 }
@@ -56,10 +62,15 @@ async function boot() {
   // first run: pick a graphics preset that suits this machine
   if (!localStorage_has()) applyPreset(settings, detectPreset(renderer.gpuName));
   else if (!settings.graphics || settings.graphics !== matchPreset(settings)) settings.graphics = matchPreset(settings);
-  const blockTex = generateBlockTextures();
-  const itemTex = generateItemTextures();
-  const skins = generateSkins();
-  renderer.setTextures(blockTex, itemTex, skins);
+  // Paint every texture at the chosen detail (1 = classic 16px texels,
+  // 4 = 64px) and upload them with their relief maps.
+  const paintTextures = (detail) => {
+    const blocks = generateBlockTextures(detail), items = generateItemTextures(detail), sk = generateSkins(detail);
+    renderer.setTextures(blocks, items, sk, generateNormalMaps(blocks));
+    return { blocks, items, skins: sk, detail };
+  };
+  let tex = paintTextures([1, 2, 4].includes(settings.textures) ? settings.textures : 4);
+  const blockTex = tex.blocks, itemTex = tex.items, skins = tex.skins;
   const storage = await Storage.open();
   const audio = new Audio();
   const icons = new Icons(blockTex, itemTex);
@@ -142,6 +153,13 @@ async function boot() {
     },
     applySettings: () => {
       applyQuality(settings, renderer, game);
+      const detail = [1, 2, 4].includes(settings.textures) ? settings.textures : 4;
+      if (detail !== tex.detail) {
+        tex = paintTextures(detail);
+        icons.setTextures(tex.blocks, tex.items);
+        scene.setTextures(tex.blocks, tex.items);
+        ui.setPlayerSkin(tex.skins[SKIN.PLAYER]);
+      }
       audio.setVolumes(settings.volume / 100, settings.music / 100);
       ui.applyGuiScale();
       saveSettings();

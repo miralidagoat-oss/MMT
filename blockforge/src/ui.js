@@ -28,8 +28,8 @@ const CREATIVE_ORDER = () => {
 
 function presetHint(name) {
   return {
-    performance: 'Fastest: short view, no shadows or effects',
-    balanced: 'Glowing lights, reflections and anti-aliasing',
+    performance: 'Fastest: short view, smooth textures, no shadows or effects',
+    balanced: 'HD textures with relief lighting, glowing lights, reflections',
     fancy: 'Adds sun shadows, MSAA and a longer view',
     ultra: 'Sharpest shadows and the longest view; needs a strong GPU',
   }[name] || '';
@@ -105,6 +105,12 @@ export class UI {
     const s = el('div', 'slot');
     s.innerHTML = '<img alt=""><span class="count"></span><span class="dur"><i></i></span>';
     return s;
+  }
+
+  // New textures (detail changed): repaint the player portrait and icons.
+  setPlayerSkin(skin) {
+    this.portrait = skin ? playerPortrait(skin) : '';
+    for (const s of this.root.querySelectorAll('.slot')) s._key = null;
   }
 
   fillSlot(s, stack) {
@@ -843,6 +849,8 @@ export class UI {
       ['slider', 'renderScale', 'Resolution scale', 50, 200, 10, (v) => `${v}%${v > 100 ? ' (supersampled)' : ''}`],
       ['slider', 'maxFps', 'Max frame rate', 0, FPS.length - 1, 1, (v) => (FPS[v] ? `${FPS[v]} FPS` : 'Match display (VSync)'), (v) => FPS.indexOf(v), (i) => FPS[i]],
       ['slider', 'brightness', 'Brightness', 0, 100, 1, (v) => (v === 0 ? 'Moody' : v === 100 ? 'Bright' : `${v}%`)],
+      ['cycle', 'textures', 'Texture detail', [1, 2, 4], ['Classic (16px)', 'Smooth (32px)', 'HD (64px)']],
+      ['toggle', 'relief', 'Relief lighting (surface detail)'],
       ['cycle', 'shadows', 'Shadows', [0, 1, 2, 3], ['Off', 'Low', 'High', 'Ultra']],
       ['cycle', 'aa', 'Anti-aliasing', ['off', 'fxaa', 'msaa'], ['Off', 'FXAA', 'MSAA 4x']],
       ['cycle', 'particles', 'Particles', [2, 1, 0], ['All', 'Decreased', 'Minimal']],

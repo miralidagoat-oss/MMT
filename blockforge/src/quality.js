@@ -3,19 +3,19 @@
 export const PRESETS = {
   performance: {
     renderDistance: 5, renderScale: 70, shadows: 0, bloom: false, aa: 'off', grading: false, waterFx: false,
-    clouds: false, particles: 1, entityShadows: false, waving: false,
+    clouds: false, particles: 1, entityShadows: false, waving: false, textures: 2, relief: false,
   },
   balanced: {
     renderDistance: 8, renderScale: 100, shadows: 0, bloom: true, aa: 'fxaa', grading: true, waterFx: true,
-    clouds: true, particles: 2, entityShadows: true, waving: true,
+    clouds: true, particles: 2, entityShadows: true, waving: true, textures: 4, relief: true,
   },
   fancy: {
     renderDistance: 12, renderScale: 100, shadows: 2, bloom: true, aa: 'msaa', grading: true, waterFx: true,
-    clouds: true, particles: 2, entityShadows: true, waving: true,
+    clouds: true, particles: 2, entityShadows: true, waving: true, textures: 4, relief: true,
   },
   ultra: {
     renderDistance: 18, renderScale: 100, shadows: 3, bloom: true, aa: 'msaa', grading: true, waterFx: true,
-    clouds: true, particles: 2, entityShadows: true, waving: true,
+    clouds: true, particles: 2, entityShadows: true, waving: true, textures: 4, relief: true,
   },
 };
 
@@ -56,5 +56,6 @@ export function applyQuality(settings, renderer, game) {
   q.grading = !!settings.grading;
   q.waterFx = !!settings.waterFx;
   q.waving = settings.waving !== false;
+  q.relief = !!settings.relief;
   if (game && game.particles) game.particles.density = [0.2, 0.5, 1][settings.particles ?? 2];
 }
