@@ -18,6 +18,7 @@ import { Mob, ItemEntity, Projectile, PrimedCrate, FallingBlock, Lightning, MOB_
 import { Minecart, Boat } from './vehicles.js';
 import { Pylon, Wyrm, VoidOrb } from './voidboss.js';
 import { SkyRocket, burst } from './blaster.js';
+import { makeTrades } from './loot.js';
 import { ItemFrame, Painting } from './decor.js';
 import { CHUNK_VOLUME, chunkKey } from './constants.js';
 import { STATE } from './world.js';
@@ -702,6 +703,23 @@ export class NetSession {
       }
       case 'sp': if (Array.isArray(d)) for (const s of d) this.spawnFor(rp, s); break;
       case 'hit': this.guestHit(peer, rp, d); break;
+      case 'trades': { // a guest opened trading with a settler
+        const m = g.entities.find((e) => e.id === d && e instanceof Mob && e.def.villager);
+        if (!m || Math.hypot(m.x - rp.x, m.z - rp.z) > 10) break;
+        if (!m.trades) m.trades = makeTrades(m.profession);
+        this.event(peer, { t: 'trades', id: m.id, trades: m.trades });
+        break;
+      }
+      case 'traded': { // ...and made n trades of offer k
+        const m = d && g.entities.find((e) => e.id === d.id && e instanceof Mob && e.def.villager);
+        const t = m && m.trades && m.trades[d.k | 0];
+        if (!t) break;
+        const n = Math.max(0, Math.min(64, d.n | 0, t.max - t.uses));
+        t.uses += n;
+        if (n) this.giveXp(peer, (t.xp || 1) * n);
+        this.event(peer, { t: 'trades', id: m.id, trades: m.trades });
+        break;
+      }
       case 'use': this.guestUse(peer, rp, d); break;
       case 'hurt': { // one guest hit another player
         if (!d) break;
@@ -1253,6 +1271,13 @@ export class NetSession {
         break;
       }
       case 'xp': p.addXp(g, d.n | 0); break;
+      case 'trades': {
+        const m = g.entities.find((e) => e.netId === d.id);
+        if (!m || !Array.isArray(d.trades)) break;
+        m.trades = d.trades.filter((t) => t && t.get && ITEMS[t.get.id] && Array.isArray(t.give) && t.give.every((st) => st && ITEMS[st.id]));
+        if (g.ui.screen && g.ui.screen.name === 'trade' && g.ui.screen.data.mob === m) g.ui.buildOffers();
+        break;
+      }
       case 'hurt': p.damage(g, +d.dmg || 0, d.src || 'mob', d.fx, d.fz); break;
       case 'pot': if (d.fx) p.applyPotion(g, d.fx, +d.sc || 1); break;
       case 'held': {

@@ -264,6 +264,24 @@ async function boot() {
 
   let crashed = false;
   let lastFrame = 0;
+  // Hidden tabs stop drawing and slow their timers; a tiny worker's timer
+  // keeps a world you are sharing running for your guests meanwhile.
+  let beat = null;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && game.net && !beat) {
+      try {
+        const src = 'const t = setInterval(() => postMessage(0), 50); onmessage = () => { clearInterval(t); close(); };';
+        beat = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        beat.onmessage = () => {
+          if (!document.hidden || crashed || !game.net) return;
+          try { game.backgroundStep(performance.now()); } catch (err) { console.error(err); }
+        };
+      } catch { beat = null; }
+    } else if (!document.hidden && beat) {
+      beat.postMessage(0); beat = null;
+      game.last = performance.now();
+    }
+  });
   const loop = (now) => {
     requestAnimationFrame(loop);
     if (crashed) return;

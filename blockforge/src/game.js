@@ -249,6 +249,20 @@ export class Game {
     this.audio.update(dt, this.settings.music > 0 && (playing || this.demo));
   }
 
+  // Keep a shared world running while this tab is hidden: ticks, chunk
+  // loading and the network, without drawing anything.
+  backgroundStep(now) {
+    const dt = Math.min(1, (now - this.last) / 1000);
+    this.last = now;
+    if (!this.world || !this.net || this.state === 'loading' || this.state === 'title') return;
+    this.acc += dt * 1000;
+    let n = 0;
+    while (this.acc >= TICK_MS && n < 40) { this.tick(); this.acc -= TICK_MS; n++; }
+    if (n === 40) this.acc = 0;
+    const p = this.player;
+    this.world.update(p.x, p.z, this.settings.renderDistance, 2);
+  }
+
   look(dt) {
     const s = this.settings;
     const [dx, dy] = this.input.consumeLook();
@@ -1535,7 +1549,9 @@ export class Game {
   }
 
   openTrading(mob) {
-    if (!mob.trades) mob.trades = makeTrades(mob.profession);
+    // a guest trades from the host's book of offers
+    if (mob.mirror && this.net && this.net.isGuest) { mob.trades = null; this.net.request('trades', mob.netId); }
+    else if (!mob.trades) mob.trades = makeTrades(mob.profession);
     this.tradingWith = mob;
     this.ui.openScreen('trade', { mob });
     this.audio.mob('settler', 'idle', mob.x, mob.y, mob.z);

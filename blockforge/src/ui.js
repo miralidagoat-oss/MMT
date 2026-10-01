@@ -1381,7 +1381,8 @@ export class UI {
     const g = this.game, p = g.player;
     const mob = this.screen.data.mob;
     const list = this.offersEl;
-    if (!list || !mob.trades) return;
+    if (!list) return;
+    if (!mob.trades) { list.innerHTML = '<div class="who">Asking about their wares…</div>'; this.offerKey = ''; return; }
     list.innerHTML = '';
     const prof = mob.profession || 'farmer';
     list.appendChild(el('div', 'who', `${esc(prof[0].toUpperCase() + prof.slice(1))} · click to trade, shift-click to trade repeatedly`));
@@ -1426,8 +1427,10 @@ export class UI {
       const left = p.inventory.give(got);
       if (left) g.dropItem(p.x, p.y + 1.2, p.z, { ...got, count: left });
       t.uses++; n++;
-      g.spawnXp(mob.x, mob.y + 1.2, mob.z, t.xp || 1);
+      if (!mob.mirror) g.spawnXp(mob.x, mob.y + 1.2, mob.z, t.xp || 1);
     }
+    // a guest's trades are counted by the host, which also pays the experience
+    if (n && mob.mirror && g.net && g.net.isGuest) g.net.request('traded', { id: mob.netId, k, n });
     if (n) {
       g.audio.play('trade', mob.x, mob.y + 1, mob.z);
       for (let i = 0; i < 4; i++) g.particles.heart(mob.x + (Math.random() - 0.5) * 0.6, mob.y + 1.9 + Math.random() * 0.3, mob.z + (Math.random() - 0.5) * 0.6);

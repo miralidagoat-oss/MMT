@@ -127,6 +127,90 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   r = await Gu(() => window.__blockforge.ui.chatLines.map((l) => l.text).join('\n'));
   assert(/<Guesty> hello from the guest/.test(r), 'and comes back to everyone');
 
+  // trading: the guest trades from the host's settler and the host counts it
+  const settlerId = await H(([x, y, z]) => {
+    const g = window.__blockforge.game, rp = g.remotePlayers()[0];
+    g.runCommand('/summon settler farmer');
+    const m = g.entities[g.entities.length - 1];
+    m.x = m.px = rp.x + 2; m.y = m.py = rp.y; m.z = m.pz = rp.z; m.noAI = true;
+    const { I } = window.__blockforge;
+    m.trades = [{ give: [{ id: I.wheat, count: 2 }], get: { id: I.emerald, count: 1 }, uses: 0, max: 5, xp: 3 }];
+    return m.id;
+  }, [pillar.x, pillar.y, pillar.z]);
+  await guest.waitForTimeout(2500);
+  await Gu((id) => {
+    const g = window.__blockforge.game, { I } = window.__blockforge;
+    g.player.inventory.give({ id: I.wheat, count: 4 });
+    const m = g.net.mirrors.get(id);
+    g.openTrading(m);
+  }, settlerId);
+  await guest.waitForTimeout(2000);
+  r = await Gu((id) => { const m = window.__blockforge.game.net.mirrors.get(id); return m && m.trades ? m.trades.map((t) => [t.get.id, t.uses]) : null; }, settlerId);
+  assert(r && r.length === 1, `the guest sees the host's offers (${JSON.stringify(r)})`);
+  await Gu(() => { const ui = window.__blockforge.ui; ui.doTrade(0, true); ui.closeScreen(true); });
+  await host.waitForTimeout(2000);
+  r = await H((id) => { const m = window.__blockforge.game.entities.find((e) => e.id === id); return m && m.trades[0].uses; }, settlerId);
+  const em = await Gu(() => { const g = window.__blockforge.game, { I } = window.__blockforge; let n = 0; for (let i = 0; i < 36; i++) { const s = g.player.inventory.get(i); if (s && s.id === I.emerald) n += s.count; } return n; });
+  assert(r === 2 && em === 2, `the host counts the guest's trades (${r} uses, ${em} emeralds)`);
+
+  // an item frame hung by the guest appears for the host, with what it holds
+  await Gu(([x, y, z]) => {
+    const g = window.__blockforge.game, p = g.player, { I, B } = window.__blockforge;
+    p.inventory.set(0, { id: I.item_frame, count: 1 }); p.inventory.selected = 0;
+    g.useItemFirst(p.inventory.held, { x, y: y + 2, z, id: B.gold_block, face: 3 });
+  }, [pillar.x, pillar.y, pillar.z]);
+  await host.waitForTimeout(2500);
+  r = await H(() => window.__blockforge.game.entities.filter((e) => e.isFrame).length);
+  assert(r === 1, 'a guest\'s item frame is hung in the host world');
+  await guest.waitForTimeout(1500);
+  await Gu(() => {
+    const g = window.__blockforge.game, { I } = window.__blockforge;
+    const f = [...g.net.mirrors.values()].find((e) => e.isFrame);
+    g.net.useMirror(f, { id: I.diamond_sword, count: 1 });
+  });
+  await host.waitForTimeout(2000);
+  r = await H(() => { const f = window.__blockforge.game.entities.find((e) => e.isFrame); return f && f.stack && f.stack.id; });
+  const sword = await H(() => window.__blockforge.I.diamond_sword);
+  assert(r === sword, 'and the guest can put an item in it');
+
+  // a void chest keeps the guest's own things, held by the host
+  await Gu(([x, y, z]) => {
+    const g = window.__blockforge.game, { B, I } = window.__blockforge;
+    g.useBlockExtra({ x, y: y + 6, z, id: B.void_chest }, null);
+  }, [pillar.x, pillar.y, pillar.z]);
+  await guest.waitForTimeout(1500);
+  await Gu(() => {
+    const g = window.__blockforge.game, ui = window.__blockforge.ui, { I } = window.__blockforge;
+    ui.screen.data.be.slots[3] = { id: I.emerald, count: 7 };
+    g.net.blockEntityChanged(ui.screen.data.key);
+    ui.closeScreen(true);
+  });
+  await host.waitForTimeout(2000);
+  r = await H(() => { const c = window.__blockforge.game.meta.voidChests; return c && c.Guesty && c.Guesty.slots[3]; });
+  assert(r && r.count === 7, 'a guest\'s void chest is kept by the host under their name');
+
+  // the host's tab goes to the background: the world keeps ticking for the guest
+  const t0 = await H(() => window.__blockforge.game.tickCount);
+  await host.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.__realRAF = window.requestAnimationFrame;
+    window.requestAnimationFrame = (cb) => { window.__heldFrame = cb; return 0; }; // drawing stops in a hidden tab
+  });
+  await host.waitForTimeout(3000);
+  const t1 = await H(() => window.__blockforge.game.tickCount);
+  assert(t1 - t0 > 20, `a hidden host keeps the world running (${t1 - t0} ticks in 3s)`);
+  await host.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    window.requestAnimationFrame = window.__realRAF;
+    if (window.__heldFrame) window.requestAnimationFrame(window.__heldFrame);
+    document.dispatchEvent(new Event('visibilitychange'));
+    const ui = window.__blockforge.ui; if (window.__blockforge.game.state === 'paused') ui.resume && ui.resume();
+  });
+  await host.waitForTimeout(500);
+
   // pictures of each other
   await H(([x, y, z]) => { const g = window.__blockforge.game, p = g.player; p.x = p.px = x - 2.5; p.z = p.pz = z - 4.5; p.y = p.py = y + 1.2; p.yaw = Math.PI; p.pitch = -0.1; p.flying = true; }, [pillar.x, pillar.y, pillar.z]);
   await Gu(([x, y, z]) => { const g = window.__blockforge.game, p = g.player; p.x = p.px = x - 2.5; p.z = p.pz = z + 1.5; p.y = p.py = y + 1.2; p.yaw = 0; p.pitch = -0.1; p.flying = true; }, [pillar.x, pillar.y, pillar.z]);
