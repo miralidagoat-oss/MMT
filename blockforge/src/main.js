@@ -13,12 +13,14 @@ import { hashSeed } from './noise.js';
 import { WorldGen } from './worldgen.js';
 import { I } from './items.js';
 import { B } from './blocks.js';
+import { PRESETS, applyPreset, matchPreset, detectPreset, applyQuality } from './quality.js';
 
 const VERSION = '1.0';
 const SETTINGS_KEY = 'blockforge:settings';
 const DEFAULTS = {
   renderDistance: 8, fov: 70, sensitivity: 100, renderScale: 100, guiScale: 0, brightness: 50,
   volume: 80, music: 45, bobbing: true, clouds: true, invertMouse: false, peaceful: false,
+  ...PRESETS.balanced, graphics: 'balanced', maxFps: 0, playerName: '',
 };
 
 function loadSettings() {
@@ -27,8 +29,6 @@ function loadSettings() {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) Object.assign(s, JSON.parse(raw));
   } catch { /* storage unavailable */ }
-  // devices with little memory start with a shorter view
-  if (!localStorage_has() && (navigator.deviceMemory || 8) <= 4) s.renderDistance = Math.min(s.renderDistance, 6);
   return s;
 }
 function localStorage_has() { try { return !!localStorage.getItem(SETTINGS_KEY); } catch { return false; } }
@@ -52,6 +52,9 @@ async function boot() {
     fatal('Blockforge needs WebGL 2. Try an up-to-date Chrome, Edge, Firefox or Safari with hardware acceleration enabled.', err);
     return;
   }
+  // first run: pick a graphics preset that suits this machine
+  if (!localStorage_has()) applyPreset(settings, detectPreset(renderer.gpuName));
+  else if (!settings.graphics || settings.graphics !== matchPreset(settings)) settings.graphics = matchPreset(settings);
   const blockTex = generateBlockTextures();
   const itemTex = generateItemTextures();
   const skins = generateSkins();
@@ -82,7 +85,7 @@ async function boot() {
       ui.showTitle();
     },
     applySettings: () => {
-      renderer.renderScale = settings.renderScale / 100;
+      applyQuality(settings, renderer, game);
       audio.setVolumes(settings.volume / 100, settings.music / 100);
       ui.applyGuiScale();
       saveSettings();
@@ -158,9 +161,13 @@ async function boot() {
   window.addEventListener('beforeunload', save);
 
   let crashed = false;
+  let lastFrame = 0;
   const loop = (now) => {
     requestAnimationFrame(loop);
     if (crashed) return;
+    // optional frame cap (0 = follow the display)
+    if (settings.maxFps > 0 && now - lastFrame < 1000 / settings.maxFps - 1.5) return;
+    lastFrame = now;
     try {
       game.frame(now);
       if (game.state === 'loading' && game.world) checkLoading();
@@ -171,7 +178,7 @@ async function boot() {
     }
   };
   requestAnimationFrame(loop);
-  window.__blockforge = { game, ui, renderer, settings, B, I };
+  window.__blockforge = { game, ui, renderer, settings, B, I, quality: { applyPreset, PRESETS } };
 }
 
 boot().catch((err) => { console.error(err); fatal('Blockforge failed to start.', err); });

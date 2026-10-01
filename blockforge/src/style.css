@@ -196,7 +196,13 @@ body { font-family: var(--font-ui); -webkit-font-smoothing: antialiased; user-se
 .opt b { color: var(--accent); font-weight: 600; }
 .opt input[type=range] { width: 100%; accent-color: var(--accent); }
 .btn.tog { font-size: calc(7 * var(--u)); padding: calc(2.5 * var(--u)); }
-.menu.options { width: min(100%, calc(300 * var(--u))); }
+.menu.options { width: min(100%, calc(320 * var(--u))); max-height: 100%; overflow-y: auto; }
+.tabs { display: flex; width: 100%; gap: calc(2 * var(--u)); border-bottom: var(--u) solid var(--edge-hi); padding-bottom: calc(3 * var(--u)); }
+.tabs .btn { flex: 1; font-size: calc(7.5 * var(--u)); }
+.presets { display: grid; grid-template-columns: repeat(4, 1fr); width: 100%; gap: calc(2 * var(--u)); }
+.presets .btn { font-size: calc(7 * var(--u)); padding: calc(3 * var(--u)) calc(1 * var(--u)); }
+.preset-note { font-size: calc(6.5 * var(--u)) !important; min-height: 1.4em; }
+@media (max-width: 520px) { .presets { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 520px) { .opts { grid-template-columns: 1fr; } }
 
 .keys { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: calc(1.5 * var(--u)) calc(6 * var(--u)); text-align: left; font-size: calc(6.5 * var(--u)); max-height: 60vh; overflow: auto; }

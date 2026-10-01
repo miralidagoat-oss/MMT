@@ -72,6 +72,9 @@ export function computeEnv(o, { dayTime, day, rain, thunder = 0, underwater, inL
     o.fogColor = [0.7, 0.2, 0.02];
     o.fogStart = 0; o.fogEnd = 1.5;
   }
+  // sun (or, more faintly, moon) shadows fade out around sunrise and sunset
+  o.shadowStrength = dim === 'overworld'
+    ? Math.max(smoothstep(0.05, 0.24, e), smoothstep(0.05, 0.24, -e) * 0.45) * (1 - rain * 0.85) : 0;
   o.ambient = [0.028, 0.028, 0.028];
   if (dim === 'underworld' && !underwater && !inLava) {
     o.fogMode = 1;

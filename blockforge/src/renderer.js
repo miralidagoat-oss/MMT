@@ -59,6 +59,33 @@ export class Renderer {
     this.progParticle = program(gl, S.PARTICLE_VS, S.PARTICLE_FS);
     this.progLine = program(gl, S.LINE_VS, S.LINE_FS);
     this.progCloud = program(gl, S.CLOUD_VS, S.CLOUD_FS);
+    // the shadow sampler lives on texture unit 1
+    for (const pr of [this.progChunk, this.progModel]) { gl.useProgram(pr.p); gl.uniform1i(pr.u.uShadowMap, 1); }
+    gl.useProgram(null);
+    // optional passes: if a driver rejects them the game still runs without
+    try {
+      this.progShadow = program(gl, S.SHADOW_VS, S.SHADOW_FS);
+      this.shadowOK = true;
+    } catch (err) { console.warn('shadows unavailable', err); this.shadowOK = false; }
+    try {
+      this.progPre = program(gl, S.POST_VS, S.BLOOM_PRE_FS);
+      this.progDown = program(gl, S.POST_VS, S.BLOOM_DOWN_FS);
+      this.progUp = program(gl, S.POST_VS, S.BLOOM_UP_FS);
+      this.progComp = program(gl, S.POST_VS, S.COMPOSITE_FS);
+      this.progFxaa = program(gl, S.POST_VS, S.FXAA_FS);
+      this.postOK = true;
+    } catch (err) { console.warn('post-processing unavailable', err); this.postOK = false; }
+    this.hdr = !!gl.getExtension('EXT_color_buffer_float');
+    this.maxSamples = gl.getParameter(gl.MAX_SAMPLES) || 0;
+    this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048;
+    // quality settings, filled in from the options (see main.js)
+    this.quality = { shadows: 0, bloom: false, aa: 'off', grading: false, waterFx: false, waving: true };
+    this.emissive = 1;
+    this.post = false;
+    this.shadowVP = mat4(); this.lightDir = [0, 1, 0]; this.shadowParams = [0, 0, 0, 0];
+    this.postVao = gl.createVertexArray();
+    this.dummyShadow = this.createShadowTexture(1);
+    this.targets = null;
 
     this.proj = mat4(); this.view = mat4(); this.viewProj = mat4(); this.invViewProj = mat4();
     this.handProj = mat4(); this.tmp = mat4();
@@ -130,6 +157,267 @@ export class Renderer {
     this.blockTex = this.createArrayTexture(blockTextures.map((t) => t.data), TS, blockTextures.map((t) => t.transparent));
     this.itemTex = this.createArrayTexture(itemTextures.map((t) => t.data), TS, null);
     this.skinTex = this.createArrayTexture(skins, 64, null, false);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render targets
+  createShadowTexture(size) {
+    const gl = this.gl;
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, size, size);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    return t;
+  }
+
+  colorTexture(w, h, hdr) {
+    const gl = this.gl;
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, hdr ? gl.RGBA16F : gl.RGBA8, w, h);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    return t;
+  }
+
+  framebuffer(color, depthRb = null) {
+    const gl = this.gl;
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    if (color) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color, 0);
+    if (depthRb) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRb);
+    const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return ok ? fb : null;
+  }
+
+  renderbuffer(fmt, w, h, samples) {
+    const gl = this.gl;
+    const rb = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+    if (samples) gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, fmt, w, h);
+    else gl.renderbufferStorage(gl.RENDERBUFFER, fmt, w, h);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+    return rb;
+  }
+
+  freeTargets() {
+    const t = this.targets, gl = this.gl;
+    if (!t) return;
+    for (const x of t.textures) gl.deleteTexture(x);
+    for (const x of t.fbos) gl.deleteFramebuffer(x);
+    for (const x of t.rbs) gl.deleteRenderbuffer(x);
+    this.targets = null;
+  }
+
+  // (Re)build off-screen targets for the current size and quality settings.
+  ensureTargets() {
+    const q = this.quality, gl = this.gl;
+    this.post = this.postOK && (q.bloom || q.aa !== 'off' || q.grading);
+    if (!this.post) { this.freeTargets(); this.emissive = 1; return; }
+    const w = this.width, h = this.height;
+    const samples = q.aa === 'msaa' ? Math.min(4, this.maxSamples) : 0;
+    const hdr = this.hdr;
+    const key = `${w}x${h}:${samples}:${hdr}:${q.bloom}:${q.aa}`;
+    this.emissive = hdr ? (q.bloom ? 1.6 : 1.15) : 1;
+    if (this.targets && this.targets.key === key) return;
+    this.freeTargets();
+    const t = { key, textures: [], fbos: [], rbs: [], samples, bloom: [] };
+    t.scene = this.colorTexture(w, h, hdr); t.textures.push(t.scene);
+    if (samples) {
+      const crb = this.renderbuffer(hdr ? gl.RGBA16F : gl.RGBA8, w, h, samples);
+      const drb = this.renderbuffer(gl.DEPTH_COMPONENT24, w, h, samples);
+      t.rbs.push(crb, drb);
+      t.msFbo = gl.createFramebuffer(); t.fbos.push(t.msFbo);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.msFbo);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, crb);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, drb);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { t.msFbo = null; t.samples = 0; }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    const depth = this.renderbuffer(gl.DEPTH_COMPONENT24, w, h, 0); t.rbs.push(depth);
+    t.sceneFbo = this.framebuffer(t.scene, depth); t.fbos.push(t.sceneFbo);
+    if (!t.sceneFbo) { this.targets = t; this.freeTargets(); this.postOK = false; this.post = false; this.emissive = 1; return; }
+    if (q.bloom) {
+      let bw = w >> 1, bh = h >> 1;
+      for (let i = 0; i < 6 && bw >= 8 && bh >= 8; i++, bw >>= 1, bh >>= 1) {
+        const tex = this.colorTexture(bw, bh, hdr);
+        const fb = this.framebuffer(tex);
+        t.textures.push(tex); t.fbos.push(fb);
+        t.bloom.push({ tex, fb, w: bw, h: bh });
+      }
+    }
+    if (q.aa === 'fxaa') {
+      t.ldr = this.colorTexture(w, h, false); t.textures.push(t.ldr);
+      t.ldrFbo = this.framebuffer(t.ldr); t.fbos.push(t.ldrFbo);
+    }
+    this.targets = t;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sun shadows: a depth map of the land around the camera seen from the sun.
+  renderShadows(scene) {
+    const gl = this.gl, q = this.quality, env = scene.env, cam = scene.cam;
+    const level = this.shadowOK ? q.shadows | 0 : 0;
+    const strength = env.shadowStrength || 0;
+    const bindMap = (tex) => { gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tex); gl.activeTexture(gl.TEXTURE0); };
+    if (!level || strength <= 0.01) { this.shadowParams[0] = 0; bindMap(this.dummyShadow); return; }
+    const size = Math.min(this.maxTex, [0, 1024, 2048, 4096][level]);
+    const R = [0, 44, 72, 112][level];
+    if (!this.shadow || this.shadow.size !== size) {
+      if (this.shadow) { gl.deleteTexture(this.shadow.tex); gl.deleteFramebuffer(this.shadow.fb); }
+      const tex = this.createShadowTexture(size);
+      const fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, tex, 0);
+      gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+      const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (!ok) { this.shadowOK = false; this.shadowParams[0] = 0; bindMap(this.dummyShadow); return; }
+      this.shadow = { size, tex, fb };
+    }
+    // light basis: f points away from the light
+    const sd = env.sunDir;
+    const L = sd[1] >= 0 ? sd : [-sd[0], -sd[1], -sd[2]];
+    this.lightDir = L;
+    const f = [-L[0], -L[1], -L[2]];
+    let r = [f[1] * 1 - f[2] * 0, f[2] * 0 - f[0] * 1, 0]; // cross(f, +Z)
+    const rl = Math.hypot(r[0], r[1], r[2]) || 1; r = [r[0] / rl, r[1] / rl, r[2] / rl];
+    const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+    const dot = (a, x, y, z) => a[0] * x + a[1] * y + a[2] * z;
+    // centre a little ahead of the camera, snapped to whole texels so edges don't shimmer
+    const ahead = R * 0.3;
+    const Cx = cam.x + Math.sin(cam.yaw) * ahead, Cy = cam.y, Cz = cam.z - Math.cos(cam.yaw) * ahead;
+    const texel = (2 * R) / size;
+    const lx = Math.floor(dot(r, Cx, Cy, Cz) / texel) * texel;
+    const ly = Math.floor(dot(u, Cx, Cy, Cz) / texel) * texel;
+    const lz = dot(f, Cx, Cy, Cz);
+    const D = 200;
+    const m = this.shadowVP;
+    m[0] = r[0] / R; m[4] = r[1] / R; m[8] = r[2] / R; m[12] = (dot(r, cam.x, cam.y, cam.z) - lx) / R;
+    m[1] = u[0] / R; m[5] = u[1] / R; m[9] = u[2] / R; m[13] = (dot(u, cam.x, cam.y, cam.z) - ly) / R;
+    m[2] = f[0] / D; m[6] = f[1] / D; m[10] = f[2] / D; m[14] = (dot(f, cam.x, cam.y, cam.z) - lz) / D;
+    m[3] = 0; m[7] = 0; m[11] = 0; m[15] = 1;
+    this.shadowParams[0] = strength;
+    this.shadowParams[1] = 1 / size;
+    this.shadowParams[2] = texel;
+    this.shadowParams[3] = level >= 2 ? 2 : 1;
+
+    bindMap(this.dummyShadow); // never sample the map while drawing into it
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadow.fb);
+    gl.viewport(0, 0, size, size);
+    gl.depthMask(true);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(1.6, 3.0);
+    const ps = this.progShadow;
+    gl.useProgram(ps.p);
+    gl.uniformMatrix4fv(ps.u.uLightVP, false, m);
+    gl.uniform1f(ps.u.uTime, scene.time.seconds);
+    gl.uniform1f(ps.u.uAnim, 0);
+    gl.uniform1f(ps.u.uAnimSlow, 0);
+    gl.uniform1f(ps.u.uWave, q.waving ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blockTex);
+    gl.uniform1i(ps.u.uTex, 0);
+    const reach = R + 24;
+    for (const c of scene.chunks) {
+      const g = c.gpu;
+      if (!g || g.empty || !(g.nO + g.nC)) continue;
+      const ox = c.cx * 16 + 8 - Cx, oz = c.cz * 16 + 8 - Cz;
+      if (Math.abs(ox) > reach || Math.abs(oz) > reach) continue;
+      gl.bindVertexArray(g.vao);
+      gl.uniform3f(ps.u.uOffset, c.cx * 16 - cam.x, -cam.y, c.cz * 16 - cam.z);
+      gl.uniform3f(ps.u.uChunkPos, (c.cx * 16) % 4096, 0, (c.cz * 16) % 4096);
+      if (g.nO) { gl.uniform1i(ps.u.uPass, 0); gl.drawElements(gl.TRIANGLES, g.nO * 6, gl.UNSIGNED_INT, 0); }
+      if (g.nC) { gl.uniform1i(ps.u.uPass, 1); gl.drawElements(gl.TRIANGLES, g.nC * 6, gl.UNSIGNED_INT, g.nO * 24); }
+    }
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.enable(gl.CULL_FACE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    bindMap(this.shadow.tex);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Post-processing: resolve, bloom, grade, FXAA.
+  postProcess() {
+    const gl = this.gl, t = this.targets, q = this.quality;
+    const w = this.width, h = this.height;
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
+    gl.depthMask(false);
+    gl.bindVertexArray(this.postVao);
+    if (t.samples && t.msFbo) {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.msFbo);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.sceneFbo);
+      gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    }
+    const pass = (prog, fb, vw, vh, src, tw, th) => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.viewport(0, 0, vw, vh);
+      gl.useProgram(prog.p);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, src);
+      gl.uniform1i(prog.u.uSrc, 0);
+      if (prog.u.uTexel) gl.uniform2f(prog.u.uTexel, 1 / tw, 1 / th);
+    };
+    const B = t.bloom;
+    const useBloom = q.bloom && B.length > 1;
+    if (useBloom) {
+      pass(this.progPre, B[0].fb, B[0].w, B[0].h, t.scene, w, h);
+      gl.uniform2f(this.progPre.u.uThreshold, this.hdr ? 1.0 : 0.8, this.hdr ? 0.4 : 0.2);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      for (let i = 1; i < B.length; i++) {
+        pass(this.progDown, B[i].fb, B[i].w, B[i].h, B[i - 1].tex, B[i - 1].w, B[i - 1].h);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      for (let i = B.length - 1; i > 0; i--) {
+        pass(this.progUp, B[i - 1].fb, B[i - 1].w, B[i - 1].h, B[i].tex, B[i].w, B[i].h);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      gl.disable(gl.BLEND);
+    }
+    const fxaa = q.aa === 'fxaa' && t.ldrFbo;
+    const pc = this.progComp;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fxaa ? t.ldrFbo : null);
+    gl.viewport(0, 0, w, h);
+    gl.useProgram(pc.p);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, useBloom ? B[0].tex : t.scene);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, t.scene);
+    gl.uniform1i(pc.u.uScene, 0);
+    gl.uniform1i(pc.u.uBloom, 1);
+    gl.uniform1f(pc.u.uBloomAmt, useBloom ? (this.hdr ? 0.26 : 0.16) : 0);
+    gl.uniform1f(pc.u.uGrade, q.grading ? 1 : 0);
+    gl.uniform1f(pc.u.uFxaaLuma, fxaa ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (fxaa) {
+      pass(this.progFxaa, null, w, h, t.ldr, w, h);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.CULL_FACE);
   }
 
   // ---------------------------------------------------------------------------
@@ -303,6 +591,12 @@ export class Renderer {
     if (u.uSunDir) gl.uniform3fv(u.uSunDir, env.sunDir);
     if (u.uFog) gl.uniform3f(u.uFog, env.fogStart, env.fogEnd, env.fogMode);
     if (u.uAmbient) gl.uniform3fv(u.uAmbient, env.ambient || AMBIENT);
+    if (u.uEmissive) gl.uniform1f(u.uEmissive, this.emissive);
+    if (u.uShadowParams) {
+      gl.uniform4fv(u.uShadowParams, this.shadowParams);
+      gl.uniformMatrix4fv(u.uShadowVP, false, this.shadowVP);
+      if (u.uLightDir) gl.uniform3fv(u.uLightDir, this.lightDir);
+    }
   }
 
   // scene: { cam, env, chunks, renderDist, time, entities, particles, selection, breaking, hand }
@@ -319,6 +613,12 @@ export class Renderer {
     invert(this.invViewProj, this.viewProj);
     frustumPlanes(this.planes, this.viewProj);
 
+    this.ensureTargets();
+    // the chunk list is walked twice (shadows, then the view)
+    if (!Array.isArray(scene.chunks)) scene.chunks = Array.from(scene.chunks);
+    this.renderShadows(scene);
+    const t = this.post ? this.targets : null;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, t ? (t.samples && t.msFbo ? t.msFbo : t.sceneFbo) : null);
     gl.viewport(0, 0, this.width, this.height);
     gl.clearColor(env.fogColor[0], env.fogColor[1], env.fogColor[2], 1);
     gl.depthMask(true);
@@ -372,6 +672,10 @@ export class Renderer {
     gl.uniform1f(pc.u.uTime, scene.time.seconds);
     gl.uniform1f(pc.u.uAnim, Math.floor(scene.time.seconds * 10) % 16);
     gl.uniform1f(pc.u.uAnimSlow, Math.floor(scene.time.seconds * 5) % 16);
+    gl.uniform1f(pc.u.uWave, this.quality.waving ? 1 : 0);
+    gl.uniform1f(pc.u.uWaterFx, this.quality.waterFx ? 1 : 0);
+    gl.uniform3fv(pc.u.uZenith, env.zenith);
+    gl.uniform1f(pc.u.uRain, env.rain || 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blockTex);
     gl.uniform1i(pc.u.uTex, 0);
@@ -434,6 +738,7 @@ export class Renderer {
       perspective(this.handProj, (70 * Math.PI) / 180, aspect, 0.05, 10);
       scene.drawHand(this);
     }
+    if (this.post) this.postProcess();
     gl.bindVertexArray(null);
   }
 
@@ -452,6 +757,7 @@ export class Renderer {
     const tc = opts.tintColor || WHITE;
     gl.uniform3f(pm.u.uTintColor, tc[0], tc[1], tc[2]);
     gl.uniform1f(pm.u.uAlpha, opts.alpha ?? 1);
+    gl.uniform1f(pm.u.uGlow, opts.glow || 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, typeof tex === 'object' ? tex : tex === 'item' ? this.itemTex : tex === 'skin' ? this.skinTex : this.blockTex);
     gl.uniform1i(pm.u.uTex, 0);
@@ -551,6 +857,7 @@ export class Renderer {
       const u0 = src[o + 4], v0 = src[o + 5], u1 = src[o + 6], v1 = src[o + 7], layer = src[o + 8];
       const r = src[o + 9], g = src[o + 10], b = src[o + 11], a = src[o + 12];
       const vertical = src[o + 13];
+      const glow = src[o + 14] ? 1 + (this.emissive - 1) * 0.7 : 1;
       let axx = rx * s, axy = ry * s, axz = rz * s;
       let bxx = ux * s, bxy = uy * s, bxz = uz * s;
       if (vertical) { bxx = 0; bxy = s * vertical; bxz = 0; }
@@ -558,7 +865,7 @@ export class Renderer {
       for (const [cx, cyy, uu, vv] of corners) {
         d[n++] = x + axx * cx + bxx * cyy; d[n++] = y + axy * cx + bxy * cyy; d[n++] = z + axz * cx + bxz * cyy;
         d[n++] = uu; d[n++] = vv; d[n++] = layer;
-        d[n++] = r; d[n++] = g; d[n++] = b; d[n++] = a;
+        d[n++] = r * glow; d[n++] = g * glow; d[n++] = b * glow; d[n++] = a;
       }
     }
     const pp = this.progParticle;

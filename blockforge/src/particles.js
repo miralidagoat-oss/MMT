@@ -12,11 +12,14 @@ export class Particles {
     this.list = [];
     this.data = new Float32Array(MAX * STRIDE);
     this.count = 0;
+    this.density = 1;
   }
 
   setWorld(world) { this.world = world; this.list.length = 0; }
 
   add(p) {
+    // fewer particles on lower settings (callers may still tweak the returned one)
+    if (this.density < 1 && Math.random() > this.density) return p;
     if (this.list.length >= MAX) this.list.shift();
     p.age = 0;
     p.gravity ??= 0;
@@ -216,7 +219,7 @@ export class Particles {
       const sz = 0.18 + Math.min(0.2, o.value * 0.012);
       d[k] = x; d[k + 1] = y + 0.12; d[k + 2] = z; d[k + 3] = sz;
       d[k + 4] = 0; d[k + 5] = 0; d[k + 6] = 1; d[k + 7] = 1; d[k + 8] = TEX.p_xp;
-      d[k + 9] = 0.7 + pulse * 0.3; d[k + 10] = 1; d[k + 11] = 0.3 + pulse * 0.2; d[k + 12] = 1; d[k + 13] = 0;
+      d[k + 9] = 0.7 + pulse * 0.3; d[k + 10] = 1; d[k + 11] = 0.3 + pulse * 0.2; d[k + 12] = 1; d[k + 13] = 0; d[k + 14] = 1;
       n++;
     }
     for (const p of this.list) {
@@ -239,6 +242,7 @@ export class Particles {
       d[o + 9] = p.r * br; d[o + 10] = p.g * br; d[o + 11] = p.b * br;
       d[o + 12] = p.a * (p.smoke ? 1 - t * 0.5 : 1);
       d[o + 13] = p.vertical || 0;
+      d[o + 14] = p.fullbright ? 1 : 0;
       n++;
     }
     this.count = n;

@@ -2,7 +2,7 @@
 import { mat4, identity, translate, scale, rotateX, rotateY, rotateZ } from './math.js';
 import { MODELS, buildModelMeshes, ItemMeshes, OUTFITS, WYRM_PARTS } from './models.js';
 import { cubeMesh } from './renderer.js';
-import { faceTexture, B, TEX } from './blocks.js';
+import { faceTexture, B, TEX, SOLID } from './blocks.js';
 import { DIRS } from './shapes.js';
 import { ITEMS, I, ARMOR_PIECES } from './items.js';
 import { FallingBlock, PrimedCrate, Mob, Projectile, Lightning } from './entities.js';
@@ -75,6 +75,61 @@ export class SceneRenderer {
       -0.5, 0.5, 0, 0, 0, 1, 0, 0, 0, -0.5, -0.5, 0, 0, 0, 1, 0, 1, 0,
     ]));
     this.signTex = new Map(); // key -> { text, tex }
+    // soft round shadow under creatures and players
+    const sc = document.createElement('canvas');
+    sc.width = sc.height = 32;
+    const g = sc.getContext('2d');
+    const grd = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grd.addColorStop(0, 'rgba(0,0,0,0.6)'); grd.addColorStop(0.55, 'rgba(0,0,0,0.38)'); grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 32, 32);
+    this.blobTex = renderer.createCanvasTexture(sc);
+    this.blobQuad = renderer.createModel(new Float32Array([
+      -0.5, 0, -0.5, 0, 1, 0, 0, 0, 0, -0.5, 0, 0.5, 0, 1, 0, 0, 1, 0,
+      0.5, 0, 0.5, 0, 1, 0, 1, 1, 0, 0.5, 0, -0.5, 0, 1, 0, 1, 0, 0,
+    ]));
+  }
+
+  // A round shadow on the ground under (x, y, z), fading with height.
+  blob(x, y, z, radius, cam, env, world) {
+    const bx = Math.floor(x), bz = Math.floor(z);
+    let gy = null;
+    for (let yy = Math.floor(y + 0.05); yy >= Math.floor(y) - 3; yy--) {
+      if (SOLID[world.getBlock(bx, yy - 1, bz)]) { gy = yy; break; }
+    }
+    if (gy === null) return;
+    const h = y - gy;
+    if (h > 3 || h < -0.6) return;
+    identity(M);
+    translate(M, M, x - cam.x, gy - cam.y + 0.025, z - cam.z);
+    const s = radius * 2 * (1 - h * 0.12);
+    scale(M, M, s, 1, s);
+    this.r.drawModel(this.blobQuad, M, this.blobTex, [1, 1], env, { mode: 1, blend: true, alpha: Math.max(0, 1 - h / 3), noCull: true });
+  }
+
+  drawBlobs(game, cam, env, alpha) {
+    const world = game.world;
+    const near = (x, z, r) => (x - cam.x) * (x - cam.x) + (z - cam.z) * (z - cam.z) < r * r;
+    for (const e of game.entities) {
+      if (!(e instanceof Mob) && !e.isCart && !e.isBoat) continue;
+      if (e.effects && e.effects.invisibility) continue;
+      const [x, y, z] = e.lerpPos(alpha);
+      if (!near(x, z, 40)) continue;
+      if (e.isBoat) continue; // boats sit in water
+      this.blob(x, y, z, Math.max(0.3, e.w * 1.1), cam, env, world);
+    }
+    for (const it of game.items) {
+      const [x, y, z] = it.lerpPos(alpha);
+      if (near(x, z, 20)) this.blob(x, y, z, 0.22, cam, env, world);
+    }
+    if (game.remotePlayers) for (const rp of game.remotePlayers()) {
+      const [x, y, z] = rp.lerpPos(alpha);
+      if (near(x, z, 40) && !(rp.effects && rp.effects.invisibility)) this.blob(x, y, z, 0.36, cam, env, world);
+    }
+    const p = game.player;
+    if (game.perspective !== 0 && !p.dead && !(p.effects && p.effects.invisibility)) {
+      const [x, y, z] = p.lerpPos(alpha);
+      this.blob(x, y, z, 0.36, cam, env, world);
+    }
   }
 
   // Text for a sign, painted to a small canvas texture (cached by content).
@@ -126,6 +181,7 @@ export class SceneRenderer {
   // Draw all entities (called inside the renderer's opaque pass).
   drawEntities(game, cam, env, alpha) {
     const r = this.r, world = game.world;
+    if (game.settings.entityShadows) this.drawBlobs(game, cam, env, alpha);
     for (const e of game.entities) {
       const [x, y, z] = e.lerpPos(alpha);
       const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
@@ -135,7 +191,7 @@ export class SceneRenderer {
       else if (e.isBoat) this.drawBoat(e, x, y, z, cam, env, alpha, world);
       else if (e.isPylon) this.drawPylon(e, x, y, z, cam, env, alpha, game);
       else if (e.isWyrm) this.drawWyrm(e, cam, env, alpha, world);
-      else if (e.isOrb) { identity(M); translate(M, M, dx, dy, dz); rotateY(M, M, (e.age + alpha) * 0.3); rotateX(M, M, (e.age + alpha) * 0.2); this.r.drawModel(this.orbModel, M, 'block', [1, 1], env, { mode: 1 }); }
+      else if (e.isOrb) { identity(M); translate(M, M, dx, dy, dz); rotateY(M, M, (e.age + alpha) * 0.3); rotateX(M, M, (e.age + alpha) * 0.2); this.r.drawModel(this.orbModel, M, 'block', [1, 1], env, { mode: 1, glow: 1 }); }
       else if (e.isBobber) this.drawBobber(e, x, y, z, cam, env, alpha, game);
       else if (e.isStarEye) this.drawFloatingItem(I.star_eye, x, y, z, cam, env, alpha, e.age, [1, 1]);
       else if (e instanceof Projectile) this.drawProjectile(e, x, y, z, cam, env, world);
@@ -193,7 +249,7 @@ export class SceneRenderer {
       identity(M);
       translate(M, M, (px + nx) / 2 - cam.x, y0 - cam.y, (pz + nz) / 2 - cam.z);
       scale(M, M, 0.22 + Math.abs(nx - px) * 0.6, yy - y0, 0.22 + Math.abs(nz - pz) * 0.6);
-      this.r.drawModel(this.unitCube, M, 'block', [1, 1], env, { mode: 1 });
+      this.r.drawModel(this.unitCube, M, 'block', [1, 1], env, { mode: 1, glow: 1 });
       px = nx; pz = nz;
     }
   }
@@ -464,7 +520,7 @@ export class SceneRenderer {
     identity(M);
     translate(M, M, x - cam.x, y - cam.y + 0.8 + bob, z - cam.z);
     rotateY(M, M, t * 0.05); rotateX(M, M, 0.6);
-    this.r.drawModel(this.pylonCore, M, 'block', [1, 1], env, { mode: 1 });
+    this.r.drawModel(this.pylonCore, M, 'block', [1, 1], env, { mode: 1, glow: 1 });
     identity(M);
     translate(M, M, x - cam.x, y - cam.y + 0.8 + bob, z - cam.z);
     rotateY(M, M, -t * 0.03); rotateZ(M, M, 0.6);
@@ -473,7 +529,7 @@ export class SceneRenderer {
     const w = game.wyrm;
     if (w && w.healing === e && !w.dying) {
       const [hx, hy, hz] = w.lerpPos(alpha);
-      this.segment([x, y + 0.8 + bob, z], [hx, hy, hz], cam, 0.18, [1, 1], env, { mode: 1, tint: [0.8, 0.6, 1, 0.4] });
+      this.segment([x, y + 0.8 + bob, z], [hx, hy, hz], cam, 0.18, [1, 1], env, { mode: 1, glow: 1, tint: [0.8, 0.6, 1, 0.4] });
     }
   }
 

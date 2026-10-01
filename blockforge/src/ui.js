@@ -7,6 +7,7 @@ import { BLOCKS, B } from './blocks.js';
 import { statusIcons, playerPortrait } from './icons.js';
 import { BIOMES } from './worldgen.js';
 import { DEFAULT_KEYS } from './input.js';
+import { PRESETS, PRESET_NAMES, applyPreset, matchPreset } from './quality.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (tag, cls, html) => {
@@ -23,6 +24,21 @@ const CREATIVE_ORDER = () => {
   for (const d of ITEMS) if (d && d.id >= 256) out.push(d.id);
   return out;
 };
+
+function presetHint(name) {
+  return {
+    performance: 'Fastest: short view, no shadows or effects',
+    balanced: 'Glowing lights, reflections and anti-aliasing',
+    fancy: 'Adds sun shadows, MSAA and a longer view',
+    ultra: 'Sharpest shadows and the longest view; needs a strong GPU',
+  }[name] || '';
+}
+function shortGpu(n) {
+  let s = String(n || '');
+  const m = /^ANGLE \((.*)\)$/.exec(s);
+  if (m) { const parts = m[1].split(', '); s = parts[1] || parts[0]; }
+  return s.replace(/ANGLE \w+ Renderer: /, '').replace(/ Direct3D.*$| vs_\d.*$/, '').replace(/ \(0x[0-9a-f]+\)/gi, '').slice(0, 48);
+}
 
 export class UI {
   constructor(root, { icons, settings, saveSettings, storage, app, playerSkin }) {
@@ -648,33 +664,85 @@ export class UI {
     this.bind(m, '#b-title', () => { g.respawn(); this.app.quit(); });
   }
 
-  showOptions(back) {
+  showOptions(back, tab = 'video') {
     const s = this.settings;
-    const rows = [
-      ['renderDistance', 'Render distance', 2, 24, 1, (v) => `${v} chunks`],
-      ['fov', 'Field of view', 50, 110, 1, (v) => (v === 70 ? 'Normal' : `${v}°`)],
-      ['sensitivity', 'Mouse sensitivity', 10, 200, 1, (v) => `${v}%`],
-      ['renderScale', 'Resolution scale', 50, 200, 10, (v) => `${v}%${v > 100 ? ' (supersampled)' : ''}`],
-      ['guiScale', 'Interface size', 0, 4, 1, (v) => (v === 0 ? 'Auto' : `${v}x`)],
-      ['brightness', 'Brightness', 0, 100, 1, (v) => (v === 0 ? 'Moody' : v === 100 ? 'Bright' : `${v}%`)],
-      ['volume', 'Sound volume', 0, 100, 1, (v) => `${v}%`],
-      ['music', 'Music volume', 0, 100, 1, (v) => (v ? `${v}%` : 'Off')],
+    const r = this.game && this.game.renderer;
+    const FPS = [0, 30, 60, 90, 120, 144, 240];
+    // [key, label, min, max, step, format] for sliders; cycles list their values
+    const video = [
+      ['slider', 'renderDistance', 'Render distance', 2, 24, 1, (v) => `${v} chunks`],
+      ['slider', 'renderScale', 'Resolution scale', 50, 200, 10, (v) => `${v}%${v > 100 ? ' (supersampled)' : ''}`],
+      ['slider', 'maxFps', 'Max frame rate', 0, FPS.length - 1, 1, (v) => (FPS[v] ? `${FPS[v]} FPS` : 'Match display (VSync)'), (v) => FPS.indexOf(v), (i) => FPS[i]],
+      ['slider', 'brightness', 'Brightness', 0, 100, 1, (v) => (v === 0 ? 'Moody' : v === 100 ? 'Bright' : `${v}%`)],
+      ['cycle', 'shadows', 'Shadows', [0, 1, 2, 3], ['Off', 'Low', 'High', 'Ultra']],
+      ['cycle', 'aa', 'Anti-aliasing', ['off', 'fxaa', 'msaa'], ['Off', 'FXAA', 'MSAA 4x']],
+      ['cycle', 'particles', 'Particles', [2, 1, 0], ['All', 'Decreased', 'Minimal']],
+      ['toggle', 'bloom', 'Bloom (glowing lights)'],
+      ['toggle', 'grading', 'Color grading'],
+      ['toggle', 'waterFx', 'Water reflections'],
+      ['toggle', 'clouds', 'Clouds'],
+      ['toggle', 'entityShadows', 'Entity shadows'],
+      ['toggle', 'waving', 'Waving plants'],
+      ['toggle', 'bobbing', 'View bobbing'],
     ];
-    const toggles = [['bobbing', 'View bobbing'], ['clouds', 'Clouds'], ['invertMouse', 'Invert mouse'], ['peaceful', 'Peaceful (no hostile creatures)']];
-    const m = this.menu(`<h2>Options</h2><div class="opts">${rows.map(([k, label, min, max, step]) => `
-      <label class="opt"><span class="ol">${label}: <b id="ov-${k}"></b></span><input type="range" id="o-${k}" min="${min}" max="${max}" step="${step}" value="${s[k]}"></label>`).join('')}
-      ${toggles.map(([k, label]) => `<button class="btn tog" id="o-${k}">${label}: ${s[k] ? 'On' : 'Off'}</button>`).join('')}
-      </div><button id="b-done" class="btn wide">Done</button>`, 'options');
-    for (const [k, , , , , fmt] of rows) {
-      const input = $(`#o-${k}`, m), out = $(`#ov-${k}`, m);
-      const upd = () => { s[k] = +input.value; out.textContent = fmt(s[k]); this.app.applySettings(); };
-      input.addEventListener('input', upd);
-      out.textContent = fmt(s[k]);
+    const game = [
+      ['slider', 'fov', 'Field of view', 50, 110, 1, (v) => (v === 70 ? 'Normal' : `${v}°`)],
+      ['slider', 'sensitivity', 'Mouse sensitivity', 10, 200, 1, (v) => `${v}%`],
+      ['slider', 'guiScale', 'Interface size', 0, 4, 1, (v) => (v === 0 ? 'Auto' : `${v}x`)],
+      ['slider', 'volume', 'Sound volume', 0, 100, 1, (v) => `${v}%`],
+      ['slider', 'music', 'Music volume', 0, 100, 1, (v) => (v ? `${v}%` : 'Off')],
+      ['toggle', 'invertMouse', 'Invert mouse'],
+      ['toggle', 'peaceful', 'Peaceful (no hostile creatures)'],
+    ];
+    const rows = tab === 'video' ? video : game;
+    const cur = s.graphics || matchPreset(s);
+    const presetBar = tab === 'video' ? `<div class="presets">${Object.keys(PRESETS).map((k) => `<button class="btn${cur === k ? ' sel' : ''}" data-p="${k}">${PRESET_NAMES[k]}</button>`).join('')}</div>
+      <p class="muted preset-note">${cur === 'custom' ? 'Custom settings' : presetHint(cur)}${r ? ` · ${esc(shortGpu(r.gpuName))}` : ''}</p>` : '';
+    const m = this.menu(`<h2>Options</h2>
+      <div class="tabs"><button class="btn${tab === 'video' ? ' sel' : ''}" data-t="video">Video</button><button class="btn${tab === 'game' ? ' sel' : ''}" data-t="game">Game &amp; Sound</button></div>
+      ${presetBar}
+      <div class="opts">${rows.map((row) => {
+    const [kind, k, label] = row;
+    if (kind === 'slider') {
+      const toIdx = row[7] || ((v) => v);
+      return `<label class="opt"><span class="ol">${label}: <b id="ov-${k}"></b></span><input type="range" id="o-${k}" min="${row[3]}" max="${row[4]}" step="${row[5]}" value="${Math.max(0, toIdx(s[k]))}"></label>`;
     }
-    for (const [k, label] of toggles) {
-      const b = $(`#o-${k}`, m);
-      b.addEventListener('click', () => { this.click(); s[k] = !s[k]; b.textContent = `${label}: ${s[k] ? 'On' : 'Off'}`; this.app.applySettings(); });
+    return `<button class="btn tog" id="o-${k}"></button>`;
+  }).join('')}</div>
+      <div class="row"><button id="b-controls2" class="btn">Controls</button><button id="b-done" class="btn">Done</button></div>`, 'options');
+    const markCustom = () => {
+      if (tab !== 'video') return;
+      s.graphics = matchPreset(s);
+      for (const b of m.querySelectorAll('.presets .btn')) b.classList.toggle('sel', b.dataset.p === s.graphics);
+      const note = $('.preset-note', m);
+      if (note) note.textContent = (s.graphics === 'custom' ? 'Custom settings' : presetHint(s.graphics)) + (r ? ` · ${shortGpu(r.gpuName)}` : '');
+    };
+    for (const row of rows) {
+      const [kind, k, label] = row;
+      const el = $(`#o-${k}`, m);
+      if (kind === 'slider') {
+        const out = $(`#ov-${k}`, m), fmt = row[6], fromIdx = row[8] || ((v) => v);
+        const upd = () => { s[k] = fromIdx(+el.value); out.textContent = fmt(+el.value); this.app.applySettings(); markCustom(); };
+        el.addEventListener('input', upd);
+        out.textContent = fmt(+el.value);
+      } else if (kind === 'toggle') {
+        const show = () => { el.textContent = `${label}: ${s[k] ? 'On' : 'Off'}`; };
+        show();
+        el.addEventListener('click', () => { this.click(); s[k] = !s[k]; show(); this.app.applySettings(); markCustom(); });
+      } else {
+        const vals = row[3], names = row[4];
+        const show = () => { const i = Math.max(0, vals.indexOf(s[k])); el.textContent = `${label}: ${names[i]}`; };
+        show();
+        el.addEventListener('click', () => { this.click(); const i = vals.indexOf(s[k]); s[k] = vals[(i + 1) % vals.length]; show(); this.app.applySettings(); markCustom(); });
+      }
     }
+    for (const b of m.querySelectorAll('.presets .btn')) {
+      b.addEventListener('click', () => { this.click(); applyPreset(s, b.dataset.p); this.app.applySettings(); this.saveSettings(); this.showOptions(back, 'video'); });
+    }
+    for (const b of m.querySelectorAll('.tabs .btn')) {
+      b.addEventListener('click', () => { this.click(); this.saveSettings(); this.showOptions(back, b.dataset.t); });
+    }
+    this.bind(m, '#b-controls2', () => { this.saveSettings(); this.showControls(() => this.showOptions(back, tab)); });
     this.bind(m, '#b-done', () => { this.saveSettings(); back(); });
   }
 

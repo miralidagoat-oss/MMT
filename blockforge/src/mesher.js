@@ -24,7 +24,11 @@ const WIRE_DX = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // N E S W
 // Rail shapes (0-9): curve shapes pick a texture turn.
 const RAIL_CURVE_TURN = { 6: 0, 7: 3, 8: 2, 9: 1 };
 
-export const FLAG = { WAVE_LEAF: 1, WAVE_PLANT: 2, ANIM: 4, ANIM_SLOW: 8, FULLBRIGHT: 16 };
+export const FLAG = { WAVE_LEAF: 1, WAVE_PLANT: 2, ANIM: 4, ANIM_SLOW: 8, FULLBRIGHT: 16, WATER: 32, EMISSIVE: 64 };
+
+// Blocks that give off their own light glow on HDR targets.
+const EMISSIVE = new Uint8Array(1024);
+for (const n of ['lamp', 'spark_lamp_on', 'ember_crystal', 'torch', 'spark_torch', 'glow_rod', 'lantern']) if (B[n] !== undefined) EMISSIVE[B[n]] = 1;
 
 // Faces: 0 +Y, 1 -Y, 2 +X, 3 -X, 4 +Z, 5 -Z. Corner positions are unit-cube
 // offsets in counter-clockwise order seen from outside.
@@ -233,7 +237,8 @@ export class Mesher {
     };
 
     const pack0 = (px, py, pz) => (px | (py << 9) | (pz << 22)) >>> 0;
-    const pack1 = (u, v, layer, face, flags) => (u | (v << 5) | (layer << 10) | (face << 19) | (flags << 22)) >>> 0;
+    let extraFlags = 0;
+    const pack1 = (u, v, layer, face, flags) => (u | (v << 5) | (layer << 10) | (face << 19) | ((flags | extraFlags) << 22)) >>> 0;
     const pack2 = (sky, bl, shade) => (Math.round(sky * 17) | (Math.round(bl * 17) << 8) | (Math.round(shade * 255) << 16)) >>> 0;
 
     const lightOut = new Uint8Array(256 * ry);
@@ -316,6 +321,7 @@ export class Mesher {
           lightOut[(y << 8) | (lz << 4) | lx] = (S[i] << 4) | L[i];
           const id = R[i];
           if (id === 0) continue;
+          extraFlags = EMISSIVE[id] ? FLAG.EMISSIVE : 0;
           const rt = RENDER_TYPE[id];
           const pass = RENDER_PASS[id];
           const b = pass === PASS.OPAQUE ? opq : pass === PASS.CUTOUT ? cut : tra;
@@ -574,7 +580,7 @@ export class Mesher {
     const metaAt = (xx, yy, zz) => (yy < 0 || yy >= this.ry ? 0 : M[idxOf(xx, yy, zz)]);
     const above = blockAt(x, y + 1, z);
     const layer = id === B.water ? TEX.water : TEX.lava;
-    const flags = id === B.water ? FLAG.ANIM : FLAG.ANIM_SLOW | FLAG.FULLBRIGHT;
+    const flags = id === B.water ? FLAG.ANIM | FLAG.WATER : FLAG.ANIM_SLOW | FLAG.FULLBRIGHT;
     const levelH = (m) => ((m & 8) ? 14.2 : ((8 - (m & 7)) / 9) * 16);
     const corner = (cx, cz) => {
       let sum = 0, w = 0;
