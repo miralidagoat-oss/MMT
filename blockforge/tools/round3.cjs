@@ -24,6 +24,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
     await page.waitForTimeout(ms);
   };
 
+  // these checks expect the default view distance, whatever preset this machine picked
+  await page.evaluate(() => { const b = window.__blockforge; b.settings.renderDistance = 8; b.ui.app.applySettings(); });
   await page.click('#b-play'); await page.waitForTimeout(300);
   await page.click('#b-new'); await page.waitForTimeout(200);
   await page.fill('#w-name', 'Round Three');

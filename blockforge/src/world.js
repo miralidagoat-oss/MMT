@@ -52,6 +52,8 @@ export class World {
     this.saveQueue = [];
     this.stats = { gen: 0, mesh: 0 };
     this.disposed = false;
+    // other players' positions [x, z, radius]: chunks stay loaded (not meshed) around them
+    this.extraCenters = [];
   }
 
   async start() { await this.pool.init(this.seed, this.dim); }
@@ -130,6 +132,7 @@ export class World {
     const lightChanged = OPACITY[old] !== OPACITY[id] || EMIT[old] !== EMIT[id];
     this.markDirty(c, lx, y, lz, lightChanged, opts.urgent !== false);
     if (old !== id && this.blockEntities.has(`${x},${y},${z}`) && !opts.keepEntity) this.blockEntities.delete(`${x},${y},${z}`);
+    if (this.hooks.onAnyChange) this.hooks.onAnyChange(x, y, z, id, meta, old);
     if (opts.notify !== false && this.hooks.onBlockChanged) this.hooks.onBlockChanged(x, y, z, old, id, oldMeta, meta);
     return true;
   }
@@ -211,12 +214,34 @@ export class World {
       }
     }
 
+    // generation around other players (shared worlds)
+    for (const [ex, ez, er] of this.extraCenters) {
+      if (free <= 0) break;
+      const ecx = Math.floor(ex / CHUNK), ecz = Math.floor(ez / CHUNK);
+      for (let i = 0; i < ORDER.length && free > 0; i++) {
+        const [dx, dz, d] = ORDER[i];
+        if (d > er + 1.5) break;
+        const key = chunkKey(ecx + dx, ecz + dz);
+        let c = this.chunks.get(key);
+        if (!c) {
+          c = new Chunk(ecx + dx, ecz + dz);
+          this.chunks.set(key, c);
+          this.requestGen(c);
+          free--;
+        } else c.lastSeen = this.frame;
+      }
+    }
+
     // unload far chunks
     if (this.frame % 30 === 0) {
       const lim = renderDist + 3;
+      const nearExtra = (c) => this.extraCenters.some(([ex, ez, er]) => {
+        const dx = c.cx - Math.floor(ex / CHUNK), dz = c.cz - Math.floor(ez / CHUNK);
+        return dx * dx + dz * dz <= (er + 3) * (er + 3);
+      });
       for (const c of this.chunks.values()) {
         const dx = c.cx - pcx, dz = c.cz - pcz;
-        if (dx * dx + dz * dz > lim * lim && !c.meshing && c.state !== STATE.GENERATING) {
+        if (dx * dx + dz * dz > lim * lim && !c.meshing && c.state !== STATE.GENERATING && !nearExtra(c)) {
           if (c.modified) this.saveQueue.push(this.serializeChunk(c));
           this.renderer.freeChunk(c);
           this.chunks.delete(c.key);
@@ -225,6 +250,9 @@ export class World {
       }
     }
   }
+
+  // Freshly generated terrain for a chunk, untouched by players (for diffs).
+  requestBaseline(cx, cz) { this.pool.submit({ type: 'base', cx, cz }); }
 
   requestGen(c) {
     c.state = STATE.GENERATING;
@@ -257,6 +285,7 @@ export class World {
     while (this.results.length) {
       if (performance.now() > deadline && this.results.length < 64) break;
       const msg = this.results.shift();
+      if (msg.type === 'base') { if (this.hooks.onBaseline) this.hooks.onBaseline(msg); continue; }
       const c = this.chunks.get(chunkKey(msg.cx, msg.cz));
       if (msg.failed) {
         if (c) {
@@ -292,6 +321,7 @@ export class World {
       c.state = STATE.READY;
       c.version++;
       this.stats.gen++;
+      if (this.hooks.onChunkReady) this.hooks.onChunkReady(c);
       if (!this.populated.has(c.key)) {
         this.populated.add(c.key);
         if (this.hooks.onChunkGenerated) this.hooks.onChunkGenerated(c, saved ? [] : msg.spawns, msg.chests || [], msg.spawners || []);

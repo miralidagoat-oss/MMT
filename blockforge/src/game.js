@@ -20,6 +20,7 @@ import { ADVANCEMENTS } from './advancements.js';
 import { newFurnace, newChest, Container } from './inventory.js';
 import { WorldGen } from './worldgen.js';
 import { Circuits } from './circuits.js';
+import { installNet } from './net.js';
 import { installFeatures, solidTop } from './features.js';
 import { isRail, Minecart, Boat } from './vehicles.js';
 import { potionEffect, EFFECTS, addEffect } from './effects.js';
@@ -71,6 +72,8 @@ export class Game {
     this.texWhite = TEX.white;
     this.circuits = new Circuits(this);
     this.wyrm = null;
+    this.net = null; // shared-world session (see net.js)
+    this.swingCount = 0;
   }
 
   // Saved state for one dimension (older saves kept it at the top level).
@@ -94,6 +97,9 @@ export class Game {
       hooks: {
         onBlockChanged: (...a) => this.onBlockChanged(...a),
         onChunkGenerated: (c, spawns, chests, spawners) => this.onChunkGenerated(c, spawns, chests, spawners),
+        onAnyChange: (...a) => { if (this.net) this.net.onWorldChange(...a); },
+        onChunkReady: (c) => { if (this.net && this.net.isGuest) this.net.onChunkReady(c); },
+        onBaseline: (msg) => { if (this.net && this.net.isHost) this.net.onBaseline(msg); },
       },
     });
     this.particles.setWorld(this.world);
@@ -203,6 +209,7 @@ export class Game {
 
   async save() {
     if (!this.world || this.demo || !this.meta) return;
+    if (this.net && this.net.isGuest) { this.net.saveState(); return; }
     this.returnCraftingItems();
     const chunks = this.world.collectSaves();
     this.meta = this.serialize();
@@ -219,7 +226,8 @@ export class Game {
     if (this.fpsTime >= 0.5) { this.fps = Math.round(this.frames / this.fpsTime); this.frames = 0; this.fpsTime = 0; }
     if (!this.world) return;
     const playing = this.state === 'playing';
-    const simulate = this.state === 'playing' || this.state === 'screen' || this.state === 'dead' || this.demo;
+    // a shared world keeps running while its players look at menus
+    const simulate = this.state === 'playing' || this.state === 'screen' || this.state === 'dead' || this.demo || (this.state === 'paused' && !!this.net);
 
     if (playing) this.look(dt);
     if (simulate && this.state !== 'loading') {
@@ -298,11 +306,19 @@ export class Game {
 
     this.tickEntities();
     if (p.vehicle) this.syncRider();
+    this.tickMaps();
+    if (this.net && this.net.isGuest) {
+      // the host runs circuits, fluids, growth, spawning and the weather
+      this.tickTime();
+      this.tickAmbient();
+      this.net.tick();
+      if (this.tickCount % 600 === 0) this.save();
+      return;
+    }
     this.circuits.tick();
     this.tickBrewing();
     this.tickHoppers();
     this.tickFires();
-    this.tickMaps();
     this.fluids.tick(this.tickCount);
     this.randomTicks();
     this.tickSpawning();
@@ -311,6 +327,7 @@ export class Game {
     this.tickTime();
     this.tickWeather();
     this.tickAmbient();
+    if (this.net) this.net.tick();
     // autosave, but not while a screen holds items in its crafting slots
     if (this.tickCount % 600 === 0 && this.state !== 'screen') this.save();
   }
@@ -340,7 +357,7 @@ export class Game {
     this.equip = Math.max(0, this.equip - 0.25);
   }
 
-  startSwing() { if (this.swingTicks === 0 || this.swingTicks > 3) this.swingTicks = 1; }
+  startSwing() { if (this.swingTicks === 0 || this.swingTicks > 3) { this.swingTicks = 1; this.swingCount++; } }
   swingProgress(alpha) {
     if (this.swingTicks === 0) return 0;
     return Math.min(1, (this.swingTicks - 1 + alpha) / 6);
@@ -661,6 +678,16 @@ export class Game {
     if (p.effects.strength) dmg += 3 * (p.effects.strength.amp + 1);
     if (p.effects.weakness) dmg = Math.max(0, dmg - 4);
     if (mob.isRemote) { if (this.net) this.net.hitRemote(mob, dmg, 'player', p.x, p.z); this.startSwing(); return; }
+    if (mob.mirror && this.net && this.net.isGuest) {
+      const crit = p.vy < 0 && !p.onGround && !p.inWater && !p.onLadder && !p.flying;
+      if (crit) { dmg *= 1.5; this.audio.play('crit', mob.x, mob.y + 1, mob.z); for (let i = 0; i < 8; i++) this.particles.crit(mob.x + (Math.random() - 0.5) * 0.6, mob.y + mob.h * Math.random(), mob.z + (Math.random() - 0.5) * 0.6); }
+      const kb = (p.sprinting ? 1 : 0) + (held && held.ench && held.ench.knockback ? held.ench.knockback : 0);
+      this.net.hitMirror(mob, dmg, kb, crit);
+      if (mob instanceof Mob) { this.audio.mob(mob.def.sound, 'hurt', mob.x, mob.y, mob.z); mob.hurtTime = 10; }
+      p.addExhaustion(0.1); p.sprinting = false;
+      if (def && def.tool) this.damageTool(def.tool.type === 'sword' ? 1 : 2);
+      return;
+    }
     if (!(mob instanceof Mob)) {
       if (mob.hit) mob.hit(this, dmg, 'player');
       p.addExhaustion(0.1);
@@ -693,6 +720,7 @@ export class Game {
     const def = held && ITEMS[held.id];
 
     if (this.targetEntity) {
+      if (this.targetEntity.mirror && this.net && this.net.isGuest && this.net.useMirror(this.targetEntity, held)) { this.startSwing(); return; }
       const res = this.targetEntity.interact(this, held);
       if (res) {
         this.startSwing();
@@ -1112,15 +1140,20 @@ export class Game {
   // ---------------------------------------------------------------------------
   tickEntities() {
     const p = this.player;
+    const net = this.net;
+    if (net && net.isGuest) net.tickMirrors();
     for (const e of this.entities) {
-      const dx = e.x - p.x, dz = e.z - p.z;
-      const far = dx * dx + dz * dz > 110 * 110;
+      if (e.mirror && !e.claimed) continue;
+      if (net && net.isHost && net.controlled.has(e.id)) continue; // a guest is driving it
+      const far = (net ? this.nearestPlayerDist(e.x, e.z) : Math.hypot(e.x - p.x, e.z - p.z)) > 110;
       if (far && !e.hostile && !e.isWyrm) { e.savePrev(); continue; }
-      if (!this.world.chunkReady(Math.floor(e.x) >> 4, Math.floor(e.z) >> 4)) { e.savePrev(); continue; }
+      // the wyrm flies on over unloaded land; everything else waits for its chunk
+      if (!e.isWyrm && !this.world.chunkReady(Math.floor(e.x) >> 4, Math.floor(e.z) >> 4)) { e.savePrev(); continue; }
       e.tick(this);
       if (e instanceof Mob && !e.dead && this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.1), Math.floor(e.z)) === B.fire && !e.def.fireproof) e.fire = Math.max(e.fire, 160);
     }
     for (const it of this.items) {
+      if (it.mirror) continue;
       if (!this.world.chunkReady(Math.floor(it.x) >> 4, Math.floor(it.z) >> 4)) { it.savePrev(); continue; }
       it.tick(this);
       if (!it.removed && !it.pickedBy && it.pickupDelay === 0 && !p.dead && !p.spectator &&
@@ -1136,6 +1169,7 @@ export class Game {
       }
     }
     for (const o of this.orbs) o.tick(this);
+    if (net && net.isHost) net.hostPickups();
     this.entities = this.entities.filter((e) => !e.removed);
     this.items = this.items.filter((e) => !e.removed);
     this.orbs = this.orbs.filter((e) => !e.removed);
@@ -1143,7 +1177,7 @@ export class Game {
 
   // ---------------------------------------------------------------------------
   onChunkGenerated(c, spawns, chests = [], spawners = []) {
-    if (this.demo) return;
+    if (this.demo || (this.net && this.net.isGuest)) return;
     for (const s of spawns) {
       if (s.type === 'pylon') { if (this.meta.voidBoss !== 'dead') this.spawnPylon(s); continue; }
       if (this.entities.length > 220) break;
@@ -1162,11 +1196,13 @@ export class Game {
   }
 
   tickSpawning() {
-    const p = this.player;
     if (this.tickCount % 20 !== 0) return;
+    // spawn around a random player; despawn far from all of them
+    const all = this.players();
+    const p = all[Math.floor(Math.random() * all.length)];
     for (const e of this.entities) {
       if (!e.hostile) continue;
-      const d = Math.hypot(e.x - p.x, e.z - p.z);
+      const d = this.net ? this.nearestPlayerDist(e.x, e.z) : Math.hypot(e.x - p.x, e.z - p.z);
       if (d > 128 || (d > 40 && Math.random() < 0.02)) e.removed = true;
     }
     if (this.settings.peaceful) { for (const e of this.entities) if (e.hostile) e.removed = true; return; }
@@ -1198,6 +1234,7 @@ export class Game {
       const sky = l >> 4, bl = l & 15;
       if (under ? bl > 11 : (bl > 0 || sky - darken > 4)) continue;
       if (Math.hypot(x + 0.5 - p.x, y - p.y, z + 0.5 - p.z) < 24) continue;
+      if (this.net && this.nearestPlayerDist(x + 0.5, z + 0.5) < 24) continue;
       const r = Math.random();
       const type = under ? (r < 0.75 ? 'imp' : 'archer') : (r < 0.47 ? 'ghoul' : r < 0.74 ? 'archer' : r < 0.97 ? 'crawler' : 'gloamer');
       const opts = {};
@@ -1282,6 +1319,10 @@ export class Game {
     const p = this.player;
     if (p.portalCooldown > 0) p.portalCooldown--;
     if (p.dead || this.state !== 'playing') return;
+    if (this.net && this.net.isGuest) {
+      if (p.touching(this.world, B.rift) && this.tickCount % 60 === 0) this.ui.message('Only the host can travel between worlds. Everyone follows them.', '#c8b8f0');
+      return;
+    }
     const inRift = p.touching(this.world, B.rift);
     if (inRift) {
       p.portalTicks++;
@@ -1378,6 +1419,14 @@ export class Game {
   tickSleep() {
     const p = this.player;
     p.sleeping++;
+    if (this.net && this.net.isGuest) {
+      if (p.sleeping >= 100 && !this.isNight()) this.wakeUp();
+      return;
+    }
+    if (this.net && p.sleeping >= 100 && this.isNight() && this.remotePlayers().some((rp) => !rp.sleeping && !rp.dead)) {
+      if (p.sleeping === 100) this.ui.message('Waiting for the other players to sleep…', '#e8d48a');
+      return;
+    }
     if (p.sleeping >= 100 && this.isNight()) {
       this.dayTime = 0; this.day++;
       this.rainTarget = 0; this.rain = 0; this.thunder = 0;
@@ -1466,11 +1515,10 @@ export class Game {
   // ---------------------------------------------------------------------------
   // Block updates
   onBlockChanged(x, y, z, old, id) {
-    if (this.demo) return;
+    if (this.demo || (this.net && this.net.isGuest)) return;
     const w = this.world;
     this.circuits.onBlockChanged(x, y, z, old, id);
     if (id === B.fire) this.fires.add(`${x},${y},${z}`);
-    if (this.net) this.net.onBlockChanged(x, y, z, id, w.getMeta(x, y, z));
     if (isLiquid(id)) this.fluids.schedule(x, y, z, this.tickCount);
     for (const [dx, dy, dz] of DIR6) {
       const nx = x + dx, ny = y + dy, nz = z + dz;
@@ -1517,20 +1565,24 @@ export class Game {
   get decayQueue() { return this._decay || (this._decay = []); }
 
   randomTicks() {
-    const w = this.world, p = this.player;
-    const pcx = Math.floor(p.x) >> 4, pcz = Math.floor(p.z) >> 4;
+    const w = this.world;
     const R = 5;
-    for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
-      const c = w.getChunk(pcx + dx, pcz + dz);
-      if (!c || c.state !== STATE.READY) continue;
-      const sections = (c.maxY >> 4) + 1;
-      for (let s = 0; s < sections; s++) {
-        for (let k = 0; k < 3; k++) {
-          const r = (Math.random() * 4096) | 0;
-          const lx = r & 15, lz = (r >> 4) & 15, ly = (s << 4) | (r >> 8);
-          const id = c.blocks[(ly << 8) | (lz << 4) | lx];
-          if (id === 0 || id === B.stone) continue;
-          this.randomTick(c.cx * 16 + lx, ly, c.cz * 16 + lz, id);
+    const done = new Set();
+    for (const p of this.players()) {
+      const pcx = Math.floor(p.x) >> 4, pcz = Math.floor(p.z) >> 4;
+      for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+        const c = w.getChunk(pcx + dx, pcz + dz);
+        if (!c || c.state !== STATE.READY || done.has(c.key)) continue;
+        done.add(c.key);
+        const sections = (c.maxY >> 4) + 1;
+        for (let s = 0; s < sections; s++) {
+          for (let k = 0; k < 3; k++) {
+            const r = (Math.random() * 4096) | 0;
+            const lx = r & 15, lz = (r >> 4) & 15, ly = (s << 4) | (r >> 8);
+            const id = c.blocks[(ly << 8) | (lz << 4) | lx];
+            if (id === 0 || id === B.stone) continue;
+            this.randomTick(c.cx * 16 + lx, ly, c.cz * 16 + lz, id);
+          }
         }
       }
     }
@@ -1764,6 +1816,15 @@ export class Game {
       else if (e.hurt) e.hurt(this, dmg);
     };
     if (!p.dead) hurtEnt(p, true);
+    if (this.net) {
+      this.net.effect('boom', x, y, z);
+      for (const rp of this.remotePlayers()) {
+        const d = Math.hypot(rp.x - x, rp.y + 0.9 - y, rp.z - z);
+        if (d > R || rp.dead) continue;
+        const impact = 1 - d / R;
+        rp.damage(this, Math.floor((impact * impact + impact) / 2 * 7 * R + 1), 'explosion', x, z);
+      }
+    }
     for (const e of this.entities) if (e instanceof Mob) hurtEnt(e, false);
     for (const e of this.entities) if ((e.isCart || e.isBoat) && Math.hypot(e.x - x, e.y - y, e.z - z) < power) e.hit(this, 40);
     for (const e of this.entities) if (e.isPylon && !e.removed && Math.hypot(e.x - x, e.y - y, e.z - z) < power * 1.5) e.hit(this);
@@ -2161,3 +2222,4 @@ export class Game {
 }
 
 installFeatures(Game);
+installNet(Game);

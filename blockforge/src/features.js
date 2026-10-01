@@ -44,6 +44,7 @@ const methods = {
     if (p.sleeping) return;
     p.vehicle = v; v.rider = p;
     p.flying = false; p.gliding = false; p.sneaking = false;
+    if (this.net && this.net.isGuest) this.net.claimVehicle(v);
     this.syncRider();
     p.px = p.x; p.py = p.y; p.pz = p.z;
     this.advance(v.isBoat ? 'boat' : 'cart');
@@ -54,6 +55,7 @@ const methods = {
     const p = this.player, v = p.vehicle;
     if (!v) return;
     v.rider = null; v.riderInput = null; p.vehicle = null;
+    if (this.net && this.net.isGuest) this.net.releaseVehicle(v);
     const w = this.world;
     for (const [dx, dy, dz] of [[0, 1, 0], [1.2, 0.2, 0], [-1.2, 0.2, 0], [0, 0.2, 1.2], [0, 0.2, -1.2], [0, 1.6, 0]]) {
       const x = v.x + dx, y = v.y + dy + 0.4, z = v.z + dz;
@@ -641,6 +643,7 @@ const methods = {
   tickVoidTravel() {
     const p = this.player;
     if (p.dead || this.state !== 'playing' || this.pendingPortal) return;
+    if (this.net && this.net.isGuest) return; // the host leads the way between worlds
     if (p.voidCooldown > 0) { p.voidCooldown--; return; }
     if (p.touching(this.world, B.void_gate)) {
       p.voidCooldown = 100;
@@ -681,6 +684,7 @@ const methods = {
 
   spawnVoidBoss() {
     if (this.dim !== 'void' || this.meta.voidBoss === 'dead' || this.wyrm) return;
+    if (this.net && this.net.isGuest) return; // the host's wyrm is mirrored
     const wyrm = new Wyrm(0, 85, 60, this.meta.voidWyrmHealth || WYRM_HEALTH);
     this.entities.push(wyrm);
     this.wyrm = wyrm;

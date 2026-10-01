@@ -164,7 +164,8 @@ export class Mob extends Entity {
     if (this.dead || this.invuln > 0) return false;
     if (this.def.fireproof && (source === 'fire' || source === 'lava')) return false;
     if (this.def.teleports && (source === 'arrow_player' || source === 'arrow') && this.teleport(game)) return false;
-    if (this.def.neutral && (source === 'player' || source === 'arrow_player')) this.angry = 600;
+    const byPlayer = source === 'player' || source === 'arrow_player' || (typeof source === 'string' && source.startsWith('remote:'));
+    if (this.def.neutral && byPlayer) this.angry = 600;
     this.health -= dmg;
     this.hurtTime = 10; this.invuln = 10;
     this.lastHitBy = source;
@@ -202,7 +203,7 @@ export class Mob extends Entity {
     if (p.dead || p.creative || p.spectator || pdist > 20) return false;
     if (this.def.neutral && !(this.angry > 0)) return false;
     if (p.effects && p.effects.invisibility && pdist > 3) return false;
-    if (this.def.nightOnly && this.lastHitBy !== 'player') {
+    if (this.def.nightOnly && this.lastHitBy !== 'player' && !(this.lastHitBy || '').startsWith('remote:')) {
       const l = game.world.getLight(Math.floor(this.x), Math.floor(this.y + 0.5), Math.floor(this.z));
       if (game.isDay() && (l >> 4) > 9) return false;
     }
@@ -226,6 +227,7 @@ export class Mob extends Entity {
           const r = Math.random;
           for (const [id, n] of this.def.drops(r, this)) if (n > 0) game.dropItem(this.x, this.y + 0.5, this.z, { id, count: n });
           if (this.lastHitBy === 'player' && this.def.xp) game.spawnXp(this.x, this.y + 0.5, this.z, this.def.xp + Math.floor(Math.random() * 3));
+          else if (this.lastHitBy && this.lastHitBy.startsWith('remote:') && this.def.xp && game.net) game.net.giveXp(this.lastHitBy.slice(7), this.def.xp + Math.floor(Math.random() * 3));
         }
         game.onMobKilled(this);
       }
@@ -251,7 +253,7 @@ export class Mob extends Entity {
     if (this.breedCooldown > 0) this.breedCooldown--;
 
     let ax = 0, az = 0, speed = 0;
-    const p = game.player;
+    const p = game.focusPlayer ? game.focusPlayer(this) : game.player;
     const pdx = p.x - this.x, pdz = p.z - this.z, pdist = Math.hypot(pdx, pdz, p.y - this.y);
 
     if (this.hostile) {
@@ -308,7 +310,7 @@ export class Mob extends Entity {
       if (pdist < reach && Math.abs(p.y - this.y) < 1.5 && this.attackCooldown <= 0) {
         this.attackCooldown = 20;
         this.swing = 10;
-        if (game.player.damage(game, this.def.damage, 'mob:' + this.type, this.x, this.z) && this.def.ignites) game.player.fireTicks = Math.max(game.player.fireTicks, 80);
+        if (p.damage(game, this.def.damage, 'mob:' + this.type, this.x, this.z) && this.def.ignites) p.fireTicks = Math.max(p.fireTicks || 0, 80);
       }
     } else if (this.panic > 0) {
       this.panic--;
@@ -629,6 +631,7 @@ export class Projectile extends Entity {
     };
     const p = game.player;
     if (p && !p.dead) hitOne(p);
+    if (game.remotePlayers) for (const rp of game.remotePlayers()) if (!rp.dead) hitOne(rp);
     for (const e of game.entities) if (e instanceof Mob && !e.dead) hitOne(e);
   }
 

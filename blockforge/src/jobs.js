@@ -20,6 +20,10 @@ export function handleJob(msg) {
       return [{ id: msg.id, type: 'gen', cx: msg.cx, cz: msg.cz, ...r },
         [r.blocks.buffer, r.meta.buffer, r.tints.buffer]];
     }
+    case 'base': {
+      const r = gen.generate(msg.cx, msg.cz);
+      return [{ id: msg.id, type: 'base', cx: msg.cx, cz: msg.cz, blocks: r.blocks, meta: r.meta }, [r.blocks.buffer, r.meta.buffer]];
+    }
     case 'mesh': {
       msg.noSky = noSky;
       const r = mesher.build(msg);

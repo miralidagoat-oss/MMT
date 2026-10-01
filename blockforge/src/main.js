@@ -14,6 +14,7 @@ import { WorldGen } from './worldgen.js';
 import { I } from './items.js';
 import { B } from './blocks.js';
 import { PRESETS, applyPreset, matchPreset, detectPreset, applyQuality } from './quality.js';
+import { NetSession, availableLinks, relayLink, makeCode } from './net.js';
 
 const VERSION = '1.0';
 const SETTINGS_KEY = 'blockforge:settings';
@@ -79,10 +80,65 @@ async function boot() {
     },
     loadWorld: (meta) => enterWorld(meta, false),
     quit: async () => {
+      if (game.net && game.net.isGuest) { await app.leave(); return; }
       ui.showLoading('Saving world', 1);
       await game.save();
+      if (game.net) { game.net.close(); game.net = null; }
       await startDemo();
       ui.showTitle();
+    },
+    // ---- shared worlds ------------------------------------------------------
+    links: async () => availableLinks(''),
+    relayLink: (url) => relayLink(url),
+    playerName: () => {
+      if (!settings.playerName) { settings.playerName = 'Player' + Math.floor(100 + Math.random() * 900); saveSettings(); }
+      return settings.playerName;
+    },
+    // Open the world being played to friends.
+    host: async (link) => {
+      if (game.net || game.state === 'title') return null;
+      const code = makeCode();
+      const room = await link.open('bf-' + code);
+      const lobby = await link.open(null).catch(() => null);
+      const session = new NetSession(game, room, { role: 'host', name: app.playerName(), code, link });
+      session.lobby = lobby;
+      game.net = session;
+      session.lastDim = game.dim;
+      session.pushPresence();
+      if (lobby) session.advertise();
+      return code;
+    },
+    stopHosting: () => { if (game.net && game.net.isHost) { game.net.close(); game.net = null; } },
+    // Join someone else's world by room code.
+    join: (link, code) => new Promise((resolve, reject) => {
+      (async () => {
+        const room = await link.open('bf-' + code.toLowerCase());
+        const session = new NetSession(game, room, { role: 'guest', name: app.playerName(), code, link });
+        // until the world is running, a timer keeps the conversation going
+        const timer = setInterval(() => {
+          if (session.closed) { clearInterval(timer); return; }
+          if (!session.inWorld) session.connectTick();
+          else if (game.state === 'loading') { session.guestTick(); session.pushPresence(); session.flush(); } else clearInterval(timer);
+        }, 100);
+        const giveUp = setTimeout(() => { clearInterval(timer); session.close(); reject(new Error('No world answered with that code.')); }, 25000);
+        session.onWelcomed = async (wel) => {
+          clearTimeout(giveUp);
+          try { await enterRemoteWorld(wel, session); resolve(); } catch (err) { clearInterval(timer); reject(err); }
+        };
+        session.onHostGone = () => { if (game.net === session) app.leave('The host closed the world.'); };
+        session.onHostTravel = (d) => {
+          session.mirrors.clear(); session.diffPending.clear();
+          game.travel(d.dim, d.x + 1, d.y, d.z, false);
+        };
+      })().catch(reject);
+    }),
+    leave: async (why) => {
+      const s = game.net;
+      if (s) { s.close(); game.net = null; }
+      ui.showLoading('Leaving', 1);
+      await startDemo();
+      ui.showTitle();
+      if (why) ui.notice && ui.notice(why);
     },
     applySettings: () => {
       applyQuality(settings, renderer, game);
@@ -109,6 +165,34 @@ async function boot() {
   const unlockAudio = () => audio.unlock();
   document.addEventListener('pointerdown', unlockAudio);
   document.addEventListener('keydown', unlockAudio);
+
+  // Load the host's world here as a guest.
+  async function enterRemoteWorld(wel, session) {
+    ui.closeMenus();
+    ui.lastLoadingText = null;
+    ui.showLoading('Joining ' + (wel.name || 'world'), 0);
+    game.state = 'loading';
+    const meta = {
+      id: null, remote: true, name: wel.name || 'Shared world', seed: wel.seed, seedText: wel.seedText, mode: wel.mode || 'survival',
+      dayTime: wel.dayTime, day: wel.day, rain: wel.rain, thunder: wel.thunder, voidBoss: wel.voidBoss,
+    };
+    const saved = wel.player && typeof wel.player.x === 'number' ? wel.player : null;
+    if (saved) meta.player = { ...saved, dim: wel.dim };
+    game.net = session;
+    await game.startWorld(meta, { dim: wel.dim });
+    const p = game.player;
+    if (wel.player && !saved) { const pos = { x: p.x, y: p.y, z: p.z }; p.load({ ...wel.player, ...pos }); }
+    if (!saved) {
+      const at = wel.at || wel.spawn;
+      p.x = p.px = at.x + 1; p.y = p.py = at.y + 0.5; p.z = p.pz = at.z;
+      p.spawn = wel.spawn; p.worldSpawn = wel.spawn;
+      game.spawnKnown = true;
+    }
+    p.mode = wel.mode || p.mode;
+    session.inWorld = true;
+    loadingSince = performance.now();
+    input.showTouch(true);
+  }
 
   let loadingSince = 0;
   async function enterWorld(meta, isNew) {

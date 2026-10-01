@@ -439,9 +439,12 @@ export class UI {
         this.message(text, '#9fb3c8');
         const res = this.game.runCommand(text);
         if (res) this.message(res, '#e8d48a');
-      } else this.message(`<You> ${text}`);
+      } else if (this.game.net) this.game.net.say(text);
+      else this.message(`<You> ${text}`);
     }
   }
+
+  chatLine(text) { this.message(text); }
 
   // ---------------------------------------------------------------------------
   // Keyboard routing. Returns true when the UI consumed the key.
@@ -556,11 +559,15 @@ export class UI {
       <div class="logo"><span>BLOCK</span><span>FORGE</span></div>
       <p class="tagline">An open-world voxel sandbox</p>
       <div class="buttons">
-        <button id="b-play" class="btn wide">Play</button>
+        <button id="b-play" class="btn wide">Singleplayer</button>
+        <button id="b-multi" class="btn wide">Multiplayer</button>
         <div class="row"><button id="b-options" class="btn">Options</button><button id="b-controls" class="btn">Controls</button></div>
       </div>
+      ${this.noticeText ? `<p class="warn notice">${esc(this.noticeText)}</p>` : ''}
       <p class="foot">Blockforge ${this.app.version} · all art, sound and code generated procedurally</p>`, 'title');
+    this.noticeText = null;
     this.bind(m, '#b-play', () => this.showWorlds());
+    this.bind(m, '#b-multi', () => this.showMultiplayer());
     this.bind(m, '#b-options', () => this.showOptions(() => this.showTitle()));
     this.bind(m, '#b-controls', () => this.showControls(() => this.showTitle()));
   }
@@ -636,17 +643,138 @@ export class UI {
   }
 
   showPause() {
+    const net = this.game && this.game.net;
+    const players = net ? [net.name + (net.isHost ? ' (host)' : ''), ...[...net.remote.values()].map((rp) => rp.name + (rp.role === 'h' ? ' (host)' : ''))] : [];
+    const shareRow = !net ? '<button id="b-share" class="btn wide">Open to Friends</button>'
+      : net.isHost ? `<div class="share-info">Room code <b class="code">${esc(net.code)}</b><span>${players.length} playing: ${esc(players.join(', '))}</span></div><button id="b-unshare" class="btn wide">Stop Sharing</button>`
+        : `<div class="share-info">Playing on a shared world<span>${esc(players.join(', '))}</span></div>`;
     const m = this.menu(`
       <h2>Game Menu</h2>
       <div class="buttons">
         <button id="b-resume" class="btn wide">Back to Game</button>
+        ${shareRow}
         <div class="row"><button id="b-opt" class="btn">Options</button><button id="b-ctl" class="btn">Controls</button></div>
-        <button id="b-quit" class="btn wide">Save and Quit to Title</button>
+        <button id="b-quit" class="btn wide">${net && net.isGuest ? 'Disconnect' : 'Save and Quit to Title'}</button>
       </div>`, 'pause');
     this.bind(m, '#b-resume', () => this.resume());
+    this.bind(m, '#b-share', () => this.showShare());
+    this.bind(m, '#b-unshare', () => { this.app.stopHosting(); this.message('Your world is private again.', '#f2e27a'); this.showPause(); });
     this.bind(m, '#b-opt', () => this.showOptions(() => this.showPause()));
     this.bind(m, '#b-ctl', () => this.showControls(() => this.showPause()));
     this.bind(m, '#b-quit', () => this.app.quit());
+  }
+
+  notice(text) { this.noticeText = text; this.showTitle(); }
+
+  // Choose how to reach friends: the people viewing this page, other tabs, or a relay.
+  async connectionPicker(m, sel) {
+    const box = $(sel, m);
+    box.innerHTML = '<p class="muted">Looking for connections…</p>';
+    const links = await this.app.links();
+    if (this.settings.relayUrl === undefined) this.settings.relayUrl = '';
+    let pick = links[0] || null;
+    const render = () => {
+      box.innerHTML = `<div class="seg links">${links.map((l, i) => `<button class="btn${l === pick ? ' sel' : ''}" data-i="${i}">${esc(l.label)}</button>`).join('')}<button class="btn${pick && pick.kind === 'relay' ? ' sel' : ''}" data-i="relay">Relay server…</button></div>
+        <label class="field relay" ${pick && pick.kind === 'relay' ? '' : 'hidden'}><span>Relay address (run tools/relay.mjs)</span><input id="relay-url" placeholder="ws://192.168.1.20:8787" value="${esc(this.settings.relayUrl || '')}"></label>`;
+      for (const b of box.querySelectorAll('.links .btn')) {
+        b.addEventListener('click', () => {
+          this.click();
+          if (b.dataset.i === 'relay') pick = { kind: 'relay', label: 'Relay server' };
+          else pick = links[+b.dataset.i];
+          render();
+          if (box.onPick) box.onPick(pick);
+        });
+      }
+      const inp = $('#relay-url', box);
+      if (inp) inp.addEventListener('change', () => { this.settings.relayUrl = inp.value.trim(); this.saveSettings(); });
+    };
+    render();
+    return () => {
+      if (pick && pick.kind === 'relay' && !pick.open) {
+        const url = (this.settings.relayUrl || '').trim();
+        if (!/^wss?:\/\//.test(url)) throw new Error('Enter the relay address, like ws://192.168.1.20:8787');
+        return this.app.relayLink(url);
+      }
+      return pick;
+    };
+  }
+
+  async showShare() {
+    const m = this.menu(`<h2>Open to Friends</h2>
+      <p class="muted">Friends join from Multiplayer on the title screen with your room code. They play in your world while you are here.</p>
+      <div id="share-links" class="links-box"></div>
+      <div class="row"><button id="b-go" class="btn">Start Sharing</button><button id="b-back" class="btn">Back</button></div>
+      <p class="warn" id="share-err"></p>`, 'pause share');
+    const getLink = await this.connectionPicker(m, '#share-links');
+    this.bind(m, '#b-back', () => this.showPause());
+    this.bind(m, '#b-go', async () => {
+      const err = $('#share-err', m);
+      try {
+        const link = getLink();
+        if (!link) throw new Error('No way to connect was found in this browser.');
+        err.textContent = 'Opening…';
+        const code = await this.app.host(link);
+        this.message(`Your world is open! Room code: ${code}`, '#f2e27a');
+        this.showPause();
+      } catch (e) { err.textContent = e.message || String(e); }
+    });
+  }
+
+  async showMultiplayer() {
+    const name = this.app.playerName();
+    const m = this.menu(`<h2>Multiplayer</h2>
+      <label class="field"><span>Your name</span><input id="mp-name" maxlength="16" value="${esc(name)}"></label>
+      <div id="mp-links" class="links-box"></div>
+      <div class="games" id="mp-games"><p class="muted">Looking for open worlds…</p></div>
+      <div class="join-row"><input id="mp-code" maxlength="8" placeholder="Room code" autocomplete="off"><button id="b-join" class="btn">Join</button></div>
+      <p class="warn" id="mp-err"></p>
+      <p class="muted small">To host, open one of your worlds, press Esc and choose Open to Friends.</p>
+      <button id="b-back" class="btn wide">Back</button>`, 'worlds multiplayer');
+    const nameIn = $('#mp-name', m);
+    nameIn.addEventListener('change', () => { this.settings.playerName = nameIn.value.trim().slice(0, 16) || name; this.saveSettings(); });
+    let lobby = null, closed = false;
+    const box = $('#mp-links', m);
+    const getLink = await this.connectionPicker(m, '#mp-links');
+    const games = $('#mp-games', m);
+    const err = $('#mp-err', m);
+    const showGames = (list) => {
+      const open = list.filter((p) => !p.isMe && p.presence && p.presence.bf && p.presence.bf.code);
+      games.innerHTML = open.length ? open.map((p) => {
+        const b = p.presence.bf;
+        return `<button class="world game" data-code="${esc(String(b.code))}"><b>${esc(String(b.wn || 'World'))}</b><span>${esc(String(b.hn || 'Someone'))} · ${b.np | 0} playing</span></button>`;
+      }).join('') : '<p class="muted">No open worlds found yet. Ask a friend for their room code.</p>';
+      for (const b of games.querySelectorAll('.game')) b.addEventListener('click', () => { this.click(); $('#mp-code', m).value = b.dataset.code; join(); });
+    };
+    const browse = async () => {
+      if (lobby) { lobby.close(); lobby = null; }
+      let link;
+      try { link = getLink(); } catch { return; }
+      if (!link) { games.innerHTML = '<p class="muted">No way to connect was found in this browser.</p>'; return; }
+      if (link.kind === 'relay') { games.innerHTML = '<p class="muted">Enter the room code to join through the relay.</p>'; }
+      try {
+        lobby = await link.open(null);
+        if (closed) { lobby.close(); return; }
+        lobby.onPeers(showGames);
+        lobby.presence({ bfl: 1 });
+        showGames(lobby.peers());
+      } catch (e) { games.innerHTML = `<p class="muted">${esc(e.message || String(e))}</p>`; }
+    };
+    box.onPick = () => browse();
+    browse();
+    const join = async () => {
+      const code = $('#mp-code', m).value.trim().toLowerCase();
+      if (!/^[a-z0-9]{4,8}$/.test(code)) { err.textContent = 'Enter the room code your friend sees in their game menu.'; return; }
+      this.settings.playerName = nameIn.value.trim().slice(0, 16) || name; this.saveSettings();
+      let link;
+      try { link = getLink(); } catch (e) { err.textContent = e.message; return; }
+      if (!link) { err.textContent = 'No way to connect was found in this browser.'; return; }
+      closed = true; if (lobby) { lobby.close(); lobby = null; }
+      this.showLoading('Connecting to ' + code, 0);
+      try { await this.app.join(link, code); } catch (e) { this.showMultiplayer(); setTimeout(() => { const er = $('#mp-err'); if (er) er.textContent = e.message || String(e); }, 0); }
+    };
+    this.bind(m, '#b-join', join);
+    $('#mp-code', m).addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
+    this.bind(m, '#b-back', () => { closed = true; if (lobby) lobby.close(); this.showTitle(); });
   }
 
   showDeath(msg) {
@@ -772,6 +900,7 @@ export class UI {
     g.input.reset();
     g.state = 'screen';
     this.screen = { name, data };
+    if (data && data.key && g.net && g.net.isGuest) g.net.openedContainer(data.key);
     this.buildInventoryScreen(name, data);
   }
 

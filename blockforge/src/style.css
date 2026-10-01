@@ -278,3 +278,21 @@ body { font-family: var(--font-ui); -webkit-font-smoothing: antialiased; user-se
 #fatal pre { white-space: pre-wrap; font-size: 12px; color: var(--muted); max-height: 40vh; overflow: auto; }
 
 @media (prefers-reduced-motion: reduce) { #overlay-fire { animation: none; } .hot-sel { transition: none; } }
+
+/* Multiplayer */
+.menu.multiplayer { width: min(100%, calc(280 * var(--u))); }
+.links-box { width: 100%; display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
+.links { flex-wrap: wrap; }
+.links .btn { font-size: calc(6.5 * var(--u)); padding: calc(2.5 * var(--u)) calc(2 * var(--u)); }
+.games { width: 100%; display: flex; flex-direction: column; gap: calc(2 * var(--u)); max-height: calc(90 * var(--u)); overflow-y: auto; }
+.games .game { display: flex; flex-direction: column; align-items: flex-start; gap: calc(1 * var(--u)); width: 100%; text-align: left; cursor: pointer; font: inherit; color: var(--ink); }
+.games .game span { color: var(--muted); font-size: calc(6.5 * var(--u)); }
+.join-row { display: flex; width: 100%; gap: calc(3 * var(--u)); }
+.join-row input { flex: 1; min-width: 0; font: inherit; font-size: calc(9 * var(--u)); letter-spacing: 0.12em; text-transform: lowercase; color: var(--ink); background: #07090c; border: var(--u) solid var(--edge-hi); padding: calc(2.5 * var(--u)) calc(3 * var(--u)); outline: none; user-select: text; }
+.join-row input:focus { border-color: var(--accent); }
+.menu .small { font-size: calc(6.5 * var(--u)) !important; }
+.share-info { display: flex; flex-direction: column; align-items: center; gap: calc(1 * var(--u)); width: 100%; padding: calc(3 * var(--u)); background: rgba(242, 179, 58, 0.08); border: var(--u) solid var(--accent-deep); font-size: calc(7.5 * var(--u)); }
+.share-info .code { font-family: var(--font-mono); font-size: calc(12 * var(--u)); letter-spacing: 0.18em; color: var(--accent); user-select: text; }
+.share-info span { color: var(--muted); font-size: calc(6.5 * var(--u)); overflow-wrap: anywhere; }
+.menu.share { width: min(100%, calc(260 * var(--u))); }
+.notice { margin-top: calc(2 * var(--u)) !important; }
