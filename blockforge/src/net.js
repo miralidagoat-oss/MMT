@@ -72,7 +72,7 @@ class ClaudeLink {
     const c = globalThis.claude;
     if (!c || typeof c.use !== 'function') return null;
     try {
-      const room = await Promise.race([c.use('room'), new Promise((res) => setTimeout(() => res(null), 4000))]);
+      const room = await Promise.race([c.use('room'), new Promise((res) => setTimeout(() => res(null), 10500))]);
       return room ? new ClaudeLink(room) : null;
     } catch { return null; }
   }

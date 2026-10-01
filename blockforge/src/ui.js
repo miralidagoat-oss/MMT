@@ -515,19 +515,36 @@ export class UI {
     if (g && g.state === 'playing') this.pause();
   }
 
-  screenshotTaken(url) {
+  async screenshotTaken(url) {
     if (!url) { this.message('Screenshot failed', '#ff8080'); return; }
+    const filename = `blockforge-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
     let embedded = false;
     try { embedded = window.top !== window; } catch { embedded = true; }
     if (!embedded) {
       const a = document.createElement('a');
-      a.href = url; a.download = `blockforge-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      a.href = url; a.download = filename;
       document.body.appendChild(a); a.click(); a.remove();
       this.message('Saved screenshot', '#9fe09f');
       return;
     }
-    // Downloads may be blocked inside an embedding page: show the image so it
-    // can be saved with the browser's own "Save image" menu.
+    // Inside a claude.ai artifact the viewer is asked before a file is saved.
+    const c = globalThis.claude;
+    if (c && typeof c.use === 'function') {
+      this.downloads = this.downloads || Promise.race([c.use('downloads'), new Promise((res) => setTimeout(() => res(null), 3000))]).catch(() => null);
+      const dl = await this.downloads;
+      if (dl) {
+        try {
+          const blob = await (await fetch(url)).blob();
+          await dl.save({ filename, data: blob });
+          this.message('Saved screenshot', '#9fe09f');
+          return;
+        } catch (e) {
+          if (e && e.code === 'declined') { this.message('Screenshot not saved', '#e8d48a'); return; }
+        }
+      }
+    }
+    // Otherwise show the image so it can be saved with the browser's own
+    // "Save image" menu.
     const box = el('div', 'shot', `<img src="${url}" alt="Screenshot"><p>Right-click the image to save it · click anywhere to close</p>`);
     box.addEventListener('click', () => box.remove());
     document.getElementById('app').appendChild(box);
