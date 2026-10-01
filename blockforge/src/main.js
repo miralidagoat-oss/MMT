@@ -160,6 +160,7 @@ async function boot() {
         scene.setTextures(tex.blocks, tex.items);
         ui.setPlayerSkin(tex.skins[SKIN.PLAYER]);
       }
+      if (ui.detail !== detail) { ui.detail = detail; ui.setDetail(detail); }
       audio.setVolumes(settings.volume / 100, settings.music / 100);
       ui.applyGuiScale();
       saveSettings();

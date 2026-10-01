@@ -57,5 +57,6 @@ export function applyQuality(settings, renderer, game) {
   q.waterFx = !!settings.waterFx;
   q.waving = settings.waving !== false;
   q.relief = !!settings.relief;
+  q.softClouds = (settings.textures || 4) > 1; // HD and smooth textures get soft clouds
   if (game && game.particles) game.particles.density = [0.2, 0.5, 1][settings.particles ?? 2];
 }

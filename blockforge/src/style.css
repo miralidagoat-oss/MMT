@@ -328,3 +328,8 @@ body { font-family: var(--font-ui); -webkit-font-smoothing: antialiased; user-se
 .bpow.sel { border-color: #8be9ff; box-shadow: 0 0 calc(4 * var(--u)) #3fc8ff88; }
 .bpow:disabled { opacity: 0.45; cursor: default; }
 .bpay { display: flex; align-items: center; gap: calc(4 * var(--u)); flex-wrap: wrap; }
+
+/* HD textures: a smooth interface to match */
+body.hd { --font-ui: 'Nunito', 'Segoe UI', system-ui, sans-serif; }
+body.hd .slot img, body.hd .oslot img, body.hd .portrait img, body.hd #hearts img, body.hd #food img, body.hd #air img, body.hd #armor img, body.hd #absorb img { image-rendering: auto; }
+body.hd .btn, body.hd .ptitle, body.hd h2, body.hd h3 { letter-spacing: 0.01em; }

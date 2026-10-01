@@ -224,7 +224,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   assert(bed.ok && bed.sleeping > 0 && bed.screen === 'sleep', 'player lies down in the bed at night');
   await page.waitForTimeout(2500);
   await shot('46-sleeping');
-  await page.waitForTimeout(3500);
+  // software rendering can be slow: wait for the hundred sleeping ticks rather than a fixed time
+  await page.waitForFunction(() => !window.__blockforge.game.player.sleeping, null, { timeout: 60000 }).catch(() => {});
   const woke = await G(() => { const g = window.__blockforge.game; return { t: g.dayTime, sleeping: g.player.sleeping, state: g.state, adv: [...g.advancements] }; });
   assert(woke.t < 2000 && !woke.sleeping, `sleeping skips the night (time ${woke.t})`);
   assert(woke.adv.includes('sleep'), 'sleep milestone awarded');

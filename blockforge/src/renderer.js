@@ -655,6 +655,9 @@ export class Renderer {
     gl.uniform1f(ps.u.uDay, env.day);
     gl.uniformMatrix3fv(ps.u.uCelestial, false, env.celestial);
     gl.uniform1f(ps.u.uSkyMode, env.skyMode || 0);
+    const soft = !!(this.quality.softClouds && scene.clouds && !env.skyMode);
+    gl.uniform1f(ps.u.uSoftClouds, soft ? 1 : 0);
+    gl.uniform3f(ps.u.uCamPos, cam.x, cam.y, cam.z);
     gl.bindVertexArray(this.skyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -730,7 +733,8 @@ export class Renderer {
     if (scene.particles && scene.particles.count) this.drawParticles(scene.particles, cam, env);
 
     const camAboveClouds = cam.y > CLOUD_Y + CLOUD_H;
-    if (!camAboveClouds && scene.clouds) this.drawClouds(scene, cam, env);
+    const blocky = scene.clouds && !(this.quality.softClouds && cam.y < CLOUD_Y - 4);
+    if (!camAboveClouds && blocky) this.drawClouds(scene, cam, env);
 
     // Translucent chunks (water, ice): far to near, depth writes on so only
     // the nearest surface is blended.
@@ -746,7 +750,7 @@ export class Renderer {
     gl.enable(gl.CULL_FACE);
     gl.disable(gl.BLEND);
 
-    if (camAboveClouds && scene.clouds) this.drawClouds(scene, cam, env);
+    if (camAboveClouds && blocky) this.drawClouds(scene, cam, env);
 
     this.stats.chunks = loaded;
     this.stats.drawn = vis.length;

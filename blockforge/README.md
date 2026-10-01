@@ -1,13 +1,17 @@
 # Blockforge
 
 An open-world voxel sandbox that runs in the browser. It has infinite
-procedural terrain with villages, dungeons and observatories, a fiery second
-dimension (the Underworld) reached through rift portals, a third (the Void)
-with a boss to defeat, spark circuits, rails, minecarts and boats, brewing and
-potions, survival and creative modes, mining, building, crafting, smelting,
-farming, armor, bows, beds, trading, experience and enchanting, fishing, maps,
-creatures, day/night, thunderstorms, flowing water and lava, saved worlds,
-shared multiplayer worlds and graphics presets from Performance to Ultra.
+procedural terrain with 24 biomes, villages, mineshafts, temples, shrines,
+swamp huts, undersea citadels, manors, dungeons and observatories, a fiery
+second dimension (the Underworld) reached through rift portals, a third (the
+Void) with a boss to defeat, spark circuits with comparators and observers,
+rails, minecarts and boats, brewing and potions, a photon blaster laser gun
+and fireworks, tameable hounds, rideable steeds, buildable sentinels, anvils,
+looms and banners, item frames and paintings, beacons, survival and creative
+modes, mining, building, crafting, smelting, farming, armor, bows, beds,
+trading, experience and enchanting, fishing, maps, day/night, thunderstorms,
+flowing water and lava, saved worlds, shared multiplayer worlds, HD textures
+with relief lighting and graphics presets from Performance to Ultra.
 
 Everything is original and generated in code: block and item textures,
 creature models and skins, sound effects and the ambient music. There are no
@@ -16,7 +20,7 @@ asset files.
 ## Play
 
 Open **`dist/blockforge.html`** in Chrome, Edge, Firefox or Safari. It is one
-self-contained file (~680 KB), so it works from disk or from any static host.
+self-contained file (~850 KB), so it works from disk or from any static host.
 It needs WebGL 2.
 
 Click the game view to capture the mouse. Press **Esc** to pause.
@@ -29,8 +33,8 @@ Click the game view to capture the mouse. Press **Esc** to pause.
 | Ctrl or double-tap W | Sprint |
 | Mouse (or arrow keys) | Look |
 | Left click | Break block · attack |
-| Right click | Place block · use (crafting table, furnace, chest, brewing stand, hopper, dispenser, enchanting table, doors, trapdoors, gates, levers, buttons, beds, signs) · eat and drink · buckets · trade with settlers · hold to draw a bow or raise a shield · wear armor · ride minecarts and boats · cast a fishing line |
-| Shift (riding) | Get out of a minecart or boat |
+| Right click | Place block · use (crafting table, furnace, chest, brewing stand, hopper, dispenser, dropper, enchanting table, anvil, loom, beacon, void chest, cauldron, doors, trapdoors, gates, levers, buttons, comparators, beds, signs) · eat and drink · buckets · trade with settlers · hold to draw a bow, raise a shield or fire the blaster · wear armor · ride minecarts, boats and steeds · feed, tame, sit or saddle animals · hang item frames, paintings and banners · cast a fishing line |
+| Shift (riding) | Get out of a minecart or boat, or off a steed |
 | Jump while falling | Open a glider worn in the chest slot |
 | Middle click | Pick block |
 | 1–9 · mouse wheel | Choose hotbar slot |
@@ -48,7 +52,8 @@ Commands: `/time set day|night|<ticks>`, `/gamemode survival|creative`,
 `/summon <creature>|minecart|boat|wyrm`, `/weather clear|rain|thunder`,
 `/xp <points>` or `/xp <levels>L`, `/enchant <name> [level]`,
 `/effect give <effect> [seconds] [level]` · `/effect clear`,
-`/locate village|observatory|spire`, `/dimension overworld|underworld|void`,
+`/locate village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor`,
+`/dimension overworld|underworld|void`,
 `/seed`, `/spawnpoint`, `/kill`, `/heal`, `/clear`, `/difficulty peaceful|normal`.
 
 ### Graphics settings
@@ -57,10 +62,19 @@ Options › Video has four presets and every setting on its own:
 
 | Preset | What it turns on |
 | --- | --- |
-| Performance | 5-chunk view at 70% resolution, no shadows or post effects, fewer particles |
-| Balanced | 8 chunks, bloom on glowing blocks, colour grading, FXAA, water reflections, entity shadows |
+| Performance | 5-chunk view at 70% resolution, smooth 32px textures, no shadows or post effects, fewer particles |
+| Balanced | 8 chunks, HD 64px textures with relief lighting, bloom on glowing blocks, colour grading, FXAA, water reflections, entity shadows |
 | Fancy | 12 chunks, sun shadows (2048 map), 4x MSAA |
 | Ultra | 18 chunks, sharper and wider sun shadows (4096 map) |
+
+**Texture detail** chooses how textures are painted: Classic (the original
+16-pixel art), Smooth (32px) or HD (64px). Every texture is still drawn in
+code: at higher detail noise is sampled per pixel, the art's random speckle
+blends smoothly, shapes are smoothed, leaves, grass blades and cracks get
+dedicated high-resolution painters, item icons get clean bevels and outlines,
+and creature skins are upscaled face by face. **Relief lighting** adds
+per-pixel normal maps (bricks, cobbles, bark and stone catch the light) with a
+glint on metal, ore and ice.
 
 You can also set render distance, resolution scale (50–200%), a frame-rate cap,
 brightness, shadows (off/low/high/ultra), anti-aliasing (off/FXAA/MSAA 4x),
@@ -92,21 +106,35 @@ The host's game runs the world: creatures, crops, fluids, circuits, weather and
 time. Everyone generates the same terrain from the seed, so only changes
 travel: block edits, each chunk's differences from the generated terrain,
 creature and item snapshots, damage, pickups and chat. Guests see each other
-with name tags; they mine, build, fight, ride, trade, open containers and pick
-up items; when the host goes through a portal everyone follows. The world and
-each guest's inventory are saved in the host's browser.
+with name tags; they mine, build, fight, ride, trade (from the host's own
+settlers, who count the trades), open containers, hang frames and paintings,
+keep their own void chest and pick up items; when the host goes through a
+portal everyone follows. If the host's tab goes to the background the world
+keeps ticking for the guests. The world and each guest's inventory are saved
+in the host's browser.
 
 ## What's in it
 
 **World**
 - Infinite terrain streamed in 16×16×256 chunks, generated on worker threads.
-- Continents, oceans, rivers, beaches, mountains with snowy peaks and 19 biomes
-  (plains, meadow, forest, birch forest, taiga, snowy plains and taiga, desert,
-  savanna, swamp and more), with smoothly blended grass, foliage and water colours.
+- Continents, oceans, rivers, beaches, mountains with snowy peaks and 24 biomes
+  (plains, meadow, forest, birch forest, dark forest, taiga, snowy plains and
+  taiga, ice spikes, desert, badlands with terraced terracotta mesas, savanna,
+  jungle, swamp, mushroom fields and more), with smoothly blended grass,
+  foliage and water colours.
 - Worm tunnels and large caverns, lava lakes deep down, ore veins (coal, iron,
   copper, gold, diamond, emerald in mountains), gravel/dirt/clay pockets, bedrock.
-- Oak, big oak, birch, spruce and swamp trees; tall grass, ferns, flowers,
-  cacti, sugar cane, dead bushes, pumpkins, mushrooms.
+- Oak, big oak, birch, spruce, swamp, jungle (some with 2×2 trunks, hung with
+  vines), jungle bush and dark oak trees; giant red and brown mushrooms;
+  packed-ice spikes; tall grass, ferns, flowers, cacti, sugar cane, melons,
+  dead bushes, pumpkins, mushrooms.
+- Mineshafts (propped tunnels with rails, lanterns, cobwebs, chests and a
+  crawler spawner), sun temples in the desert (two towers and a treasure room
+  guarded by a pressure plate over blast crates), jungle shrines (an arrow
+  trap and two caches), swamp huts on stilts where a hexer lives, tide
+  citadels on the deep sea floor (gold and treasure, guarded by tide
+  wardens) and woodland manors in dark forests (library, dining room,
+  bedrooms, strongroom, kept by hexers and archers).
 - Villages in four styles (oak, spruce, birch, sandstone) with a well, dirt
   paths, lamp posts, houses with beds, doors, windows and stair roofs, a
   smithy, fenced animal pens, irrigated crop fields and loot chests. Settlers
@@ -142,7 +170,12 @@ each guest's inventory are saved in the host's browser.
   fog tinted toward the sun, rain and snow, and volumetric-style clouds.
 - Animated water and lava, waving leaves and plants, translucent water with
   sloped flowing surfaces, underwater and lava fog.
-- Particles for mining debris, torches, smoke, bubbles, splashes, rain and explosions.
+- HD procedural textures (64px per block, 256px creature skins) with
+  anisotropic filtering and per-pixel relief lighting; Classic 16px on demand.
+- Particles for mining debris, torches, smoke, bubbles, splashes, rain,
+  explosions, laser sparks and fireworks.
+- Banners with swaying patterned cloth, a dozen original paintings painted at
+  run time, item frames showing their item, and beacon beams.
 - First-person hand and held items with swing, equip, eating and view-bob
   animation; third-person views of the player model.
 
@@ -176,9 +209,24 @@ each guest's inventory are saved in the host's browser.
 - Doors, fence gates, fences, stairs, slabs, hay bales, quartz blocks and more.
 - **Spark circuits**: spark dust wire (power fades over 15 blocks), spark
   torches (inverters), levers, stone and wooden buttons, pressure plates,
-  repeaters with four delays, lamps, pistons and sticky pistons (push up to
-  12 blocks), note blocks, daylight sensors, dispensers, hoppers, blast
-  crates, doors, trapdoors and fence gates that open with power.
+  repeaters with four delays, comparators (compare or subtract; they read how
+  full a container is, a cauldron or a cake), observers that pulse when the
+  block they watch changes, lamps, pistons and sticky pistons (push up to
+  12 blocks), note blocks, daylight sensors, dispensers, droppers, hoppers,
+  blast crates, doors, trapdoors and fence gates that open with power.
+- **The Photon Blaster**: a laser gun (iron, glass, spark dust) that fires
+  glowing bolts, hold for rapid fire; 48 shots per energy cell with a reload,
+  enchantable with Power, Unbreaking and Rapid Fire. Bolts set targets
+  alight, prime blast crates and shatter glass. **Sky rockets** burst into
+  coloured fireworks, or boost a glider in flight.
+- **Workstations**: the anvil repairs (with materials or a second item),
+  merges enchantments and renames for a level cost, and wears out; the loom
+  adds up to six patterns (12 designs, coloured with wool) to banners; a
+  beacon on an iron, gold, diamond or emerald pyramid sends up a beam and,
+  paid with an ingot or gem, grants Speed, Jump Boost, Fire Resistance,
+  Night Vision or Strength (plus Regeneration at full size) to players
+  nearby; void chests share one inventory per player everywhere; cauldrons
+  hold water for buckets and bottles and fill in the rain.
 - **Rails and vehicles**: rails that curve and climb, powered rails (boost,
   brake, launch from rest) and detector rails; minecarts with slopes and
   momentum; boats you row and steer on water.
@@ -201,9 +249,18 @@ each guest's inventory are saved in the host's browser.
   and restock.
 - Animals breed when fed and grow up from babies; chickens lay eggs.
 - Pigs, cows, sheep (shearable) and chickens that wander, look at you and
-  panic when hit. Hostile creatures: ghouls that burn in daylight, bone
-  archers that shoot arrows, wall-climbing cave crawlers that leap, and cinder
-  imps in the Underworld that set you alight. Some wear armor.
+  panic when hit. Hounds roam forests and taiga: tame one with bones, tell it
+  to sit, feed it meat; it follows you (and catches up) and fights what you
+  fight. Steeds graze on plains and savanna: mount one until it trusts you,
+  saddle it and ride with WASD and jumps. Iron sentinels guard villages, and
+  you can build one (four iron blocks and a carved pumpkin) or a frost
+  sentinel (two snow blocks) that pelts creatures with snowballs. Shroom cows
+  on mycelium give mushroom stew. Name tags name creatures.
+- Hostile creatures: ghouls that burn in daylight, bone archers that shoot
+  arrows, wall-climbing cave crawlers that leap, cinder imps in the
+  Underworld, hexers in swamps that throw slowing, poisoning and harming
+  potions and drink healing ones, and tide wardens that charge a beam at
+  swimmers around the citadels. Some wear armor.
 - Thunderstorms with lightning strikes, a clock and a compass, milestone
   toasts for firsts (first timber, iron, diamonds, the Underworld and more).
 - Worlds (both dimensions), inventories, experience, block containers,
@@ -211,14 +268,15 @@ each guest's inventory are saved in the host's browser.
   with autosave every 30 seconds.
 
 **Not included (yet)**: compared with the game that inspired it, there are
-fewer biomes and structures (no ocean monuments, temples, mineshafts or
-mansions), no comparators, observers or droppers, no taming, horses, golems
-or witches, no anvils, banners, item frames, paintings, beacons or ender
-chests, and the elytra-like glider has no rocket boost. In multiplayer,
-everyone shares the host's dimension, the host's tab has to stay open and
-visible (browsers pause hidden tabs), and settler trades are not shared.
-Frame rate depends on the device; the presets exist so slower machines can
-trade detail for speed.
+still fewer biomes and structures (no cherry groves, deep dark, ancient
+cities, trial chambers, pillager outposts, igloos or shipwrecks), no raids or
+pillager-type mobs, no parrots, cats, foxes, bees, llamas or dolphins, no
+dyes (wool colours banners), no enchanted books, grindstone or smithing
+table, no lecterns, composters or crafters, and creatures move by simple
+steering rather than full pathfinding. In multiplayer everyone shares the
+host's dimension, and the host's world lives in their browser (browsers may
+still slow a hidden tab's timers). Frame rate depends on the device; the
+presets exist so slower machines can trade detail for speed.
 
 **Sound** – synthesised block sounds per material (stone, wood, grass, gravel,
 sand, snow, glass, cloth, metal), footsteps, creature voices, splashes, rain,
@@ -257,6 +315,10 @@ needed.
 | `src/dims.js`, `src/voidlands.js`, `src/voidboss.js` | Dimensions; the Void's islands; the wyrm, pylons and star eyes |
 | `src/features.js`, `src/fishing.js`, `src/maps.js` | Vehicles, brewing, hoppers, fire, signs, star gates; fishing; maps |
 | `src/quality.js` | Graphics presets and settings |
+| `src/blaster.js`, `src/laser.js` | The photon blaster, laser bolts and sky rockets |
+| `src/creatures.js` | Hounds, steeds, sentinels, hexers, tide wardens, shroom cows |
+| `src/decor.js`, `src/workshop.js` | Banners, item frames, paintings; anvil, loom and beacon rules |
+| `src/landmarks.js` | Mineshafts, temples, shrines, huts, citadels and manors |
 | `src/net.js`, `tools/relay.mjs` | Shared worlds and their transports; the relay server |
 
 Tests drive the built game in headless Chromium and save screenshots:
@@ -268,9 +330,11 @@ NODE_PATH=$(npm root -g) node tools/features.cjs file://$PWD/dist/blockforge.htm
 NODE_PATH=$(npm root -g) node tools/gallery.cjs file://$PWD/dist/blockforge.html /tmp/shots
 NODE_PATH=$(npm root -g) node tools/round3.cjs file://$PWD/dist/blockforge.html /tmp/shots
 NODE_PATH=$(npm root -g) node tools/graphics.cjs file://$PWD/dist/blockforge.html /tmp/shots
+NODE_PATH=$(npm root -g) node tools/round4.cjs file://$PWD/dist/blockforge.html /tmp/shots
 node tools/relay.mjs 8799 &   # serves the game and relays messages
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots tabs
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots relay
 ```
 
-`tools/texture-sheet.mjs` renders every texture into one PNG for review.
+`tools/texture-sheet.mjs out.png [detail] [tile px] [filter]` renders the
+textures (at any detail) into one PNG for review.

@@ -284,10 +284,22 @@ uniform float uRain;
 uniform float uDay;
 uniform mat3 uCelestial;
 uniform float uSkyMode;
+uniform vec3 uCamPos;
+uniform float uSoftClouds;
 ${COMMON}
 in vec2 vPos;
 out vec4 outColor;
 float hash(vec3 p) { p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float h12(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h12(i), h12(i + vec2(1.0, 0.0)), u.x), mix(h12(i + vec2(0.0, 1.0)), h12(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float cloudFbm(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; }
+  return s;
+}
 void main() {
   vec4 p = uInvViewProj * vec4(vPos, 1.0, 1.0);
   vec3 dir = normalize(p.xyz / p.w);
@@ -333,6 +345,25 @@ void main() {
   col += sunCol * (pow(max(cs, 0.0), 900.0) * 0.8 + pow(max(cs, 0.0), 60.0) * 0.18 + pow(max(cs, 0.0), 8.0) * 0.06 * uDay) * sunVis;
   float disc = smoothstep(0.99905, 0.99925, cs);
   col = mix(col, sunCol * 1.25 * (1.0 + (uEmissive - 1.0) * 5.0), disc * sunVis);
+  // soft clouds (HD): a layer of drifting noise at cloud height, shaded
+  // darker where it is thick and lit at the edges facing the sun
+  if (uSoftClouds > 0.5 && h > 0.012 && uCamPos.y < 188.0) {
+    float t = (192.0 - uCamPos.y) / h;
+    vec2 p = (uCamPos.xz + dir.xz * t + vec2(uTime * 2.2, uTime * 0.7)) / 260.0;
+    float n = cloudFbm(p);
+    float cover = mix(0.5, 0.36, uRain);
+    float dens = smoothstep(cover, cover + 0.24, n);
+    if (dens > 0.001) {
+      float toward = cloudFbm(p + normalize(uSunDir.xz + vec2(1e-4)) * 0.035);
+      float lit = clamp(1.0 - (toward - n) * 3.5, 0.55, 1.18);
+      vec3 base = mix(vec3(0.97, 0.98, 1.0), vec3(0.6, 0.64, 0.72), clamp(smoothstep(0.55, 1.0, dens) * 0.55 + uRain * 0.55, 0.0, 1.0));
+      vec3 cc = base * lit * (0.1 + 0.9 * uSkyBright);
+      cc += uSunset.rgb * uSunset.a * 0.4 * pow(max(dot(dir, uSunDir), 0.0), 3.0);
+      cc = mix(cc, horizon, smoothstep(0.25, 0.012, h) * 0.75);
+      float fade = smoothstep(0.012, 0.09, h) * (1.0 - smoothstep(1800.0, 4200.0, t));
+      col = mix(col, cc, dens * 0.92 * fade);
+    }
+  }
   // moon with phase shading and a few maria
   vec3 md = -uSunDir;
   float cm = dot(dir, md);

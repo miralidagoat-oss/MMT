@@ -114,6 +114,15 @@ export class UI {
     for (const s of this.root.querySelectorAll('.slot')) s._key = null;
   }
 
+  // HD textures get a smooth interface (font, icons); classic keeps the pixel look.
+  setDetail(detail) {
+    const hd = detail > 1;
+    document.body.classList.toggle('hd', hd);
+    this.status = statusIcons(hd);
+    if (this.hudCache) this.hudCache.bars = null;
+    if (this.hudCache) this.hudCache.xp = null;
+  }
+
   fillSlot(s, stack) {
     const key = stack ? `${stack.id}:${stack.count}:${stack.dur || 0}:${stack.ench ? 1 : 0}:${stack.charge ?? ''}` : '';
     if (s._key === key) return;

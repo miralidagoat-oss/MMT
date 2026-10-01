@@ -194,7 +194,76 @@ function halfOf(rows, fullKeys, emptyKey) {
   return rows.map((r) => r.split('').map((ch, x) => (x >= Math.floor(r.length / 2) && fullKeys.includes(ch) ? emptyKey : ch)).join(''));
 }
 
-export function statusIcons() {
+// Smooth HUD icons for HD: drawn with paths and gradients at 64px.
+function vecIcon(draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  draw(g);
+  return c.toDataURL();
+}
+// Draw `shape` (a path builder) filled with a vertical gradient and an
+// outline; `half` keeps only the left half full, the rest `empty`.
+function shapeIcon(shape, [hi, mid, lo], outline, { half = false, empty = '#3a1a1c', shine = true } = {}) {
+  return vecIcon((g) => {
+    const fill = (style) => { g.beginPath(); shape(g); g.fillStyle = style; g.fill(); };
+    let gr = empty;
+    if (hi) { gr = g.createLinearGradient(0, 8, 0, 58); gr.addColorStop(0, hi); gr.addColorStop(0.45, mid); gr.addColorStop(1, lo); }
+    if (half) {
+      fill(empty);
+      g.save(); g.beginPath(); g.rect(0, 0, 32, 64); g.clip(); fill(gr); g.restore();
+    } else if (empty && !hi) fill(empty);
+    else fill(gr);
+    if (shine && hi) {
+      g.save(); g.beginPath(); shape(g); g.clip();
+      g.fillStyle = 'rgba(255,255,255,0.45)';
+      g.beginPath(); g.ellipse(22, 20, 8, 5, -0.6, 0, Math.PI * 2); g.fill();
+      g.restore();
+    }
+    g.beginPath(); shape(g); g.lineWidth = 4.5; g.strokeStyle = outline; g.stroke();
+  });
+}
+const heartPath = (g) => {
+  g.moveTo(32, 56);
+  g.bezierCurveTo(14, 44, 4, 32, 6, 20); g.bezierCurveTo(8, 9, 22, 6, 32, 17);
+  g.bezierCurveTo(42, 6, 56, 9, 58, 20); g.bezierCurveTo(60, 32, 50, 44, 32, 56); g.closePath();
+};
+const foodPath = (g) => { // a drumstick: the meat and the bone end
+  g.ellipse(26, 30, 18, 14, -0.7, 0, Math.PI * 2);
+  g.moveTo(38, 38); g.lineTo(48, 48);
+  g.arc(51, 46, 5, Math.PI, Math.PI * 2.6); g.arc(47, 52, 5, Math.PI * 1.4, Math.PI * 3);
+  g.lineTo(38, 38); g.closePath();
+};
+const vestPath = (g) => {
+  g.moveTo(16, 10); g.lineTo(26, 10); g.quadraticCurveTo(32, 18, 38, 10); g.lineTo(48, 10); g.lineTo(58, 22);
+  g.lineTo(50, 28); g.lineTo(48, 56); g.lineTo(16, 56); g.lineTo(14, 28); g.lineTo(6, 22); g.closePath();
+};
+const bubblePath = (g) => g.arc(32, 32, 22, 0, Math.PI * 2);
+
+export function statusIcons(hd = false) {
+  if (hd) {
+    const red = ['#ff8a80', '#e8302a', '#9a1414'], green = ['#d4f59a', '#6aa82a', '#2e5a10'], gold = ['#fff3a8', '#f0b830', '#9a6a08'];
+    const meat = ['#ffd9a0', '#d88a3c', '#8a4a14'], steel = ['#ffffff', '#c9d2dc', '#6a7684'];
+    return {
+      heart: shapeIcon(heartPath, red, '#2a0608'),
+      heartHalf: shapeIcon(heartPath, red, '#2a0608', { half: true }),
+      heartEmpty: shapeIcon(heartPath, [null], '#2a0608', { empty: '#3a1a1c', shine: false }),
+      heartFlash: shapeIcon(heartPath, ['#ffffff', '#ffd0d0', '#ff8080'], '#ffffff'),
+      heartPoison: shapeIcon(heartPath, green, '#0c1a06'),
+      heartPoisonHalf: shapeIcon(heartPath, green, '#0c1a06', { half: true }),
+      heartGold: shapeIcon(heartPath, gold, '#3a2402'),
+      heartGoldHalf: shapeIcon(heartPath, gold, '#3a2402', { half: true, empty: 'rgba(0,0,0,0)' }),
+      food: shapeIcon(foodPath, meat, '#2a1606'),
+      foodHalf: shapeIcon(foodPath, meat, '#2a1606', { half: true, empty: '#3a2616' }),
+      foodEmpty: shapeIcon(foodPath, [null], '#2a1606', { empty: '#3a2616', shine: false }),
+      bubble: shapeIcon(bubblePath, ['#e8f4ff', '#62a6ff', '#1c4ea0'], '#0c2a5a'),
+      bubblePop: vecIcon((g) => { g.beginPath(); bubblePath(g); g.lineWidth = 3; g.strokeStyle = 'rgba(98,166,255,0.7)'; g.stroke(); }),
+      armor: shapeIcon(vestPath, steel, '#0e1116'),
+      armorHalf: shapeIcon(vestPath, steel, '#0e1116', { half: true, empty: '#262c34' }),
+      armorEmpty: shapeIcon(vestPath, [null], '#0e1116', { empty: '#262c34', shine: false }),
+    };
+  }
   const emptyHeart = HEART.map((r) => r.replace(/[RW]/g, 'e'));
   const heartPal = { X: '#1a0608', R: '#e23a3a', W: '#ffb4b4', e: '#3a1a1c' };
   const emptyFood = FOOD.map((r) => r.replace(/[bBWd]/g, 'e'));
