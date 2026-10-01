@@ -18,6 +18,7 @@ import { Mob, ItemEntity, Projectile, PrimedCrate, FallingBlock, Lightning, MOB_
 import { Minecart, Boat } from './vehicles.js';
 import { Pylon, Wyrm, VoidOrb } from './voidboss.js';
 import { SkyRocket, burst } from './blaster.js';
+import { ItemFrame, Painting } from './decor.js';
 import { CHUNK_VOLUME, chunkKey } from './constants.js';
 import { STATE } from './world.js';
 
@@ -299,6 +300,8 @@ function entityEntry(e, ctrl) {
   if (e.isOrb) return ['v', e.id, r2(e.x), r2(e.y), r2(e.z)];
   if (e instanceof Lightning) return ['l', e.id, r2(e.x), r2(e.y), r2(e.z), e.seed];
   if (e.isRocket) return ['r', e.id, r2(e.x), r2(e.y), r2(e.z)];
+  if (e.isFrame) return ['fr', e.id, e.bx, e.by, e.bz, e.face, e.stack ? e.stack.id : 0, e.rot];
+  if (e.isPainting) return ['pt', e.id, e.bx, e.by, e.bz, e.face, e.motif];
   return null;
 }
 
@@ -325,6 +328,8 @@ function makeMirror(en) {
     case 'v': e = new VoidOrb(a, b, c, 0, 0, 0); break;
     case 'l': e = new Lightning(a, b, c); e.seed = en[5]; break;
     case 'r': e = new SkyRocket(a, b, c, 0.5); break;
+    case 'fr': e = new ItemFrame(a, b, c, en[5] | 0, en[6] && ITEMS[en[6]] ? { id: en[6], count: 1 } : null, en[7] | 0); break;
+    case 'pt': e = new Painting(a, b, c, en[5] | 0, String(en[6])); break;
     default: return null;
   }
   e.mirror = true;
@@ -358,6 +363,7 @@ function updateMirror(e, en) {
     case 'c': if (!e.claimed) { e.tx = en[2]; e.ty = en[3]; e.tz = en[4]; e.tyaw = en[5]; e.pitch = en[6]; } e.ctrl = en[7]; break;
     case 'o': if (!e.claimed) { e.tx = en[2]; e.ty = en[3]; e.tz = en[4]; e.tyaw = en[5]; e.paddle = en[6]; } e.ctrl = en[7]; break;
     case 't': e.tx = en[2]; e.ty = en[3]; e.tz = en[4]; e.fuse = en[5]; break;
+    case 'fr': e.stack = en[6] && ITEMS[en[6]] ? { id: en[6], count: 1 } : null; e.rot = en[7] | 0; break;
     case 'f': e.tx = en[2]; e.ty = en[3]; e.tz = en[4]; break;
     case 'y': e.tx = en[2]; e.ty = en[3]; e.tz = en[4]; break;
     case 'w': {
@@ -704,16 +710,24 @@ export class NetSession {
         break;
       }
       case 'open': { // container contents
-        const be = w.blockEntities.get(String(d));
-        if (be) this.event(peer, { t: 'be', key: String(d), be });
+        const key = String(d);
+        // a void chest is per player: only its owner gets it
+        const be = key.startsWith('void:') ? (key === 'void:' + rp.name ? g.voidChestOf(rp.name) : null) : w.blockEntities.get(key);
+        if (be) this.event(peer, { t: 'be', key, be });
         break;
       }
       case 'be': { // container or sign edited by the guest
         if (!d || typeof d.key !== 'string' || !d.be) break;
+        if (d.key.startsWith('void:')) {
+          if (d.key !== 'void:' + rp.name || !Array.isArray(d.be.slots)) break;
+          g.voidChestOf(rp.name).slots = d.be.slots.map((s) => (s && ITEMS[s.id] ? s : null)).slice(0, 27);
+          break;
+        }
         const cur = w.blockEntities.get(d.key);
         if (cur && cur.type === d.be.type) {
           if (Array.isArray(d.be.slots) && cur.slots) cur.slots = d.be.slots.map((s) => (s && ITEMS[s.id] ? s : null)).slice(0, cur.slots.length);
           if (Array.isArray(d.be.lines)) cur.lines = d.be.lines.map((l) => String(l).slice(0, 15)).slice(0, 4);
+          if (cur.type === 'beacon' && typeof d.be.primary === 'string' && /^[a-z_]+$/.test(d.be.primary)) cur.primary = d.be.primary;
         } else if (!cur && d.be.type === 'sign') w.blockEntities.set(d.key, { type: 'sign', lines: (d.be.lines || []).map((l) => String(l).slice(0, 15)).slice(0, 4) });
         else if (!cur && d.be.slots) w.blockEntities.set(d.key, d.be);
         if (g.ui.screen && g.ui.screen.data && g.ui.screen.data.key === d.key) g.ui.refreshSlots && g.ui.refreshSlots();
@@ -891,7 +905,7 @@ export class NetSession {
     const g = this.game;
     if (!d) return;
     const e = g.entities.find((x) => x.id === d.id);
-    if (!e || !(e instanceof Mob) || Math.hypot(e.x - rp.x, e.z - rp.z) > 8) return;
+    if (!e || !(e instanceof Mob || e.isFrame) || Math.hypot(e.x - rp.x, e.z - rp.z) > 8) return;
     const stand = Object.create(g);
     stand.player = rp;
     stand.replaceHeld = (stack) => this.event(peer, { t: 'held', op: 'set', stack });
@@ -930,6 +944,13 @@ export class NetSession {
       case 'o': g.entities.push(new Boat(x, y, z, num(s.yaw))); break;
       case 't': g.entities.push(new PrimedCrate(Math.floor(x), y, Math.floor(z), s.fuse | 0 || 80)); break;
       case 'r': g.entities.push(new SkyRocket(x, y, z, num(s.seed) || Math.random())); break;
+      case 'fr': case 'pt': {
+        const face = s.face | 0;
+        if (face < 0 || face > 5) return;
+        const e = s.k === 'fr' ? new ItemFrame(s.bx | 0, s.by | 0, s.bz | 0, face) : new Painting(s.bx | 0, s.by | 0, s.bz | 0, face, String(s.motif));
+        if (!g.entities.some((o) => o.isDecor && !o.removed && o.face === face && o.bx === e.bx && o.by === e.by && o.bz === e.bz)) g.entities.push(e);
+        break;
+      }
       default: break;
     }
   }
@@ -1167,12 +1188,15 @@ export class NetSession {
     if (e.isBoat) return { k: 'o', ...base, yaw: r3(e.yaw) };
     if (e instanceof PrimedCrate) return { k: 't', ...base, fuse: e.fuse };
     if (e.isRocket) return { k: 'r', ...base, seed: e.seed };
+    if (e.isFrame) return { k: 'fr', ...base, bx: e.bx, by: e.by, bz: e.bz, face: e.face };
+    if (e.isPainting) return { k: 'pt', ...base, bx: e.bx, by: e.by, bz: e.bz, face: e.face, motif: e.motif };
     return null;
   }
 
   // Guest attacks a stand-in: the host applies it.
   hitMirror(e, dmg, kb, crit) { this.request('hit', { id: e.netId, dmg, kb, crit: crit ? 1 : 0 }); }
   useMirror(e, held) {
+    if (e.isFrame) { this.request('use', { id: e.netId, held: held ? held.id : 0 }); return true; }
     if (!(e instanceof Mob)) return false;
     if (e.def.villager) return false; // trading happens here
     if (e.type === 'cow' && held && held.id === I.bucket) return false;

@@ -572,14 +572,15 @@ export class Renderer {
   }
 
   // A one-layer array texture from a canvas (sign text, name tags, maps).
-  createCanvasTexture(canvas, old = null) {
+  createCanvasTexture(canvas, old = null, mips = false) {
     const gl = this.gl;
     const tex = old || gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
     gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, canvas.width, canvas.height, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, canvas.width, canvas.height, 1, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+    if (mips) gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, mips ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return tex;

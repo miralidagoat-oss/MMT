@@ -1,6 +1,7 @@
 // HTML user interface: HUD, menus, inventory screens, chat and debug text.
 import { ITEMS, I, matchRecipe, itemName, maxStack, SMELTING, fuelValue, BANNER_COLORS } from './items.js';
-import { BANNER_PATTERN_NAMES } from './decor.js';
+import { BANNER_PATTERN_NAMES, BANNER_PATTERNS, paintBanner } from './decor.js';
+import { anvilResult, loomResult, wearAnvil, ANVIL_LIMIT, MAX_PATTERNS, BEACON_POWERS, BEACON_PAYMENT, WOOL_COLOR } from './workshop.js';
 import { enchantOptions, enchantLabel, applicableEnchants } from './loot.js';
 import { isIngredient, potionLabel, fmtTime } from './effects.js';
 import { MAP_SIZE } from './maps.js';
@@ -162,7 +163,7 @@ export class UI {
     if (hid !== this.lastHeldName) {
       this.lastHeldName = hid;
       const n = $('#item-name');
-      n.textContent = held ? itemName(held.id) : '';
+      n.textContent = held ? (held.label || itemName(held.id)) : '';
       n.classList.remove('fade'); void n.offsetWidth; n.classList.add('fade');
     }
     // status bars
@@ -996,6 +997,12 @@ export class UI {
       };
       case 'ench': return { get: () => g.enchantSlot.get(0), set: (s) => g.enchantSlot.set(0, s), accept: (st) => applicableEnchants(st.id).length > 0 && !st.ench, single: true };
       case 'c2': return { get: () => g.craft2.get(index), set: (s) => g.craft2.set(index, s) };
+      case 'anv': return { get: () => g.anvilSlots.get(index), set: (s) => g.anvilSlots.set(index, s) };
+      case 'loom': return {
+        get: () => g.loomSlots.get(index), set: (s) => g.loomSlots.set(index, s),
+        accept: index === 0 ? (st) => ITEMS[st.id] && ITEMS[st.id].banner !== undefined : (st) => WOOL_COLOR()[st.id] !== undefined,
+      };
+      case 'bcn': return { get: () => g.beaconSlot.get(0), set: (s) => g.beaconSlot.set(0, s), accept: (st) => BEACON_PAYMENT().includes(st.id), single: true };
       case 'c3': return { get: () => g.craft3.get(index), set: (s) => g.craft3.set(index, s) };
       case 'box': {
         const be = sc.data.be;
@@ -1043,7 +1050,7 @@ export class UI {
     const panel = el('div', 'panel');
     m.appendChild(panel);
     this.panel = panel;
-    const title = { inventory: 'Inventory', crafting: 'Crafting', furnace: 'Furnace', chest: 'Chest', creative: 'Creative', trade: 'Trade', enchant: 'Enchanting', brewing: 'Brewing Stand', dispenser: 'Dispenser', hopper: 'Hopper' }[name];
+    const title = (data && data.title) || { inventory: 'Inventory', crafting: 'Crafting', furnace: 'Furnace', chest: 'Chest', creative: 'Creative', trade: 'Trade', enchant: 'Enchanting', brewing: 'Brewing Stand', dispenser: 'Dispenser', hopper: 'Hopper', anvil: 'Anvil', loom: 'Loom', beacon: 'Beacon' }[name];
     panel.appendChild(el('h3', 'ptitle', title));
     const mkGrid = (cls, cols, kind, from, count) => {
       const gr = el('div', `grid ${cls}`);
@@ -1113,6 +1120,61 @@ export class UI {
       box.append(slot, opts);
       top.appendChild(box);
       this.lastEnchantKey = null;
+    } else if (name === 'anvil') {
+      const box = el('div', 'anvil');
+      const slot = (kind, i, cls) => { const sl = this.slotEl(); sl.dataset.kind = kind; sl.dataset.i = i; if (cls) sl.classList.add(cls); return sl; };
+      const row = el('div', 'arow');
+      row.append(slot('anv', 0), el('span', 'plus', '+'), slot('anv', 1), el('div', 'arrow', '<i></i>'), slot('aout', 0, 'result'));
+      const nm = el('input', 'aname');
+      nm.placeholder = 'Rename (optional)'; nm.maxLength = 30; nm.autocomplete = 'off';
+      nm.addEventListener('input', () => { this.anvilName = nm.value; this.refreshSlots(); });
+      nm.addEventListener('keydown', (e) => { if (e.code === 'Escape') { e.preventDefault(); this.closeScreen(); } e.stopPropagation(); });
+      this.anvilNameEl = nm; this.anvilName = undefined; this.anvilLeft = null;
+      const cost = el('div', 'acost');
+      this.anvilCostEl = cost;
+      box.append(nm, row, cost);
+      top.appendChild(box);
+    } else if (name === 'loom') {
+      const box = el('div', 'loom');
+      const slot = (kind, i, cls) => { const sl = this.slotEl(); sl.dataset.kind = kind; sl.dataset.i = i; if (cls) sl.classList.add(cls); return sl; };
+      const ins = el('div', 'lin');
+      ins.append(slot('loom', 0, 'banner-slot'), slot('loom', 1, 'wool-slot'));
+      const pats = el('div', 'lpats');
+      this.loomPattern = -1;
+      BANNER_PATTERNS.forEach((pat, k) => {
+        const b = el('button', 'lpat');
+        const c = document.createElement('canvas'); c.width = 20; c.height = 40;
+        paintBanner(c, 0, [[pat, 7]]);
+        b.appendChild(c);
+        b.title = BANNER_PATTERN_NAMES[pat];
+        b.addEventListener('click', () => { this.click(); this.loomPattern = k; for (const o of pats.children) o.classList.toggle('sel', o === b); this.refreshSlots(); });
+        pats.appendChild(b);
+      });
+      const prev = document.createElement('canvas'); prev.width = 40; prev.height = 80; prev.className = 'lprev';
+      this.loomPreview = prev; this.loomKey = null;
+      box.append(ins, pats, el('div', 'arrow', '<i></i>'), prev, slot('lout', 0, 'result'));
+      top.appendChild(box);
+    } else if (name === 'beacon') {
+      const box = el('div', 'beacon');
+      const info = el('div', 'binfo');
+      const powers = el('div', 'bpowers');
+      const be = data.be;
+      for (const pw of BEACON_POWERS) {
+        const b = el('button', 'bpow');
+        b.dataset.e = pw.effect;
+        b.innerHTML = `<b>${esc(pw.name)}</b><small>Pyramid level ${pw.level}+</small>`;
+        b.addEventListener('click', () => { this.click(); this.beaconPick = pw.effect; this.refreshSlots(); });
+        powers.appendChild(b);
+      }
+      this.beaconPick = be.primary;
+      const pay = el('div', 'bpay');
+      const ps = this.slotEl(); ps.dataset.kind = 'bcn'; ps.dataset.i = 0;
+      const ok = el('button', 'btn bok', 'Bless');
+      ok.addEventListener('click', () => this.confirmBeacon());
+      pay.append(el('span', 'muted', 'Offer an iron or gold ingot, a diamond or an emerald:'), ps, ok);
+      this.beaconInfo = info; this.beaconPowers = powers; this.beaconOk = ok;
+      box.append(info, powers, pay);
+      top.appendChild(box);
     } else if (creative) {
       const bar = el('div', 'cbar', '<input id="c-search" placeholder="Search items…" autocomplete="off"><div class="slot trash" data-kind="trash" data-i="0" title="Destroy item"><span>✕</span></div>');
       top.appendChild(bar);
@@ -1159,6 +1221,8 @@ export class UI {
   stackIn(slotEl) {
     const kind = slotEl.dataset.kind, i = +slotEl.dataset.i;
     if (kind === 'result') { const r = this.craftResult().res; return r ? { id: r.id, count: r.count } : null; }
+    if (kind === 'aout') { const r = this.anvilOut(); return r ? r.out : null; }
+    if (kind === 'lout') return this.loomOut();
     if (kind === 'palette') return { id: i, count: 1 };
     if (kind === 'trash') return null;
     const src = this.slotSource(kind, i);
@@ -1183,6 +1247,9 @@ export class UI {
       if (this.game.world.getBlock(d.x, d.y, d.z) !== B.enchanting_table) { this.closeScreen(); return; }
       this.updateEnchant();
     }
+    if (this.screen && this.screen.name === 'anvil') this.updateAnvil();
+    if (this.screen && this.screen.name === 'loom') this.updateLoom();
+    if (this.screen && this.screen.name === 'beacon') this.updateBeacon();
     if (this.screen && this.screen.name === 'brewing') {
       const be = this.screen.data.be;
       const pr = $('.brewprog i', this.panel), fb = $('.fuelbar i', this.panel);
@@ -1195,6 +1262,117 @@ export class UI {
       if (fl) fl.style.height = `${be.burnMax ? Math.round((be.burn / be.burnMax) * 100) : 0}%`;
       if (ar) ar.style.width = `${Math.round((be.cook / 200) * 100)}%`;
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Anvil, loom and beacon
+  anvilOut() {
+    const g = this.game;
+    return anvilResult(g.anvilSlots.get(0), g.anvilSlots.get(1), this.anvilName);
+  }
+
+  updateAnvil() {
+    const g = this.game, p = g.player;
+    const a = g.anvilSlots.get(0);
+    // a new item on the left shows its current name
+    if (a !== this.anvilLeft) {
+      this.anvilLeft = a;
+      this.anvilName = undefined;
+      if (this.anvilNameEl) this.anvilNameEl.value = a ? (a.label || '') : '';
+    }
+    const d = this.screen.data;
+    if (g.world.getBlock(d.x, d.y, d.z) !== B.anvil) { this.closeScreen(); return; }
+    const r = this.anvilOut();
+    const c = this.anvilCostEl;
+    if (!c) return;
+    if (!r) { c.textContent = ''; c.className = 'acost'; return; }
+    const tooMuch = !p.creative && r.cost > ANVIL_LIMIT;
+    const poor = !p.creative && p.xpLevel < r.cost;
+    c.textContent = tooMuch ? 'Too expensive!' : `Cost: ${r.cost} level${r.cost > 1 ? 's' : ''}`;
+    c.className = 'acost' + (tooMuch || poor ? ' bad' : '');
+  }
+
+  takeAnvil() {
+    const g = this.game, p = g.player;
+    const r = this.anvilOut();
+    if (!r || this.cursor) return;
+    if (!p.creative && (r.cost > ANVIL_LIMIT || p.xpLevel < r.cost)) return;
+    if (!p.creative) p.xpLevel -= r.cost;
+    this.cursor = r.out;
+    g.anvilSlots.set(0, null);
+    const b = g.anvilSlots.get(1);
+    if (b && r.used) { b.count -= r.used; if (b.count <= 0) g.anvilSlots.set(1, null); }
+    const d = this.screen.data;
+    const worn = wearAnvil(g.world, d.x, d.y, d.z);
+    g.audio.material('metal', worn === 'broke' ? 'break' : 'place', d.x + 0.5, d.y + 0.5, d.z + 0.5);
+    for (let i = 0; i < 6; i++) g.particles.crit(d.x + 0.5 + (Math.random() - 0.5), d.y + 1.1, d.z + 0.5 + (Math.random() - 0.5));
+    this.anvilLeft = null;
+    this.updateCursor();
+    if (worn === 'broke') { this.closeScreen(); return; }
+    this.refreshSlots();
+  }
+
+  loomOut() {
+    const g = this.game;
+    return loomResult(g.loomSlots.get(0), g.loomSlots.get(1), this.loomPattern ?? -1);
+  }
+
+  updateLoom() {
+    const g = this.game;
+    const d = this.screen.data;
+    if (g.world.getBlock(d.x, d.y, d.z) !== B.loom) { this.closeScreen(); return; }
+    const out = this.loomOut();
+    const banner = out || g.loomSlots.get(0);
+    const key = banner ? `${banner.id}|${JSON.stringify(banner.bn || [])}` : '';
+    if (key === this.loomKey || !this.loomPreview) return;
+    this.loomKey = key;
+    const c = this.loomPreview;
+    if (!banner) { c.getContext('2d').clearRect(0, 0, c.width, c.height); return; }
+    paintBanner(c, ITEMS[banner.id].banner, banner.bn || []);
+    const full = g.loomSlots.get(0) && (g.loomSlots.get(0).bn || []).length >= MAX_PATTERNS;
+    c.title = full ? 'This banner has all the patterns it can hold' : '';
+  }
+
+  takeLoom() {
+    const g = this.game;
+    const out = this.loomOut();
+    if (!out || this.cursor) return;
+    this.cursor = out;
+    const b = g.loomSlots.get(0); b.count--; if (b.count <= 0) g.loomSlots.set(0, null);
+    const w = g.loomSlots.get(1); w.count--; if (w.count <= 0) g.loomSlots.set(1, null);
+    const d = this.screen.data;
+    g.audio.material('cloth', 'place', d.x + 0.5, d.y + 0.5, d.z + 0.5);
+    this.updateCursor();
+    this.refreshSlots();
+  }
+
+  updateBeacon() {
+    const g = this.game, d = this.screen.data, be = d.be;
+    if (g.world.getBlock(d.x, d.y, d.z) !== B.beacon) { this.closeScreen(); return; }
+    const level = be.level || 0;
+    const cur = BEACON_POWERS.find((pw) => pw.effect === be.primary);
+    if (this.beaconInfo) this.beaconInfo.innerHTML = level
+      ? `<b>Pyramid level ${level}</b> · reaches ${10 + level * 10} blocks${level >= 4 ? ' · also grants Regeneration' : ''}<br><small>Current power: ${cur ? esc(cur.name) : 'none'}</small>`
+      : '<b>Not powered</b><br><small>Build a pyramid of iron, gold, diamond or emerald blocks beneath it, with a clear view of the sky.</small>';
+    if (this.beaconPowers) for (const b of this.beaconPowers.children) {
+      const pw = BEACON_POWERS.find((q) => q.effect === b.dataset.e);
+      b.disabled = level < pw.level;
+      b.classList.toggle('sel', this.beaconPick === pw.effect);
+    }
+    if (this.beaconOk) {
+      const pw = BEACON_POWERS.find((q) => q.effect === this.beaconPick);
+      this.beaconOk.disabled = !(pw && level >= pw.level && (g.beaconSlot.get(0) || g.player.creative));
+    }
+  }
+
+  confirmBeacon() {
+    const g = this.game, d = this.screen.data;
+    const pw = BEACON_POWERS.find((q) => q.effect === this.beaconPick);
+    if (!pw || (d.be.level || 0) < pw.level) return;
+    if (!g.player.creative) { if (!g.beaconSlot.get(0)) return; g.beaconSlot.set(0, null); }
+    g.setBeaconPower(d.key, pw.effect);
+    this.click();
+    this.refreshSlots();
   }
 
   // -------------------------------------------------------------------------
@@ -1313,7 +1491,7 @@ export class UI {
 
   showTip(st, e) {
     const d = ITEMS[st.id];
-    let t = esc(itemName(st.id));
+    let t = st.label ? `<i>${esc(st.label)}</i>` : esc(itemName(st.id));
     if (st.ench) t = `<span class="en">${t}</span>` + Object.entries(st.ench).map(([k, v]) => `<br><small class="el">${esc(enchantLabel(k, v))}</small>`).join('');
     if (d.potion && d.potion !== 'water' && d.potion !== 'awkward') t += `<br><small class="${d.potion === 'harming' || d.potion === 'poison' || d.potion === 'slowness' || d.potion === 'weakness' ? 'bad' : 'good'}">${esc(potionLabel(st))}</small>`;
     if (st.map) t += `<br><small>Map #${st.map}</small>`;
@@ -1433,6 +1611,8 @@ export class UI {
       this.updateCursor(); this.refreshSlots(); return;
     }
     if (kind === 'result') { this.takeResult(shift); return; }
+    if (kind === 'aout') { this.takeAnvil(); return; }
+    if (kind === 'lout') { this.takeLoom(); return; }
     const src = this.slotSource(kind, i);
     if (!src) return;
     const st = src.get();

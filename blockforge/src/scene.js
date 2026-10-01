@@ -3,7 +3,8 @@ import { mat4, identity, translate, scale, rotateX, rotateY, rotateZ } from './m
 import { MODELS, buildModelMeshes, ItemMeshes, OUTFITS, WYRM_PARTS } from './models.js';
 import { cubeMesh } from './renderer.js';
 import { faceTexture, B, TEX, SOLID } from './blocks.js';
-import { DIRS } from './shapes.js';
+import { DIRS, FACE_DIR } from './shapes.js';
+import { paintBanner, paintPainting } from './decor.js';
 import { ITEMS, I, ARMOR_PIECES } from './items.js';
 import { FallingBlock, PrimedCrate, Mob, Projectile, Lightning } from './entities.js';
 import { LASER_COLOR } from './laser.js';
@@ -101,6 +102,20 @@ export class SceneRenderer {
       bx(-0.4, 4.2, -2.1, 0.4, 4.7, -2, white),      // sight lens
     ]));
     this.unitBox = renderer.createModel(cubeMesh(-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, () => TEX.white));
+    // banners: the upper pole and crossbar of a standing banner, wall crossbar
+    const pole = () => TEX.banner_pole;
+    this.bannerTop = renderer.createModel(join([
+      cubeMesh(-1 / 16, 0, -1 / 16, 1 / 16, 0.95, 1 / 16, pole),
+      cubeMesh(-7.5 / 16, 0.88, -1 / 16, 7.5 / 16, 0.95, 1 / 16, pole),
+    ]));
+    // item frame: a wooden border round a leather back, facing +Z
+    const fw = () => TEX.birch_planks;
+    this.frameBorder = renderer.createModel(join([
+      cubeMesh(-6 / 16, -6 / 16, 0, 6 / 16, -5 / 16, 1 / 16, fw), cubeMesh(-6 / 16, 5 / 16, 0, 6 / 16, 6 / 16, 1 / 16, fw),
+      cubeMesh(-6 / 16, -5 / 16, 0, -5 / 16, 5 / 16, 1 / 16, fw), cubeMesh(5 / 16, -5 / 16, 0, 6 / 16, 5 / 16, 1 / 16, fw),
+    ]));
+    this.frameBack = renderer.createModel(cubeMesh(-5 / 16, -5 / 16, 0, 5 / 16, 5 / 16, 0.5 / 16, () => TEX.white));
+    this.decorTex = new Map(); // banner and painting canvases
     // soft round shadow under creatures and players
     const sc = document.createElement('canvas');
     sc.width = sc.height = 32;
@@ -238,6 +253,7 @@ export class SceneRenderer {
         identity(M); translate(M, M, dx, dy + 0.2, dz); rotateY(M, M, -cam.yaw); scale(M, M, 0.45, 0.45, 0.45);
         if (mesh) this.r.drawModel(mesh.model, M, mesh.tex, [1, 1], env, { blockMode: mesh.blockMode, tintColor: mesh.tint, noCull: true });
       }
+      else if (e.isDecor) this.drawDecor(e, cam, env, world);
       else if (e instanceof Projectile) this.drawProjectile(e, x, y, z, cam, env, world);
       else if (e instanceof Lightning) this.drawLightning(e, cam, env);
       else if (e instanceof FallingBlock || e instanceof PrimedCrate) {
@@ -255,6 +271,7 @@ export class SceneRenderer {
       }
     }
     this.drawSigns(game, cam, env);
+    this.drawBanners(game, cam, env);
     if (game.remotePlayers) for (const rp of game.remotePlayers()) this.drawRemote(rp, game, cam, env, alpha);
     for (const it of game.items) {
       const [x, y, z] = it.lerpPos(alpha);
@@ -738,6 +755,101 @@ export class SceneRenderer {
       this.segment(prev, pt, cam, 0.015, light, env, { tint: [0.12, 0.12, 0.12, 0.85] });
       prev = pt;
     }
+  }
+
+  // A canvas texture for a banner or painting, painted once per design.
+  decorTexture(key, paint) {
+    let t = this.decorTex.get(key);
+    if (!t) {
+      const c = document.createElement('canvas');
+      paint(c);
+      t = this.r.createCanvasTexture(c, null, true);
+      this.decorTex.set(key, t);
+    }
+    return t;
+  }
+
+  // Orient M so +Z points out of wall face `face` (floor and ceiling too).
+  faceOut(m, face) {
+    if (face === 0) rotateX(m, m, -Math.PI / 2);
+    else if (face === 1) rotateX(m, m, Math.PI / 2);
+    else { const [nx, , nz] = FACE_DIR[face]; rotateY(m, m, Math.atan2(nx, nz)); }
+  }
+
+  drawDecor(e, cam, env, world) {
+    const [nx, ny, nz] = FACE_DIR[e.face];
+    const light = this.lightAt(world, e.cx + nx * 0.5, e.cy + ny * 0.5, e.cz + nz * 0.5);
+    identity(M);
+    translate(M, M, e.cx - cam.x, e.cy - cam.y, e.cz - cam.z);
+    this.faceOut(M, e.face);
+    if (e.isPainting) {
+      T.set(M); translate(T, T, 0, 0, 0.03); scale(T, T, e.sw, e.sh, 0.06);
+      this.r.drawModel(this.unitBox, T, 'block', light, env, { tintColor: [0.3, 0.2, 0.12] });
+      T.set(M); translate(T, T, 0, 0, 0.061); scale(T, T, e.sw, e.sh, 1);
+      this.r.drawModel(this.textQuad, T, this.decorTexture('p:' + e.motif, (c) => paintPainting(c, e.motif)), light, env, { blockMode: 0 });
+      return;
+    }
+    this.r.drawModel(this.frameBorder, M, 'block', light, env, { blockMode: 1 });
+    this.r.drawModel(this.frameBack, M, 'block', light, env, { tintColor: [0.55, 0.34, 0.2] });
+    const st = e.stack;
+    if (!st) return;
+    const mesh = this.items.get(st.id);
+    if (!mesh) return;
+    translate(M, M, 0, 0, mesh.kind === 'block' ? 0.14 : 0.07);
+    rotateZ(M, M, -e.rot * Math.PI / 4);
+    if (mesh.kind === 'block') { scale(M, M, 0.3, 0.3, 0.3); rotateY(M, M, Math.PI / 4); rotateX(M, M, 0.5); }
+    else scale(M, M, 0.5, 0.5, 0.5);
+    this.r.drawModel(mesh.model, M, mesh.tex, light, env, { blockMode: mesh.blockMode, tintColor: mesh.tint, noCull: true });
+  }
+
+  // Banner cloth (and a standing banner's upper pole), plus beacon beams.
+  drawBanners(game, cam, env) {
+    const w = game.world;
+    const t = performance.now() / 1000;
+    for (const [key, be] of w.blockEntities) {
+      if (be.type !== 'banner' && be.type !== 'beacon') continue;
+      const [x, y, z] = key.split(',').map(Number);
+      const dx = x + 0.5 - cam.x, dz = z + 0.5 - cam.z;
+      if (be.type === 'beacon') { if (be.level > 0 && dx * dx + dz * dz < 192 * 192) this.drawBeam(x, y, z, cam, env, t); continue; }
+      if (dx * dx + dz * dz > 64 * 64) continue;
+      const id = w.getBlock(x, y, z);
+      if (id !== B.banner && id !== B.wall_banner) continue;
+      const meta = w.getMeta(x, y, z);
+      const light = this.lightAt(w, x + 0.5, y + 0.5, z + 0.5);
+      const design = `b:${be.base}|${JSON.stringify(be.bn || [])}`;
+      const tex = this.decorTexture(design, (c) => { c.width = 64; c.height = 128; paintBanner(c, be.base || 0, be.bn || []); });
+      identity(M);
+      let top;
+      if (id === B.banner) {
+        translate(M, M, x + 0.5 - cam.x, y + 1 - cam.y, z + 0.5 - cam.z);
+        rotateY(M, M, Math.PI - (meta & 15) * Math.PI / 8);
+        this.r.drawModel(this.bannerTop, M, 'block', light, env, { blockMode: 1 });
+        translate(M, M, 0, 0.91, 1.6 / 16);
+        top = M;
+      } else {
+        const [fx, fz] = DIRS[meta & 3];
+        translate(M, M, x + 0.5 - fx * 0.36 - cam.x, y + 0.94 - cam.y, z + 0.5 - fz * 0.36 - cam.z);
+        rotateY(M, M, Math.atan2(fx, fz));
+        top = M;
+      }
+      // a gentle sway from the top edge
+      rotateX(top, top, Math.sin(t * 1.3 + x * 0.7 + z * 1.3) * 0.05);
+      translate(top, top, 0, -0.85, 0);
+      scale(top, top, 0.86, 1.7, 1);
+      this.r.drawModel(this.textQuad, top, tex, light, env, { blockMode: 0, noCull: true });
+    }
+  }
+
+  // A beacon's beam: a bright core in a soft glow, up to the sky.
+  drawBeam(x, y, z, cam, env, t) {
+    const top = 256;
+    identity(M);
+    translate(M, M, x + 0.5 - cam.x, y + 1 - cam.y, z + 0.5 - cam.z);
+    rotateY(M, M, t * 0.6);
+    T.set(M); translate(T, T, 0, (top - y - 1) / 2, 0); scale(T, T, 0.5, top - y - 1, 0.5);
+    this.r.drawModel(this.unitBox, T, 'block', [1, 1], env, { mode: 1, glow: 1, blend: true, alpha: 0.22, tintColor: [0.55, 0.85, 1], noCull: true });
+    T.set(M); translate(T, T, 0, (top - y - 1) / 2, 0); scale(T, T, 0.2, top - y - 1, 0.2);
+    this.r.drawModel(this.unitBox, T, 'block', [1, 1], env, { mode: 1, glow: 1, tintColor: [0.85, 0.97, 1] });
   }
 
   drawSigns(game, cam, env) {

@@ -351,7 +351,7 @@ export function shapeBoxes(ctx, id, meta, get) {
       // the cloth is drawn separately (scene.js) from the banner's block entity
       const pole = all6(ctx.tex('banner_pole'));
       if (id === ctx.id('wall_banner')) return [{ b: rot([0, 14, 13, 16, 16, 15], meta & 3), t: pole, r: null }];
-      return [box(7, 0, 7, 9, 16, 9, pole), box(1, 14, 7, 15, 16, 9, pole)];
+      return [box(7, 0, 7, 9, 16, 9, pole)]; // the upper pole and crossbar are drawn with the cloth
     }
     case SHAPE.CAULDRON: {
       const side = ctx.tex('cauldron_side'), top = ctx.tex('cauldron_top'), inner = ctx.tex('cauldron_inner'), bot = ctx.tex('cauldron_bottom');

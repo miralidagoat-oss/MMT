@@ -304,3 +304,27 @@ body { font-family: var(--font-ui); -webkit-font-smoothing: antialiased; user-se
 #ammo { padding-left: calc(3 * var(--u)); }
 #ammo span { min-width: calc(40 * var(--u)); }
 #ammo.low { border-color: rgba(255, 120, 90, 0.7); color: #ffd2c8; }
+
+/* anvil, loom and beacon */
+.anvil { display: flex; flex-direction: column; align-items: center; gap: calc(4 * var(--u)); }
+.anvil .arow { display: flex; align-items: center; gap: calc(5 * var(--u)); }
+.anvil .plus { font-size: calc(12 * var(--u)); color: var(--muted, #aab); }
+.aname { font: inherit; width: calc(150 * var(--u)); padding: calc(2 * var(--u)) calc(3 * var(--u)); background: #15151c; color: var(--ink); border: var(--u) solid #000; }
+.acost { min-height: calc(9 * var(--u)); color: #9cff4a; text-shadow: calc(0.6 * var(--u)) calc(0.6 * var(--u)) 0 #000; }
+.acost.bad { color: #ff6a5a; }
+.loom { display: flex; align-items: center; gap: calc(5 * var(--u)); }
+.loom .lin { display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
+.lpats { display: grid; grid-template-columns: repeat(4, auto); gap: calc(1.5 * var(--u)); background: #1a1a22; padding: calc(2 * var(--u)); border: var(--u) solid #000; }
+.lpat { padding: calc(1 * var(--u)); background: #2c2c36; border: calc(0.5 * var(--u)) solid #111; cursor: pointer; line-height: 0; }
+.lpat canvas { width: calc(10 * var(--u)); height: calc(20 * var(--u)); image-rendering: auto; }
+.lpat.sel, .lpat:hover { border-color: #f0d070; }
+.lprev { width: calc(20 * var(--u)); height: calc(40 * var(--u)); background: #111; border: var(--u) solid #000; }
+.beacon { display: flex; flex-direction: column; gap: calc(4 * var(--u)); min-width: calc(200 * var(--u)); }
+.binfo { color: var(--ink); line-height: 1.4; }
+.binfo small { color: #b8c2d0; }
+.bpowers { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(2 * var(--u)); }
+.bpow { font: inherit; display: flex; flex-direction: column; align-items: flex-start; gap: calc(0.5 * var(--u)); padding: calc(2 * var(--u)) calc(3 * var(--u)); background: linear-gradient(#2f3a4d, #232b38); border: var(--u) solid #0c1018; color: var(--ink); cursor: pointer; }
+.bpow small { color: #9fb0c6; }
+.bpow.sel { border-color: #8be9ff; box-shadow: 0 0 calc(4 * var(--u)) #3fc8ff88; }
+.bpow:disabled { opacity: 0.45; cursor: default; }
+.bpay { display: flex; align-items: center; gap: calc(4 * var(--u)); flex-wrap: wrap; }

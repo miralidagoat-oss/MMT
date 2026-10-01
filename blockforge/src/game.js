@@ -4,7 +4,7 @@ import { TICK_MS, DAY_TICKS, HEIGHT, SEA_LEVEL } from './constants.js';
 import {
   B, BLOCKS, SOLID, OPAQUE, REPLACEABLE, isLiquid, RENDER_TYPE, RENDER, TEX, faceTexture,
 } from './blocks.js';
-import { ITEMS, I, SMELTING, fuelValue, isBlockItem, findItem, maxStack, itemName } from './items.js';
+import { ITEMS, I, SMELTING, fuelValue, isBlockItem, findItem, maxStack, itemName, BANNER_COLORS } from './items.js';
 import { World, STATE } from './world.js';
 import { Player } from './player.js';
 import { Mob, ItemEntity, FallingBlock, PrimedCrate, MOB_TYPES, Projectile, XpOrb, Lightning, BABY_AGE } from './entities.js';
@@ -59,6 +59,7 @@ export class Game {
     this.craft2 = new Container(4);
     this.craft3 = new Container(9);
     this.enchantSlot = new Container(1);
+    this.anvilSlots = new Container(2); this.loomSlots = new Container(2); this.beaconSlot = new Container(1);
     this.flicker = 1;
     this.shake = 0;
     this.caveSoundTimer = 600;
@@ -98,7 +99,7 @@ export class Game {
       hooks: {
         onBlockChanged: (...a) => this.onBlockChanged(...a),
         onChunkGenerated: (c, spawns, chests, spawners) => this.onChunkGenerated(c, spawns, chests, spawners),
-        onAnyChange: (...a) => { if (this.net) this.net.onWorldChange(...a); },
+        onAnyChange: (...a) => { if (this.net) this.net.onWorldChange(...a); if (!this.demo && !(this.net && this.net.isGuest)) this.circuits.observe(a[0], a[1], a[2]); },
         onChunkReady: (c) => { if (this.net && this.net.isGuest) this.net.onChunkReady(c); },
         onBaseline: (msg) => { if (this.net && this.net.isHost) this.net.onBaseline(msg); },
       },
@@ -319,6 +320,8 @@ export class Game {
     this.circuits.tick();
     this.tickBrewing();
     this.tickHoppers();
+    this.tickBeacons();
+    this.tickCauldrons();
     this.tickFires();
     this.fluids.tick(this.tickCount);
     this.randomTicks();
@@ -524,7 +527,8 @@ export class Game {
       id === B.oak_door || id === B.oak_fence_gate || id === B.bed || id === B.enchanting_table ||
       id === B.lever || id === B.stone_button || id === B.oak_button || id === B.repeater || id === B.note_block ||
       id === B.oak_trapdoor || id === B.brewing_stand || id === B.dispenser || id === B.hopper || id === B.cake ||
-      id === B.oak_sign || id === B.oak_wall_sign;
+      id === B.oak_sign || id === B.oak_wall_sign || id === B.comparator || id === B.dropper || id === B.anvil ||
+      id === B.loom || id === B.beacon || id === B.void_chest || id === B.cauldron;
   }
 
   breakSpeed(id) {
@@ -609,6 +613,8 @@ export class Game {
     const be = w.blockEntities.get(`${x},${y},${z}`);
     if (be) {
       if (be.slots) for (const s of be.slots) if (s) this.dropItem(x + 0.5, y + 0.5, z + 0.5, s, true);
+      // a banner keeps its colour and patterns
+      if (be.type === 'banner' && !this.player.creative) this.dropItem(x + 0.5, y + 0.5, z + 0.5, { id: I[`${BANNER_COLORS[be.base] || 'white'}_banner`], count: 1, ...(be.bn && be.bn.length ? { bn: be.bn } : {}) }, true);
       w.blockEntities.delete(`${x},${y},${z}`);
       this.ui.onBlockEntityRemoved(`${x},${y},${z}`);
     }
@@ -1985,7 +1991,7 @@ export class Game {
 
   returnCraftingItems() {
     const p = this.player;
-    for (const c of [this.craft2, this.craft3, this.enchantSlot]) {
+    for (const c of [this.craft2, this.craft3, this.enchantSlot, this.anvilSlots, this.loomSlots, this.beaconSlot]) {
       for (let i = 0; i < c.size; i++) {
         const s = c.get(i);
         if (!s) continue;

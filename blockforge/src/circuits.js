@@ -45,13 +45,14 @@ export class Circuits {
     this.timers = [];
     this.flips = new Map();     // torch burnout bookkeeping
     this.sensors = new Set();
+    this.comparators = new Set(); // re-read now and then: containers fill without block changes
     this.occupied = new Set();  // plates and detector rails something stands on
     this.updates = 0;
     initSets();
   }
 
   get world() { return this.game.world; }
-  clear() { this.queue.length = 0; this.queued.clear(); this.timers.length = 0; this.flips.clear(); this.sensors.clear(); this.occupied.clear(); }
+  clear() { this.queue.length = 0; this.queued.clear(); this.timers.length = 0; this.flips.clear(); this.sensors.clear(); this.occupied.clear(); this.comparators.clear(); }
 
   // ---------------------------------------------------------------------------
   // Scheduling
@@ -82,6 +83,22 @@ export class Circuits {
       for (const [dx, , dz] of N6) if (dx || dz) { this.mark(x + dx * 2, y, z + dz * 2); this.mark(x + dx, y - 1, z + dz); this.mark(x + dx, y + 1, z + dz); }
     }
     if (id === B.daylight_sensor) this.sensors.add(K(x, y, z));
+    if (id === B.comparator) this.comparators.add(K(x, y, z));
+  }
+
+  // Any change at (x,y,z), including quiet ones: observers watching it pulse.
+  observe(x, y, z) {
+    for (const [dx, dy, dz] of N6) {
+      const ox = x + dx, oy = y + dy, oz = z + dz;
+      if (this.get(ox, oy, oz) !== B.observer) continue;
+      const m = this.meta(ox, oy, oz);
+      const [fx, fy, fz] = FACE_DIR[m & 7];
+      if (ox + fx !== x || oy + fy !== y || oz + fz !== z || (m & 8)) continue;
+      const k = K(ox, oy, oz);
+      if (this.pending && this.pending.has(k)) continue;
+      (this.pending || (this.pending = new Set())).add(k);
+      this.schedule(ox, oy, oz, 2, 'observer_on');
+    }
   }
 
   tick() {
@@ -95,6 +112,12 @@ export class Circuits {
     // pressure plates and detector rails
     if (g.tickCount % 2 === 0) this.checkPlates();
     if (g.tickCount % 20 === 0) this.tickSensors();
+    if (g.tickCount % 4 === 0) {
+      for (const k of this.comparators) {
+        const [x, y, z] = k.split(',').map(Number);
+        if (this.get(x, y, z) !== B.comparator) this.comparators.delete(k); else this.mark(x, y, z);
+      }
+    }
     // queued updates (a budget keeps runaway loops from freezing the game)
     this.netDone = new Set();
     let budget = 3000, head = 0;
@@ -146,6 +169,17 @@ export class Circuits {
         const [dx, dz] = DIRS[m & 3];
         return x + dx === tx && y === ty && z + dz === tz ? 15 : 0;
       }
+      case 'comparator': {
+        const lvl = (m >> 4) & 15;
+        if (!lvl) return 0;
+        const [dx, dz] = DIRS[m & 3];
+        return x + dx === tx && y === ty && z + dz === tz ? lvl : 0;
+      }
+      case 'observer': {
+        if (!(m & 8)) return 0;
+        const [dx, dy, dz] = FACE_DIR[m & 7];
+        return x - dx === tx && y - dy === ty && z - dz === tz ? 15 : 0;
+      }
       default: return 0;
     }
   }
@@ -168,6 +202,12 @@ export class Circuits {
       } else if (r === 'repeater' && (m & 16)) {
         const [fx, fz] = DIRS[m & 3];
         if (x + fx === bx && y === by && z + fz === bz) return true;
+      } else if (r === 'comparator' && ((m >> 4) & 15)) {
+        const [fx, fz] = DIRS[m & 3];
+        if (x + fx === bx && y === by && z + fz === bz) return true;
+      } else if (r === 'observer' && (m & 8)) {
+        const [fx, fy, fz] = FACE_DIR[m & 7];
+        if (x - fx === bx && y - fy === by && z - fz === bz) return true;
       }
     }
     return false;
@@ -181,8 +221,8 @@ export class Circuits {
       const nx = x + WD[d][0], nz = z + WD[d][1];
       const n = this.get(nx, y, nz);
       const r = role(n);
-      if (r && (r !== 'repeater' || ((this.meta(nx, y, nz) & 3) & 1) === (d & 1)) &&
-        ['wire', 'torch', 'lever', 'button', 'plate', 'block', 'detector', 'sensor', 'repeater'].includes(r)) con[d] = 1;
+      if (r && ((r !== 'repeater' && r !== 'comparator') || ((this.meta(nx, y, nz) & 3) & 1) === (d & 1)) &&
+        ['wire', 'torch', 'lever', 'button', 'plate', 'block', 'detector', 'sensor', 'repeater', 'comparator', 'observer'].includes(r)) con[d] = 1;
       else if (!cover && this.get(nx, y + 1, nz) === B.spark_wire) con[d] = 1;
       else if (!OPAQUE[n] && this.get(nx, y - 1, nz) === B.spark_wire) con[d] = 1;
     }
@@ -324,8 +364,52 @@ export class Circuits {
       case 'button': if (m & 8) this.schedule(x, y, z, id === B.oak_button ? 30 : 20, 'button'); break;
       case 'plate': case 'detector': if ((r === 'plate' ? m & 1 : m & 8)) this.schedule(x, y, z, 20, 'plate'); break;
       case 'sensor': this.sensors.add(K(x, y, z)); break;
+      case 'comparator': {
+        this.comparators.add(K(x, y, z));
+        if (this.comparatorOutput(x, y, z, m) !== ((m >> 4) & 15)) this.schedule(x, y, z, 2, 'comparator');
+        break;
+      }
       default: break;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Comparators: the signal from behind (a container's fullness, a wire's
+  // strength...) against the strongest signal from the sides. Compare mode
+  // passes the back signal if it is at least the side; subtract mode outputs
+  // the difference.
+  comparatorOutput(x, y, z, m) {
+    const [dx, dz] = DIRS[m & 3];
+    const back = this.levelInto(x - dx, y, z - dz, x, y, z, true);
+    let side = 0;
+    for (const s of [1, 3]) {
+      const [sx, sz] = DIRS[((m & 3) + s) & 3];
+      side = Math.max(side, this.levelInto(x + sx, y, z + sz, x, y, z, false));
+    }
+    if (m & 4) return Math.max(0, back - side);
+    return back >= side ? back : 0;
+  }
+
+  // Signal strength the block at n sends into (x,y,z).
+  levelInto(nx, ny, nz, x, y, z, measure) {
+    const id = this.get(nx, ny, nz);
+    if (!id) return 0;
+    if (measure) {
+      const lvl = this.game.measureBlock ? this.game.measureBlock(nx, ny, nz, id) : -1;
+      if (lvl >= 0) return lvl;
+    }
+    if (id === B.spark_wire) return this.meta(nx, ny, nz) & 15;
+    const e = this.emitsTo(nx, ny, nz, x, y, z);
+    if (e) return e;
+    if (measure && OPAQUE[id] && (this.strong(nx, ny, nz) || this.weak(nx, ny, nz))) return 15;
+    return 0;
+  }
+
+  toggleComparator(x, y, z) {
+    const m = this.meta(x, y, z) ^ 4;
+    this.world.setBlock(x, y, z, B.comparator, m, { notify: false });
+    this.game.audio.play('click', x + 0.5, y + 0.2, z + 0.5, m & 4 ? 0.55 : 0.45);
+    this.mark(x, y, z);
   }
 
   // Timer callbacks.
@@ -390,8 +474,34 @@ export class Circuits {
         return;
       }
       case 'dispense':
-        if (id === B.dispenser) this.game.dispense(x, y, z, m & 7);
+        if (id === B.dispenser || id === B.dropper) this.game.dispense(x, y, z, m & 7, id === B.dropper);
         return;
+      case 'comparator': {
+        if (id !== B.comparator) return;
+        const out = this.comparatorOutput(x, y, z, m);
+        if (out === ((m >> 4) & 15)) return;
+        w.setBlock(x, y, z, id, (m & 7) | (out ? 8 : 0) | (out << 4), { notify: false });
+        const [dx, dz] = DIRS[m & 3];
+        this.markOut(x + dx, y, z + dz);
+        this.mark(x, y, z);
+        return;
+      }
+      case 'observer_on': {
+        if (this.pending) this.pending.delete(K(x, y, z));
+        if (id !== B.observer || (m & 8)) return;
+        w.setBlock(x, y, z, id, m | 8, { notify: false });
+        const [dx, dy, dz] = FACE_DIR[m & 7];
+        this.markOut(x - dx, y - dy, z - dz);
+        this.schedule(x, y, z, 2, 'observer_off');
+        return;
+      }
+      case 'observer_off': {
+        if (id !== B.observer || !(m & 8)) return;
+        w.setBlock(x, y, z, id, m & ~8, { notify: false });
+        const [dx, dy, dz] = FACE_DIR[m & 7];
+        this.markOut(x - dx, y - dy, z - dz);
+        return;
+      }
       case 'piston':
         this.update(x, y, z);
         return;

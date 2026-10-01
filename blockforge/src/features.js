@@ -5,6 +5,8 @@ import { B, BLOCKS, SOLID, OPAQUE, REPLACEABLE, isLiquid, SHAPE_KIND } from './b
 import { ITEMS, I, maxStack, POTION_KINDS } from './items.js';
 import { Mob, MOB_TYPES, ItemEntity, PrimedCrate, Projectile } from './entities.js';
 import { golemAt } from './creatures.js';
+import { ItemFrame, fitPainting, loadDecor } from './decor.js';
+import { beaconLevel, beaconClear, BEACON_POWERS } from './workshop.js';
 import { Minecart, Boat, placeRail, isRail, loadVehicle } from './vehicles.js';
 import { potionEffect, brew, isIngredient, addEffect, EFFECTS } from './effects.js';
 import { Pylon, Wyrm, StarEye, WYRM_HEALTH } from './voidboss.js';
@@ -108,7 +110,9 @@ const methods = {
     this.audio.play('fuse', x + 0.5, y + 0.5, z + 0.5);
   },
 
-  dispense(x, y, z, f) {
+  // A dispenser uses what it fires; a dropper (drop) only drops items, or
+  // passes them into a container in front of it.
+  dispense(x, y, z, f, drop = false) {
     const w = this.world;
     const be = w.blockEntities.get(K(x, y, z));
     if (!be || !be.slots) return;
@@ -123,6 +127,21 @@ const methods = {
     const front = w.getBlock(tx, ty, tz);
     const take1 = () => { st.count--; if (st.count <= 0) be.slots[i] = null; };
     const jit = () => (Math.random() - 0.5) * 0.06;
+    if (drop) {
+      const target = this.containerAt(tx, ty, tz);
+      if (target) {
+        if (this.insertOne(target, st, f === 1)) { take1(); this.audio.play('click', x + 0.5, y + 0.5, z + 0.5, 0.5); }
+        else this.audio.play('click', x + 0.5, y + 0.5, z + 0.5, 0.4);
+        return;
+      }
+      if (OPAQUE[front]) { this.audio.play('click', x + 0.5, y + 0.5, z + 0.5, 0.4); return; }
+      const it = this.dropItem(fx, fy, fz, { ...st, count: 1 });
+      it.vx = dx * 0.2 + jit(); it.vy = dy * 0.2 + 0.1; it.vz = dz * 0.2 + jit();
+      take1();
+      this.audio.play('dispense', x + 0.5, y + 0.5, z + 0.5, 0.6);
+      for (let k = 0; k < 4; k++) this.particles.smoke(fx, fy, fz);
+      return;
+    }
     const shoot = (kind, speed) => {
       const pr = new Projectile(kind, fx, fy, fz, dx * speed + jit(), dy * speed + 0.1 + jit(), dz * speed + jit(), null, 2);
       if (kind === 'potion') { pr.item = st.id; pr.pot = st.pot; }
@@ -161,6 +180,101 @@ const methods = {
     }
     this.audio.play('dispense', x + 0.5, y + 0.5, z + 0.5, 0.6);
     for (let k = 0; k < 4; k++) this.particles.smoke(fx, fy, fz);
+  },
+
+  // Each player's void chest: the same 27 slots from every void chest, in
+  // every dimension (kept with the world).
+  voidChestOf(name) {
+    const all = this.meta.voidChests || (this.meta.voidChests = {});
+    if (!all[name]) all[name] = { type: 'void_chest', slots: new Array(27).fill(null) };
+    return all[name];
+  },
+
+  // Buckets and bottles in and out of a cauldron (meta = water level 0-3).
+  useCauldron(hit, held) {
+    const w = this.world, p = this.player;
+    const lvl = w.getMeta(hit.x, hit.y, hit.z) & 3;
+    const set = (l) => w.setBlock(hit.x, hit.y, hit.z, B.cauldron, l);
+    const at = [hit.x + 0.5, hit.y + 0.8, hit.z + 0.5];
+    if (!held) return false;
+    if (held.id === I.water_bucket && lvl < 3) { set(3); if (!p.creative) this.replaceHeld({ id: I.bucket, count: 1 }); }
+    else if (held.id === I.bucket && lvl === 3) { set(0); if (!p.creative) this.replaceHeld({ id: I.water_bucket, count: 1 }); }
+    else if (held.id === I.glass_bottle && lvl > 0) { set(lvl - 1); if (!p.creative) { p.inventory.useHeld(); const left = p.inventory.give({ id: I.potion_water, count: 1 }); if (left) this.dropItem(p.x, p.y + 1, p.z, { id: I.potion_water, count: 1 }); } }
+    else if (held.id === I.potion_water && lvl < 3) { set(lvl + 1); if (!p.creative) this.replaceHeld({ id: I.glass_bottle, count: 1 }); }
+    else return false;
+    this.audio.play('splash', at[0], at[1], at[2], 0.4);
+    this.particles.splash(at[0], at[1], at[2], 6);
+    this.startSwing();
+    return true;
+  },
+
+  // Cauldrons fill in the rain and put out burning things that stand in them.
+  tickCauldrons() {
+    if (this.tickCount % 10 !== 0) return;
+    const w = this.world, p = this.player;
+    const fx = Math.floor(p.x), fy = Math.floor(p.y + 0.1), fz = Math.floor(p.z);
+    if (w.getBlock(fx, fy, fz) === B.cauldron && (w.getMeta(fx, fy, fz) & 3) > 0 && p.fire > 0) {
+      p.fire = 0; w.setBlock(fx, fy, fz, B.cauldron, (w.getMeta(fx, fy, fz) & 3) - 1);
+      this.audio.play('fizz', fx + 0.5, fy + 0.8, fz + 0.5, 0.5);
+    }
+    if (this.rain < 0.5 || this.dim !== 'overworld' || Math.random() > 0.3) return;
+    const x = fx + Math.floor((Math.random() - 0.5) * 32), z = fz + Math.floor((Math.random() - 0.5) * 32);
+    const y = w.rainHeight(x, z);
+    if (y >= 0 && w.getBlock(x, y, z) === B.cauldron && (w.getMeta(x, y, z) & 3) < 3) w.setBlock(x, y, z, B.cauldron, (w.getMeta(x, y, z) & 3) + 1);
+  },
+
+  // Beacons: every four seconds a powered beacon with a clear view of the sky
+  // blesses everyone nearby with its chosen power.
+  tickBeacons() {
+    if (this.tickCount % 80 !== 40 || (this.net && this.net.isGuest)) return;
+    const w = this.world;
+    for (const [key, be] of w.blockEntities) {
+      if (be.type !== 'beacon') continue;
+      const [x, y, z] = key.split(',').map(Number);
+      if (!w.chunkReady(x >> 4, z >> 4)) continue;
+      if (w.getBlock(x, y, z) !== B.beacon) { w.blockEntities.delete(key); continue; }
+      const level = beaconClear(w, x, y, z) ? beaconLevel(w, x, y, z) : 0;
+      if (level !== be.level) { be.level = level; if (this.net) this.net.blockEntityChanged(key); }
+      if (!level || !be.primary) continue;
+      const power = BEACON_POWERS.find((pw) => pw.effect === be.primary);
+      if (!power || power.level > level) continue;
+      const range = 10 + level * 10;
+      const bless = (e) => {
+        if (!e || e.dead || Math.abs(e.x - x - 0.5) > range || Math.abs(e.z - z - 0.5) > range) return;
+        e.applyPotion(this, { effect: be.primary, amp: 0, ticks: 260 }, 1);
+        if (level >= 4) e.applyPotion(this, { effect: 'regeneration', amp: 0, ticks: 260 }, 1);
+      };
+      bless(this.player);
+      if (this.remotePlayers) for (const rp of this.remotePlayers()) bless(rp);
+    }
+  },
+
+  // Pay the beacon and choose its power.
+  setBeaconPower(key, effect) {
+    const be = this.world.blockEntities.get(key);
+    if (!be || be.type !== 'beacon') return false;
+    be.primary = effect;
+    if (this.net) this.net.blockEntityChanged(key);
+    const [x, y, z] = key.split(',').map(Number);
+    this.audio.play('enchant', x + 0.5, y + 0.5, z + 0.5);
+    this.advance('beacon');
+    return true;
+  },
+
+  // What a comparator reads from a block: how full a container is, a
+  // cauldron's water, a cake's slices; -1 for blocks that give no reading.
+  measureBlock(x, y, z, id) {
+    const w = this.world;
+    if (id === B.cauldron) return w.getMeta(x, y, z) & 3;
+    if (id === B.cake) return (7 - (w.getMeta(x, y, z) & 7)) * 2;
+    if (id === B.chest || id === B.dispenser || id === B.dropper || id === B.hopper || id === B.furnace || id === B.furnace_lit || id === B.brewing_stand || id === B.void_chest) {
+      const be = id === B.void_chest ? this.voidChestOf && this.voidChestOf(this.localName()) : w.blockEntities.get(K(x, y, z));
+      if (!be || !be.slots) return 0;
+      let f = 0;
+      for (const s of be.slots) if (s) f += s.count / maxStack(s.id);
+      return f > 0 ? Math.floor(1 + (f / be.slots.length) * 14) : 0;
+    }
+    return -1;
   },
 
   storeOrDrop(be, stack, x, y, z) {
@@ -428,6 +542,43 @@ const methods = {
       this.startSwing();
     };
     if (held.id === I.void_pearl) { throwIt('pearl', 1.5); return true; }
+    // hang an item frame or a painting on the face clicked
+    if ((held.id === I.item_frame || held.id === I.painting) && hit) {
+      const [nx, ny, nz] = FACE_DIR[hit.face];
+      if (!SOLID[hit.id] || SOLID[w.getBlock(hit.x + nx, hit.y + ny, hit.z + nz)]) return true;
+      let e;
+      if (held.id === I.item_frame) {
+        if (this.entities.some((o) => o.isFrame && !o.removed && o.bx === hit.x && o.by === hit.y && o.bz === hit.z && o.face === hit.face)) return true;
+        e = new ItemFrame(hit.x, hit.y, hit.z, hit.face);
+      } else e = fitPainting(w, this.entities, hit.x, hit.y, hit.z, hit.face);
+      if (!e) { this.ui.message('There is no room to hang that here.', '#c8c8c8'); return true; }
+      this.entities.push(e);
+      this.audio.blockSound(B.oak_planks, 'place', e.cx, e.cy, e.cz);
+      if (!p.creative) p.inventory.useHeld();
+      this.startSwing();
+      return true;
+    }
+    // banners stand on the ground or hang on a wall
+    if (d.banner !== undefined && hit) {
+      const into = REPLACEABLE[hit.id] && !isLiquid(hit.id);
+      const face = into ? 0 : hit.face;
+      if (face === 1) return true;
+      const tx = into ? hit.x : hit.x + FACE_DIR[face][0], ty = into ? hit.y : hit.y + FACE_DIR[face][1], tz = into ? hit.z : hit.z + FACE_DIR[face][2];
+      const cur = w.getBlock(tx, ty, tz);
+      if (cur && !(REPLACEABLE[cur] && !isLiquid(cur))) return true;
+      let bid, meta;
+      if (face === 0) {
+        if (!SOLID[w.getBlock(tx, ty - 1, tz)] || SOLID[w.getBlock(tx, ty + 1, tz)]) return true;
+        bid = B.banner; meta = Math.round(((p.yaw + Math.PI) / (Math.PI * 2)) * 16) & 15;
+      } else { bid = B.wall_banner; meta = { 2: 1, 3: 3, 4: 2, 5: 0 }[face]; }
+      w.setBlock(tx, ty, tz, bid, meta);
+      w.blockEntities.set(K(tx, ty, tz), { type: 'banner', base: d.banner, bn: held.bn ? held.bn.slice() : [] });
+      if (this.net) this.net.blockEntityChanged && this.net.blockEntityChanged(K(tx, ty, tz));
+      this.audio.blockSound(B.oak_planks, 'place', tx + 0.5, ty + 0.5, tz + 0.5);
+      if (!p.creative) p.inventory.useHeld();
+      this.startSwing();
+      return true;
+    }
     // shears carve a face into a pumpkin
     if (held.id === I.shears && hit && hit.id === B.pumpkin && !p.sneaking) {
       const f = hit.face >= 2 ? hit.face : [4, 3, 5, 2][this.facingIndex()];
@@ -528,10 +679,29 @@ const methods = {
         if (!w.blockEntities.has(key)) w.blockEntities.set(key, newBrewing());
         this.ui.openScreen('brewing', { key, be: w.blockEntities.get(key) });
         return true;
-      case B.dispenser:
+      case B.dispenser: case B.dropper:
         if (!w.blockEntities.has(key)) w.blockEntities.set(key, newDispenser());
-        this.ui.openScreen('dispenser', { key, be: w.blockEntities.get(key) });
+        this.ui.openScreen('dispenser', { key, be: w.blockEntities.get(key), title: hit.id === B.dropper ? 'Dropper' : 'Dispenser' });
         return true;
+      case B.comparator: c.toggleComparator(hit.x, hit.y, hit.z); return true;
+      case B.void_chest: {
+        const vkey = 'void:' + this.localName();
+        const be = this.voidChestOf(this.localName());
+        if (this.net && this.net.isGuest) w.blockEntities.set(vkey, be);
+        this.audio.play('chest_open', hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+        for (let i = 0; i < 10; i++) this.particles.portal(hit.x + Math.random(), hit.y + 1, hit.z + Math.random());
+        this.ui.openScreen('chest', { key: vkey, be, title: 'Void Chest' });
+        return true;
+      }
+      case B.anvil: this.ui.openScreen('anvil', { x: hit.x, y: hit.y, z: hit.z }); return true;
+      case B.loom: this.ui.openScreen('loom', { x: hit.x, y: hit.y, z: hit.z }); return true;
+      case B.beacon: {
+        if (!w.blockEntities.has(key)) w.blockEntities.set(key, { type: 'beacon', level: 0, primary: null });
+        w.blockEntities.get(key).level = beaconClear(w, hit.x, hit.y, hit.z) ? beaconLevel(w, hit.x, hit.y, hit.z) : 0;
+        this.ui.openScreen('beacon', { key, be: w.blockEntities.get(key), x: hit.x, y: hit.y, z: hit.z });
+        return true;
+      }
+      case B.cauldron: return this.useCauldron(hit, held);
       case B.hopper:
         if (!w.blockEntities.has(key)) w.blockEntities.set(key, newHopper());
         this.ui.openScreen('hopper', { key, be: w.blockEntities.get(key) });
@@ -795,7 +965,7 @@ const methods = {
     const out = [];
     for (const e of this.entities) {
       if (e.removed) continue;
-      if (e.isCart || e.isBoat || e.isPylon) out.push(e.serialize());
+      if (e.isCart || e.isBoat || e.isPylon || e.isDecor) out.push(e.serialize());
     }
     return out;
   },
@@ -803,6 +973,7 @@ const methods = {
   loadObjects(list) {
     for (const o of list || []) {
       if (o.kind === 'pylon') this.entities.push(new Pylon(o.x, o.y, o.z));
+      else if (o.kind === 'item_frame' || o.kind === 'painting') { const e = loadDecor(o); if (e) this.entities.push(e); }
       else { const v = loadVehicle(o); if (v) this.entities.push(v); }
     }
   },
