@@ -7,11 +7,22 @@ import {
   faceTexture, ROT, RENDER, PASS, B, TEX,
 } from './blocks.js';
 import { HEIGHT } from './constants.js';
-import { shapeBoxes } from './shapes.js';
+import { shapeBoxes, SHAPE } from './shapes.js';
+import { SHAPE_KIND, BLOCKS } from './blocks.js';
 import { SHAPE_CTX } from './blocks.js';
 import { BIRCH_TINT, SPRUCE_TINT } from './worldgen.js';
 
 const RX = 48, RZ = 48, LAYER = RX * RZ;
+
+// Spark wire colour by power level (packed RGB tint).
+const WIRE_TINT = new Uint32Array(16);
+for (let p = 0; p < 16; p++) {
+  const r = Math.round(255 * (0.3 + 0.7 * p / 15)), g = Math.round((p / 15) * 50), b = Math.round((p / 15) * 24);
+  WIRE_TINT[p] = r | (g << 8) | (b << 16);
+}
+const WIRE_DX = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // N E S W
+// Rail shapes (0-9): curve shapes pick a texture turn.
+const RAIL_CURVE_TURN = { 6: 0, 7: 3, 8: 2, 9: 1 };
 
 export const FLAG = { WAVE_LEAF: 1, WAVE_PLANT: 2, ANIM: 4, ANIM_SLOW: 8, FULLBRIGHT: 16 };
 
@@ -262,18 +273,38 @@ export class Mesher {
 
     // Emit an axis-aligned box face (coordinates in 1/16 block units, local to
     // the block) with flat lighting from the given cell.
-    const boxFace = (b, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, flags, tint, sky, bl, shade, shift, rotUV = 0) => {
+    const boxFace = (b, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, flags, tint, sky, bl, shade, shift, rotUV = 0, uo = null) => {
       const F = FACES[f];
       for (let k = 0; k < 4; k++) {
         const c = F.c[k];
         let px = c[0] ? x1 : x0, py = c[1] ? y1 : y0, pz = c[2] ? z1 : z0;
         let [u, v] = faceUV(f, px, py, pz);
         for (let q = 0; q < rotUV; q++) { const t = u; u = 16 - v; v = t; }
-        if (shift) { const s = shift(py); px += s[0]; pz += s[1]; py += s[2]; }
+        if (uo) { u += uo[0]; v += uo[1]; }
+        if (shift) { const s = shift(py, px, pz); px += s[0]; pz += s[1]; py += s[2]; }
         b.push(pack0(lx * 16 + px, y * 16 + py, lz * 16 + pz), pack1(Math.max(0, Math.min(16, u)), Math.max(0, Math.min(16, v)), layer, f, flags), pack2(sky, bl, shade), tint);
       }
       if (y < minY) minY = y;
       if (y + 1 > maxY) maxY = y + 1;
+    };
+
+    // A free quad: pts in block-local 1/16 units, uvs per corner.
+    const quad = (b, lx, y, lz, pts, uvs, layer, flags, tint, sky, bl, shade) => {
+      for (let k = 0; k < 4; k++) {
+        const p = pts[k];
+        b.push(pack0(lx * 16 + p[0], y * 16 + p[1], lz * 16 + p[2]), pack1(Math.max(0, Math.min(16, uvs[k][0])), Math.max(0, Math.min(16, uvs[k][1])), layer, 6, flags), pack2(sky, bl, shade), tint);
+      }
+      if (y < minY) minY = y;
+      if (y + 2 > maxY) maxY = y + 2;
+    };
+    const shadeOf = (n) => (n[1] > 0.5 ? 1 : n[1] < -0.5 ? 0.5 : Math.abs(n[0]) > 0.5 ? 0.6 : 0.8);
+    const metaAtL = (xx, yy, zz) => (yy < 0 || yy >= ry ? 0 : M[idxOf(xx, yy, zz)]);
+    // Does spark wire visually join the block next to it (d: 0 N, 1 E, 2 S, 3 W)?
+    const wireJoins = (nid, nmeta, d) => {
+      const sp = BLOCKS[nid] && BLOCKS[nid].spark;
+      if (!sp) return false;
+      if (sp === 'repeater') return ((nmeta & 3) & 1) === (d & 1);
+      return sp === 'wire' || sp === 'torch' || sp === 'lever' || sp === 'button' || sp === 'plate' || sp === 'block' || sp === 'detector' || sp === 'sensor';
     };
 
     for (let y = 0; y < ry; y++) {
@@ -382,10 +413,30 @@ export class Mesher {
               boxFace(cut, lx, y, lz, f, 1, 0, 1, 15, 16, 15, layer, 0, 0xffffff, sky, bl, FACE_SHADE[f], null);
             }
           } else if (rt === RENDER.SHAPE) {
+            if (SHAPE_KIND[id] === SHAPE.SIGN) continue; // drawn with its text by the scene
             const boxes = shapeBoxes(SHAPE_CTX, id, meta, (dx, dy, dz) => blockAt(x + dx, y + dy, z + dz));
             if (boxes) {
               const tint = tintFor(id, lx, lz);
               for (const bx of boxes) {
+                if (bx.pts) {
+                  // a free-form box (lever handles): 8 corners, UVs from its model box
+                  const P8 = bx.pts, ub = bx.uvb;
+                  for (let f = 0; f < 6; f++) {
+                    const F = FACES[f];
+                    const pts = [], uvs = [];
+                    for (let k = 0; k < 4; k++) {
+                      const c = F.c[k];
+                      pts.push(P8[c[0] + c[1] * 2 + c[2] * 4]);
+                      uvs.push(faceUV(f, c[0] ? ub[3] : ub[0], c[1] ? ub[4] : ub[1], c[2] ? ub[5] : ub[2]));
+                    }
+                    const e1 = [pts[1][0] - pts[0][0], pts[1][1] - pts[0][1], pts[1][2] - pts[0][2]];
+                    const e2 = [pts[3][0] - pts[0][0], pts[3][1] - pts[0][1], pts[3][2] - pts[0][2]];
+                    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+                    const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+                    quad(b, lx, y, lz, pts, uvs, bx.t[f], 0, tint, S[i], L[i], shadeOf([n[0] / nl, n[1] / nl, n[2] / nl]));
+                  }
+                  continue;
+                }
                 const [x0, y0, z0, x1, y1, z1] = bx.b;
                 for (let f = 0; f < 6; f++) {
                   const boundary = (f === 0 && y1 === 16) || (f === 1 && y0 === 0) || (f === 2 && x1 === 16) ||
@@ -399,7 +450,7 @@ export class Mesher {
                     sky = skyAt(x + n[0], y + n[1], z + n[2]); bl = blAt(x + n[0], y + n[1], z + n[2]);
                   }
                   const layer = bx.t ? bx.t[f] : faceTexture(id, f, meta);
-                  boxFace(b, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, 0, tint, sky, bl, FACE_SHADE[f], null, bx.r ? bx.r[f] : 0);
+                  boxFace(b, lx, y, lz, f, x0, y0, z0, x1, y1, z1, layer, 0, tint, sky, bl, FACE_SHADE[f], null, bx.r ? bx.r[f] : 0, bx.uo ? bx.uo[f] : null);
                 }
               }
             }
@@ -429,6 +480,77 @@ export class Mesher {
               if (nid === id || OPAQUE[nid]) continue;
               if (axisX ? (f === 2 || f === 3) : (f === 4 || f === 5)) { if (nid === B.obsidian) continue; }
               boxFace(b, lx, y, lz, f, bb[0], bb[1], bb[2], bb[3], bb[4], bb[5], TEX.rift, FLAG.ANIM | FLAG.FULLBRIGHT, 0xffffff, 15, 15, 1, null);
+            }
+          } else if (rt === RENDER.WIRE) {
+            const sky = S[i], bl = L[i];
+            const tint = WIRE_TINT[meta & 15];
+            const con = [0, 0, 0, 0], up = [0, 0, 0, 0];
+            const coverAbove = OPAQUE[blockAt(x, y + 1, z)];
+            for (let d = 0; d < 4; d++) {
+              const nx = x + WIRE_DX[d][0], nz = z + WIRE_DX[d][1];
+              const n = blockAt(nx, y, nz);
+              if (wireJoins(n, metaAtL(nx, y, nz), d)) con[d] = 1;
+              else if (!coverAbove && blockAt(nx, y + 1, nz) === B.spark_wire) { con[d] = 1; up[d] = 1; }
+              else if (!OPAQUE[n] && blockAt(nx, y - 1, nz) === B.spark_wire) con[d] = 1;
+            }
+            const count = con[0] + con[1] + con[2] + con[3];
+            const arms = con.slice();
+            if (count === 0) arms.fill(1);
+            else if (count === 1) for (let d = 0; d < 4; d++) if (con[d]) arms[(d + 2) & 3] = 1;
+            const line = TEX.spark_line;
+            boxFace(cut, lx, y, lz, 0, 0, 0, 0, 16, 1, 16, TEX.spark_dot, 0, tint, sky, bl, 1, null);
+            if (arms[0]) boxFace(cut, lx, y, lz, 0, 0, 0, 0, 16, 1, 8, line, 0, tint, sky, bl, 1, null, 0);
+            if (arms[2]) boxFace(cut, lx, y, lz, 0, 0, 0, 8, 16, 1, 16, line, 0, tint, sky, bl, 1, null, 0);
+            if (arms[1]) boxFace(cut, lx, y, lz, 0, 8, 0, 0, 16, 1, 16, line, 0, tint, sky, bl, 1, null, 1);
+            if (arms[3]) boxFace(cut, lx, y, lz, 0, 0, 0, 0, 8, 1, 16, line, 0, tint, sky, bl, 1, null, 1);
+            // climbing the side of the block next to it
+            if (up[0]) boxFace(cut, lx, y, lz, 4, 0, 0, 1, 16, 17, 1, line, 0, tint, sky, bl, 0.8, null);
+            if (up[2]) boxFace(cut, lx, y, lz, 5, 0, 0, 15, 16, 17, 15, line, 0, tint, sky, bl, 0.8, null);
+            if (up[1]) boxFace(cut, lx, y, lz, 3, 15, 0, 0, 15, 17, 16, line, 0, tint, sky, bl, 0.6, null);
+            if (up[3]) boxFace(cut, lx, y, lz, 2, 1, 0, 0, 1, 17, 16, line, 0, tint, sky, bl, 0.6, null);
+          } else if (rt === RENDER.RAIL) {
+            const sky = Math.max(S[i], skyAt(x, y + 1, z)), bl = Math.max(L[i], blAt(x, y + 1, z));
+            const plain = id === B.rail;
+            const shape = plain ? meta & 15 : meta & 7;
+            const on = !plain && (meta & 8);
+            let layer = id === B.powered_rail ? (on ? TEX.powered_rail_on : TEX.powered_rail)
+              : id === B.detector_rail ? (on ? TEX.detector_rail_on : TEX.detector_rail) : TEX.rail;
+            if (shape >= 6 && plain) {
+              boxFace(cut, lx, y, lz, 0, 0, 0, 0, 16, 1, 16, TEX.rail_corner, 0, 0xffffff, sky, bl, 1, null, RAIL_CURVE_TURN[shape]);
+            } else if (shape <= 1) {
+              boxFace(cut, lx, y, lz, 0, 0, 0, 0, 16, 1, 16, layer, 0, 0xffffff, sky, bl, 1, null, shape === 1 ? 1 : 0);
+            } else {
+              // ascending: 2 east, 3 west, 4 north, 5 south (the high side)
+              const hi = { 2: (px) => px[0] === 16, 3: (px) => px[0] === 0, 4: (px) => px[2] === 0, 5: (px) => px[2] === 16 }[shape];
+              const base = [[0, 0, 0], [0, 0, 16], [16, 0, 16], [16, 0, 0]];
+              const pts = base.map((p) => [p[0], hi(p) ? 17 : 1, p[2]]);
+              const ew = shape === 2 || shape === 3;
+              const uvs = base.map((p) => (ew ? [16 - p[2], p[0]] : [p[0], p[2]]));
+              quad(cut, lx, y, lz, pts, uvs, layer, 0, 0xffffff, sky, bl, 1);
+            }
+            if (y < minY) minY = y;
+            if (y + 2 > maxY) maxY = y + 2;
+          } else if (rt === RENDER.FIRE) {
+            const planes = [[[2, 0], [2, 16]], [[14, 16], [14, 0]], [[0, 2], [16, 2]], [[16, 14], [0, 14]], [[0, 0], [16, 16]], [[16, 0], [0, 16]]];
+            for (const [[ax, az], [bx2, bz]] of planes) {
+              const pts = [[ax, 0, az], [ax, 20, az], [bx2, 20, bz], [bx2, 0, bz]];
+              const uvs = [[0, 16], [0, 0], [16, 0], [16, 16]];
+              quad(cut, lx, y, lz, pts, uvs, TEX.fire, FLAG.ANIM | FLAG.FULLBRIGHT, 0xffffff, 15, 15, 1);
+            }
+          } else if (rt === RENDER.VOIDGATE) {
+            const flags = FLAG.ANIM_SLOW | FLAG.FULLBRIGHT;
+            if (id === B.void_gate) {
+              if (!OPAQUE[blockAt(x, y + 1, z)]) {
+                boxFace(b, lx, y, lz, 0, 0, 0, 0, 16, 12, 16, TEX.void_gate, flags, 0xffffff, 15, 15, 1, null);
+                boxFace(b, lx, y, lz, 1, 0, 12, 0, 16, 12, 16, TEX.void_gate, flags, 0xffffff, 15, 15, 1, null);
+              }
+            } else {
+              for (let f = 0; f < 6; f++) {
+                const n = FACES[f].n;
+                const nid = blockAt(x + n[0], y + n[1], z + n[2]);
+                if (nid === id || OPAQUE[nid]) continue;
+                boxFace(b, lx, y, lz, f, 0, 0, 0, 16, 16, 16, TEX.void_gate, flags, 0xffffff, 15, 15, 1, null);
+              }
             }
           } else if (rt === RENDER.LIQUID) {
             this.liquid(b, id, x, y, z, lx, lz, meta, blockAt, skyAt, blAt, pack0, pack1, pack2, tintFor(id, lx, lz));

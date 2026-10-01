@@ -4,10 +4,12 @@ import { Entity } from './entities.js';
 import { moveBox, moveStep, boxFree, blockFriction, surfaceSlow } from './physics.js';
 import { B, SOLID } from './blocks.js';
 import { PlayerInventory } from './inventory.js';
-import { ITEMS } from './items.js';
+import { ITEMS, I } from './items.js';
+import { addEffect, EFFECTS } from './effects.js';
 
 export const EYE = 1.62, EYE_SNEAK = 1.32;
 const BYPASS_ARMOR = new Set(['void', 'kill', 'starve', 'drown', 'magic']);
+const FIRE_SOURCES = new Set(['fire', 'lava', 'magma']);
 
 export class Player extends Entity {
   constructor(x, y, z) {
@@ -39,6 +41,55 @@ export class Player extends Entity {
     this.enchantSeed = (Math.random() * 0x7fffffff) | 0;
     this.portalTicks = 0; this.portalCooldown = 0;
     this.dim = 'overworld';
+    this.effects = {};
+    this.absorption = 0;
+    this.vehicle = null;
+    this.gliding = false;
+    this.blocking = false;
+    this.jumpWasDown = false;
+  }
+
+  // Effect strength (0-based amplifier) or -1 when absent.
+  amp(name) { return this.effects[name] ? this.effects[name].amp : -1; }
+
+  applyPotion(game, fx, scale = 1) {
+    if (!fx) return;
+    if (fx.effect === 'instant_health') { this.health = Math.min(20, this.health + Math.round(4 * (1 << fx.amp) * scale)); return; }
+    if (fx.effect === 'instant_damage') { this.damage(game, Math.round(6 * (1 << fx.amp) * scale), 'magic'); return; }
+    addEffect(this, fx.effect, fx.amp, Math.max(20, Math.round(fx.ticks * scale)));
+  }
+
+  tickEffects(game) {
+    for (const [name, e] of Object.entries(this.effects)) {
+      if (!EFFECTS[name]) { delete this.effects[name]; continue; }
+      if (name === 'regeneration' && this.age % Math.max(1, 50 >> e.amp) === 0 && this.health < 20) this.health = Math.min(20, this.health + 1);
+      if (name === 'poison' && this.age % Math.max(1, 25 >> e.amp) === 0 && this.health > 1) this.damage(game, 1, 'magic');
+      if (--e.time <= 0) {
+        delete this.effects[name];
+        if (name === 'absorption') this.absorption = 0;
+      }
+    }
+    // swirling particles in the effect colours (seen in third person and by others)
+    const names = Object.keys(this.effects);
+    if (names.length && this.age % 6 === 0 && !(this.effects.invisibility)) {
+      const c = EFFECTS[names[this.age % names.length]].color;
+      game.particles.effect(this.x + (Math.random() - 0.5) * 0.6, this.y + Math.random() * 1.8, this.z + (Math.random() - 0.5) * 0.6, c, 0, 0.6, 0);
+    }
+  }
+
+  // While riding: the vehicle moves us; survival still ticks.
+  rideTick(game) {
+    this.savePrev();
+    this.age++;
+    if (this.dead) return;
+    if (this.hurtTime > 0) this.hurtTime--;
+    if (this.invuln > 0) this.invuln--;
+    this.eye += (EYE - this.eye) * 0.5;
+    this.sneaking = false; this.sprinting = false;
+    this.fallDistance = 0;
+    this.bob *= 0.6;
+    this.tickEffects(game);
+    if (!this.creative && !this.spectator) this.survival(game);
   }
 
   static xpToNext(level) { return level <= 15 ? 2 * level + 7 : level <= 30 ? 5 * level - 38 : 9 * level - 158; }
@@ -91,7 +142,8 @@ export class Player extends Entity {
     if (this.invuln > 0) this.invuln--;
     if (this.jumpCooldown > 0) this.jumpCooldown--;
 
-    this.sneaking = !!input.sneak && !this.flying;
+    this.tickEffects(game);
+    this.sneaking = !!input.sneak && !this.flying && !this.gliding;
     const targetEye = this.sneaking ? EYE_SNEAK : EYE;
     this.eye += (targetEye - this.eye) * 0.5;
 
@@ -114,7 +166,16 @@ export class Player extends Entity {
     this.onLadder = feet === B.ladder || world.getBlock(Math.floor(this.x), Math.floor(this.y + 1), Math.floor(this.z)) === B.ladder;
 
     const x0 = this.x, z0 = this.z;
-    if (this.flying) {
+    // start gliding: jump again while falling with a glider on
+    const wings = this.inventory.get(37);
+    const canGlide = wings && wings.id === I.glider && (wings.dur || 0) < ITEMS[I.glider].durability - 1;
+    if (input.jump && !this.jumpWasDown && !this.onGround && !this.flying && !this.inWater && !this.onLadder && this.vy < 0 && canGlide) { this.gliding = true; game.advance('glider'); }
+    this.jumpWasDown = !!input.jump;
+    if (this.gliding && (this.onGround || this.inWater || this.flying || !canGlide)) this.gliding = false;
+    const speedMul = (1 + 0.2 * (this.amp('speed') + 1)) * Math.max(0.1, 1 - 0.15 * (this.amp('slowness') + 1));
+    if (this.gliding) {
+      this.glide(game);
+    } else if (this.flying) {
       const acc = input.sprint ? 0.1 : 0.05;
       this.vx += dirX * acc; this.vz += dirZ * acc;
       if (input.jump) this.vy += 0.15;
@@ -145,9 +206,11 @@ export class Player extends Entity {
       let acc;
       if (this.onGround) acc = (this.sprinting ? 0.13 : 0.1) * (0.16277136 / (slip * slip * slip));
       else acc = this.sprinting ? 0.026 : 0.02;
+      acc *= speedMul;
+      if (this.blocking) acc *= 0.3;
       this.vx += dirX * acc; this.vz += dirZ * acc;
       if (input.jump && this.onGround && this.jumpCooldown === 0) {
-        this.vy = 0.42;
+        this.vy = 0.42 + 0.1 * (this.amp('jump_boost') + 1);
         this.jumpCooldown = 10;
         if (this.sprinting) {
           this.vx += sy * 0.2; this.vz -= cy * 0.2;
@@ -186,6 +249,8 @@ export class Player extends Entity {
       }
       this.vy = (this.vy - 0.08) * 0.98;
       this.vx *= slip; this.vz *= slip;
+      if (this.effects.slow_falling && this.vy < -0.06) { this.vy = -0.06; this.fallDistance = 0; }
+      if (this.touching(world, B.cobweb)) { this.vy *= 0.05; this.vx *= 0.25; this.vz *= 0.25; this.fallDistance = 0; }
     }
 
     // Walking bookkeeping for footsteps and camera bob.
@@ -211,6 +276,39 @@ export class Player extends Entity {
     if (this.y < -64) this.damage(game, 4, 'void');
   }
 
+  // Glider flight: lift from forward speed, dive to gain speed, climb to trade it.
+  glide(game) {
+    const world = game.world;
+    const cp = Math.cos(this.pitch);
+    const lx = Math.sin(this.yaw) * cp, ly = Math.sin(this.pitch), lz = -Math.cos(this.yaw) * cp;
+    const down = -this.pitch; // positive when looking down
+    const horiz = Math.hypot(lx, lz);
+    const speed = Math.hypot(this.vx, this.vz);
+    let f = Math.cos(down); f = f * f;
+    this.vy += -0.08 + f * 0.06;
+    if (this.vy < 0 && horiz > 0) {
+      const lift = this.vy * -0.1 * f;
+      this.vy += lift; this.vx += lx * lift / horiz; this.vz += lz * lift / horiz;
+    }
+    if (down < 0 && horiz > 0) {
+      const climb = speed * -Math.sin(down) * 0.04;
+      this.vy += climb * 3.2; this.vx -= lx * climb / horiz; this.vz -= lz * climb / horiz;
+    }
+    if (horiz > 0) { this.vx += (lx / horiz * speed - this.vx) * 0.1; this.vz += (lz / horiz * speed - this.vz) * 0.1; }
+    this.vx *= 0.99; this.vy *= 0.98; this.vz *= 0.99;
+    void ly;
+    const before = Math.hypot(this.vx, this.vz);
+    const r = moveBox(world, this, this.vx, this.vy, this.vz);
+    this.applyHits(r);
+    if ((r.hitX || r.hitZ) && before > 0.6) this.damage(game, Math.floor((before - 0.5) * 10), 'fly_into_wall');
+    this.fallDistance = 0;
+    if (this.age % 20 === 0 && !this.creative) {
+      const w = this.inventory.get(37);
+      if (w) { w.dur = (w.dur || 0) + 1; if (w.dur >= ITEMS[w.id].durability - 1) game.audio.material('cloth', 'break', this.x, this.y, this.z); }
+    }
+    if (r.onGround) this.gliding = false;
+  }
+
   land(game, dist, wasOnGround) {
     if (wasOnGround) return;
     const under = game.world.getBlock(Math.floor(this.x), Math.floor(this.y - 0.2), Math.floor(this.z));
@@ -231,7 +329,7 @@ export class Player extends Entity {
   survival(game) {
     const world = game.world;
     // air
-    if (this.eyesInWaterAt(world)) {
+    if (this.eyesInWaterAt(world) && !this.effects.water_breathing) {
       this.air--;
       if (this.air <= -20) {
         this.air = 0;
@@ -261,6 +359,8 @@ export class Player extends Entity {
 
     // fire and lava
     if (this.inLava) { this.fireTicks = 300; if (this.age % 10 === 0) this.damage(game, 4, 'lava'); }
+    if (this.effects.fire_resistance) this.fireTicks = 0;
+    if (!this.inWater && this.touching(world, B.fire)) { this.fireTicks = Math.max(this.fireTicks, 160); if (this.age % 10 === 0) this.damage(game, 1, 'fire'); }
     if (this.inWater) this.fireTicks = 0;
     if (this.fireTicks > 0) {
       this.fireTicks--;
@@ -289,6 +389,19 @@ export class Player extends Entity {
       if (source !== 'kill') return false;
     }
     if (this.invuln > 0 && source !== 'kill' && source !== 'void') return false;
+    if (this.effects.fire_resistance && FIRE_SOURCES.has(source)) return false;
+    // a raised shield stops hits from the front
+    if (this.blocking && fromX !== undefined && (source.startsWith('mob:') || source === 'arrow' || source === 'explosion')) {
+      const fx = Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+      const dx = fromX - this.x, dz = fromZ - this.z, l = Math.hypot(dx, dz) || 1;
+      if ((dx * fx + dz * fz) / l > 0) {
+        game.audio.play('shield_block', this.x, this.y + 1, this.z);
+        game.damageShield(Math.ceil(amount));
+        const kx = -dx / l, kz = -dz / l;
+        this.vx += kx * 0.2; this.vz += kz * 0.2;
+        return false;
+      }
+    }
     if (this.sleeping) game.wakeUp();
     const raw = amount;
     if (amount > 0 && !BYPASS_ARMOR.has(source)) {
@@ -308,6 +421,7 @@ export class Player extends Entity {
       const epf = Math.min(20, a.prot + (source === 'fall' ? a.feather * 3 : 0));
       amount *= 1 - epf * 0.04;
     }
+    if (this.absorption > 0) { const take = Math.min(this.absorption, amount); this.absorption -= take; amount -= take; }
     this.health -= amount;
     this.health = Math.round(this.health * 100) / 100;
     this.hurtTime = 10; this.invuln = 10;
@@ -343,6 +457,7 @@ export class Player extends Entity {
   }
 
   respawn(x, y, z) {
+    this.effects = {}; this.absorption = 0; this.gliding = false;
     this.x = this.px = x; this.y = this.py = y; this.z = this.pz = z;
     this.vx = this.vy = this.vz = 0;
     this.health = 20; this.food = 20; this.saturation = 5; this.exhaustion = 0; this.air = 300;
@@ -361,6 +476,7 @@ export class Player extends Entity {
       health: this.health, food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, air: this.air,
       mode: this.mode, flying: this.flying, spawn: this.spawn,
       inventory: this.inventory.toJSON(), selected: this.inventory.selected, dead: this.dead,
+      effects: this.effects, absorption: this.absorption,
       xpLevel: this.xpLevel, xpPoints: this.xpPoints, enchantSeed: this.enchantSeed, bed: this.bed, dim: this.dim, worldSpawn: this.worldSpawn || null,
     };
   }
@@ -375,6 +491,8 @@ export class Player extends Entity {
     this.inventory.selected = d.selected || 0;
     this.xpLevel = d.xpLevel || 0; this.xpPoints = d.xpPoints || 0;
     if (d.enchantSeed) this.enchantSeed = d.enchantSeed;
+    this.effects = d.effects && typeof d.effects === 'object' ? d.effects : {};
+    this.absorption = d.absorption || 0;
     this.bed = d.bed || null; this.dim = d.dim || 'overworld';
     this.worldSpawn = d.worldSpawn || (d.bed ? null : d.spawn) || null;
     this.dead = false;

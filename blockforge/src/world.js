@@ -4,8 +4,7 @@ import { CHUNK, HEIGHT, CHUNK_VOLUME, blockIndex, chunkKey } from './constants.j
 import { OPACITY, EMIT, B, SOLID, isLiquid, RENDER_TYPE, RENDER } from './blocks.js';
 import { WorkerPool } from './workerpool.js';
 import { rleEncode, rleDecode } from './storage.js';
-import { WorldGen } from './worldgen.js';
-import { UnderworldGen } from './underworld.js';
+import { makeGenerator, noSky as dimNoSky } from './dims.js';
 
 export const STATE = { NEW: 0, GENERATING: 1, READY: 2 };
 const MAX_R = 34;
@@ -36,14 +35,14 @@ export class World {
   constructor({ seed, worldId, storage, renderer, hooks = {}, dim = 'overworld' }) {
     this.seed = seed;
     this.dim = dim;
-    this.noSky = dim === 'underworld';
+    this.noSky = dimNoSky(dim);
     // chunk saves for other dimensions live under their own key prefix
     this.worldId = worldId && dim !== 'overworld' ? `${worldId}@${dim}` : worldId;
     this.storage = storage;
     this.renderer = renderer;
     this.hooks = hooks; // onBlockChanged(x,y,z,old,new), onChunkGenerated(chunk, spawns)
     this.chunks = new Map();
-    this.gen = dim === 'underworld' ? new UnderworldGen(seed) : new WorldGen(seed);
+    this.gen = makeGenerator(dim, seed);
     this.results = [];
     this.urgent = new Set();
     this.pool = new WorkerPool((msg) => this.results.push(msg));

@@ -299,6 +299,74 @@ export class Audio {
         this.tone(dest, t, 0.08, 'triangle', 1500, 1500, 0.15);
         this.tone(dest, t + 0.07, 0.15, 'triangle', 2000, 2000, 0.15);
         break;
+      case 'piston_out':
+        this.burst(dest, t, 0.12, 'lowpass', 700, 1, 0.8);
+        this.tone(dest, t, 0.12, 'square', 160, 90, 0.12);
+        break;
+      case 'piston_in':
+        this.burst(dest, t, 0.12, 'lowpass', 600, 1, 0.7);
+        this.tone(dest, t, 0.12, 'square', 110, 160, 0.1);
+        break;
+      case 'cart_roll':
+        this.burst(dest, t, 0.4, 'bandpass', 220 + Math.random() * 60, 4, 0.25, 0.05);
+        break;
+      case 'teleport':
+        this.tone(dest, t, 0.35, 'sine', 900, 200, 0.25);
+        this.tone(dest, t, 0.35, 'sine', 1300, 300, 0.12);
+        this.burst(dest, t, 0.3, 'bandpass', 1200, 2, 0.2);
+        break;
+      case 'glass_break':
+        for (let i = 0; i < 5; i++) this.tone(dest, t + i * 0.03, 0.15, 'triangle', 2500 + Math.random() * 2000, 1800, 0.08);
+        this.burst(dest, t, 0.2, 'highpass', 4000, 0.7, 0.4);
+        break;
+      case 'void_burst':
+        this.burst(dest, t, 0.8, 'lowpass', 800, 0.8, 0.8, 0.02);
+        this.tone(dest, t, 0.6, 'sawtooth', 220, 60, 0.15);
+        break;
+      case 'milk':
+        this.burst(dest, t, 0.4, 'lowpass', 900, 1, 0.4, 0.05);
+        break;
+      case 'shield_block':
+        this.burst(dest, t, 0.08, 'lowpass', 600, 1, 1);
+        this.tone(dest, t, 0.15, 'triangle', 180, 120, 0.3);
+        break;
+      case 'fish_cast':
+        this.burst(dest, t, 0.3, 'bandpass', 2000, 2, 0.3, 0.05);
+        break;
+      case 'fish_bite':
+        this.burst(dest, t, 0.25, 'lowpass', 1400, 1, 0.8);
+        this.tone(dest, t, 0.1, 'sine', 600, 300, 0.2);
+        break;
+      case 'fish_reel':
+        for (let i = 0; i < 4; i++) this.burst(dest, t + i * 0.05, 0.04, 'bandpass', 3000, 6, 0.3);
+        break;
+      case 'drink':
+        this.tone(dest, t, 0.1, 'sine', 420 * r(), 300, 0.18);
+        this.burst(dest, t, 0.1, 'lowpass', 800, 2, 0.25);
+        break;
+      case 'fire':
+        for (let i = 0; i < 3; i++) this.burst(dest, t + Math.random() * 0.3, 0.05, 'bandpass', 1500 + Math.random() * 2500, 3, 0.25);
+        this.burst(dest, t, 0.6, 'lowpass', 400, 0.8, 0.2, 0.1);
+        break;
+      case 'brew':
+        for (let i = 0; i < 4; i++) this.tone(dest, t + i * 0.08, 0.12, 'sine', 300 + Math.random() * 400, 700, 0.1);
+        break;
+      case 'dispense':
+        this.tone(dest, t, 0.06, 'square', 1000, 700, 0.12);
+        this.burst(dest, t, 0.05, 'highpass', 3000, 0.7, 0.3);
+        break;
+      case 'gate_open':
+        this.tone(dest, t, 3, 'sine', 110, 440, 0.3, 1);
+        this.tone(dest, t, 3, 'sine', 165, 660, 0.2, 1);
+        this.tone(dest, t + 0.5, 2.5, 'triangle', 330, 880, 0.12, 1);
+        break;
+      case 'eye_place':
+        this.tone(dest, t, 0.4, 'sine', 880, 1320, 0.2);
+        this.tone(dest, t + 0.05, 0.4, 'sine', 1320, 1760, 0.12);
+        break;
+      case 'page':
+        this.burst(dest, t, 0.2, 'highpass', 2500, 0.5, 0.3, 0.03);
+        break;
       default: break;
     }
   }
@@ -359,11 +427,40 @@ export class Audio {
         voice('square', 330 * pitch, 520 * pitch, hurt ? 0.18 : 0.3, 1200, 2, 0.35, 22);
         this.burst(dest, t, 0.35, 'bandpass', 900, 1, 0.3, 0.05);
         break;
+      case 'gloamer':
+        // a low warbling hum
+        voice('sine', 70 * pitch, 55 * pitch, death ? 1.4 : 0.8, 300, 1, 0.9, 7);
+        voice('triangle', 140 * pitch, 92 * pitch, death ? 1.4 : 0.8, 600, 2, 0.4, 11);
+        break;
+      case 'wyrm':
+        voice('sawtooth', 55 * pitch, 40 * pitch, death ? 3 : 1.6, 260, 0.8, 1.2, 4);
+        voice('sawtooth', 82 * pitch, 50 * pitch, death ? 3 : 1.6, 520, 1.2, 0.6, 6);
+        this.burst(dest, t, death ? 3 : 1.4, 'lowpass', 300, 0.6, 0.6, 0.2);
+        break;
       case 'ghoul':
         voice('sawtooth', 78 * pitch, 58 * pitch, death ? 1.6 : 1.1, 420, 1.2, 0.9, 5);
         voice('sawtooth', 81 * pitch, 60 * pitch, death ? 1.6 : 1.1, 300, 1.5, 0.6, 3);
         break;
       default: break;
+    }
+  }
+
+  // Note blocks: 25 semitones from F#3, voiced by the block underneath.
+  note(pitch, inst, x, y, z) {
+    if (!this.ctx) return;
+    const dest = this.out(x, y, z, 0.8, 48);
+    if (!dest) return;
+    const t = this.ctx.currentTime + 0.001;
+    const f = 185 * Math.pow(2, pitch / 12);
+    switch (inst) {
+      case 'bass': this.tone(dest, t, 0.5, 'triangle', f / 4, f / 4, 0.6); this.tone(dest, t, 0.3, 'sine', f / 2, f / 2, 0.2); break;
+      case 'drum': this.burst(dest, t, 0.25, 'lowpass', 160 + pitch * 10, 1, 1.2); this.tone(dest, t, 0.2, 'sine', 110 + pitch * 4, 50, 0.5); break;
+      case 'snare': this.burst(dest, t, 0.18, 'bandpass', 1800 + pitch * 60, 1, 0.9); break;
+      case 'click': this.burst(dest, t, 0.05, 'highpass', 5000 + pitch * 100, 2, 0.6); break;
+      case 'bell': this.tone(dest, t, 1.4, 'sine', f * 2, f * 2, 0.35); this.tone(dest, t, 1.0, 'sine', f * 5.4, f * 5.4, 0.08); break;
+      case 'guitar': this.tone(dest, t, 0.7, 'sawtooth', f, f, 0.12); this.tone(dest, t, 0.7, 'triangle', f / 2, f / 2, 0.2); break;
+      case 'chime': this.tone(dest, t, 1.2, 'sine', f * 4, f * 4, 0.2); this.tone(dest, t, 0.8, 'sine', f * 6, f * 6, 0.08); break;
+      default: this.tone(dest, t, 0.9, 'triangle', f, f, 0.35); this.tone(dest, t, 0.5, 'sine', f * 2, f * 2, 0.1);
     }
   }
 

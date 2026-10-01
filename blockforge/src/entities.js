@@ -2,8 +2,9 @@
 // falling blocks and primed blast crates.
 import { moveBox, moveStep, blockFriction, boxFree, raycast, rayBox, surfaceSlow } from './physics.js';
 import { B, SOLID, isLiquid, REPLACEABLE, BLOCKS } from './blocks.js';
-import { I, maxStack } from './items.js';
+import { I, ITEMS, maxStack } from './items.js';
 import { MODELS } from './models.js';
+import { potionEffect, addEffect, EFFECTS } from './effects.js';
 
 let nextEntityId = 1;
 
@@ -94,8 +95,11 @@ export const MOB_TYPES = {
   ghoul: { model: 'ghoul', health: 20, wander: 0.03, chase: 0.058, hostile: true, damage: 3, burns: true, xp: 5, drops: (r) => [[I.tainted_flesh, pick(r, 3)], ...(r() < 0.04 ? [[I.iron_ingot, 1]] : []), ...(r() < 0.03 ? [[I.carrot, 1]] : [])], sound: 'ghoul' },
   archer: { model: 'archer', health: 20, wander: 0.03, chase: 0.05, hostile: true, ranged: true, damage: 2, burns: true, xp: 5, drops: (r) => [[I.bone, pick(r, 3)], [I.arrow, pick(r, 3)]], sound: 'archer' },
   crawler: { model: 'crawler', health: 16, wander: 0.035, chase: 0.07, hostile: true, nightOnly: true, climb: true, damage: 2, xp: 5, drops: (r) => [[I.string, pick(r, 3)]], sound: 'crawler' },
-  imp: { model: 'imp', health: 14, wander: 0.04, chase: 0.072, hostile: true, fireproof: true, ignites: true, damage: 3, xp: 6, drops: (r) => [[I.ember_dust, pick(r, 3)], [I.gold_nugget, pick(r, 2)]], sound: 'imp' },
+  imp: { model: 'imp', health: 14, wander: 0.04, chase: 0.072, hostile: true, fireproof: true, ignites: true, damage: 3, xp: 6, drops: (r) => [[I.ember_dust, pick(r, 3)], [I.gold_nugget, pick(r, 2)], ...(r() < 0.3 ? [[I.imp_horn, 1]] : [])], sound: 'imp' },
+  gloamer: { model: 'gloamer', health: 40, wander: 0.03, chase: 0.1, hostile: true, neutral: true, teleports: true, damage: 6, xp: 5, drops: (r) => (r() < 0.5 ? [[I.void_pearl, 1]] : []), sound: 'gloamer' },
 };
+// Creatures that are harmed by healing and healed by harming.
+export const UNDEAD = new Set(['ghoul', 'archer']);
 
 export const BABY_AGE = -24000;
 
@@ -127,6 +131,27 @@ export class Mob extends Entity {
   }
 
   get hostile() { return !!this.def.hostile; }
+  get isMob() { return true; }
+  get targetable() { return !this.dead; }
+  hitBoxes() { return [[this.x - this.w, this.y, this.z - this.w, this.x + this.w, this.y + this.h, this.z + this.w]]; }
+
+  // Blink to a random spot nearby (gloamers).
+  teleport(game) {
+    const w = game.world;
+    for (let i = 0; i < 16; i++) {
+      const x = Math.floor(this.x + (Math.random() - 0.5) * 32), z = Math.floor(this.z + (Math.random() - 0.5) * 32);
+      let y = Math.floor(this.y + (Math.random() - 0.5) * 16);
+      while (y > 1 && !SOLID[w.getBlock(x, y - 1, z)]) y--;
+      if (!SOLID[w.getBlock(x, y - 1, z)] || isLiquid(w.getBlock(x, y, z))) continue;
+      if (!boxFree(w, x + 0.5, y, z + 0.5, this.w, this.h)) continue;
+      for (let k = 0; k < 16; k++) game.particles.portal(this.x + (Math.random() - 0.5), this.y + Math.random() * this.h, this.z + (Math.random() - 0.5));
+      this.x = this.px = x + 0.5; this.y = this.py = y; this.z = this.pz = z + 0.5;
+      this.vx = this.vy = this.vz = 0;
+      game.audio.play('teleport', this.x, this.y, this.z);
+      return true;
+    }
+    return false;
+  }
   get baby() { return this.growth < 0; }
 
   resize() {
@@ -138,6 +163,8 @@ export class Mob extends Entity {
   hurt(game, dmg, fromX, fromZ, source) {
     if (this.dead || this.invuln > 0) return false;
     if (this.def.fireproof && (source === 'fire' || source === 'lava')) return false;
+    if (this.def.teleports && (source === 'arrow_player' || source === 'arrow') && this.teleport(game)) return false;
+    if (this.def.neutral && (source === 'player' || source === 'arrow_player')) this.angry = 600;
     this.health -= dmg;
     this.hurtTime = 10; this.invuln = 10;
     this.lastHitBy = source;
@@ -151,13 +178,30 @@ export class Mob extends Entity {
     if (this.health <= 0) {
       this.dead = true; this.deathTime = 0;
       game.audio.mob(this.def.sound, 'death', this.x, this.y, this.z);
-    }
+    } else if (this.def.teleports && Math.random() < 0.4) this.teleport(game);
     return true;
+  }
+
+  // Potion effects on creatures: instant ones, poison and slowness.
+  applyPotion(game, fx, scale = 1) {
+    if (!fx) return;
+    const undead = UNDEAD.has(this.type);
+    if (fx.effect === 'instant_health' || fx.effect === 'instant_damage') {
+      const amt = Math.round(6 * (1 << fx.amp) * scale);
+      const harm = (fx.effect === 'instant_damage') !== undead;
+      if (harm) this.hurt(game, amt, undefined, undefined, 'magic');
+      else this.health = Math.min(this.def.health, this.health + amt * 0.67);
+      return;
+    }
+    if (fx.effect === 'poison' && undead) return;
+    addEffect(this, fx.effect, fx.amp, Math.round(fx.ticks * scale));
   }
 
   // Can this hostile see (and so target) the player right now?
   wantsTarget(game, p, pdist) {
     if (p.dead || p.creative || p.spectator || pdist > 20) return false;
+    if (this.def.neutral && !(this.angry > 0)) return false;
+    if (p.effects && p.effects.invisibility && pdist > 3) return false;
     if (this.def.nightOnly && this.lastHitBy !== 'player') {
       const l = game.world.getLight(Math.floor(this.x), Math.floor(this.y + 0.5), Math.floor(this.z));
       if (game.isDay() && (l >> 4) > 9) return false;
@@ -188,6 +232,18 @@ export class Mob extends Entity {
       return;
     }
     if (this.growth < 0) { this.growth++; if (this.growth === 0) this.resize(); }
+    if (this.angry > 0) this.angry--;
+    if (this.effects) {
+      for (const [name, e] of Object.entries(this.effects)) {
+        if (name === 'poison' && this.age % Math.max(1, 25 >> e.amp) === 0 && this.health > 1) this.hurt(game, 1, undefined, undefined, 'magic');
+        if (name === 'regeneration' && this.age % Math.max(1, 50 >> e.amp) === 0) this.health = Math.min(this.def.health, this.health + 1);
+        if (--e.time <= 0) delete this.effects[name];
+      }
+    }
+    // gloamers hate water
+    if (this.def.teleports && (this.inWater || (game.rain > 0.5 && game.dim === 'overworld' && world.rainHeight(Math.floor(this.x), Math.floor(this.z)) < this.y))) {
+      if (this.age % 20 === 0) { this.hurt(game, 1, undefined, undefined, 'drown'); this.teleport(game); }
+    }
     if (this.love > 0) {
       this.love--;
       if (this.age % 10 === 0) game.particles.heart(this.x, this.y + this.h + 0.2, this.z);
@@ -319,6 +375,7 @@ export class Mob extends Entity {
     }
     this.yaw = this.bodyYaw;
     if (!this.onGround && !this.inWater) { ax *= 0.2; az *= 0.2; }
+    if (this.effects && this.effects.slowness) { const f = Math.max(0, 1 - 0.15 * (this.effects.slowness.amp + 1)); ax *= f; az *= f; }
 
     const isChicken = this.type === 'chicken';
     this.physics(world, ax, az, { maxFall: isChicken ? 0.12 : 0, climb: this.def.climb && this.target });
@@ -391,6 +448,11 @@ export class Mob extends Entity {
 
   interact(game, stack) {
     if (this.dead) return false;
+    if (this.type === 'cow' && !this.baby && stack && stack.id === I.bucket) {
+      game.replaceHeld({ id: I.milk_bucket, count: 1 });
+      game.audio.play('milk', this.x, this.y + 1, this.z);
+      return 'milked';
+    }
     if (this.type === 'sheep' && !this.sheared && !this.baby && stack && stack.id === I.shears) {
       this.sheared = true;
       const n = 1 + Math.floor(Math.random() * 3);
@@ -475,8 +537,19 @@ export class Projectile extends Entity {
         const r = rayBox(this.x, this.y, this.z, dx, dy, dz, e.x - e.w - 0.1, e.y - 0.1, e.z - e.w - 0.1, e.x + e.w + 0.1, e.y + e.h + 0.1, e.z + e.w + 0.1);
         if (r && r.t <= best) { best = r.t; target = e; }
       };
-      for (const e of game.entities) if (e instanceof Mob) consider(e);
+      const considerBoxes = (e) => {
+        if (e === this.owner && this.age < 5) return;
+        for (const b of e.hitBoxes()) {
+          const r = rayBox(this.x, this.y, this.z, dx, dy, dz, b[0] - 0.1, b[1] - 0.1, b[2] - 0.1, b[3] + 0.1, b[4] + 0.1, b[5] + 0.1);
+          if (r && r.t <= best) { best = r.t; target = e; }
+        }
+      };
+      for (const e of game.entities) {
+        if (e instanceof Mob) consider(e);
+        else if (e.targetable && e.hitBoxes && e !== this) considerBoxes(e);
+      }
       consider(game.player);
+      if (game.remotePlayers) for (const rp of game.remotePlayers()) if (rp !== this.owner) consider(rp);
       if (target) {
         this.hitEntity(game, target, sp);
         return;
@@ -502,10 +575,17 @@ export class Projectile extends Entity {
     if (this.kind === 'arrow') {
       let dmg = Math.ceil(speed * this.damage);
       if (this.crit) dmg += Math.floor(Math.random() * (dmg / 2 + 2));
-      const src = this.owner && this.owner.isPlayer ? 'player' : 'arrow';
-      if (e.isPlayer) e.damage(game, dmg, 'arrow', this.x - this.vx, this.z - this.vz);
-      else e.hurt(game, dmg, this.x - this.vx, this.z - this.vz, src);
+      const src = this.owner && this.owner.isPlayer ? 'arrow_player' : 'arrow';
+      if (e.isRemote) game.net && game.net.hitRemote(e, dmg, 'arrow', this.x - this.vx, this.z - this.vz);
+      else if (e.isPlayer) e.damage(game, dmg, 'arrow', this.x - this.vx, this.z - this.vz);
+      else if (e instanceof Mob) {
+        if (e.hurt(game, dmg, this.x - this.vx, this.z - this.vz, src) || !e.def.teleports) game.audio.play('arrow_hit', this.x, this.y, this.z);
+        else this.removed = false; // dodged: keep flying
+        return;
+      } else if (e.hit) e.hit(game, dmg, src);
       game.audio.play('arrow_hit', this.x, this.y, this.z);
+    } else if (this.kind === 'pearl' || this.kind === 'potion') {
+      this.land(game);
     } else {
       if (e.isPlayer) e.damage(game, 0, 'thrown', this.x - this.vx, this.z - this.vz);
       else e.hurt(game, 0, this.x - this.vx, this.z - this.vz, 'player');
@@ -513,7 +593,51 @@ export class Projectile extends Entity {
     }
   }
 
+  // Void pearls carry their thrower; splash potions burst over an area.
+  land(game) {
+    this.removed = true;
+    if (this.kind === 'pearl') {
+      const o = this.owner;
+      for (let i = 0; i < 20; i++) game.particles.portal(this.x + (Math.random() - 0.5), this.y + Math.random(), this.z + (Math.random() - 0.5));
+      if (o && o.isPlayer && !o.dead) {
+        if (o.vehicle) game.dismount();
+        o.x = o.px = this.x; o.y = o.py = this.y + 0.1; o.z = o.pz = this.z;
+        o.vx = o.vy = o.vz = 0; o.fallDistance = 0;
+        let guard = 0;
+        while (!boxFree(game.world, o.x, o.y, o.z, o.w, o.h) && guard++ < 4) o.y += 1;
+        o.py = o.y;
+        o.damage(game, 5, 'fall');
+        game.audio.play('teleport', o.x, o.y, o.z);
+      }
+      return;
+    }
+    // splash potion
+    const fx = potionEffect({ id: this.item, pot: this.pot });
+    const col = fx ? EFFECTS[fx.effect].color : [120, 140, 255];
+    game.audio.play('glass_break', this.x, this.y, this.z);
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3;
+      game.particles.effect(this.x, this.y + 0.2, this.z, col, Math.cos(a) * s, Math.random() * 2, Math.sin(a) * s);
+    }
+    if (!fx) return;
+    const hitOne = (e) => {
+      const d = Math.hypot(e.x - this.x, e.y + e.h / 2 - this.y, e.z - this.z);
+      if (d > 4) return;
+      const scale = 1 - d / 4 * 0.75;
+      if (e.isPlayer) e.applyPotion(game, fx, scale);
+      else if (e.applyPotion) e.applyPotion(game, fx, scale);
+    };
+    const p = game.player;
+    if (p && !p.dead) hitOne(p);
+    for (const e of game.entities) if (e instanceof Mob && !e.dead) hitOne(e);
+  }
+
   hitBlock(game, hit) {
+    if (this.kind === 'pearl' || this.kind === 'potion') {
+      this.x -= this.vx * 0.05; this.y -= this.vy * 0.05; this.z -= this.vz * 0.05;
+      this.land(game);
+      return;
+    }
     if (this.kind === 'arrow') {
       this.stuck = true; this.sx = hit.x + 0.5; this.sy = hit.y + 0.5; this.sz = hit.z + 0.5;
       this.x -= this.vx * 0.05; this.y -= this.vy * 0.05; this.z -= this.vz * 0.05;
@@ -594,6 +718,7 @@ export class ItemEntity extends Entity {
     else this.vy -= 0.04;
     if (this.inLava) { this.removed = true; game.particles.smoke(this.x, this.y, this.z); game.audio.play('fizz', this.x, this.y, this.z); return; }
     if (SOLID[world.getBlock(Math.floor(this.x), Math.floor(this.y + 0.1), Math.floor(this.z))]) this.vy = 0.1;
+    if (world.getBlock(Math.floor(this.x), Math.floor(this.y + 0.1), Math.floor(this.z)) === B.fire) { this.removed = true; game.particles.smoke(this.x, this.y, this.z); return; }
     const r = moveBox(world, this, this.vx, this.vy, this.vz);
     this.applyHits(r);
     const f = this.onGround ? blockFriction(world.getBlock(Math.floor(this.x), Math.floor(this.y - 0.5), Math.floor(this.z))) * 0.98 : 0.98;

@@ -38,7 +38,12 @@ export function selectionBoxAt(world, x, y, z, id, meta) {
 export function selectionBox(id, meta) {
   if (id === 0 || isLiquid(id)) return null;
   const rt = RENDER_TYPE[id];
-  if (rt === RENDER.PORTAL) return null;
+  if (rt === RENDER.PORTAL || rt === RENDER.FIRE || rt === RENDER.VOIDGATE) return null;
+  if (rt === RENDER.WIRE) return [0, 0, 0, 1, 1 / 16, 1];
+  if (rt === RENDER.RAIL) {
+    const shape = id === B.rail ? meta & 15 : meta & 7;
+    return shape >= 2 && shape <= 5 ? [0, 0, 0, 1, 0.5, 1] : [0, 0, 0, 1, 2 / 16, 1];
+  }
   if (rt === RENDER.CROP) return [0, 0, 0, 1, 0.25 + (meta & 7) * 0.08, 1];
   if (rt === RENDER.SHAPE) return FULL;
   if (rt === RENDER.CROSS) {

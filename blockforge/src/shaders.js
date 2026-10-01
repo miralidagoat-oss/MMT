@@ -124,6 +124,7 @@ uniform float uTime;
 uniform float uRain;
 uniform float uDay;
 uniform mat3 uCelestial;
+uniform float uSkyMode;
 ${COMMON}
 in vec2 vPos;
 out vec4 outColor;
@@ -136,6 +137,22 @@ void main() {
   vec3 col = mix(horizon, uZenith, smoothstep(0.0, 0.5, h));
   col = mix(col, horizon * 0.72, smoothstep(0.0, -0.4, h));
   if (uFog.z > 0.5) { outColor = vec4(uFogColor, 1.0); return; }
+  if (uSkyMode > 0.5) {
+    // the Void: a dark violet gradient, drifting haze and stars in every direction
+    vec3 c = mix(vec3(0.02, 0.01, 0.035), vec3(0.07, 0.035, 0.1), smoothstep(-0.7, 0.7, h));
+    float neb = (0.5 + 0.5 * sin(dir.x * 6.0 + uTime * 0.015) * sin(dir.z * 5.0 - dir.y * 3.0 + uTime * 0.01)) * (0.5 + 0.5 * sin(dir.y * 9.0 + dir.x * 4.0));
+    c += vec3(0.09, 0.03, 0.15) * pow(neb, 3.0) + vec3(0.02, 0.05, 0.08) * pow(1.0 - abs(h), 6.0);
+    vec3 g = dir * 150.0;
+    vec3 cell = floor(g);
+    float hs = hash(cell);
+    if (hs > 0.993) {
+      float d = length(g - cell - 0.5);
+      float tw = 0.7 + 0.3 * sin(uTime * (1.0 + hs * 20.0) + hs * 200.0);
+      c += mix(vec3(0.8, 0.85, 1.0), vec3(0.85, 0.7, 1.0), hash(cell + 3.0)) * smoothstep(0.6, 0.05, d) * tw;
+    }
+    outColor = vec4(mix(c, uFogColor, 0.15), 1.0);
+    return;
+  }
   // stars rotate with the sky
   if (uStars > 0.01) {
     vec3 sd = uCelestial * dir;

@@ -722,6 +722,11 @@ function particle(t, name, r) {
     case 'p_xp': disc(8, 8, 5, [150, 230, 40]); disc(7, 7, 3, [220, 255, 120]); t.set(6, 6, [255, 255, 220]); break;
     case 'p_heart': for (const [x, y] of [[4, 5], [5, 4], [6, 4], [7, 5], [8, 5], [9, 4], [10, 4], [11, 5], [4, 6], [11, 6], [5, 8], [10, 8], [6, 9], [9, 9], [7, 10], [8, 10]]) t.set(x, y, [220, 40, 50]); for (let y = 5; y < 10; y++) for (let x = 5; x < 11; x++) if (!(y >= 8 && (x < 6 + y - 8 || x > 9 - (y - 8)))) t.set(x, y, [240, 70, 80]); break;
     case 'p_glyph': for (let i = 0; i < 9; i++) { const x = 4 + Math.floor(r() * 8), y = 3 + Math.floor(r() * 10); t.set(x, y, [230, 230, 255]); t.set(x + (r() < 0.5 ? 1 : 0), y + 1, [200, 200, 255]); } break;
+    case 'p_effect': disc(8, 8, 3.5, [255, 255, 255]); t.set(8, 3, [255, 255, 255]); t.set(8, 12, [255, 255, 255]); t.set(3, 8, [255, 255, 255]); t.set(12, 8, [255, 255, 255]); break;
+    case 'p_note': for (let y = 3; y < 11; y++) { t.set(9, y, [255, 255, 255]); t.set(10, y, [235, 235, 235]); } disc(7, 11, 2.6, [255, 255, 255]); t.set(11, 3, [255, 255, 255]); t.set(12, 4, [255, 255, 255]); break;
+    case 'p_spark_dust': disc(8, 8, 2.5, [255, 60, 40]); t.set(7, 7, [255, 160, 140]); break;
+    case 'p_void': disc(8, 8, 2, [230, 200, 255]); for (let i = 1; i < 5; i++) { t.set(8, 8 + i, [170, 120, 240]); t.set(8, 8 - i, [170, 120, 240]); t.set(8 + i, 8, [170, 120, 240]); t.set(8 - i, 8, [170, 120, 240]); } break;
+    case 'p_fish': disc(8, 8, 3, [200, 230, 255]); t.set(7, 7, [255, 255, 255]); break;
     case 'p_crit': for (let i = 2; i < 14; i++) { t.set(i, 8, [255, 255, 200]); t.set(8, i, [255, 255, 200]); } t.set(6, 6, [255, 240, 180]); t.set(10, 10, [255, 240, 180]); t.set(6, 10, [255, 240, 180]); t.set(10, 6, [255, 240, 180]); break;
     case 'p_explosion':
       t.each((x, y) => { const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8); if (d < 7.5 && r() > 0.1) t.set(x, y, gray(255 - d * 14 - r() * 30)); });
@@ -944,6 +949,259 @@ function rift(t, frame) {
   });
 }
 
+
+// ---------------------------------------------------------------------------
+// Round three: spark circuits, rails, brewing, the void, fire and extras.
+function clear(t) { t.fill([0, 0, 0], 0); }
+
+function sparkLine(t, r) {
+  clear(t);
+  for (let y = 0; y < 16; y++) for (let x = 6; x < 10; x++) {
+    if ((x === 6 || x === 9) && r() < 0.35) continue;
+    t.set(x, y, gray(200 + Math.floor(r() * 55)));
+  }
+}
+function sparkDot(t, r) {
+  clear(t);
+  for (let y = 5; y < 11; y++) for (let x = 5; x < 11; x++) {
+    if ((x === 5 || x === 10) && (y === 5 || y === 10)) continue;
+    t.set(x, y, gray(205 + Math.floor(r() * 50)));
+  }
+}
+function sparkTorch(t, on) {
+  clear(t);
+  for (let y = 8; y < 16; y++) { t.set(7, y, [150, 110, 60]); t.set(8, y, [110, 78, 40]); }
+  const a = on ? [255, 90, 70] : [110, 40, 34], b = on ? [220, 30, 20] : [80, 26, 22];
+  t.set(7, 6, a); t.set(8, 6, b); t.set(7, 7, b); t.set(8, 7, mul(b, 0.8));
+  if (on) { t.set(6, 6, [255, 140, 120], 120); t.set(9, 7, [255, 140, 120], 120); }
+}
+function sparkTorchTop(t, on) {
+  t.each((x, y) => t.set(x, y, on ? ((x + y) % 2 ? [255, 70, 50] : [255, 140, 110]) : ((x + y) % 2 ? [90, 30, 26] : [120, 44, 36])));
+}
+function leverTex(t) {
+  clear(t);
+  for (let y = 0; y < 16; y++) { t.set(7, y, [150, 110, 60]); t.set(8, y, [112, 80, 42]); }
+  for (let y = 0; y < 6; y++) { t.set(7, y, [176, 176, 176]); t.set(8, y, [128, 128, 128]); }
+}
+function repeaterTop(t, r, on) {
+  stone(t, r);
+  t.each((x, y) => t.set(x, y, mul(t.get(x, y), 1.05)));
+  const red = on ? [255, 60, 40] : [120, 30, 26];
+  // a red trace down the middle and an arrow pointing forward (up)
+  for (let y = 3; y < 15; y++) t.set(7, y, red), t.set(8, y, mul(red, 0.85));
+  for (let k = 0; k < 4; k++) { t.set(7 - k, 3 + k, red); t.set(8 + k, 3 + k, red); }
+  for (let x = 0; x < 16; x++) { t.set(x, 0, gray(150)); t.set(x, 15, gray(90)); }
+}
+function sparkLamp(t, r, on) {
+  t.each((x, y) => {
+    const cell = (x % 4 === 0) || (y % 4 === 0);
+    let c = on ? (cell ? [170, 90, 40] : mix([255, 230, 170], [255, 170, 80], r())) : (cell ? [56, 36, 24] : mix([110, 66, 40], [90, 54, 32], r()));
+    t.set(x, y, c);
+  });
+  for (let i = 0; i < 16; i++) { const e = on ? [140, 70, 30] : [44, 28, 20]; t.set(i, 0, e); t.set(0, i, e); t.set(i, 15, e); t.set(15, i, e); }
+}
+function pistonFace(t, r, sticky) {
+  planks(t, r, sticky ? [176, 140, 60] : [168, 132, 82]);
+  if (sticky) t.each((x, y) => { if (x > 1 && y > 1 && x < 14 && y < 14) t.set(x, y, mix([214, 150, 40], [250, 196, 80], r() * 0.6), 255); });
+  for (let i = 0; i < 16; i++) for (const [a, b] of [[i, 0], [0, i], [i, 15], [15, i]]) t.set(a, b, [140, 140, 146]);
+}
+function pistonSide(t, r) {
+  cobble(t, r, [124, 124, 124], [70, 70, 70], 9);
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 16; x++) t.set(x, y, mul([168, 132, 82], 0.85 + r() * 0.2));
+  for (let x = 0; x < 16; x++) { t.set(x, 4, [96, 96, 100]); }
+}
+function pistonBottom(t, r) {
+  cobble(t, r, [120, 120, 120], [66, 66, 66], 9);
+  t.rect(5, 5, 6, 6, [150, 150, 156]); t.rect(6, 6, 4, 4, [110, 110, 116]);
+}
+function pistonInner(t, r) {
+  cobble(t, r, [112, 112, 112], [60, 60, 60], 9);
+  t.rect(6, 6, 4, 4, [168, 132, 82]);
+}
+function noteBlock(t, r) {
+  planks(t, r, [128, 82, 52]);
+  const n = [40, 24, 16];
+  for (let y = 3; y < 11; y++) t.set(10, y, n);
+  t.rect(7, 10, 3, 2, n); t.set(11, 3, n); t.set(12, 4, n);
+}
+function daylightTop(t, r) {
+  t.each((x, y) => {
+    const frame = x % 5 === 0 || y % 5 === 0 || x === 15 || y === 15;
+    t.set(x, y, frame ? [226, 220, 210] : mix([60, 90, 140], [110, 150, 200], r() * 0.6 + (x + y) / 60));
+  });
+}
+function daylightSide(t, r) { planks(t, r, [150, 112, 64]); for (let y = 0; y < 10; y++) for (let x = 0; x < 16; x++) t.set(x, y, [0, 0, 0], 0); t.each((x, y) => { if (y >= 10 && y <= 10) t.set(x, y, [226, 220, 210]); }); }
+function sparkBlock(t, r) {
+  metalBlock(t, r, [196, 30, 24]);
+  for (let i = 3; i < 13; i += 4) for (let k = 2; k < 14; k++) { t.set(i, k, [130, 14, 10]); t.set(k, i, [130, 14, 10]); }
+}
+function trapdoor(t, r) {
+  planks(t, r, [156, 118, 70]);
+  for (const [x0, y0] of [[3, 3], [9, 3], [3, 9], [9, 9]]) t.rect(x0, y0, 4, 4, [0, 0, 0], 0);
+  for (let i = 0; i < 16; i++) { t.set(i, 0, [110, 80, 44]); t.set(i, 15, [110, 80, 44]); t.set(0, i, [110, 80, 44]); t.set(15, i, [110, 80, 44]); }
+}
+function dispenserFront(t, r, vertical) {
+  cobble(t, r, [120, 120, 120], [66, 66, 66], 9);
+  if (vertical) {
+    t.each((x, y) => { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 4.5) t.set(x, y, d < 3 ? [20, 20, 22] : [70, 70, 74]); });
+  } else {
+    t.rect(4, 5, 8, 6, [70, 70, 74]); t.rect(5, 6, 6, 4, [20, 20, 22]);
+  }
+}
+function hopperTop(t) {
+  t.each((x, y) => {
+    const rim = x < 2 || y < 2 || x > 13 || y > 13;
+    t.set(x, y, rim ? mix([70, 70, 74], [100, 100, 106], (x + y) / 30) : [26, 26, 30]);
+  });
+}
+function hopperSide(t, r) { metalBlock(t, r, [74, 74, 80]); }
+function railTex(t, r, kind, on) {
+  clear(t);
+  const iron = kind === 'powered' ? [214, 172, 40] : [176, 176, 180], ironD = mul(iron, 0.7);
+  const wood = [118, 84, 46], woodD = [86, 60, 32];
+  for (const y of [1, 5, 9, 13]) for (let x = 1; x < 15; x++) { t.set(x, y, wood); t.set(x, y + 1, woodD); }
+  for (let y = 0; y < 16; y++) { t.set(2, y, iron); t.set(3, y, ironD); t.set(12, y, iron); t.set(13, y, ironD); }
+  if (kind === 'powered') for (let y = 0; y < 16; y++) { t.set(7, y, on ? [255, 60, 40] : [100, 28, 24]); t.set(8, y, on ? [210, 30, 20] : [80, 20, 18]); }
+  if (kind === 'detector') { t.rect(5, 5, 6, 6, [120, 120, 120]); t.rect(6, 6, 4, 4, on ? [255, 60, 40] : [110, 30, 26]); }
+}
+function railCorner(t) {
+  clear(t);
+  const iron = [176, 176, 180], ironD = mul(iron, 0.7), wood = [118, 84, 46], woodD = [86, 60, 32];
+  // sleepers radiate around the corner at (16, 16)
+  for (let a = 0.1; a < Math.PI / 2; a += 0.38) {
+    for (let d = 2; d < 15; d += 0.5) {
+      const x = Math.floor(16 - Math.cos(a) * d), y = Math.floor(16 - Math.sin(a) * d);
+      t.put(x, y, wood); t.put(x + 1, y, woodD);
+    }
+  }
+  t.each((x, y) => {
+    const d = Math.hypot(x + 0.5 - 16, y + 0.5 - 16);
+    if (Math.abs(d - 3.5) < 0.8 || Math.abs(d - 13.5) < 0.8) t.set(x, y, iron);
+    else if (Math.abs(d - 4.5) < 0.6 || Math.abs(d - 12.5) < 0.6) t.set(x, y, ironD);
+  });
+}
+function brewingRod(t) {
+  clear(t);
+  for (let y = 0; y < 16; y++) { t.set(7, y, [238, 190, 70]); t.set(8, y, [190, 130, 40]); }
+}
+function duskstone(t, r) {
+  speckle(t, r, [206, 196, 214], 14, 0.6);
+  for (let i = 0; i < 9; i++) { const x = Math.floor(r() * 15), y = Math.floor(r() * 15); t.set(x, y, [160, 150, 172]); t.set(x + 1, y, [176, 166, 188]); }
+}
+function starFrameTop(t, r) {
+  speckle(t, r, [46, 92, 96], 12, 0.5);
+  t.each((x, y) => { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 4) t.set(x, y, [16, 30, 36]); else if (d < 5) t.set(x, y, [120, 200, 190]); });
+}
+function starFrameSide(t, r) {
+  duskstone(t, r);
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 16; x++) t.set(x, y, mix([46, 92, 96], [70, 130, 130], r() * 0.5));
+  for (let x = 0; x < 16; x += 4) t.set(x + 1, 2, [150, 230, 220]);
+}
+function starFrameEye(t, r) {
+  t.each((x, y) => {
+    const d = Math.hypot(x - 7.5, y - 7.5) / 8;
+    let c = mix([150, 120, 255], [20, 16, 60], Math.min(1, d * 1.4));
+    if (r() < 0.04) c = [255, 255, 255];
+    t.set(x, y, c);
+  });
+  t.rect(7, 7, 2, 2, [255, 250, 220]);
+}
+function voidStalk(t, r) {
+  t.each((x, y) => {
+    const v = Math.sin(x * 1.3 + Math.floor(y / 3) * 2.1) * 0.5 + 0.5;
+    t.set(x, y, mix([70, 40, 90], [140, 100, 170], v * 0.7 + r() * 0.3));
+  });
+}
+function voidBloom(t, r) {
+  t.each((x, y) => {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    const petal = Math.sin(Math.atan2(y - 7.5, x - 7.5) * 5) * 0.5 + 0.5;
+    t.set(x, y, d < 3 ? [250, 236, 255] : mix([140, 90, 190], [220, 180, 250], petal * 0.8 + r() * 0.2));
+  });
+}
+function astralBricks(t, r) {
+  t.each((x, y) => {
+    const edge = x % 8 === 0 || y % 8 === 0;
+    t.set(x, y, edge ? [70, 66, 130] : mix([110, 106, 190], [136, 132, 214], r() * 0.5 + ((x % 8) + (y % 8)) / 28));
+  });
+}
+function astralPillar(t, r, top) {
+  t.each((x, y) => {
+    if (top) { const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)); t.set(x, y, Math.floor(d) % 3 === 0 ? [80, 76, 150] : mix([116, 112, 196], [140, 136, 220], r() * 0.4)); }
+    else t.set(x, y, x % 5 === 0 ? [80, 76, 150] : mix([116, 112, 196], [140, 136, 220], r() * 0.4));
+  });
+}
+function glowRod(t) {
+  clear(t);
+  for (let y = 0; y < 16; y++) { t.set(7, y, [255, 255, 250]); t.set(8, y, [220, 214, 240]); }
+  t.rect(6, 15, 4, 1, [140, 120, 170]); t.rect(6, 14, 4, 1, [180, 160, 210]);
+}
+function wyrmEgg(t, r) {
+  t.each((x, y) => t.set(x, y, r() < 0.1 ? [120, 40, 160] : mix([14, 8, 22], [36, 20, 48], r())));
+}
+function cobwebTex(t) {
+  clear(t);
+  const c = [230, 230, 236];
+  for (let i = 0; i < 16; i++) { t.set(i, i, c); t.set(15 - i, i, c); t.set(7, i, c); t.set(i, 8, c); }
+  for (const rad of [3, 6]) for (let a = 0; a < Math.PI * 2; a += 0.15) t.put(Math.round(7.5 + Math.cos(a) * rad), Math.round(7.5 + Math.sin(a) * rad), c);
+}
+function ironBars(t) {
+  clear(t);
+  const a = [150, 150, 156], b = [100, 100, 106];
+  for (let y = 0; y < 16; y++) for (const x of [1, 5, 9, 13]) { t.set(x, y, a); t.set(x + 1, y, b); }
+  for (let x = 0; x < 16; x++) { t.set(x, 1, a); t.set(x, 14, b); }
+}
+function lanternTex(t, r) {
+  clear(t);
+  const frame = [54, 56, 66], glow = [255, 200, 90], glowD = [230, 140, 40];
+  // side art: rows 9..15, cols 5..10
+  for (let y = 9; y < 16; y++) for (let x = 5; x < 11; x++) {
+    const edge = x === 5 || x === 10 || y === 9 || y === 15;
+    t.set(x, y, edge ? frame : (y < 12 ? glow : glowD));
+  }
+  // cap: rows 7..8, cols 6..9
+  for (let y = 7; y < 9; y++) for (let x = 6; x < 10; x++) t.set(x, y, frame);
+  // top art: rows 0..5, cols 0..5
+  for (let y = 0; y < 6; y++) for (let x = 0; x < 6; x++) t.set(x, y, (x === 0 || y === 0 || x === 5 || y === 5) ? frame : [80, 82, 92]);
+  void r;
+}
+function chainTex(t) {
+  clear(t);
+  for (let y = 0; y < 16; y++) { const link = y % 4; if (link === 0 || link === 3) { t.set(7, y, [70, 72, 84]); t.set(8, y, [50, 52, 62]); } else { t.set(6, y, [80, 82, 94]); t.set(9, y, [50, 52, 62]); } }
+}
+function cakeTex(t, r, part) {
+  const sponge = [214, 160, 96], icing = [248, 244, 238], cherry = [210, 30, 40];
+  if (part === 'top') { t.each((x, y) => t.set(x, y, mul(icing, 0.96 + r() * 0.06))); for (const [x, y] of [[4, 4], [11, 5], [7, 10], [3, 11], [12, 12]]) t.set(x, y, cherry); }
+  else if (part === 'bottom') t.each((x, y) => t.set(x, y, mul(sponge, 0.8 + r() * 0.1)));
+  else if (part === 'inner') t.each((x, y) => t.set(x, y, y < 9 ? mul(icing, 0.95) : y < 10 ? [180, 40, 50] : mul(sponge, 0.9 + r() * 0.1)));
+  else t.each((x, y) => t.set(x, y, y < 10 ? mul(icing, 0.95 + r() * 0.05) : y === 10 ? [200, 60, 70] : mul(sponge, 0.92 + r() * 0.1)));
+}
+function fireTex(t, frame) {
+  clear(t);
+  const P = Math.PI * 2, f = frame / 16;
+  t.each((x, y) => {
+    const u = x / 16, v = y / 16;
+    let h = 0.55 + Math.sin(P * (u * 2 + f)) * 0.12 + Math.sin(P * (u * 5 - f * 2)) * 0.08 + Math.sin(P * (u * 9 + f * 3)) * 0.05;
+    const k = (v - (1 - h)) / h; // 0 at the flame tip, 1 at the base
+    if (k < 0) return;
+    const flick = Math.sin(P * (u * 7 + v * 3 - f * 4)) * 0.15;
+    const heat = Math.min(1, k + flick);
+    const c = heat > 0.75 ? mix([255, 200, 60], [255, 240, 170], (heat - 0.75) * 4) : heat > 0.35 ? mix([240, 90, 10], [255, 200, 60], (heat - 0.35) * 2.5) : mix([160, 30, 0], [240, 90, 10], heat / 0.35);
+    t.set(x, y, c, k < 0.08 ? 160 : 255);
+  });
+}
+function voidGate(t, frame) {
+  const f = frame / 16;
+  const rr = rng(4242);
+  t.each((x, y) => t.set(x, y, mix([6, 8, 20], [16, 26, 44], (Math.sin((x + y * 0.7) * 0.5 + f * 6.28) * 0.5 + 0.5) * 0.6)));
+  for (let i = 0; i < 22; i++) {
+    const sx = Math.floor(rr() * 16), sy = Math.floor(rr() * 16), ph = rr();
+    const b = 0.5 + 0.5 * Math.sin((f + ph) * Math.PI * 2);
+    const col = [[150, 220, 220], [120, 160, 255], [220, 200, 255]][i % 3];
+    t.set((sx + Math.floor(f * 4 * (i % 3 + 1))) % 16, sy, mix([10, 14, 30], col, b));
+  }
+}
+
 function paintBlock(name, frame) {
   const t = new Tex();
   const r = rng(hashSeed('bf:' + name) + frame * 7919);
@@ -1075,6 +1333,62 @@ function paintBlock(name, frame) {
     case 'hay_top': hay(t, r, true); break;
     case 'quartz_block': metalBlock(t, r, [232, 226, 216]); break;
     case 'rift': rift(t, frame); break;
+    case 'fire': fireTex(t, frame); break;
+    case 'void_gate': voidGate(t, frame); break;
+    case 'spark_ore': ore(t, r, [220, 30, 24], [255, 110, 90], [150, 16, 12], 6); break;
+    case 'spark_line': sparkLine(t, r); break;
+    case 'spark_dot': sparkDot(t, r); break;
+    case 'spark_torch': sparkTorch(t, true); break;
+    case 'spark_torch_off': sparkTorch(t, false); break;
+    case 'spark_torch_top': sparkTorchTop(t, true); break;
+    case 'spark_torch_top_off': sparkTorchTop(t, false); break;
+    case 'lever': leverTex(t); break;
+    case 'repeater': repeaterTop(t, r, false); break;
+    case 'repeater_on': repeaterTop(t, r, true); break;
+    case 'spark_lamp': sparkLamp(t, r, false); break;
+    case 'spark_lamp_on': sparkLamp(t, r, true); break;
+    case 'piston_top': pistonFace(t, r, false); break;
+    case 'piston_top_sticky': pistonFace(t, r, true); break;
+    case 'piston_side': pistonSide(t, r); break;
+    case 'piston_bottom': pistonBottom(t, r); break;
+    case 'piston_inner': pistonInner(t, r); break;
+    case 'note_block': noteBlock(t, r); break;
+    case 'daylight_top': daylightTop(t, r); break;
+    case 'daylight_side': daylightSide(t, r); break;
+    case 'spark_block': sparkBlock(t, r); break;
+    case 'oak_trapdoor': trapdoor(t, r); break;
+    case 'dispenser_front': dispenserFront(t, r, false); break;
+    case 'dispenser_front_v': dispenserFront(t, r, true); break;
+    case 'hopper_top': hopperTop(t); break;
+    case 'hopper_side': hopperSide(t, r); break;
+    case 'rail': railTex(t, r, 'plain', false); break;
+    case 'rail_corner': railCorner(t); break;
+    case 'powered_rail': railTex(t, r, 'powered', false); break;
+    case 'powered_rail_on': railTex(t, r, 'powered', true); break;
+    case 'detector_rail': railTex(t, r, 'detector', false); break;
+    case 'detector_rail_on': railTex(t, r, 'detector', true); break;
+    case 'brewing_base': cobble(t, r, [100, 100, 104], [56, 56, 60], 8); break;
+    case 'brewing_rod': brewingRod(t); break;
+    case 'duskstone': duskstone(t, r); break;
+    case 'duskstone_bricks': bricks(t, r, [206, 196, 214], [150, 140, 160], 4, 8); break;
+    case 'star_frame_top': starFrameTop(t, r); break;
+    case 'star_frame_side': starFrameSide(t, r); break;
+    case 'star_frame_eye': starFrameEye(t, r); break;
+    case 'void_stalk': voidStalk(t, r); break;
+    case 'void_bloom': voidBloom(t, r); break;
+    case 'astral_bricks': astralBricks(t, r); break;
+    case 'astral_pillar': astralPillar(t, r, false); break;
+    case 'astral_pillar_top': astralPillar(t, r, true); break;
+    case 'glow_rod': glowRod(t); break;
+    case 'wyrm_egg': wyrmEgg(t, r); break;
+    case 'cobweb': cobwebTex(t); break;
+    case 'iron_bars': ironBars(t); break;
+    case 'lantern': lanternTex(t, r); break;
+    case 'chain': chainTex(t); break;
+    case 'cake_top': cakeTex(t, r, 'top'); break;
+    case 'cake_side': cakeTex(t, r, 'side'); break;
+    case 'cake_inner': cakeTex(t, r, 'inner'); break;
+    case 'cake_bottom': cakeTex(t, r, 'bottom'); break;
     case 'water': water(t, frame); break;
     case 'lava': lava(t, frame); break;
     case 'white': t.fill([255, 255, 255]); break;
@@ -1228,9 +1542,87 @@ function toolSprite(type, mat) {
   return s.render();
 }
 
+export const POTION_COLORS = {
+  water: [60, 90, 230], awkward: [80, 110, 210], swiftness: [110, 190, 230], slowness: [80, 96, 120],
+  strength: [190, 40, 40], weakness: [90, 90, 84], healing: [250, 80, 90], harming: [90, 20, 40],
+  regeneration: [220, 110, 190], poison: [90, 160, 50], fire_resistance: [240, 150, 50],
+  water_breathing: [50, 110, 200], night_vision: [60, 60, 200], invisibility: [180, 186, 200],
+  leaping: [120, 230, 90], slow_falling: [240, 220, 200],
+};
+const GLASS = [[150, 170, 190], [200, 214, 228], [240, 246, 252]];
+const tone3 = (c) => [mul(c, 0.6), c, mix(c, [255, 255, 255], 0.45)];
+
+function bottleSprite(color, splash) {
+  const s = new Sprite();
+  const g = s.mat(GLASS), liq = s.mat(tone3(color)), cork = s.mat([[100, 70, 40], [140, 100, 60], [180, 140, 90]]);
+  if (splash) {
+    s.disc(8, 10.5, 5, 4.8, g); s.disc(8, 11, 4, 3.6, liq);
+    s.poly([[6, 3], [10, 3], [10, 6], [6, 6]], g); s.poly([[6, 1], [10, 1], [10, 3], [6, 3]], cork);
+  } else {
+    s.disc(8, 10, 5.2, 5, g); s.disc(8, 10.6, 4.2, 3.8, liq);
+    s.poly([[7, 2], [9, 2], [9, 6], [7, 6]], g); s.poly([[6, 1], [10, 1], [10, 3], [6, 3]], cork);
+  }
+  return s.render();
+}
+
+function blockSprite(name, r) {
+  const s = new Sprite();
+  const stoneM = [[96, 96, 96], [130, 130, 130], [170, 170, 170]], woodM = [[110, 78, 40], [156, 118, 70], [190, 152, 100]];
+  switch (name) {
+    case 'lever': s.poly([[4, 11], [12, 11], [12, 14], [4, 14]], s.mat(stoneM)); s.line(7, 11, 10, 3, s.mat(HANDLE), 1); s.disc(10.5, 2.5, 1.5, 1.5, s.mat(MATERIAL.stone)); break;
+    case 'stone_button': s.poly([[4, 6], [12, 6], [12, 10], [4, 10]], s.mat(stoneM)); break;
+    case 'oak_button': s.poly([[4, 6], [12, 6], [12, 10], [4, 10]], s.mat(woodM)); break;
+    case 'stone_pressure_plate': s.poly([[1, 8], [15, 8], [15, 11], [1, 11]], s.mat(stoneM)); break;
+    case 'oak_pressure_plate': s.poly([[1, 8], [15, 8], [15, 11], [1, 11]], s.mat(woodM)); break;
+    case 'repeater': {
+      s.poly([[1, 9], [15, 9], [15, 13], [1, 13]], s.mat(stoneM));
+      const red = s.mat([[150, 20, 16], [230, 50, 36], [255, 140, 120]]);
+      s.line(4, 4, 4, 8, s.mat(HANDLE)); s.line(11, 5, 11, 8, s.mat(HANDLE));
+      s.put(4, 3, red); s.put(11, 4, red); s.line(4, 10, 11, 10, red);
+      break;
+    }
+    case 'hopper': {
+      const m = s.mat([[50, 50, 56], [82, 82, 90], [120, 120, 130]]);
+      s.poly([[1, 2], [15, 2], [15, 6], [11, 9], [11, 11], [9, 13], [7, 13], [5, 11], [5, 9], [1, 6]], m);
+      s.poly([[3, 3], [13, 3], [13, 5], [3, 5]], s.mat([[16, 16, 20], [26, 26, 30], [40, 40, 46]]));
+      break;
+    }
+    case 'brewing_stand': {
+      s.poly([[2, 12], [14, 12], [14, 14], [2, 14]], s.mat(stoneM));
+      s.line(8, 2, 8, 12, s.mat([[170, 110, 30], [238, 190, 70], [255, 230, 140]]));
+      s.disc(4, 10, 2, 2.4, s.mat(GLASS)); s.disc(12, 10, 2, 2.4, s.mat(GLASS));
+      break;
+    }
+    case 'oak_sign': s.poly([[1, 2], [15, 2], [15, 10], [1, 10]], s.mat(woodM)); s.line(8, 10, 8, 15, s.mat(HANDLE)); {
+      const ink = s.mat([[40, 30, 20], [60, 44, 30], [80, 60, 40]]);
+      s.line(3, 4, 12, 4, ink); s.line(3, 6, 10, 6, ink); s.line(3, 8, 11, 8, ink);
+    } break;
+    case 'lantern': {
+      const f = s.mat([[40, 42, 50], [64, 66, 78], [96, 98, 112]]);
+      s.poly([[4, 5], [12, 5], [12, 15], [4, 15]], f);
+      s.poly([[5, 7], [11, 7], [11, 13], [5, 13]], s.mat([[230, 140, 40], [255, 200, 90], [255, 240, 180]]));
+      s.poly([[6, 2], [10, 2], [10, 5], [6, 5]], f); s.put(7, 1, f); s.put(8, 1, f);
+      break;
+    }
+    case 'cake': {
+      s.poly([[1, 7], [15, 7], [15, 14], [1, 14]], s.mat([[170, 120, 70], [214, 160, 96], [236, 200, 140]]));
+      s.poly([[1, 5], [15, 5], [15, 9], [1, 9]], s.mat([[220, 216, 210], [248, 244, 238], [255, 255, 255]]));
+      const ch = s.mat([[160, 20, 30], [210, 30, 40], [250, 110, 110]]);
+      s.put(4, 4, ch); s.put(8, 3, ch); s.put(12, 4, ch);
+      break;
+    }
+    default: s.disc(8, 8, 5, 5, s.mat([[255, 0, 255], [255, 0, 255], [255, 0, 255]]));
+  }
+  void r;
+  return s.render();
+}
+
 function paintItem(name) {
   const r = rng(hashSeed('item:' + name));
   const parts = name.split('_');
+  if (name.startsWith('block_')) return blockSprite(name.slice(6), r);
+  if (name.startsWith('potion_')) return bottleSprite(POTION_COLORS[name.slice(7)] || [200, 0, 200], false);
+  if (name.startsWith('splash_potion_')) return bottleSprite(POTION_COLORS[name.slice(14)] || [200, 0, 200], true);
   if (parts.length === 2 && MATERIAL[parts[0]] && ['pickaxe', 'axe', 'shovel', 'sword', 'hoe'].includes(parts[1])) {
     return toolSprite(parts[1], parts[0]);
   }
@@ -1421,6 +1813,133 @@ function paintItem(name) {
     case 'gold_nugget': s.poly([[5, 10], [7, 6], [11, 7], [11, 11], [7, 12]], s.mat(MATERIAL.golden)); break;
     case 'ember_brick': s.poly([[2, 8], [5, 5], [14, 5], [14, 8], [11, 11], [2, 11]], s.mat([[60, 20, 20], [110, 36, 34], [150, 60, 50]])); break;
     case 'egg': s.disc(8, 8.5, 4, 5.2, s.mat([[200, 180, 150], [236, 220, 196], [255, 245, 230]])); break;
+    case 'spark_dust': {
+      const m = s.mat([[140, 16, 12], [220, 36, 26], [255, 120, 100]]);
+      s.poly([[3, 12], [6, 8], [9, 9], [13, 12], [9, 13]], m);
+      for (const [x, y] of [[5, 6], [10, 6], [12, 9], [3, 9]]) s.put(x, y, m);
+      break;
+    }
+    case 'minecart': {
+      const m = s.mat(MATERIAL.iron);
+      s.poly([[1, 5], [15, 5], [14, 11], [2, 11]], m);
+      s.poly([[3, 6], [13, 6], [12, 8], [4, 8]], s.mat([[40, 40, 44], [60, 60, 66], [80, 80, 88]]));
+      const w = s.mat([[30, 30, 34], [60, 60, 66], [90, 90, 96]]);
+      s.disc(4.5, 12.5, 1.8, 1.8, w); s.disc(11.5, 12.5, 1.8, 1.8, w);
+      break;
+    }
+    case 'boat': {
+      const m = s.mat([[110, 78, 40], [156, 118, 70], [190, 152, 100]]);
+      s.poly([[1, 7], [15, 7], [12, 12], [4, 12]], m);
+      s.line(2, 7, 14, 7, s.mat(HANDLE));
+      s.line(5, 4, 8, 7, s.mat(HANDLE)); s.line(11, 4, 8, 7, s.mat(HANDLE));
+      break;
+    }
+    case 'glass_bottle': {
+      const g = s.mat(GLASS);
+      s.disc(8, 10, 5.2, 5, g); s.poly([[7, 2], [9, 2], [9, 6], [7, 6]], g);
+      s.disc(8, 10.6, 3.6, 3.2, s.mat([[220, 230, 240], [236, 242, 250], [250, 252, 255]]));
+      break;
+    }
+    case 'sugar': s.poly([[3, 12], [6, 8], [10, 8], [13, 12]], s.mat([[220, 220, 224], [244, 244, 248], [255, 255, 255]])); break;
+    case 'glistering_melon': {
+      s.poly([[2, 12], [8, 3], [14, 12]], s.mat([[200, 140, 40], [250, 200, 70], [255, 240, 160]]));
+      s.line(2, 13, 14, 13, s.mat(MATERIAL.golden), 1);
+      break;
+    }
+    case 'golden_carrot': {
+      s.poly([[4, 13], [11, 5], [13, 7], [6, 14]], s.mat(MATERIAL.golden));
+      s.line(11, 5, 14, 2, s.mat([[40, 110, 30], [70, 160, 50], [120, 200, 80]]));
+      break;
+    }
+    case 'crawler_eye': case 'fermented_crawler_eye': {
+      const f = name.startsWith('ferm');
+      s.disc(8, 8.5, 5, 4.5, s.mat(f ? [[110, 60, 50], [150, 90, 70], [190, 130, 110]] : [[120, 20, 30], [190, 40, 50], [240, 110, 110]]));
+      s.disc(8, 8, 2, 2, s.mat([[10, 10, 10], [20, 20, 20], [40, 40, 40]]));
+      if (f) s.line(4, 4, 12, 12, s.mat([[60, 40, 30], [80, 56, 40], [100, 70, 50]]));
+      break;
+    }
+    case 'imp_horn': s.poly([[4, 13], [6, 13], [12, 3], [11, 2]], s.mat([[120, 30, 20], [180, 60, 30], [230, 120, 60]])); break;
+    case 'blast_powder': {
+      const m = s.mat([[50, 50, 54], [80, 80, 86], [120, 120, 128]]);
+      s.poly([[3, 12], [6, 7], [10, 7], [13, 12]], m);
+      for (const [x, y] of [[5, 5], [11, 6], [8, 4]]) s.put(x, y, m);
+      break;
+    }
+    case 'milk_bucket': {
+      const metal = s.mat(MATERIAL.iron);
+      s.poly([[3, 5], [13, 5], [12, 14], [4, 14]], metal);
+      s.line(3, 4, 5, 2, metal); s.line(5, 2, 11, 2, metal); s.line(11, 2, 13, 4, metal);
+      const milk = s.mat([[220, 220, 220], [250, 250, 250], [255, 255, 255]]);
+      s.line(4, 5, 12, 5, milk); s.line(4, 6, 12, 6, milk);
+      break;
+    }
+    case 'golden_apple': {
+      s.disc(8, 9.5, 5.2, 5, s.mat(MATERIAL.golden));
+      s.line(8, 2, 8, 4, s.mat(HANDLE));
+      s.poly([[9, 3], [12, 2], [11, 4]], s.mat([[40, 100, 30], [70, 150, 50], [110, 190, 80]]));
+      break;
+    }
+    case 'resin': s.disc(8, 9, 4.5, 4, s.mat([[180, 100, 20], [230, 150, 40], [255, 210, 120]])); break;
+    case 'iron_nugget': s.poly([[5, 10], [7, 6], [11, 7], [11, 11], [7, 12]], s.mat(MATERIAL.iron)); break;
+    case 'void_pearl': {
+      s.disc(8, 8, 5, 5, s.mat([[20, 60, 70], [40, 110, 120], [120, 200, 200]]));
+      s.disc(8, 8, 2.2, 2.2, s.mat([[10, 30, 34], [16, 46, 50], [30, 70, 76]]));
+      break;
+    }
+    case 'star_eye': {
+      s.disc(8, 8, 5, 5, s.mat([[40, 90, 70], [70, 150, 110], [150, 220, 180]]));
+      s.disc(8, 8, 2.4, 2.4, s.mat([[20, 20, 60], [40, 40, 120], [150, 150, 255]]));
+      s.put(8, 8, s.mat([[255, 255, 230], [255, 255, 230], [255, 255, 255]]));
+      break;
+    }
+    case 'void_fruit': case 'popped_void_fruit': {
+      const p = name.startsWith('popped');
+      s.disc(8, 9, 5, 5, s.mat(p ? [[150, 110, 180], [200, 160, 230], [240, 220, 255]] : [[80, 40, 100], [130, 80, 160], [190, 140, 220]]));
+      for (const [x, y] of [[6, 7], [10, 8], [8, 11]]) s.put(x, y, s.mat([[50, 20, 70], [70, 30, 90], [100, 50, 120]]));
+      break;
+    }
+    case 'glider': {
+      const m = s.mat([[110, 90, 150], [160, 140, 200], [210, 196, 240]]);
+      s.poly([[8, 3], [2, 6], [1, 14], [7, 9]], m); s.poly([[8, 3], [14, 6], [15, 14], [9, 9]], m);
+      s.line(8, 3, 8, 9, s.mat([[70, 60, 100], [90, 80, 130], [120, 110, 160]]));
+      break;
+    }
+    case 'fishing_rod': {
+      s.line(2, 14, 13, 2, s.mat(HANDLE), 1);
+      const str = s.mat([[200, 200, 200], [230, 230, 230], [255, 255, 255]]);
+      s.line(13, 2, 13, 10, str); s.put(12, 11, s.mat(MATERIAL.iron)); s.put(13, 11, s.mat(MATERIAL.iron));
+      return s.render(true);
+    }
+    case 'raw_silverfin': case 'cooked_silverfin': case 'raw_rosefin': case 'cooked_rosefin': case 'pufferfish': case 'glimmerfish': {
+      const cooked = name.startsWith('cooked');
+      const base = name.includes('silverfin') ? [[110, 120, 130], [170, 180, 190], [220, 228, 236]]
+        : name.includes('rosefin') ? [[150, 60, 60], [210, 110, 100], [250, 170, 150]]
+          : name === 'pufferfish' ? [[180, 150, 40], [230, 200, 70], [255, 240, 150]] : [[40, 120, 200], [80, 180, 240], [200, 240, 255]];
+      const c = cooked ? [[120, 70, 30], [170, 110, 60], [210, 160, 100]] : base;
+      if (name === 'pufferfish') { s.disc(8, 8, 5, 5, s.mat(c)); for (const [x, y] of [[3, 3], [13, 3], [3, 13], [13, 13], [8, 2], [8, 14]]) s.put(x, y, s.mat(c)); }
+      else { s.disc(7, 8, 5, 3.2, s.mat(c)); s.poly([[11, 8], [15, 5], [15, 11]], s.mat(c)); }
+      s.put(4, 7, s.mat([[10, 10, 10], [20, 20, 20], [30, 30, 30]]));
+      break;
+    }
+    case 'empty_map': case 'filled_map': {
+      s.poly([[2, 2], [14, 2], [14, 14], [2, 14]], s.mat([[180, 170, 130], [220, 210, 170], [240, 232, 200]]));
+      if (name === 'filled_map') {
+        s.poly([[4, 5], [9, 4], [11, 8], [6, 11], [4, 9]], s.mat([[70, 130, 60], [100, 170, 80], [140, 200, 110]]));
+        s.poly([[9, 9], [12, 9], [12, 12], [9, 12]], s.mat([[50, 90, 180], [80, 120, 210], [120, 160, 240]]));
+      } else s.disc(8, 8, 2.5, 2.5, s.mat(MATERIAL.iron));
+      break;
+    }
+    case 'shield': {
+      s.poly([[3, 2], [13, 2], [13, 9], [8, 14], [3, 9]], s.mat([[110, 78, 40], [156, 118, 70], [190, 152, 100]]));
+      s.line(8, 2, 8, 13, s.mat(MATERIAL.iron)); s.line(3, 6, 13, 6, s.mat(MATERIAL.iron));
+      break;
+    }
+    case 'bowl': s.poly([[2, 7], [14, 7], [12, 12], [4, 12]], s.mat([[110, 78, 40], [156, 118, 70], [190, 152, 100]])); break;
+    case 'mushroom_stew': {
+      s.poly([[2, 7], [14, 7], [12, 12], [4, 12]], s.mat([[110, 78, 40], [156, 118, 70], [190, 152, 100]]));
+      s.line(3, 7, 13, 7, s.mat([[150, 100, 60], [190, 140, 90], [220, 180, 130]]));
+      break;
+    }
     default: s.disc(8, 8, 5, 5, s.mat([[255, 0, 255], [255, 0, 255], [255, 0, 255]]));
   }
   void r;

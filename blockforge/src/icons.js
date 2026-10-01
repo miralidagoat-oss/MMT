@@ -20,9 +20,10 @@ export class Icons {
     c.width = c.height = SIZE;
     const g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
-    if (def.block !== undefined) {
+    if (def.block !== undefined && def.sprite) this.flat(g, this.it[def.tex].data, null, false);
+    else if (def.block !== undefined) {
       const rt = RENDER_TYPE[def.block];
-      if (rt === RENDER.CUBE || rt === RENDER.CACTUS) this.cube(g, def.block);
+      if (rt === RENDER.CUBE || rt === RENDER.CACTUS || BLOCKS[def.block].icon === 'cube') this.cube(g, def.block);
       else this.flat(g, this.bt[faceTexture(def.block, 2, 0)].data, tintOf(def.block), true);
     } else this.flat(g, this.it[def.tex].data, null, false);
     u = c.toDataURL();
@@ -44,14 +45,15 @@ export class Icons {
 
   cube(g, id) {
     const bd = BLOCKS[id];
+    const im = bd.iconMeta || 0;
     const cutout = bd.pass === 1;
     const tint = tintOf(id);
     // corners of the isometric cube
     const T = [32, 3], L = [5, 17.5], R = [59, 17.5], C = [32, 32], LB = [5, 47], RB = [59, 47], CB = [32, 61.5];
     const faces = [
-      { tex: faceTexture(id, 0, 0), o: T, u: [R[0] - T[0], R[1] - T[1]], v: [L[0] - T[0], L[1] - T[1]], shade: 1, top: true },
-      { tex: faceTexture(id, 4, 0), o: L, u: [C[0] - L[0], C[1] - L[1]], v: [LB[0] - L[0], LB[1] - L[1]], shade: 0.78 },
-      { tex: faceTexture(id, 2, 0), o: C, u: [R[0] - C[0], R[1] - C[1]], v: [CB[0] - C[0], CB[1] - C[1]], shade: 0.6 },
+      { tex: faceTexture(id, 0, im), o: T, u: [R[0] - T[0], R[1] - T[1]], v: [L[0] - T[0], L[1] - T[1]], shade: 1, top: true },
+      { tex: faceTexture(id, 4, im), o: L, u: [C[0] - L[0], C[1] - L[1]], v: [LB[0] - L[0], LB[1] - L[1]], shade: 0.78 },
+      { tex: faceTexture(id, 2, im), o: C, u: [R[0] - C[0], R[1] - C[1]], v: [CB[0] - C[0], CB[1] - C[1]], shade: 0.6 },
     ];
     void RB;
     for (const f of faces) {
@@ -186,6 +188,10 @@ export function statusIcons() {
     heartHalf: pixelIcon(halfOf(HEART, 'RW', 'e'), heartPal),
     heartEmpty: pixelIcon(emptyHeart, heartPal),
     heartFlash: pixelIcon(HEART, { X: '#ffffff', R: '#ff8080', W: '#ffffff' }),
+    heartPoison: pixelIcon(HEART, { X: '#0c1a06', R: '#6a9a2a', W: '#c8f090' }),
+    heartPoisonHalf: pixelIcon(halfOf(HEART, 'RW', 'e'), { X: '#0c1a06', R: '#6a9a2a', W: '#c8f090', e: '#3a1a1c' }),
+    heartGold: pixelIcon(HEART, { X: '#2a1a02', R: '#e8b830', W: '#fff0a0' }),
+    heartGoldHalf: pixelIcon(halfOf(HEART, 'RW', '.'), { X: '#2a1a02', R: '#e8b830', W: '#fff0a0' }),
     food: pixelIcon(FOOD, foodPal),
     foodHalf: pixelIcon(halfOf(FOOD, 'bBWd', 'e'), foodPal),
     foodEmpty: pixelIcon(emptyFood, foodPal),

@@ -269,6 +269,22 @@ export class Renderer {
     return { vao, vbo, quads };
   }
 
+  // A one-layer array texture from a canvas (sign text, name tags, maps).
+  createCanvasTexture(canvas, old = null) {
+    const gl = this.gl;
+    const tex = old || gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, canvas.width, canvas.height, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, canvas.width, canvas.height, 1, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return tex;
+  }
+
+  deleteTexture(t) { if (t) this.gl.deleteTexture(t); }
+
   deleteModel(m) {
     if (!m) return;
     this.gl.deleteVertexArray(m.vao);
@@ -323,6 +339,7 @@ export class Renderer {
     gl.uniform1f(ps.u.uRain, env.rain);
     gl.uniform1f(ps.u.uDay, env.day);
     gl.uniformMatrix3fv(ps.u.uCelestial, false, env.celestial);
+    gl.uniform1f(ps.u.uSkyMode, env.skyMode || 0);
     gl.bindVertexArray(this.skyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -436,11 +453,13 @@ export class Renderer {
     gl.uniform3f(pm.u.uTintColor, tc[0], tc[1], tc[2]);
     gl.uniform1f(pm.u.uAlpha, opts.alpha ?? 1);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex === 'item' ? this.itemTex : tex === 'skin' ? this.skinTex : this.blockTex);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, typeof tex === 'object' ? tex : tex === 'item' ? this.itemTex : tex === 'skin' ? this.skinTex : this.blockTex);
     gl.uniform1i(pm.u.uTex, 0);
     if (opts.noCull) gl.disable(gl.CULL_FACE);
+    if (opts.blend) { gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); }
     gl.bindVertexArray(model.vao);
     gl.drawElements(gl.TRIANGLES, model.quads * 6, gl.UNSIGNED_INT, 0);
+    if (opts.blend) { gl.disable(gl.BLEND); gl.depthMask(true); }
     if (opts.noCull) gl.enable(gl.CULL_FACE);
   }
 

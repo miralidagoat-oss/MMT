@@ -6,9 +6,13 @@ const rint = (r, a, b) => a + Math.floor(r() * (b - a + 1));
 
 // Each entry: [itemId, min, max, weight]
 const TABLES = {
-  dungeon: { rolls: [3, 7], items: [[I.bread, 1, 3, 12], [I.wheat, 1, 4, 10], [I.iron_ingot, 1, 4, 10], [I.gold_ingot, 1, 3, 5], [I.string, 1, 4, 10], [I.bone, 1, 6, 10], [I.tainted_flesh, 1, 5, 10], [I.coal, 3, 8, 8], [I.apple, 1, 3, 6], [I.bucket, 1, 1, 4], [I.diamond, 1, 2, 2], [I.emerald, 1, 3, 3], [I.arrow, 2, 8, 6], [I.bow, 1, 1, 2], [I.iron_helmet, 1, 1, 2], [I.golden_chestplate, 1, 1, 2], [B.oak_sapling, 1, 2, 3]] },
+  dungeon: { rolls: [3, 7], items: [[I.spark_dust, 2, 8, 8], [I.minecart, 1, 1, 3], [B.rail, 3, 9, 4], [I.blast_powder, 1, 4, 8], [I.glass_bottle, 1, 2, 4], [I.bread, 1, 3, 12], [I.wheat, 1, 4, 10], [I.iron_ingot, 1, 4, 10], [I.gold_ingot, 1, 3, 5], [I.string, 1, 4, 10], [I.bone, 1, 6, 10], [I.tainted_flesh, 1, 5, 10], [I.coal, 3, 8, 8], [I.apple, 1, 3, 6], [I.bucket, 1, 1, 4], [I.diamond, 1, 2, 2], [I.emerald, 1, 3, 3], [I.arrow, 2, 8, 6], [I.bow, 1, 1, 2], [I.iron_helmet, 1, 1, 2], [I.golden_chestplate, 1, 1, 2], [B.oak_sapling, 1, 2, 3]] },
   village_smith: { rolls: [3, 7], items: [[I.iron_ingot, 1, 5, 12], [I.bread, 1, 3, 12], [I.apple, 1, 3, 10], [I.iron_pickaxe, 1, 1, 5], [I.iron_sword, 1, 1, 5], [I.iron_chestplate, 1, 1, 4], [I.iron_helmet, 1, 1, 4], [I.iron_leggings, 1, 1, 4], [I.iron_boots, 1, 1, 4], [B.obsidian, 3, 7, 4], [B.oak_sapling, 3, 7, 5], [I.gold_ingot, 1, 3, 3], [I.diamond, 1, 3, 1], [I.emerald, 1, 2, 3]] },
   village_house: { rolls: [2, 5], items: [[I.bread, 1, 4, 12], [I.wheat, 2, 7, 10], [I.wheat_seeds, 2, 6, 10], [I.carrot, 1, 4, 8], [I.potato, 1, 4, 8], [I.apple, 1, 3, 8], [I.emerald, 1, 1, 3], [B.torch, 2, 6, 6], [I.paper, 1, 5, 4], [I.book, 1, 1, 2]] },
+  observatory: { rolls: [3, 6], items: [[I.void_pearl, 1, 2, 8], [I.iron_ingot, 1, 5, 10], [I.gold_ingot, 1, 3, 5], [I.bread, 1, 3, 12], [I.apple, 1, 3, 12], [I.spark_dust, 4, 9, 8], [I.diamond, 1, 3, 3], [I.iron_pickaxe, 1, 1, 5], [I.iron_sword, 1, 1, 5], [I.iron_chestplate, 1, 1, 4], [I.golden_apple, 1, 1, 2], [I.star_eye, 1, 1, 2], [B.rail, 4, 12, 6]] },
+  observatory_library: { rolls: [2, 6], items: [[I.book, 1, 3, 20], [I.paper, 2, 7, 20], [I.empty_map, 1, 1, 6], [I.compass, 1, 1, 6], [I.glass_bottle, 1, 3, 6], [I.clock, 1, 1, 4], [I.star_eye, 1, 1, 3]] },
+  spire: { rolls: [3, 7], items: [[I.diamond, 2, 7, 5], [I.iron_ingot, 4, 8, 10], [I.gold_ingot, 2, 7, 10], [I.emerald, 2, 6, 6], [I.diamond_sword, 1, 1, 3], [I.diamond_chestplate, 1, 1, 3], [I.diamond_pickaxe, 1, 1, 3], [I.iron_helmet, 1, 1, 3], [I.void_pearl, 1, 3, 6], [I.popped_void_fruit, 2, 6, 6], [I.golden_apple, 1, 1, 2]] },
+  spire_glider: { rolls: [2, 4], always: [[I.glider, 1]], items: [[I.diamond, 1, 4, 5], [I.gold_ingot, 2, 6, 10], [I.void_pearl, 1, 3, 6], [I.emerald, 1, 4, 6]] },
   underworld: { rolls: [3, 6], items: [[I.gold_ingot, 2, 6, 10], [I.gold_nugget, 4, 12, 10], [I.quartz, 3, 9, 10], [B.obsidian, 1, 4, 6], [I.flint_and_steel, 1, 1, 5], [I.iron_ingot, 1, 5, 8], [I.diamond, 1, 3, 3], [I.golden_sword, 1, 1, 4], [I.golden_helmet, 1, 1, 3], [I.ember_dust, 2, 8, 8], [I.emerald, 1, 3, 3]] },
 };
 
@@ -17,6 +21,7 @@ export function rollLoot(table, r = Math.random) {
   if (!t) return [];
   const total = t.items.reduce((a, e) => a + e[3], 0);
   const out = [];
+  for (const [id, count] of t.always || []) out.push({ id, count });
   const n = rint(r, t.rolls[0], t.rolls[1]);
   for (let i = 0; i < n; i++) {
     let x = r() * total;

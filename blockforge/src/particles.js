@@ -122,6 +122,30 @@ export class Particles {
     this.add({ x, y, z, vx: (tx - x) * 1.2, vy: (ty - y) * 1.2 + 0.4, vz: (tz - z) * 1.2, size: 0.07, layer: TEX.p_glyph, life: 1, collide: false, fullbright: true, drag: 0.97 });
   }
 
+  // Swirls in a status effect's colour (0-255 rgb).
+  effect(x, y, z, c, vx = 0, vy = 0.6, vz = 0) {
+    this.add({ x, y, z, vx: vx + (Math.random() - 0.5) * 0.2, vy, vz: vz + (Math.random() - 0.5) * 0.2, size: 0.07, layer: TEX.p_effect, life: 0.9 + Math.random() * 0.5, collide: false, fullbright: true, drag: 0.92, r: c[0] / 255, g: c[1] / 255, b: c[2] / 255 });
+  }
+
+  sparkDust(x, y, z) {
+    this.add({ x: x + (Math.random() - 0.5) * 0.6, y, z: z + (Math.random() - 0.5) * 0.6, vx: 0, vy: 0.2, vz: 0, size: 0.05, layer: TEX.p_spark_dust, life: 0.6, collide: false, fullbright: true });
+  }
+
+  // Note blocks: the colour walks round the hue circle with pitch.
+  note(x, y, z, pitch) {
+    const h = (pitch / 24) * 6;
+    const f = (n) => { const k = (n + h) % 6; return Math.max(0, Math.min(1, Math.min(k, 4 - k))); };
+    this.add({ x, y, z, vx: 0, vy: 0.9, vz: 0, size: 0.13, layer: TEX.p_note, life: 0.9, collide: false, fullbright: true, drag: 0.85, r: f(5), g: f(3), b: f(1) });
+  }
+
+  voidSpark(x, y, z) {
+    this.add({ x, y, z, vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5, vz: (Math.random() - 0.5) * 1.5, size: 0.08, layer: TEX.p_void, life: 0.8 + Math.random() * 0.6, collide: false, fullbright: true, drag: 0.92 });
+  }
+
+  bubbleUp(x, y, z) {
+    for (let i = 0; i < 3; i++) this.add({ x: x + (Math.random() - 0.5) * 0.3, y, z: z + (Math.random() - 0.5) * 0.3, vx: 0, vy: 0.5, vz: 0, size: 0.05, layer: TEX.p_bubble, life: 0.7, collide: false, lit: true });
+  }
+
   explosion(x, y, z) {
     for (let i = 0; i < 30; i++) {
       const p = this.add({

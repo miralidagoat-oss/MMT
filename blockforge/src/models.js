@@ -9,8 +9,9 @@ export const SKIN = {
   PLAYER: 0, PIG: 1, COW: 2, SHEEP: 3, CHICKEN: 4, GHOUL: 5, SHEEP_WOOL: 6,
   FARMER: 7, SMITH: 8, SHEPHERD: 9, SCHOLAR: 10, ARCHER: 11, CRAWLER: 12, IMP: 13,
   ARMOR: 14, // 4 materials x 2 layers: leather A,B, golden A,B, iron A,B, diamond A,B
+  GLOAMER: 22, WYRM: 23, GLIDER: 24,
 };
-const SKIN_COUNT = 22;
+const SKIN_COUNT = 25;
 export const ARMOR_SKIN = { leather: 14, golden: 16, iron: 18, diamond: 20 };
 
 // ---------------------------------------------------------------------------
@@ -357,6 +358,56 @@ function paintArmor(mat, layerB) {
 }
 const mul = (c, f) => [Math.min(255, c[0] * f), Math.min(255, c[1] * f), Math.min(255, c[2] * f)];
 
+// A tall, thin wanderer of the dark: soot-black with violet eyes and a faint
+// scatter of stars across its skin.
+function paintGloamer() {
+  const s = new Skin(31);
+  const base = [22, 20, 30];
+  const star = () => (s.r() < 0.035 ? [150, 130, 220] : null);
+  s.box(0, 0, 8, 8, 8, (f, x, y) => {
+    if (f === 'front' && y === 4 && (x === 1 || x === 2 || x === 5 || x === 6)) return [200, 140, 255];
+    if (f === 'front' && y === 5 && (x === 1 || x === 2 || x === 5 || x === 6)) return [120, 70, 190];
+    return star() || s.vary(base, 0.12);
+  });
+  s.box(16, 16, 8, 12, 4, () => star() || s.vary(base, 0.1));
+  s.box(40, 16, 2, 24, 2, (f, x, y) => (y > 21 ? [60, 40, 90] : star() || s.vary(base, 0.1)));
+  s.box(0, 16, 2, 26, 2, () => star() || s.vary(base, 0.1));
+  return s.d;
+}
+
+// The Void Wyrm: deep indigo scales, a pale underside and glowing cyan eyes.
+function paintWyrm() {
+  const s = new Skin(77);
+  const scale = [44, 30, 70], belly = [120, 100, 150], ridge = [90, 60, 140];
+  const scaled = (x, y) => ((x + (y % 2) * 2) % 4 === 0 ? mul(scale, 0.75) : s.vary(scale, 0.1));
+  // head 10x7x12 at (0,0)
+  s.box(0, 0, 10, 7, 12, (f, x, y) => {
+    if (f === 'bottom') return s.vary(belly, 0.08);
+    if (f === 'front') {
+      if (y === 2 && (x === 1 || x === 2 || x === 7 || x === 8)) return [120, 255, 240];
+      if (y === 5) return [16, 8, 24];
+      if (y > 5) return s.vary(belly, 0.08);
+    }
+    return scaled(x, y);
+  });
+  // body 7x6x7 at (0,24)
+  s.box(0, 24, 7, 6, 7, (f, x, y) => (f === 'bottom' ? s.vary(belly, 0.08) : f === 'top' && x === 3 ? ridge : scaled(x, y)));
+  // tail 4x4x4 at (32,24)
+  s.box(32, 24, 4, 4, 4, (f, x, y) => (f === 'bottom' ? belly : scaled(x, y)));
+  // ridge spike 1x2x4 at (48,0)
+  s.box(48, 0, 1, 2, 4, () => s.vary(ridge, 0.1));
+  // horn 1x1x4 at (48,8)
+  s.box(48, 8, 1, 1, 4, () => [210, 200, 230]);
+  return s.d;
+}
+
+// Glider membrane: dusky violet with paler ribs.
+function paintGlider() {
+  const s = new Skin(91);
+  s.box(0, 0, 10, 16, 1, (f, x, y) => (x % 3 === 0 ? [180, 160, 220] : s.vary([110, 90, 150], 0.08)));
+  return s.d;
+}
+
 export const OUTFITS = {
   farmer: { tunic: [96, 130, 60], trim: [150, 120, 70], pants: [110, 84, 56], hat: [226, 196, 110], hatBand: [150, 60, 40] },
   smith: { tunic: [70, 64, 60], trim: [120, 80, 40], pants: [56, 52, 50], hat: [90, 70, 50], hatBand: [60, 44, 30], beard: true },
@@ -384,6 +435,9 @@ export function generateSkins() {
     out[layer] = paintArmor(mat, false);
     out[layer + 1] = paintArmor(mat, true);
   }
+  out[SKIN.GLOAMER] = paintGloamer();
+  out[SKIN.WYRM] = paintWyrm();
+  out[SKIN.GLIDER] = paintGlider();
   return out;
 }
 
@@ -526,6 +580,27 @@ export const MODELS = {
   },
 };
 
+MODELS.gloamer = {
+  skin: SKIN.GLOAMER, width: 0.6, height: 2.9, humanoid: true,
+  parts: {
+    head: { box: [-4, 38, -4, 8, 8, 8], uv: [0, 0], pivot: [0, 38, 0] },
+    body: { box: [-4, 26, -2, 8, 12, 4], uv: [16, 16], pivot: [0, 38, 0] },
+    armR: { box: [-6, 12, -1, 2, 24, 2], uv: [40, 16], pivot: [-5, 36, 0] },
+    armL: { box: [4, 12, -1, 2, 24, 2], uv: [40, 16], pivot: [5, 36, 0], mirror: true },
+    legR: { box: [-3, 0, -1, 2, 26, 2], uv: [0, 16], pivot: [-2, 26, 0] },
+    legL: { box: [1, 0, -1, 2, 26, 2], uv: [0, 16], pivot: [2, 26, 0], mirror: true },
+  },
+};
+// Wyrm parts are modelled at a quarter scale and drawn four times larger.
+export const WYRM_PARTS = {
+  head: { box: [-5, -3.5, -12, 10, 7, 12], uv: [0, 0] },
+  hornR: { box: [-4, 3.5, -2, 1, 1, 4], uv: [48, 8] },
+  hornL: { box: [3, 3.5, -2, 1, 1, 4], uv: [48, 8] },
+  body: { box: [-3.5, -3, -3.5, 7, 6, 7], uv: [0, 24] },
+  spike: { box: [-0.5, 3, -2, 1, 2, 4], uv: [48, 0] },
+  tail: { box: [-2, -2, -2, 4, 4, 4], uv: [32, 24] },
+};
+
 // Armor overlays for humanoid models: [part to follow, box, uv, inflate, layer B?]
 export const ARMOR_OVERLAYS = {
   helmet: [['head', [-4, 24, -4, 8, 8, 8], [0, 0], 1.0, false]],
@@ -557,6 +632,16 @@ export function buildModelMeshes(renderer) {
     return parts;
   };
   for (const [name, m] of Object.entries(MODELS)) out[name] = build(m);
+  out.wyrm = {};
+  for (const [pn, p] of Object.entries(WYRM_PARTS)) {
+    const [x, y, z, w, h, d] = p.box;
+    out.wyrm[pn] = renderer.createModel(new Float32Array(skinBox(x, y, z, w, h, d, p.uv[0], p.uv[1], SKIN.WYRM, 64, 64, 0, false)));
+  }
+  // glider wings on a player's back (follow the body)
+  out.glider = {
+    wingR: renderer.createModel(new Float32Array(skinBox(-10, 8, 2.2, 10, 16, 1, 0, 0, SKIN.GLIDER, 64, 64, 0, false))),
+    wingL: renderer.createModel(new Float32Array(skinBox(0, 8, 2.2, 10, 16, 1, 0, 0, SKIN.GLIDER, 64, 64, 0, true))),
+  };
   // settler outfits share one model with different skins
   for (const [prof, skin] of [['farmer', SKIN.FARMER], ['smith', SKIN.SMITH], ['shepherd', SKIN.SHEPHERD], ['scholar', SKIN.SCHOLAR]]) {
     out[`settler:${prof}`] = build(MODELS.settler, skin);
@@ -598,13 +683,16 @@ export class ItemMeshes {
     if (m) return m;
     const def = ITEMS[id];
     if (!def) return null;
-    if (def.block !== undefined) {
+    if (def.block !== undefined && def.sprite) {
+      m = { model: this.r.createModel(extrudedSprite(this.it[def.tex].data, def.tex)), kind: 'sprite', tex: 'item', tint: [1, 1, 1], blockMode: 0 };
+    } else if (def.block !== undefined) {
       const rt = RENDER_TYPE[def.block];
       const tintKind = TINT[def.block];
       const tint = tintKind === 1 ? [0.48, 0.72, 0.32] : tintKind === 2 ? [0.38, 0.65, 0.23] : tintKind === 4 ? [0.5, 0.65, 0.33] : tintKind === 5 ? [0.38, 0.6, 0.38] : [1, 1, 1];
-      if (rt === RENDER.CUBE || rt === RENDER.CACTUS) {
+      if (rt === RENDER.CUBE || rt === RENDER.CACTUS || BLOCKS[def.block].icon === 'cube') {
         const bid = def.block;
-        const data = cubeMesh(-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, (f) => faceTexture(bid, f, 0));
+        const im = BLOCKS[bid].iconMeta || 0;
+        const data = cubeMesh(-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, (f) => faceTexture(bid, f, im));
         const pass = BLOCKS[bid].pass;
         m = { model: this.r.createModel(data), kind: 'block', tex: 'block', tint, blockMode: pass === 1 ? 2 : pass === 2 ? 3 : 1 };
       } else {

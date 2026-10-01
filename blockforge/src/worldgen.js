@@ -5,7 +5,7 @@ import { Simplex, rng, hash2, rand2, rand3 } from './noise.js';
 import { B } from './blocks.js';
 import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME } from './constants.js';
 import { smoothstep, lerp } from './math.js';
-import { Villages, placeDungeon } from './structures.js';
+import { Villages, placeDungeon, Observatories } from './structures.js';
 
 const SEA = SEA_LEVEL;
 
@@ -61,6 +61,7 @@ const CONT_SPLINE = [[-1, 26], [-0.55, 34], [-0.3, 46], [-0.14, 56], [-0.05, 61]
 
 // Ore veins: [block, veins per chunk, size, minY, maxY]
 const ORES = [
+  ['spark_ore', 8, 8, 2, 16],
   ['coal_ore', 20, 14, 5, 132],
   ['iron_ore', 18, 8, 2, 72],
   ['copper_ore', 10, 10, 20, 100],
@@ -90,6 +91,7 @@ export class WorldGen {
     this.nSurf = new Simplex(s ^ 0xc00c);
     this.col = { h: 0, biome: 0, temp: 0, humid: 0, river: 0, mount: 0, cont: 0 };
     this.villages = new Villages(this);
+    this.observatories = new Observatories(this);
     this.caveGrid = new Float32Array(5 * 5 * 66 * 3);
   }
 
@@ -514,6 +516,8 @@ export class WorldGen {
     }
     // Villages overlapping this chunk.
     for (const v of this.villages.near(X0, Z0, X0 + 15, Z0 + 15)) this.villages.write(v, ctx, X0, Z0, extra);
+    // Buried observatories.
+    for (const o of this.observatories.near(X0, Z0, X0 + 15, Z0 + 15)) this.observatories.write(o, ctx, X0, Z0, extra);
 
     // cave mushrooms
     const mr = rng(hash2(seed ^ 0x3a1, cx, cz));

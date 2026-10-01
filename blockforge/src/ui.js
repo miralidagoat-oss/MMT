@@ -1,6 +1,8 @@
 // HTML user interface: HUD, menus, inventory screens, chat and debug text.
 import { ITEMS, I, matchRecipe, itemName, maxStack, SMELTING, fuelValue } from './items.js';
 import { enchantOptions, enchantLabel, applicableEnchants } from './loot.js';
+import { isIngredient, potionLabel, fmtTime } from './effects.js';
+import { MAP_SIZE } from './maps.js';
 import { BLOCKS, B } from './blocks.js';
 import { statusIcons, playerPortrait } from './icons.js';
 import { BIOMES } from './worldgen.js';
@@ -78,6 +80,7 @@ export class UI {
     this.foodEls = mk('#food', 10);
     this.airEls = mk('#air', 10);
     this.armorEls = mk('#armor', 10);
+    this.absorbEls = mk('#absorb', 10);
     $('#b-wake').addEventListener('click', () => { this.click(); if (this.game) this.game.wakeUp(); });
   }
 
@@ -142,6 +145,7 @@ export class UI {
     $('#xp').hidden = !survival;
     const armor = p.armorStats().points;
     $('#armor').hidden = !survival || armor <= 0;
+    $('#absorb').hidden = !survival || !(p.absorption > 0);
     if (armor > 0) g.advance('armor');
     if (survival) {
       const xkey = `${p.xpLevel}|${p.xpPoints}|${armor}`;
@@ -155,7 +159,7 @@ export class UI {
           this.armorEls[i].src = v >= 2 ? this.status.armor : v === 1 ? this.status.armorHalf : this.status.armorEmpty;
         }
       }
-      const hkey = `${p.health}|${p.food}|${p.hurtTime > 0}|${p.air}|${Math.floor(g.tickCount / 3) % 2}`;
+      const hkey = `${p.health}|${p.food}|${p.hurtTime > 0}|${p.air}|${Math.floor(g.tickCount / 3) % 2}|${!!(p.effects && p.effects.poison)}|${Math.ceil(p.absorption || 0)}`;
       if (hkey !== this.hudCache.bars) {
         this.hudCache.bars = hkey;
         const flash = p.hurtTime > 5;
@@ -163,7 +167,11 @@ export class UI {
         for (let i = 0; i < 10; i++) {
           const v = p.health - i * 2;
           const img = this.heartEls[i];
-          img.src = v >= 2 ? (flash ? this.status.heartFlash : this.status.heart) : v === 1 ? this.status.heartHalf : this.status.heartEmpty;
+          const poisoned = p.effects && p.effects.poison;
+          img.src = v >= 2 ? (flash ? this.status.heartFlash : poisoned ? this.status.heartPoison : this.status.heart) : v === 1 ? (poisoned ? this.status.heartPoisonHalf : this.status.heartHalf) : this.status.heartEmpty;
+          const ab = Math.ceil(p.absorption || 0) - i * 2;
+          this.absorbEls[i].src = ab >= 2 ? this.status.heartGold : ab === 1 ? this.status.heartGoldHalf : this.status.heartGold;
+          this.absorbEls[i].style.visibility = ab >= 1 ? 'visible' : 'hidden';
           img.style.transform = low ? `translateY(${((i * 37 + g.tickCount) % 3) - 1}px)` : '';
           const f = p.food - i * 2;
           // food icons fill from the right
@@ -181,6 +189,9 @@ export class UI {
     }
     $('#crosshair').hidden = g.perspective !== 0;
     this.updateGadget();
+    this.updateEffects(g);
+    this.updateBoss(env.boss);
+    this.updateMap(g);
     this.updateDebug();
     this.updateChat();
     if (this.screen && this.screen.update) this.screen.update();
@@ -215,6 +226,86 @@ export class UI {
       const a = wobble ? (performance.now() / 5) % 360 : ((target - p.yaw) * 180) / Math.PI;
       box.innerHTML = `<span class="needle" style="--a:${a.toFixed(1)}deg"></span><span>${wobble ? 'The needle spins' : `Spawn ${dist} m`}</span>`;
     }
+  }
+
+  // Active status effects, top right.
+  updateEffects(g) {
+    const box = $('#effects');
+    const list = g.effectList ? g.effectList() : [];
+    if (!list.length) { if (!box.hidden) { box.hidden = true; box.innerHTML = ''; } return; }
+    box.hidden = false;
+    const key = list.map((e) => `${e.name}${e.amp}:${Math.ceil(e.time / 20)}`).join('|');
+    if (key === this.hudCache.effects) return;
+    this.hudCache.effects = key;
+    box.innerHTML = list.map((e) => `<div class="fx${e.time < 200 && e.time % 20 < 10 ? ' blink' : ''}"><i style="background:rgb(${e.color.join(',')})"></i><span>${esc(e.label)}${e.amp ? ' ' + ['', 'II', 'III', 'IV'][e.amp] : ''}</span><b>${e.time > 32000 ? '**:**' : fmtTime(e.time)}</b></div>`).join('');
+  }
+
+  updateBoss(boss) {
+    const el2 = $('#bossbar');
+    if (!boss) { el2.hidden = true; return; }
+    el2.hidden = false;
+    $('#bossbar b').textContent = boss.name;
+    $('#bossbar i').style.width = `${Math.max(0, Math.min(1, boss.f)) * 100}%`;
+  }
+
+  // Held map, shown as a panel with markers for players.
+  updateMap(g) {
+    const panel = $('#map-panel');
+    const p = g.player;
+    const held = p.inventory.held;
+    const m = held && held.id === I.filled_map && held.map ? g.mapData(held.map) : null;
+    if (!m || g.state !== 'playing' && g.state !== 'screen') { panel.hidden = true; return; }
+    panel.hidden = false;
+    const cv = $('#map-panel canvas');
+    if (m.dirty || this.mapShown !== m) { m.paint(cv.getContext('2d')); this.mapShown = m; }
+    const markers = $('#map-panel .markers');
+    const pts = [{ x: p.x, z: p.z, yaw: p.yaw, me: true }];
+    if (g.remotePlayers) for (const rp of g.remotePlayers()) pts.push({ x: rp.x, z: rp.z, yaw: rp.yaw, name: rp.name });
+    const half = MAP_SIZE / 2;
+    markers.innerHTML = pts.filter((q) => m.dim === g.dim).map((q) => {
+      const u = (q.x - m.cx + half) / MAP_SIZE, v = (q.z - m.cz + half) / MAP_SIZE;
+      if (u < 0 || v < 0 || u > 1 || v > 1) return '';
+      return `<span class="mk${q.me ? ' me' : ''}" style="left:${(u * 100).toFixed(1)}%;top:${(v * 100).toFixed(1)}%;transform:translate(-50%,-50%) rotate(${(q.yaw * 180 / Math.PI).toFixed(0)}deg)" title="${q.name ? esc(q.name) : 'You'}"></span>`;
+    }).join('');
+  }
+
+  // Sign text editor.
+  openSign(key) {
+    const g = this.game;
+    const be = g.world.blockEntities.get(key);
+    if (!be) return;
+    if (this.screen) this.closeScreen(true);
+    g.input.exitLock(); g.input.reset();
+    g.state = 'screen';
+    this.screen = { name: 'sign', data: { key } };
+    const m = this.menu(`<h2>Edit Sign</h2><div class="sign-edit">${[0, 1, 2, 3].map((i) => `<input maxlength="15" data-i="${i}" value="${esc(be.lines[i] || '')}" aria-label="Line ${i + 1}">`).join('')}</div><button id="b-done" class="btn wide">Done</button>`, 'sign');
+    const inputs = m.querySelectorAll('input');
+    inputs.forEach((inp) => {
+      inp.addEventListener('input', () => { be.lines[+inp.dataset.i] = inp.value.slice(0, 15); g.net && g.net.blockEntityChanged(key); });
+      inp.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.code === 'Enter') { const n = inputs[+inp.dataset.i + 1]; if (n) n.focus(); else this.closeScreen(); }
+        if (e.code === 'Escape') this.closeScreen();
+      });
+    });
+    this.bind(m, '#b-done', () => this.closeScreen());
+    setTimeout(() => inputs[0].focus(), 0);
+  }
+
+  // Shown once after the guardian of the Void falls and the traveller returns home.
+  showEpilogue() {
+    const g = this.game;
+    if (g.state !== 'playing') return;
+    g.state = 'screen';
+    g.input.exitLock(); g.input.reset();
+    this.screen = { name: 'epilogue' };
+    const m = this.menu(`<h2>Beyond the Void</h2>
+      <div class="epilogue"><p>The wyrm is gone and the stars are quiet again.</p>
+      <p>You came from a single block of dirt, and you went past the edge of the world and back.</p>
+      <p>The land is still here, still waiting to be shaped. There is no end to it — only the next thing you decide to build.</p>
+      <p class="muted">Thank you for playing.</p></div>
+      <button id="b-done" class="btn wide">Continue</button>`, 'epilogue-menu');
+    this.bind(m, '#b-done', () => this.closeScreen());
   }
 
   showSleep(v) {
@@ -591,7 +682,8 @@ export class UI {
     const rows = [
       ['W A S D', 'Move'], ['Space', 'Jump · swim up · double-tap to fly (Creative)'], ['Shift', 'Sneak (won’t fall off edges) · fly down'],
       ['Ctrl / double-tap W', 'Sprint'], ['Mouse', 'Look (arrow keys also work)'], ['Left click', 'Break block · attack'],
-      ['Right click', 'Place · use · eat · open doors · sleep · trade · hold to draw a bow'], ['Middle click', 'Pick block'], ['1–9 · wheel', 'Choose hotbar slot'],
+      ['Right click', 'Place · use · eat · drink · open doors · sleep · trade · hold to draw a bow or raise a shield · ride carts and boats · cast a line'],
+      ['Shift (riding)', 'Get out of a minecart or boat'], ['Jump while falling', 'Open a glider worn in the chest slot'], ['Middle click', 'Pick block'], ['1–9 · wheel', 'Choose hotbar slot'],
       ['E', 'Inventory'], ['Q · Ctrl+Q', 'Drop item · drop stack'], ['T · /', 'Chat · command (/help)'],
       ['F1', 'Hide interface'], ['F2', 'Screenshot'], ['F3', 'Debug info'], ['F5', 'Change camera view'], ['Esc', 'Pause'],
       ['Inventory', 'Click: take/place · Right click: split/place one · Shift-click: move · Drag: spread · 1–9: swap to hotbar'],
@@ -621,6 +713,7 @@ export class UI {
     if (!s) return;
     if (s.name === 'chat') { this.closeChat(false); return; }
     if (s.name === 'sleep') { if (g.player.sleeping) g.wakeUp(); else this.showSleep(false); return; }
+    if (s.name === 'sign' || s.name === 'epilogue') { this.screen = null; this.closeMenus(); if (!silent) this.resume(); return; }
     if (s.name === 'trade') g.tradingWith = null;
     if (s.name === 'chest' && !silent) g.audio.play('chest_close');
     // put back crafting ingredients and the cursor stack
@@ -660,9 +753,16 @@ export class UI {
       case 'c3': return { get: () => g.craft3.get(index), set: (s) => g.craft3.set(index, s) };
       case 'box': {
         const be = sc.data.be;
+        let accept;
+        if (sc.name === 'furnace' && index === 2) accept = () => false;
+        if (sc.name === 'brewing') {
+          if (index < 3) accept = (st) => !!(ITEMS[st.id] && ITEMS[st.id].potion);
+          else if (index === 3) accept = (st) => isIngredient(st.id);
+          else accept = (st) => st.id === I.ember_dust;
+        }
         return {
-          get: () => be.slots[index], set: (s) => { be.slots[index] = s && s.count > 0 ? s : null; },
-          accept: sc.name === 'furnace' && index === 2 ? () => false : undefined,
+          get: () => be.slots[index], set: (s) => { be.slots[index] = s && s.count > 0 ? s : null; g.net && g.net.blockEntityChanged(sc.data.key); },
+          accept, single: sc.name === 'brewing' && index < 3,
           takeOnly: sc.name === 'furnace' && index === 2,
         };
       }
@@ -697,7 +797,7 @@ export class UI {
     const panel = el('div', 'panel');
     m.appendChild(panel);
     this.panel = panel;
-    const title = { inventory: 'Inventory', crafting: 'Crafting', furnace: 'Furnace', chest: 'Chest', creative: 'Creative', trade: 'Trade', enchant: 'Enchanting' }[name];
+    const title = { inventory: 'Inventory', crafting: 'Crafting', furnace: 'Furnace', chest: 'Chest', creative: 'Creative', trade: 'Trade', enchant: 'Enchanting', brewing: 'Brewing Stand', dispenser: 'Dispenser', hopper: 'Hopper' }[name];
     panel.appendChild(el('h3', 'ptitle', title));
     const mkGrid = (cls, cols, kind, from, count) => {
       const gr = el('div', `grid ${cls}`);
@@ -738,6 +838,22 @@ export class UI {
       top.appendChild(f);
     } else if (name === 'chest') {
       top.appendChild(mkGrid('chestgrid', 9, 'box', 0, 27));
+    } else if (name === 'dispenser') {
+      top.appendChild(mkGrid('dispgrid', 3, 'box', 0, 9));
+    } else if (name === 'hopper') {
+      top.appendChild(mkGrid('hoppergrid', 5, 'box', 0, 5));
+    } else if (name === 'brewing') {
+      const box = el('div', 'brew');
+      const slot = (i, cls) => { const sl = this.slotEl(); sl.dataset.kind = 'box'; sl.dataset.i = i; if (cls) sl.classList.add(cls); return sl; };
+      const fuelCol = el('div', 'bfuel');
+      fuelCol.append(slot(4, 'fuel-slot'), el('div', 'fuelbar', '<i></i>'));
+      const mid = el('div', 'bmid');
+      mid.append(slot(3, 'ing-slot'), el('div', 'brewprog', '<i></i>'));
+      const bottles = el('div', 'bottles');
+      bottles.append(slot(0, 'bottle-slot'), slot(1, 'bottle-slot'), slot(2, 'bottle-slot'));
+      mid.append(bottles);
+      box.append(fuelCol, mid);
+      top.appendChild(box);
     } else if (name === 'trade') {
       const list = el('div', 'offers');
       this.offersEl = list;
@@ -820,6 +936,12 @@ export class UI {
       const d = this.screen.data;
       if (this.game.world.getBlock(d.x, d.y, d.z) !== B.enchanting_table) { this.closeScreen(); return; }
       this.updateEnchant();
+    }
+    if (this.screen && this.screen.name === 'brewing') {
+      const be = this.screen.data.be;
+      const pr = $('.brewprog i', this.panel), fb = $('.fuelbar i', this.panel);
+      if (pr) pr.style.height = `${be.brewTime > 0 ? Math.round(((400 - be.brewTime) / 400) * 100) : 0}%`;
+      if (fb) fb.style.width = `${Math.round((Math.max(0, be.fuel) / 20) * 100)}%`;
     }
     if (this.screen && this.screen.name === 'furnace') {
       const be = this.screen.data.be;
@@ -947,7 +1069,10 @@ export class UI {
     const d = ITEMS[st.id];
     let t = esc(itemName(st.id));
     if (st.ench) t = `<span class="en">${t}</span>` + Object.entries(st.ench).map(([k, v]) => `<br><small class="el">${esc(enchantLabel(k, v))}</small>`).join('');
-    if (d.armor) t += `<br><small>+${d.armor.points} armor${d.armor.tough ? `, +${d.armor.tough} toughness` : ''}</small>`;
+    if (d.potion && d.potion !== 'water' && d.potion !== 'awkward') t += `<br><small class="${d.potion === 'harming' || d.potion === 'poison' || d.potion === 'slowness' || d.potion === 'weakness' ? 'bad' : 'good'}">${esc(potionLabel(st))}</small>`;
+    if (st.map) t += `<br><small>Map #${st.map}</small>`;
+    if (d.armor && d.armor.points) t += `<br><small>+${d.armor.points} armor${d.armor.tough ? `, +${d.armor.tough} toughness` : ''}</small>`;
+    if (st.id === I.glider) t += '<br><small>Wear in the chest slot; jump while falling to glide</small>';
     if (d.durability) t += `<br><small>Durability ${d.durability - (st.dur || 0)} / ${d.durability}</small>`;
     if (d.food) t += `<br><small>Restores ${d.food[0] / 2} food</small>`;
     if (d.damage) t += `<br><small>${d.damage} attack damage</small>`;
@@ -1137,10 +1262,16 @@ export class UI {
     } else if (kind === 'inv' && sc === 'enchant' && !g.enchantSlot.get(0) && applicableEnchants(st.id).length && !st.ench) {
       g.enchantSlot.set(0, st); left = 0;
     } else if (kind === 'inv') {
-      if (sc === 'chest') {
+      if (sc === 'chest' || sc === 'dispenser' || sc === 'hopper') {
         const be = this.screen.data.be;
         const tmp = { slots: be.slots };
-        left = addTo(tmp, { ...st, count: left }, [...Array(27).keys()]);
+        left = addTo(tmp, { ...st, count: left }, [...Array(be.slots.length).keys()]);
+      } else if (sc === 'brewing') {
+        const be = this.screen.data.be;
+        const d = ITEMS[st.id];
+        if (st.id === I.ember_dust && (!be.slots[4] || be.slots[4].count < 64)) left = addTo(be, { ...st, count: left }, [4]);
+        if (left && d && d.potion) { for (let k = 0; k < 3 && left; k++) if (!be.slots[k]) { be.slots[k] = { ...st, count: 1 }; left--; } }
+        if (left && isIngredient(st.id)) left = addTo(be, { ...st, count: left }, [3]);
       } else if (sc === 'furnace') {
         const be = this.screen.data.be;
         const target = SMELTING.has(st.id) ? 0 : fuelValue(st.id) ? 1 : -1;

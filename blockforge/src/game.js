@@ -19,6 +19,11 @@ import { hashSeed, rng } from './noise.js';
 import { ADVANCEMENTS } from './advancements.js';
 import { newFurnace, newChest, Container } from './inventory.js';
 import { WorldGen } from './worldgen.js';
+import { Circuits } from './circuits.js';
+import { installFeatures, solidTop } from './features.js';
+import { isRail, Minecart, Boat } from './vehicles.js';
+import { potionEffect, EFFECTS, addEffect } from './effects.js';
+import { DIM_NAMES } from './dims.js';
 
 const REACH_SURVIVAL = 4.5, REACH_CREATIVE = 5;
 const DIR6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -64,6 +69,8 @@ export class Game {
     this.tradingWith = null;
     this.pendingPortal = null;
     this.texWhite = TEX.white;
+    this.circuits = new Circuits(this);
+    this.wyrm = null;
   }
 
   // Saved state for one dimension (older saves kept it at the top level).
@@ -91,6 +98,10 @@ export class Game {
     });
     this.particles.setWorld(this.world);
     this.fluids.clear();
+    this.circuits.clear();
+    this._fires = new Set(); this._maps = new Map();
+    this.wyrm = null;
+    if (this.player) { this.player.vehicle = null; this.player.fishing = null; }
     this.entities = []; this.items = []; this.orbs = [];
     this.torchCache.length = 0;
     this.tickCount = meta.time || 0;
@@ -127,6 +138,8 @@ export class Game {
       if (!MOB_TYPES[m.type]) continue;
       this.entities.push(Mob.load(m));
     }
+    this.loadObjects(ds.objects);
+    this.spawnVoidBoss();
     this.lastHeldId = -1;
   }
 
@@ -171,7 +184,9 @@ export class Game {
     const mobs = this.entities.filter((e) => e instanceof Mob && !e.dead && !e.hostile).map((m) => m.serialize());
     const dims = { ...(this.meta.dims || {}) };
     if (!this.meta.dims && this.meta.populated && this.dim !== 'overworld') dims.overworld = this.dimState(this.meta, 'overworld');
-    dims[this.dim] = { populated: [...this.world.populated], blockEntities: [...this.world.blockEntities.entries()], mobs };
+    dims[this.dim] = { populated: [...this.world.populated], blockEntities: [...this.world.blockEntities.entries()], mobs, objects: this.serializeObjects() };
+    this.saveMaps();
+    if (this.wyrm && !this.wyrm.removed) this.meta.voidWyrmHealth = this.wyrm.health;
     const out = {
       ...this.meta,
       lastPlayed: Date.now(),
@@ -265,7 +280,12 @@ export class Game {
     if (p.sleeping) { this.tickSleep(); input = { forward: 0, strafe: 0, jump: false, sneak: false, sprint: false }; }
     if (this.bowDraw > 0) { input.sprint = false; input.forward *= 0.3; input.strafe *= 0.3; }
     const chunkHere = this.world.chunkReady(Math.floor(p.x) >> 4, Math.floor(p.z) >> 4);
-    if (chunkHere && !p.sleeping) p.tick(this, input);
+    if (p.vehicle && (p.vehicle.removed || p.dead)) this.dismount();
+    if (p.vehicle) {
+      p.rideTick(this);
+      p.vehicle.riderInput = input;
+      if (playing && input.sneak) this.dismount();
+    } else if (chunkHere && !p.sleeping) p.tick(this, input);
     else p.savePrev();
     this.audio.setListener(p.x, p.y + p.eye, p.z, p.yaw);
 
@@ -274,8 +294,15 @@ export class Game {
     else { this.breaking = null; this.eatTicks = 0; this.bowDraw = 0; }
     this.tickSwing();
     this.tickPortal();
+    this.tickVoidTravel();
 
     this.tickEntities();
+    if (p.vehicle) this.syncRider();
+    this.circuits.tick();
+    this.tickBrewing();
+    this.tickHoppers();
+    this.tickFires();
+    this.tickMaps();
     this.fluids.tick(this.tickCount);
     this.randomTicks();
     this.tickSpawning();
@@ -344,10 +371,17 @@ export class Game {
     const hit = raycast(this.world, ex, ey, ez, dx, dy, dz, reach);
     let best = hit ? hit.dist : reach;
     let ent = null;
+    const maxE = 3.5 + (p.creative ? 1.5 : 0);
     for (const e of this.entities) {
-      if (!(e instanceof Mob) || e.dead) continue;
-      const r = rayBox(ex, ey, ez, dx, dy, dz, e.x - e.w, e.y, e.z - e.w, e.x + e.w, e.y + e.h, e.z + e.w);
-      if (r && r.t < best && r.t <= 3.5 + (p.creative ? 1.5 : 0)) { best = r.t; ent = e; }
+      if (!e.targetable || e === p.vehicle) continue;
+      for (const b of e.hitBoxes ? e.hitBoxes() : [[e.x - e.w, e.y, e.z - e.w, e.x + e.w, e.y + e.h, e.z + e.w]]) {
+        const r = rayBox(ex, ey, ez, dx, dy, dz, b[0], b[1], b[2], b[3], b[4], b[5]);
+        if (r && r.t < best && r.t <= (e.isWyrm ? 7 : maxE)) { best = r.t; ent = e; }
+      }
+    }
+    if (this.remotePlayers) for (const rp of this.remotePlayers()) {
+      const r = rayBox(ex, ey, ez, dx, dy, dz, rp.x - 0.3, rp.y, rp.z - 0.3, rp.x + 0.3, rp.y + 1.8, rp.z + 0.3);
+      if (r && r.t < best && r.t <= maxE) { best = r.t; ent = rp; }
     }
     this.targetEntity = ent;
     this.target = ent ? null : hit;
@@ -388,7 +422,11 @@ export class Game {
     } else this.breaking = null;
 
     const def = held && ITEMS[held.id];
-    const interactive = (this.target && this.isInteractive(this.target) && !p.sneaking) || (this.targetEntity && this.targetEntity.def.villager);
+    const te = this.targetEntity;
+    const interactive = (this.target && this.isInteractive(this.target) && !p.sneaking) || (te && ((te.def && te.def.villager) || te.vehicle));
+    // a raised shield
+    p.blocking = !!(held && held.id === I.shield && inp.mouse.right && !interactive);
+    if (p.blocking) { this.eatTicks = 0; p.eating = 0; return; }
 
     // draw and release a bow
     if (held && held.id === I.bow && !interactive) {
@@ -399,14 +437,21 @@ export class Game {
     } else this.bowDraw = 0;
 
     // eating
-    const canEat = def && def.food && (p.food < 20 || p.creative);
+    const canEat = def && ((def.food && (p.food < 20 || p.creative || def.always)) || def.drink);
     if (inp.mouse.right && canEat && !interactive) {
       this.eatTicks++;
-      if (this.eatTicks % 4 === 0) this.audio.play('eat', p.x, p.y + 1.5, p.z, 0.6);
+      if (this.eatTicks % 4 === 0) this.audio.play(def.drink ? 'drink' : 'eat', p.x, p.y + 1.5, p.z, 0.6);
       if (this.eatTicks >= 32) {
         this.eatTicks = 0;
-        if (!p.creative) { p.eat(held); p.inventory.useHeld(); }
-        this.audio.play('burp', p.x, p.y + 1.5, p.z, 0.5);
+        if (def.drink) this.finishDrink(held);
+        else {
+          if (!p.creative) {
+            p.eat(held);
+            this.afterEat(held);
+            if (def.leaves) this.replaceHeld({ id: I[def.leaves], count: 1 }); else p.inventory.useHeld();
+          } else this.afterEat(held);
+          this.audio.play('burp', p.x, p.y + 1.5, p.z, 0.5);
+        }
       }
       p.eating = this.eatTicks;
       return;
@@ -456,7 +501,10 @@ export class Game {
   isInteractive(hit) {
     const id = hit.id;
     return id === B.crafting_table || id === B.furnace || id === B.furnace_lit || id === B.chest || id === B.tnt ||
-      id === B.oak_door || id === B.oak_fence_gate || id === B.bed || id === B.enchanting_table;
+      id === B.oak_door || id === B.oak_fence_gate || id === B.bed || id === B.enchanting_table ||
+      id === B.lever || id === B.stone_button || id === B.oak_button || id === B.repeater || id === B.note_block ||
+      id === B.oak_trapdoor || id === B.brewing_stand || id === B.dispenser || id === B.hopper || id === B.cake ||
+      id === B.oak_sign || id === B.oak_wall_sign;
   }
 
   breakSpeed(id) {
@@ -549,6 +597,15 @@ export class Game {
       const below = w.getBlock(x, y - 1, z);
       if (SOLID[below] || isLiquid(below)) replacement = B.water;
     }
+    // pistons and their heads come apart together
+    if ((id === B.piston || id === B.sticky_piston) && (meta & 8)) {
+      const [hx, hy, hz] = [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]][meta & 7];
+      if (w.getBlock(x + hx, y + hy, z + hz) === B.piston_head) w.setBlock(x + hx, y + hy, z + hz, 0, 0, { notify: false });
+    } else if (id === B.piston_head) {
+      const [hx, hy, hz] = [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]][meta & 7];
+      const base = w.getBlock(x - hx, y - hy, z - hz);
+      if (base === B.piston || base === B.sticky_piston) { w.setBlock(x, y, z, 0, 0, { notify: false }); this.breakBlock(x - hx, y - hy, z - hz, harvest); return; }
+    }
     // two-block pieces come apart together
     if (id === B.oak_door) {
       const oy = meta & DOOR_UPPER ? y - 1 : y + 1;
@@ -601,6 +658,14 @@ export class Game {
     const def = held && ITEMS[held.id];
     let dmg = def && def.damage ? def.damage : 1;
     if (held && held.ench && held.ench.sharpness) dmg += held.ench.sharpness * 0.5 + 0.5;
+    if (p.effects.strength) dmg += 3 * (p.effects.strength.amp + 1);
+    if (p.effects.weakness) dmg = Math.max(0, dmg - 4);
+    if (mob.isRemote) { if (this.net) this.net.hitRemote(mob, dmg, 'player', p.x, p.z); this.startSwing(); return; }
+    if (!(mob instanceof Mob)) {
+      if (mob.hit) mob.hit(this, dmg, 'player');
+      p.addExhaustion(0.1);
+      return;
+    }
     const crit = p.vy < 0 && !p.onGround && !p.inWater && !p.onLadder && !p.flying;
     if (crit) {
       dmg *= 1.5;
@@ -640,6 +705,7 @@ export class Game {
     // workstations, containers, doors, beds
     if (hit && !p.sneaking && this.useBlock(hit, held)) return;
     if (!held) return;
+    if (this.useItemFirst(held, hit)) return;
 
     // wear armor
     if (def.armor) {
@@ -715,7 +781,7 @@ export class Game {
         this.audio.play('portal', cx + 0.5, cy + 0.5, cz + 0.5);
         this.damageTool(1); this.startSwing();
       } else {
-        this.audio.play('ignite', cx + 0.5, cy + 0.5, cz + 0.5, 0.6);
+        if (!this.placeFire(cx, cy, cz)) this.audio.play('ignite', cx + 0.5, cy + 0.5, cz + 0.5, 0.6);
         this.damageTool(1); this.startSwing();
       }
       return;
@@ -763,6 +829,7 @@ export class Game {
       this.startSwing();
       return;
     }
+    if (this.placeSpecial(held, hit, tx, ty, tz)) return;
     if (!isBlockItem(held.id)) return;
     const id = held.id;
     if (id === B.oak_door || id === B.bed) { if (this.placeDouble(id, tx, ty, tz)) { if (!p.creative) p.inventory.useHeld(); this.startSwing(); } return; }
@@ -859,7 +926,7 @@ export class Game {
         this.sleepInBed(hit.x, hit.y, hit.z);
         return true;
       default:
-        return false;
+        return this.useBlockExtra(hit, held);
     }
   }
 
@@ -921,6 +988,8 @@ export class Game {
     const face = REPLACEABLE[hit.id] && !isLiquid(hit.id) ? 0 : hit.face;
     const frac = hit.hy - Math.floor(hit.hy);
     const upper = face === 1 || (face >= 2 && frac > 0.5);
+    const extra = this.placementMetaExtra(b, hit, face);
+    if (extra !== undefined) return extra;
     if (b.orient === 'axis') return face === 2 || face === 3 ? 1 : face === 4 || face === 5 ? 2 : 0;
     if (b.orient === 'facing') {
       // front faces the player
@@ -950,6 +1019,8 @@ export class Game {
     const w = this.world;
     const b = BLOCKS[id];
     const below = w.getBlock(x, y - 1, z);
+    const extra = this.canSurviveExtra(b, meta, x, y, z);
+    if (extra !== undefined) return extra;
     switch (b.support) {
       case 'ground':
         if (id === B.brown_mushroom || id === B.red_mushroom) return OPAQUE[below] === 1;
@@ -1044,9 +1115,10 @@ export class Game {
     for (const e of this.entities) {
       const dx = e.x - p.x, dz = e.z - p.z;
       const far = dx * dx + dz * dz > 110 * 110;
-      if (far && !e.hostile) { e.savePrev(); continue; }
+      if (far && !e.hostile && !e.isWyrm) { e.savePrev(); continue; }
       if (!this.world.chunkReady(Math.floor(e.x) >> 4, Math.floor(e.z) >> 4)) { e.savePrev(); continue; }
       e.tick(this);
+      if (e instanceof Mob && !e.dead && this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.1), Math.floor(e.z)) === B.fire && !e.def.fireproof) e.fire = Math.max(e.fire, 160);
     }
     for (const it of this.items) {
       if (!this.world.chunkReady(Math.floor(it.x) >> 4, Math.floor(it.z) >> 4)) { it.savePrev(); continue; }
@@ -1073,6 +1145,7 @@ export class Game {
   onChunkGenerated(c, spawns, chests = [], spawners = []) {
     if (this.demo) return;
     for (const s of spawns) {
+      if (s.type === 'pylon') { if (this.meta.voidBoss !== 'dead') this.spawnPylon(s); continue; }
       if (this.entities.length > 220) break;
       const mob = new Mob(s.type, s.x, s.y, s.z, { profession: s.profession, home: s.type === 'settler' ? { x: s.x, y: s.y, z: s.z } : null });
       this.entities.push(mob);
@@ -1099,6 +1172,7 @@ export class Game {
     if (this.settings.peaceful) { for (const e of this.entities) if (e.hostile) e.removed = true; return; }
     const hostile = this.entities.reduce((n, e) => n + (e.hostile ? 1 : 0), 0);
     const under = this.dim === 'underworld';
+    if (this.dim === 'void') { this.spawnVoidMobs(hostile); return; }
     if (hostile >= (under ? 14 : 18)) return;
     const dayL = under ? 0 : daylight(this.dayTime, this.rain);
     const darken = Math.round((1 - dayL) * 11);
@@ -1125,10 +1199,26 @@ export class Game {
       if (under ? bl > 11 : (bl > 0 || sky - darken > 4)) continue;
       if (Math.hypot(x + 0.5 - p.x, y - p.y, z + 0.5 - p.z) < 24) continue;
       const r = Math.random();
-      const type = under ? (r < 0.75 ? 'imp' : 'archer') : (r < 0.5 ? 'ghoul' : r < 0.78 ? 'archer' : 'crawler');
+      const type = under ? (r < 0.75 ? 'imp' : 'archer') : (r < 0.47 ? 'ghoul' : r < 0.74 ? 'archer' : r < 0.97 ? 'crawler' : 'gloamer');
       const opts = {};
       if ((type === 'ghoul' || type === 'archer') && Math.random() < 0.06) opts.armor = [Math.random() < 0.5 ? I.iron_helmet : I.leather_helmet, Math.random() < 0.3 ? I.iron_chestplate : null, null, null];
       const mob = new Mob(type, x + 0.5, y, z + 0.5, opts);
+      if (!boxFree(w, mob.x, mob.y, mob.z, mob.w, mob.h)) continue;
+      this.entities.push(mob);
+    }
+  }
+
+  // The Void: gloamers wander the duskstone.
+  spawnVoidMobs(count) {
+    if (count >= 12) return;
+    const p = this.player, w = this.world;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const a = Math.random() * Math.PI * 2, d = 24 + Math.random() * 40;
+      const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
+      if (!w.chunkReady(x >> 4, z >> 4)) continue;
+      const y = w.surfaceY(x, z);
+      if (y < 2 || w.getBlock(x, y - 1, z) !== B.duskstone) continue;
+      const mob = new Mob('gloamer', x + 0.5, y, z + 0.5);
       if (!boxFree(w, mob.x, mob.y, mob.z, mob.w, mob.h)) continue;
       this.entities.push(mob);
     }
@@ -1175,6 +1265,7 @@ export class Game {
     const p = this.player;
     this.entities.push(new Lightning(x, y, z));
     this.flash = 1;
+    if (Math.random() < 0.5) this.placeFire(Math.floor(x), Math.floor(y), Math.floor(z));
     const d = Math.hypot(p.x - x, p.z - z);
     setTimeout(() => this.audio.play('thunder', p.x + (x - p.x) * 0.2, p.y, p.z + (z - p.z) * 0.2, Math.max(0.3, 1 - d / 200)), Math.min(3000, d * 8));
     for (const e of [p, ...this.entities]) {
@@ -1213,22 +1304,33 @@ export class Game {
     const p = this.player;
     this.state = 'loading';
     this.ui.closeScreen && this.ui.screen && this.ui.closeScreen(true);
-    this.ui.showLoading(to === 'underworld' ? 'Entering the Underworld' : 'Returning to the Overworld', 0);
-    this.ui.lastLoadingText = to === 'underworld' ? 'Entering the Underworld' : 'Returning to the Overworld';
+    const text = to === 'overworld' ? 'Returning to the Overworld' : `Entering ${DIM_NAMES[to]}`;
+    this.ui.showLoading(text, 0);
+    this.ui.lastLoadingText = text;
+    if (p.vehicle) this.dismount();
+    if (this.net && this.net.isHost) this.net.hostTravel(to);
     this.input.exitLock();
     await this.startWorld(this.meta, { dim: to, keepPlayer: true });
     const [lo, hi] = portalLimits(to);
     p.x = p.px = x; p.z = p.pz = z; p.y = p.py = Math.max(lo, Math.min(hi, y));
     p.vx = p.vy = p.vz = 0; p.fallDistance = 0; p.dim = to;
-    this.pendingPortal = viaPortal ? { x, y: p.y, z } : null;
+    this.pendingPortal = viaPortal ? { x, y: p.y, z, mode: viaPortal === 'platform' ? 'platform' : 'rift' } : null;
     if (!viaPortal) this.spawnKnown = true;
     if (to === 'underworld') this.advance('underworld');
+    if (to === 'void') this.advance('void');
   }
 
   // Once the destination is loaded, stand in an existing rift or build one.
   resolvePortal() {
     const p = this.player, w = this.world;
     const t = this.pendingPortal;
+    if (t.mode === 'platform') {
+      if (!w.chunkReady(Math.floor(t.x) >> 4, Math.floor(t.z) >> 4)) return false;
+      this.buildVoidPlatform();
+      p.x = p.px = 100.5; p.y = p.py = 49; p.z = p.pz = 0.5; p.yaw = Math.PI / 2;
+      this.pendingPortal = null; this.spawnKnown = true;
+      return true;
+    }
     const [lo, hi] = portalLimits(this.dim);
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (!w.chunkReady((Math.floor(t.x) >> 4) + dx, (Math.floor(t.z) >> 4) + dz)) return false;
     let at = findRift(w, t.x, t.z, 16, this.dim === 'underworld' ? 126 : HEIGHT - 1);
@@ -1366,6 +1468,9 @@ export class Game {
   onBlockChanged(x, y, z, old, id) {
     if (this.demo) return;
     const w = this.world;
+    this.circuits.onBlockChanged(x, y, z, old, id);
+    if (id === B.fire) this.fires.add(`${x},${y},${z}`);
+    if (this.net) this.net.onBlockChanged(x, y, z, id, w.getMeta(x, y, z));
     if (isLiquid(id)) this.fluids.schedule(x, y, z, this.tickCount);
     for (const [dx, dy, dz] of DIR6) {
       const nx = x + dx, ny = y + dy, nz = z + dz;
@@ -1496,7 +1601,19 @@ export class Game {
         if ((l & 15) > 11) w.setBlock(x, y, z, B.water, 0);
         return;
       }
+      case B.fire: this.fires.add(`${x},${y},${z}`); return;
+      case B.lava: {
+        // lava sets fire to flammable things around it
+        if (Math.random() > 0.3) return;
+        const tx = x + Math.floor(Math.random() * 3) - 1, ty = y + 1 + Math.floor(Math.random() * 2), tz = z + Math.floor(Math.random() * 3) - 1;
+        if (w.getBlock(tx, ty, tz) === 0) {
+          for (const [dx, dy, dz] of DIR6) if (BLOCKS[w.getBlock(tx + dx, ty + dy, tz + dz)].burn > 0) { this.placeFire(tx, ty, tz); break; }
+        }
+        return;
+      }
+      case B.daylight_sensor: this.circuits.sensors.add(`${x},${y},${z}`); return;
       default:
+        if (BLOCKS[id] && BLOCKS[id].spark) this.circuits.mark(x, y, z);
     }
   }
 
@@ -1585,7 +1702,7 @@ export class Game {
 
   // ---------------------------------------------------------------------------
   // Explosions: rays through the blocks with resistance, then damage.
-  explode(x, y, z, power) {
+  explode(x, y, z, power, opts = {}) {
     const w = this.world;
     this.particles.explosion(x, y, z);
     this.audio.play('explode', x, y, z);
@@ -1601,6 +1718,7 @@ export class Game {
       return h * 4;
     };
     for (let i = 0; i < 16; i++) for (let j = 0; j < 16; j++) for (let k = 0; k < 16; k++) {
+      if (opts.noBlocks) break;
       if (i && i < 15 && j && j < 15 && k && k < 15) continue;
       let dx = i / 15 * 2 - 1, dy = j / 15 * 2 - 1, dz = k / 15 * 2 - 1;
       const l = Math.hypot(dx, dy, dz); dx /= l; dy /= l; dz /= l;
@@ -1647,6 +1765,8 @@ export class Game {
     };
     if (!p.dead) hurtEnt(p, true);
     for (const e of this.entities) if (e instanceof Mob) hurtEnt(e, false);
+    for (const e of this.entities) if ((e.isCart || e.isBoat) && Math.hypot(e.x - x, e.y - y, e.z - z) < power) e.hit(this, 40);
+    for (const e of this.entities) if (e.isPylon && !e.removed && Math.hypot(e.x - x, e.y - y, e.z - z) < power * 1.5) e.hit(this);
     for (const it of this.items) { const d = Math.hypot(it.x - x, it.y - y, it.z - z); if (d < 3) it.removed = true; }
   }
 
@@ -1736,13 +1856,15 @@ export class Game {
 
   deathMessage() {
     const s = this.player.lastDamageSource || '';
-    const MOBS = { ghoul: 'a Ghoul', archer: 'a Bone Archer', crawler: 'a Cave Crawler', imp: 'a Cinder Imp' };
+    const MOBS = { ghoul: 'a Ghoul', archer: 'a Bone Archer', crawler: 'a Cave Crawler', imp: 'a Cinder Imp', gloamer: 'a Gloamer', wyrm: 'the Void Wyrm' };
+    if (s.startsWith('player:')) return `You were slain by ${s.slice(7) || 'another player'}`;
     if (s.startsWith('mob:')) return `You were slain by ${MOBS[s.slice(4)] || 'a creature'}`;
     return {
       fall: 'You hit the ground too hard', drown: 'You drowned', lava: 'You tried to swim in lava',
       fire: 'You burned to death', starve: 'You starved to death', cactus: 'You were pricked to death',
       explosion: 'You were blown up', void: 'You fell out of the world', magma: 'You discovered the floor was hot',
       arrow: 'You were shot by a Bone Archer', lightning: 'You were struck by lightning', kill: 'You died',
+      magic: 'You were killed by magic', fly_into_wall: 'You experienced kinetic energy', thrown: 'You were hit by something thrown',
     }[s] || 'You died';
   }
 
@@ -1791,7 +1913,7 @@ export class Game {
     };
     switch ((cmd || '').toLowerCase()) {
       case 'help':
-        return `Commands: /time set <day|noon|night|midnight|ticks>, /time add <ticks>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <${Object.keys(MOB_TYPES).join('|')}>, /weather <clear|rain|thunder>, /xp <amount>[L], /enchant <name> [level], /locate village, /dimension <overworld|underworld>, /seed, /spawnpoint, /kill, /heal, /clear, /difficulty <peaceful|normal>`;
+        return `Commands: /time set <day|noon|night|midnight|ticks>, /time add <ticks>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <${Object.keys(MOB_TYPES).join('|')}>, /weather <clear|rain|thunder>, /xp <amount>[L], /enchant <name> [level], /locate <village|observatory|spire>, /dimension <overworld|underworld|void>, /effect <give|clear> [effect] [seconds] [level], /seed, /spawnpoint, /kill, /heal, /clear, /difficulty <peaceful|normal>`;
       case 'time': {
         const named = { day: 1000, noon: 6000, sunset: 12000, night: 13000, midnight: 18000, sunrise: 23000 };
         if (args[0] === 'set') {
@@ -1836,8 +1958,18 @@ export class Game {
       }
       case 'summon': {
         const t = (args[0] || '').toLowerCase();
-        if (!MOB_TYPES[t]) return `Usage: /summon <${Object.keys(MOB_TYPES).join('|')}>`;
         const [dx, , dz] = this.lookDir();
+        if (t === 'minecart' || t === 'boat') {
+          const V = t === 'minecart' ? Minecart : Boat;
+          this.entities.push(new V(p.x + dx * 2, p.y, p.z + dz * 2));
+          return `Summoned a ${t}`;
+        }
+        if (t === 'wyrm') {
+          if (this.dim !== 'void') return 'The Void Wyrm only lives in the Void';
+          this.meta.voidBoss = 'alive'; this.meta.voidWyrmHealth = 0; this.spawnVoidBoss();
+          return 'The Void Wyrm rises';
+        }
+        if (!MOB_TYPES[t]) return `Usage: /summon <${[...Object.keys(MOB_TYPES), 'minecart', 'boat', 'wyrm'].join('|')}>`;
         const opts = t === 'settler' ? { profession: args[1] || ['farmer', 'smith', 'shepherd', 'scholar'][Math.floor(Math.random() * 4)] } : {};
         this.entities.push(new Mob(t, p.x + dx * 2, p.y, p.z + dz * 2, opts));
         return `Summoned a ${t}`;
@@ -1865,8 +1997,32 @@ export class Game {
         held.ench = { ...(held.ench || {}), [key]: lvl };
         return `Applied ${enchantLabel(key, lvl)} to ${itemName(held.id)}`;
       }
+      case 'effect': {
+        if (args[0] === 'clear') { p.effects = {}; p.absorption = 0; return 'Cleared all effects'; }
+        if (args[0] !== 'give' || !args[1]) return `Usage: /effect give <${Object.keys(EFFECTS).join('|')}> [seconds] [level] or /effect clear`;
+        const name = args[1].toLowerCase();
+        if (!EFFECTS[name]) return `Unknown effect: ${name}`;
+        const secs = Math.max(1, Math.min(100000, parseInt(args[2] || '30', 10) || 30));
+        const lvl = Math.max(1, Math.min(4, parseInt(args[3] || '1', 10) || 1));
+        if (EFFECTS[name].instant) p.applyPotion(this, { effect: name, amp: lvl - 1, ticks: 0 });
+        else addEffect(p, name, lvl - 1, secs * 20);
+        return `Applied ${EFFECTS[name].name} ${lvl > 1 ? lvl : ''} for ${secs}s`;
+      }
       case 'locate': {
-        if ((args[0] || 'village') !== 'village') return 'Usage: /locate village';
+        const what = (args[0] || 'village').toLowerCase();
+        if (what === 'observatory') {
+          const os = this.world.gen.observatories;
+          if (!os) return 'There are no observatories in this dimension';
+          const o = os.locate(p.x, p.z, 4);
+          return o ? `The nearest observatory is at ${o.x}, ${o.y}, ${o.z} (${Math.round(Math.hypot(o.x - p.x, o.z - p.z))} blocks away)` : 'No observatory found nearby';
+        }
+        if (what === 'spire') {
+          const g = this.world.gen;
+          if (!g.locateSpire) return 'Spires are only found in the Void';
+          const sp = g.locateSpire(p.x, p.z, 5);
+          return sp ? `The nearest spire is at ${sp.x}, ${sp.y}, ${sp.z} (${Math.round(Math.hypot(sp.x - p.x, sp.z - p.z))} blocks away)` : 'No spire found nearby';
+        }
+        if (what !== 'village') return 'Usage: /locate <village|observatory|spire>';
         const vs = this.world.gen.villages;
         if (!vs) return 'There are no villages in this dimension';
         const v = vs.locate(p.x, p.z, 8);
@@ -1875,8 +2031,10 @@ export class Game {
       }
       case 'dimension': case 'dim': {
         const to = (args[0] || '').toLowerCase();
-        if (to !== 'overworld' && to !== 'underworld') return 'Usage: /dimension <overworld|underworld>';
-        if (to === this.dim) return `Already in the ${to}`;
+        if (!['overworld', 'underworld', 'void'].includes(to)) return 'Usage: /dimension <overworld|underworld|void>';
+        if (to === this.dim) return `Already in ${DIM_NAMES[to]}`;
+        if (to === 'void') { this.travel('void', 100.5, 50, 0.5, 'platform'); return ''; }
+        if (this.dim === 'void') { const sp = p.spawn || p.worldSpawn || { x: 0, y: 80, z: 0 }; this.travel('overworld', sp.x, sp.y, sp.z, false); return ''; }
         const f = to === 'underworld' ? 1 / 8 : 8;
         this.travel(to, p.x * f, to === 'underworld' ? 64 : p.y, p.z * f, true);
         return '';
@@ -1910,6 +2068,7 @@ export class Game {
     const [ex, ey, ez] = this.eyePos(alpha);
     cam.x = ex; cam.y = ey; cam.z = ez;
     cam.yaw = p.yaw; cam.pitch = p.pitch; cam.roll = 0;
+    if (p.gliding) cam.roll = Math.max(-0.5, Math.min(0.5, (p.yaw - (p.pyaw ?? p.yaw)) * 6));
     if (p.sleeping) {
       // lying in bed, looking up past the headboard
       cam.y = p.y + 0.15; cam.yaw = p.sleepYaw || 0; cam.pitch = 0.9; cam.fov = s.fov;
@@ -1936,6 +2095,9 @@ export class Game {
     if (p.sprinting) fov *= 1.12;
     if (p.eyesInWater) fov *= 0.88;
     if (this.bowDraw > 0) fov *= 1 - Math.min(1, this.bowDraw / 20) ** 2 * 0.15;
+    if (p.effects.speed) fov *= 1 + 0.05 * (p.effects.speed.amp + 1);
+    if (p.effects.slowness) fov *= 0.94;
+    if (p.gliding) fov *= 1 + Math.min(0.25, Math.hypot(p.vx, p.vy, p.vz) * 0.12);
     this.fovCur += (fov - this.fovCur) * 0.18;
     cam.fov = this.fovCur;
     if (this.perspective !== 0) {
@@ -1963,6 +2125,7 @@ export class Game {
       dayTime: this.dayTime + (this.state === 'playing' ? alpha : 0), day: this.day, rain: this.dim === 'overworld' ? this.rain : 0,
       underwater, inLava, renderDist: this.demo ? Math.min(8, s.renderDistance) : s.renderDistance,
       gamma: s.brightness / 100, flicker: this.flicker, dim: this.dim, flash: this.flash,
+      nightVision: p && p.effects.night_vision ? Math.min(1, p.effects.night_vision.time / 100) : 0,
     });
     const scene = {
       cam, env: this.env, chunks: this.world.chunks.values(), renderDist: this.demo ? Math.min(8, s.renderDistance) : s.renderDistance,
@@ -1989,8 +2152,12 @@ export class Game {
       this.screenshotPending = false;
       this.ui.screenshotTaken(this.renderer.capture());
     }
-    this.ui.frame(dt, { underwater, inLava, portal: this.portalProgress, sleep: p && p.sleeping ? Math.min(1, p.sleeping / 60) : 0 });
+    this.ui.frame(dt, {
+      underwater, inLava, portal: this.portalProgress, sleep: p && p.sleeping ? Math.min(1, p.sleeping / 60) : 0,
+      boss: this.wyrm && !this.wyrm.removed && Math.hypot(this.wyrm.x - p.x, this.wyrm.z - p.z) < 200 ? { name: 'Void Wyrm', f: this.wyrm.health / this.wyrm.maxHealth } : null,
+    });
     if (p && p.dead) this.deadTicks = (this.deadTicks || 0) + dt * 20; else this.deadTicks = 0;
   }
 }
 
+installFeatures(Game);

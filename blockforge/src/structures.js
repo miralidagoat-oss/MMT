@@ -376,3 +376,159 @@ export function placeDungeon(seed, cx, cz, blocks, meta, surfaceMin, out) {
     out.chests.push({ x: cx * 16 + x, y: sy, z: cz * 16 + z, loot: 'dungeon' });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Observatories: buried stone-brick halls holding the star gate (twelve
+// frames around a lava pit), with corridors to a library and storerooms.
+const OBS_CELL = 768;
+
+export class Observatories {
+  constructor(gen) { this.gen = gen; this.cache = new Map(); }
+
+  inCell(cx, cz) {
+    const key = cx * 100003 + cz;
+    if (this.cache.has(key)) return this.cache.get(key);
+    const g = this.gen;
+    const r = rng(hash2(g.seed ^ 0x0b5e, cx, cz));
+    let o = null;
+    if (r() < 0.8) {
+      const x = cx * OBS_CELL + 120 + Math.floor(r() * (OBS_CELL - 240));
+      const z = cz * OBS_CELL + 120 + Math.floor(r() * (OBS_CELL - 240));
+      const y = 18 + Math.floor(r() * 14);
+      o = { x, y, z, pieces: [], chests: [], frames: [], spawner: null };
+      this.layout(o, r);
+    }
+    this.cache.set(key, o);
+    if (this.cache.size > 64) this.cache.delete(this.cache.keys().next().value);
+    return o;
+  }
+
+  locate(x, z, cells = 3) {
+    const cx = Math.floor(x / OBS_CELL), cz = Math.floor(z / OBS_CELL);
+    let best = null, bd = Infinity;
+    for (let dz = -cells; dz <= cells; dz++) for (let dx = -cells; dx <= cells; dx++) {
+      const o = this.inCell(cx + dx, cz + dz);
+      if (o) { const d = Math.hypot(o.x - x, o.z - z); if (d < bd) { bd = d; best = o; } }
+    }
+    return best;
+  }
+
+  near(x0, z0, x1, z1) {
+    const out = [];
+    for (let cz = Math.floor((z0 - 80) / OBS_CELL); cz <= Math.floor((z1 + 80) / OBS_CELL); cz++)
+      for (let cx = Math.floor((x0 - 80) / OBS_CELL); cx <= Math.floor((x1 + 80) / OBS_CELL); cx++) {
+        const o = this.inCell(cx, cz);
+        if (o && o.bx1 >= x0 && o.bx0 <= x1 && o.bz1 >= z0 && o.bz0 <= z1) out.push(o);
+      }
+    return out;
+  }
+
+  layout(o, r) {
+    const { x, y, z } = o;
+    const room = (x0, y0, z0, x1, y1, z1, kind = 'room') => o.pieces.push({ kind, b: [x0, y0, z0, x1, y1, z1] });
+    // the gate hall
+    room(x - 7, y, z - 7, x + 7, y + 9, z + 7, 'hall');
+    // corridors in four directions, each ending in a room
+    const ends = [];
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const len = 14 + Math.floor(r() * 16);
+      const sx = x + dx * 7, sz = z + dz * 7;
+      const ex = x + dx * (7 + len), ez = z + dz * (7 + len);
+      const ax0 = Math.min(sx, ex) - (dz ? 2 : 0), ax1 = Math.max(sx, ex) + (dz ? 2 : 0);
+      const az0 = Math.min(sz, ez) - (dx ? 2 : 0), az1 = Math.max(sz, ez) + (dx ? 2 : 0);
+      room(ax0, y, az0, ax1, y + 5, az1, 'corridor');
+      ends.push([ex, ez, dx, dz]);
+    }
+    const kinds = ['library', 'store', 'store', 'cell'].sort(() => r() - 0.5);
+    ends.forEach(([ex, ez, dx, dz], i) => {
+      const cx = ex + dx * 5, cz = ez + dz * 5;
+      const kind = kinds[i];
+      const s = kind === 'library' ? 6 : 4;
+      room(cx - s, y, cz - s, cx + s, y + (kind === 'library' ? 8 : 6), cz + s, kind);
+      // doorway from the corridor
+      o.pieces.push({ kind: 'door', b: [ex - (dz ? 1 : 0), y + 1, ez - (dx ? 1 : 0), ex + dx * 2 + (dz ? 1 : 0), y + 3, ez + dz * 2 + (dx ? 1 : 0)] });
+      if (kind === 'library' || kind === 'store') o.chests.push({ x: cx + (kind === 'library' ? 3 : 0), y: y + 1, z: cz, loot: kind === 'library' ? 'observatory_library' : 'observatory' });
+    });
+    // hall doorways
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      o.pieces.push({ kind: 'door', b: [x + dx * 7 - (dz ? 1 : 0), y + 1, z + dz * 7 - (dx ? 1 : 0), x + dx * 7 + (dz ? 1 : 0), y + 3, z + dz * 7 + (dx ? 1 : 0)] });
+    }
+    // star gate: twelve frames around a 3x3 pit, each facing the middle
+    for (let i = -1; i <= 1; i++) {
+      o.frames.push([x + i, z - 2, 2], [x + i, z + 2, 0], [x - 2, z + i, 1], [x + 2, z + i, 3]);
+    }
+    o.frames = o.frames.map(([fx, fz, f]) => [fx, fz, f, r() < 0.1]);
+    o.spawner = [x - 5, y + 1, z + 5];
+    let bx0 = Infinity, bz0 = Infinity, bx1 = -Infinity, bz1 = -Infinity;
+    for (const p of o.pieces) { bx0 = Math.min(bx0, p.b[0]); bz0 = Math.min(bz0, p.b[2]); bx1 = Math.max(bx1, p.b[3]); bz1 = Math.max(bz1, p.b[5]); }
+    Object.assign(o, { bx0, bz0, bx1, bz1 });
+  }
+
+  // Write the parts of observatory o that fall in this chunk.
+  write(o, ctx, X0, Z0, out) {
+    const r = rng(hash2(this.gen.seed ^ 0x0b5f, X0, Z0));
+    const brick = () => { const v = r(); return v < 0.12 ? B.mossy_cobblestone : v < 0.2 ? B.cobblestone : B.stone_bricks; };
+    const inChunk = (x, z) => x >= X0 && x < X0 + 16 && z >= Z0 && z < Z0 + 16;
+    const shell = (b, hollow = true) => {
+      const [x0, y0, z0, x1, y1, z1] = b;
+      for (let x = Math.max(x0, X0); x <= Math.min(x1, X0 + 15); x++) for (let z = Math.max(z0, Z0); z <= Math.min(z1, Z0 + 15); z++) {
+        for (let y = y0; y <= y1; y++) {
+          const edge = x === x0 || x === x1 || z === z0 || z === z1 || y === y0 || y === y1;
+          if (edge) { if (ctx.get(x, y, z) !== 0 || !hollow) ctx.set(x, y, z, brick(), 0); else ctx.set(x, y, z, brick(), 0); }
+          else if (hollow) ctx.set(x, y, z, 0, 0);
+        }
+      }
+    };
+    // shells first, then carve the insides so rooms open into each other
+    for (const p of o.pieces) if (p.kind !== 'door') shell(p.b, false);
+    for (const p of o.pieces) {
+      const [x0, y0, z0, x1, y1, z1] = p.b;
+      const cut = p.kind === 'door' ? [x0, y0, z0, x1, y1, z1] : [x0 + 1, y0 + 1, z0 + 1, x1 - 1, y1 - 1, z1 - 1];
+      for (let x = Math.max(cut[0], X0); x <= Math.min(cut[3], X0 + 15); x++) for (let z = Math.max(cut[2], Z0); z <= Math.min(cut[5], Z0 + 15); z++)
+        for (let y = cut[1]; y <= cut[4]; y++) ctx.set(x, y, z, 0, 0);
+    }
+    // furnishings
+    for (const p of o.pieces) {
+      const [x0, y0, z0, x1, y1, z1] = p.b;
+      if (p.kind === 'library') {
+        for (let x = x0 + 1; x <= x1 - 1; x++) for (let z = z0 + 1; z <= z1 - 1; z++) {
+          if (!inChunk(x, z)) continue;
+          const wall = x === x0 + 1 || x === x1 - 1 || z === z0 + 1 || z === z1 - 1;
+          if (wall && (x + z) % 5 !== 0) for (let y = y0 + 1; y <= y0 + 4; y++) ctx.set(x, y, z, B.bookshelf, 0);
+          if (!wall && (x - x0) % 4 === 2 && (z - z0) % 3 !== 0) for (let y = y0 + 1; y <= y0 + 3; y++) ctx.set(x, y, z, B.bookshelf, 0);
+        }
+        const cx = (x0 + x1) >> 1, cz = (z0 + z1) >> 1;
+        if (inChunk(cx, cz)) ctx.set(cx, y1 - 1, cz, B.lantern, 1);
+      } else if (p.kind === 'cell') {
+        for (let x = x0 + 1; x <= x1 - 1; x++) for (let z = z0 + 1; z <= z1 - 1; z++) if (inChunk(x, z) && r() < 0.25) ctx.set(x, y0 + 1 + Math.floor(r() * 3), z, B.cobweb, 0);
+      } else if (p.kind === 'corridor') {
+        // a lantern every so often
+        const cx = (x0 + x1) >> 1, cz = (z0 + z1) >> 1;
+        if (inChunk(cx, cz)) ctx.set(cx, y1 - 1, cz, B.lantern, 1);
+      }
+    }
+    const { x, y, z } = o;
+    // the gate dais: a raised platform, a lava pit and the frames
+    for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
+      const wx = x + dx, wz = z + dz;
+      if (!inChunk(wx, wz)) continue;
+      ctx.set(wx, y + 1, wz, B.stone_bricks, 0);
+      ctx.set(wx, y + 2, wz, B.stone_bricks, 0);
+      if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1) { ctx.set(wx, y + 1, wz, B.lava, 0); ctx.set(wx, y + 2, wz, B.lava, 0); }
+    }
+    for (const [fx, fz, f, eye] of o.frames) if (inChunk(fx, fz)) ctx.set(fx, y + 3, fz, B.star_frame, f | (eye ? 4 : 0));
+    // steps up to the dais
+    for (let i = 0; i < 3; i++) { const wx = x + i - 1, wz = z + 4; if (inChunk(wx, wz)) { ctx.set(wx, y + 1, wz, B.stone_brick_stairs, 0); ctx.set(wx, y + 2, wz, 0, 0); } }
+    for (let i = 0; i < 3; i++) { const wx = x + i - 1, wz = z + 3; if (inChunk(wx, wz)) ctx.set(wx, y + 2, wz, B.stone_brick_stairs, 0); }
+    // lanterns on the hall pillars
+    for (const [dx, dz] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) {
+      const wx = x + dx, wz = z + dz;
+      if (!inChunk(wx, wz)) continue;
+      for (let yy = y + 1; yy < y + 9; yy++) ctx.set(wx, yy, wz, B.stone_bricks, 0);
+      ctx.set(wx + Math.sign(-dx), y + 6, wz, B.lantern, 0);
+    }
+    const [sx, sy, sz] = o.spawner;
+    if (inChunk(sx, sz)) { ctx.set(sx, sy, sz, B.spawner, 0); out.spawners.push({ x: sx, y: sy, z: sz, mob: 'crawler' }); }
+    for (const c of o.chests) if (inChunk(c.x, c.z)) { ctx.set(c.x, c.y, c.z, B.chest, 4); out.chests.push(c); }
+  }
+}

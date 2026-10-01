@@ -21,6 +21,8 @@ for (const b of BLOCKS) {
   ITEMS[b.id] = { id: b.id, name: b.name, display: b.display, block: b.id, maxStack: 64 };
   I[b.name] = b.id;
 }
+ITEMS[B.cake].maxStack = 1;
+ITEMS[B.oak_sign].maxStack = 16;
 
 let nextId = 256;
 function item(name, o = {}) {
@@ -119,6 +121,61 @@ item('quartz');
 item('gold_nugget');
 item('ember_brick');
 item('egg', { maxStack: 16 });
+
+// --- round three: circuits, vehicles, brewing, the void, fishing, maps ---
+item('spark_dust', { places: 'wire' });
+item('minecart', { maxStack: 1 });
+item('boat', { maxStack: 1, display: 'Oak Boat', fuel: 1200 });
+item('glass_bottle');
+item('sugar');
+item('glistering_melon', { display: 'Glistering Melon Slice' });
+item('golden_carrot', { food: [6, 14.4] });
+item('crawler_eye', { food: [2, 3.2], poison: true });
+item('fermented_crawler_eye');
+item('imp_horn');
+item('blast_powder');
+item('milk_bucket', { maxStack: 1, drink: true, leaves: 'bucket' });
+item('golden_apple', { food: [4, 9.6], always: true });
+item('resin');
+item('iron_nugget');
+// Potions: an item per effect for drinking and for throwing. Strength and
+// duration upgrades live on the stack as { pot: { lvl, long } }.
+export const POTION_KINDS = [
+  'swiftness', 'slowness', 'strength', 'weakness', 'healing', 'harming', 'regeneration', 'poison',
+  'fire_resistance', 'water_breathing', 'night_vision', 'invisibility', 'leaping', 'slow_falling',
+];
+item('potion_water', { maxStack: 1, drink: true, display: 'Water Bottle', potion: 'water', leaves: 'glass_bottle' });
+item('potion_awkward', { maxStack: 1, drink: true, display: 'Awkward Potion', potion: 'awkward', leaves: 'glass_bottle' });
+for (const k of POTION_KINDS) {
+  const nice = k.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+  item(`potion_${k}`, { maxStack: 1, drink: true, display: `Potion of ${nice}`, potion: k, leaves: 'glass_bottle' });
+  item(`splash_potion_${k}`, { maxStack: 1, display: `Splash Potion of ${nice}`, potion: k, splash: true });
+}
+item('void_pearl', { maxStack: 16 });
+item('star_eye', { display: 'Eye of Stars' });
+item('void_fruit', { food: [4, 2.4], always: true });
+item('popped_void_fruit');
+item('glider', { maxStack: 1, durability: 432, armor: { slot: 1, points: 0, tough: 0, mat: 'glider' } });
+item('fishing_rod', { maxStack: 1, durability: 64, fuel: 300 });
+item('raw_silverfin', { food: [2, 0.4] });
+item('cooked_silverfin', { food: [5, 6] });
+item('raw_rosefin', { food: [2, 0.4] });
+item('cooked_rosefin', { food: [6, 9.6] });
+item('pufferfish', { food: [1, 0.2], poison: true });
+item('glimmerfish', { food: [1, 0.2] });
+item('empty_map');
+item('filled_map', { maxStack: 1, display: 'Map' });
+item('shield', { maxStack: 1, durability: 336 });
+item('bowl');
+item('mushroom_stew', { maxStack: 1, food: [6, 7.2], leaves: 'bowl' });
+
+// Shaped blocks shown with their own sprite in the inventory and in hand.
+for (const b of BLOCKS) {
+  if (!b || !b.item || !b.icon || b.icon === 'cube' || !ITEMS[b.id]) continue;
+  ITEMS[b.id].tex = ITEM_TEXTURES.length;
+  ITEMS[b.id].sprite = true;
+  ITEM_TEXTURES.push('block_' + b.icon);
+}
 
 setItemLookup((name) => {
   if (I[name] === undefined) throw new Error('unknown item ' + name);
@@ -241,6 +298,62 @@ for (const [mat, keys] of Object.entries(MATS)) {
 }
 shapeless(['cobblestone', 'fern'], 'mossy_cobblestone');
 
+// Spark circuits
+shaped(['D', 'S'], { D: 'spark_dust', S: 'stick' }, 'spark_torch');
+shaped(['S', 'C'], { S: 'stick', C: 'cobblestone' }, 'lever');
+shapeless(['stone'], 'stone_button');
+shapeless(['oak_planks'], 'oak_button');
+shaped(['SS'], { S: 'stone' }, 'stone_pressure_plate');
+shaped(['PP'], { P: PLANKS }, 'oak_pressure_plate');
+shaped(['TDT', 'SSS'], { T: 'spark_torch', D: 'spark_dust', S: 'stone' }, 'repeater');
+shaped([' D ', 'DLD', ' D '], { D: 'spark_dust', L: 'lamp' }, 'spark_lamp');
+shaped(['PPP', 'CIC', 'CDC'], { P: PLANKS, C: 'cobblestone', I: 'iron_ingot', D: 'spark_dust' }, 'piston');
+shaped(['R', 'P'], { R: 'resin', P: 'piston' }, 'sticky_piston');
+shaped(['PPP', 'PDP', 'PPP'], { P: PLANKS, D: 'spark_dust' }, 'note_block');
+shaped(['GGG', 'QQQ', 'SSS'], { G: 'glass', Q: 'quartz', S: 'oak_slab' }, 'daylight_sensor');
+shaped(['DDD', 'DDD', 'DDD'], { D: 'spark_dust' }, 'spark_block');
+shapeless(['spark_block'], 'spark_dust', 9);
+shaped(['PPP', 'PPP'], { P: PLANKS }, 'oak_trapdoor', 2);
+shaped(['CCC', 'CBC', 'CDC'], { C: 'cobblestone', B: 'bow', D: 'spark_dust' }, 'dispenser');
+shaped(['I I', 'ICI', ' I '], { I: 'iron_ingot', C: 'chest' }, 'hopper');
+// Rails and vehicles
+shaped(['I I', 'ISI', 'I I'], { I: 'iron_ingot', S: 'stick' }, 'rail', 16);
+shaped(['G G', 'GSG', 'GDG'], { G: 'gold_ingot', S: 'stick', D: 'spark_dust' }, 'powered_rail', 6);
+shaped(['I I', 'IPI', 'IDI'], { I: 'iron_ingot', P: 'stone_pressure_plate', D: 'spark_dust' }, 'detector_rail', 6);
+shaped(['I I', 'III'], { I: 'iron_ingot' }, 'minecart');
+shaped(['P P', 'PPP'], { P: PLANKS }, 'boat');
+// Brewing
+shaped([' H ', 'CCC'], { H: 'imp_horn', C: 'cobblestone' }, 'brewing_stand');
+shaped(['G G', ' G '], { G: 'glass' }, 'glass_bottle', 3);
+shapeless(['sugar_cane'], 'sugar');
+shaped(['NNN', 'NMN', 'NNN'], { N: 'gold_nugget', M: 'melon_slice' }, 'glistering_melon');
+shaped(['NNN', 'NCN', 'NNN'], { N: 'gold_nugget', C: 'carrot' }, 'golden_carrot');
+shapeless(['crawler_eye', 'brown_mushroom', 'sugar'], 'fermented_crawler_eye');
+shapeless(['flint', 'coal'], 'blast_powder', 2);
+shapeless(['flint', 'charcoal'], 'blast_powder', 2);
+shaped(['PSP', 'SPS', 'PSP'], { P: 'blast_powder', S: 'sand' }, 'tnt');
+shaped(['GGG', 'GAG', 'GGG'], { G: 'gold_ingot', A: 'apple' }, 'golden_apple');
+shaped(['MMM', 'SES', 'WWW'], { M: 'milk_bucket', S: 'sugar', E: 'egg', W: 'wheat' }, 'cake');
+// The void
+shapeless(['void_pearl', 'ember_dust'], 'star_eye');
+shaped(['DD', 'DD'], { D: 'duskstone' }, 'duskstone_bricks', 4);
+shaped(['PP', 'PP'], { P: 'popped_void_fruit' }, 'astral_bricks', 4);
+shaped(['B', 'B'], { B: 'astral_bricks' }, 'astral_pillar', 2);
+shaped(['P', 'H'], { P: 'popped_void_fruit', H: 'imp_horn' }, 'glow_rod', 4);
+// Everything else
+shaped(['PPP', 'PCP', 'PPP'], { P: 'paper', C: 'compass' }, 'empty_map');
+shaped(['  S', ' SX', 'S X'], { S: 'stick', X: 'string' }, 'fishing_rod');
+shaped(['PIP', 'PPP', ' P '], { P: PLANKS, I: 'iron_ingot' }, 'shield');
+shaped(['PPP', 'PPP', ' S '], { P: PLANKS, S: 'stick' }, 'oak_sign', 3);
+shaped(['GGG', 'GGG'], { G: 'glass' }, 'glass_pane', 16);
+shaped(['III', 'III'], { I: 'iron_ingot' }, 'iron_bars', 16);
+shapeless(['iron_ingot'], 'iron_nugget', 9);
+shaped(['NNN', 'NNN', 'NNN'], { N: 'iron_nugget' }, 'iron_ingot');
+shaped(['NNN', 'NTN', 'NNN'], { N: 'iron_nugget', T: 'torch' }, 'lantern');
+shaped(['P P', ' P '], { P: PLANKS }, 'bowl', 4);
+shapeless(['bowl', 'brown_mushroom', 'red_mushroom'], 'mushroom_stew');
+shaped(['SS', 'SS'], { S: 'string' }, 'cobweb');
+
 // Match a crafting grid (array of item ids or 0, size n*n) against recipes.
 export function matchRecipe(grid, n) {
   // bounding box of non-empty cells
@@ -289,5 +402,7 @@ export const SMELTING = new Map([
   [I.raw_beef, I.cooked_beef], [I.raw_mutton, I.cooked_mutton], [I.raw_chicken, I.cooked_chicken],
   [B.diamond_ore, I.diamond], [B.emerald_ore, I.emerald], [B.coal_ore, I.coal], [B.stone_bricks, B.cobblestone],
   [I.potato, I.baked_potato], [B.scorchstone, I.ember_brick], [B.quartz_ore, I.quartz], [B.ember_gold_ore, I.gold_ingot],
+  [B.spark_ore, I.spark_dust], [I.raw_silverfin, I.cooked_silverfin], [I.raw_rosefin, I.cooked_rosefin],
+  [I.void_fruit, I.popped_void_fruit],
 ]);
 export const fuelValue = (id) => (ITEMS[id] && ITEMS[id].fuel) || 0;
