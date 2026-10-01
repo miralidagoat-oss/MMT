@@ -6,6 +6,7 @@ import { B } from './blocks.js';
 import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME } from './constants.js';
 import { smoothstep, lerp } from './math.js';
 import { Villages, placeDungeon, Observatories } from './structures.js';
+import { Landmarks } from './landmarks.js';
 
 const SEA = SEA_LEVEL;
 
@@ -13,6 +14,7 @@ export const BIOME = {
   OCEAN: 0, DEEP_OCEAN: 1, FROZEN_OCEAN: 2, BEACH: 3, SNOWY_BEACH: 4, PLAINS: 5, FOREST: 6,
   BIRCH_FOREST: 7, TAIGA: 8, SNOWY_PLAINS: 9, SNOWY_TAIGA: 10, DESERT: 11, SAVANNA: 12, SWAMP: 13,
   MOUNTAINS: 14, SNOWY_PEAKS: 15, RIVER: 16, FROZEN_RIVER: 17, MEADOW: 18,
+  JUNGLE: 19, BADLANDS: 20, DARK_FOREST: 21, MUSHROOM_FIELDS: 22, ICE_SPIKES: 23,
 };
 
 const W_DEFAULT = [60, 110, 220], W_COLD = [52, 84, 196], W_WARM = [68, 150, 214], W_SWAMP = [84, 98, 64];
@@ -40,7 +42,14 @@ export const BIOMES = [
   { name: 'River', grass: G_PLAINS, foliage: F_PLAINS, water: W_DEFAULT },
   { name: 'Frozen River', grass: G_SNOW, foliage: F_SNOW, water: W_COLD, cold: true },
   { name: 'Meadow', grass: [128, 190, 80], foliage: [104, 170, 60], water: W_DEFAULT, trees: 0.0015, tree: 'birch' },
+  { name: 'Jungle', grass: [89, 196, 62], foliage: [52, 180, 30], water: W_WARM, trees: 0.1, tree: 'jungle' },
+  { name: 'Badlands', grass: [144, 129, 77], foliage: [158, 129, 77], water: W_WARM },
+  { name: 'Dark Forest', grass: [82, 130, 50], foliage: [60, 116, 38], water: W_DEFAULT, trees: 0.12, tree: 'dark_oak' },
+  { name: 'Mushroom Fields', grass: [85, 201, 63], foliage: [43, 187, 20], water: W_DEFAULT, trees: 0.012, tree: 'mushroom' },
+  { name: 'Ice Spikes', grass: G_SNOW, foliage: F_SNOW, water: W_COLD, trees: 0.005, tree: 'ice_spike', cold: true },
 ];
+// Terracotta bands of the badlands, repeating up the cliffs.
+const BANDS = ['terracotta', 'orange_terracotta', 'terracotta', 'yellow_terracotta', 'brown_terracotta', 'terracotta', 'red_terracotta', 'white_terracotta', 'orange_terracotta', 'light_gray_terracotta', 'terracotta', 'red_terracotta', 'brown_terracotta', 'orange_terracotta'];
 
 const BIRCH_TINT = [128, 167, 85], SPRUCE_TINT = [97, 153, 97];
 export { BIRCH_TINT, SPRUCE_TINT };
@@ -92,6 +101,7 @@ export class WorldGen {
     this.col = { h: 0, biome: 0, temp: 0, humid: 0, river: 0, mount: 0, cont: 0 };
     this.villages = new Villages(this);
     this.observatories = new Observatories(this);
+    this.landmarks = new Landmarks(this, BIOME);
     this.caveGrid = new Float32Array(5 * 5 * 66 * 3);
   }
 
@@ -131,19 +141,26 @@ export class WorldGen {
     } else if (mount > 0.3 && h > 98) {
       biome = h > 138 || temp < -0.35 ? BIOME.SNOWY_PEAKS : BIOME.MOUNTAINS;
     } else if (temp < -0.4) {
-      biome = humid > 0.05 ? BIOME.SNOWY_TAIGA : BIOME.SNOWY_PLAINS;
+      biome = humid > 0.05 ? BIOME.SNOWY_TAIGA : humid < -0.38 ? BIOME.ICE_SPIKES : BIOME.SNOWY_PLAINS;
     } else if (temp < -0.12) {
       biome = BIOME.TAIGA;
     } else if (temp > 0.42) {
-      biome = humid < -0.05 ? BIOME.DESERT : humid < 0.3 ? BIOME.SAVANNA : BIOME.FOREST;
+      biome = humid < -0.05 ? (humid < -0.36 ? BIOME.BADLANDS : BIOME.DESERT) : humid < 0.3 ? BIOME.SAVANNA : BIOME.JUNGLE;
+    } else if (mount < 0.15 && h > SEA + 1 && this.nTemp.fbm2(x / 760 + 913, z / 760 - 377, 2) > 0.45) {
+      biome = BIOME.MUSHROOM_FIELDS; // rare, from a noise of its own
     } else if (humid > 0.4 && h < SEA + 6) {
       biome = BIOME.SWAMP;
     } else if (humid > 0.08) {
-      biome = humid > 0.32 && temp < 0.22 ? BIOME.BIRCH_FOREST : BIOME.FOREST;
+      biome = humid > 0.52 ? BIOME.DARK_FOREST : humid > 0.32 && temp < 0.22 ? BIOME.BIRCH_FOREST : BIOME.FOREST;
     } else if (humid < -0.38 && temp > 0.05) {
       biome = BIOME.MEADOW;
     } else {
       biome = BIOME.PLAINS;
+    }
+    if (biome === BIOME.BADLANDS) {
+      // terraced mesas with banded cliffs
+      const mesa = smoothstep(0.05, 0.4, this.nBump.fbm2(x / 110 + 40, z / 110 - 20, 3));
+      if (mesa > 0) h = Math.min(HEIGHT - 20, h + Math.floor((mesa * 26) / 4) * 4);
     }
     const o = this.col;
     o.h = h; o.biome = biome; o.temp = temp; o.humid = humid; o.river = river; o.mount = mount; o.cont = c;
@@ -221,14 +238,126 @@ export class WorldGen {
     const r2 = rand2(this.seed ^ 0x51, x, z);
     if (kind === 'mixed') kind = r2 < 0.2 ? 'birch' : r2 < 0.28 ? 'big_oak' : 'oak';
     else if (kind === 'oak' && r2 < 0.06) kind = 'big_oak';
+    else if (kind === 'jungle') kind = r2 < 0.18 ? 'giant_jungle' : r2 < 0.55 ? 'jungle_bush' : 'jungle';
+    else if (kind === 'dark_oak' && r2 < 0.08) kind = r2 < 0.04 ? 'red_shroom' : 'brown_shroom';
+    else if (kind === 'mushroom') kind = r2 < 0.5 ? 'red_shroom' : 'brown_shroom';
     return { kind, r: rng(hv) };
+  }
+
+  // Jungle trees (tall, vine-hung, some with 2x2 trunks), jungle bushes and
+  // dark oaks (2x2 trunks under a wide flat canopy).
+  broadTree(ctx, wx, baseY, wz, kind, r, leaf, log) {
+    const { set, get } = ctx;
+    const thick = kind === 'giant_jungle' || kind === 'dark_oak';
+    const logId = kind === 'dark_oak' ? B.dark_oak_log : B.jungle_log;
+    const leafId = kind === 'dark_oak' ? B.dark_oak_leaves : B.jungle_leaves;
+    const ground = (x, z) => { const c = get(x, baseY - 1, z); if (c === B.grass || c === B.snowy_grass || c === B.mycelium) set(x, baseY - 1, z, B.dirt, 0); };
+    if (thick) { ground(wx, wz); ground(wx + 1, wz); ground(wx, wz + 1); ground(wx + 1, wz + 1); } else ground(wx, wz);
+    if (kind === 'jungle_bush') {
+      log(wx, baseY, wz, B.jungle_log);
+      for (let dy = 0; dy <= 2; dy++) {
+        const rr = 2 - dy;
+        for (let dz = -rr; dz <= rr; dz++) for (let dx = -rr; dx <= rr; dx++) if (Math.abs(dx) + Math.abs(dz) <= rr + (dy === 0 ? 1 : 0) && r() > 0.1) leaf(wx + dx, baseY + dy, wz + dz, B.jungle_leaves);
+      }
+      return;
+    }
+    const hgt = kind === 'giant_jungle' ? 14 + Math.floor(r() * 9) : kind === 'jungle' ? 7 + Math.floor(r() * 6) : 6 + Math.floor(r() * 3);
+    const top = baseY + hgt;
+    const cx = thick ? wx + 0.5 : wx, cz = thick ? wz + 0.5 : wz;
+    const rad = kind === 'giant_jungle' ? 3.5 : kind === 'dark_oak' ? 3.4 : 2.6;
+    // canopy: two or three layers, widest at the bottom
+    const layers = kind === 'dark_oak' ? [[-1, rad], [0, rad], [1, rad - 1.2]] : [[-1, rad], [0, rad - 0.6], [1, rad - 1.6]];
+    for (const [dy, rr] of layers) {
+      const R = Math.ceil(rr);
+      for (let dz = -R - 1; dz <= R + 1; dz++) for (let dx = -R - 1; dx <= R + 1; dx++) {
+        const x = Math.floor(cx) + dx, z = Math.floor(cz) + dz;
+        const d = Math.hypot(x + 0.5 - (cx + 0.5), z + 0.5 - (cz + 0.5));
+        if (d > rr + 0.2 || (d > rr - 0.8 && r() < 0.3)) continue;
+        leaf(x, top + dy, z, leafId);
+      }
+    }
+    // dark oaks spread a few low branches with leaf tufts
+    if (kind === 'dark_oak') {
+      for (let i = 0; i < 2; i++) {
+        const a = r() * Math.PI * 2, bx = Math.round(Math.cos(a) * 2.5), bz = Math.round(Math.sin(a) * 2.5), by = top - 2 - Math.floor(r() * 2);
+        log(wx + bx, by, wz + bz, logId);
+        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) leaf(wx + bx + dx, by + 1, wz + bz + dz, leafId);
+      }
+    }
+    for (let y = baseY; y < top; y++) {
+      log(wx, y, wz, logId);
+      if (thick) { log(wx + 1, y, wz, logId); log(wx, y, wz + 1, logId); log(wx + 1, y, wz + 1, logId); }
+    }
+    if (kind === 'dark_oak') return;
+    // vines down the trunk and hanging from the canopy's edge (meta: the side they cling to)
+    const W = thick ? 2 : 1;
+    const trunkSides = [[-1, 0, 2], [W, 0, 1], [0, -1, 4], [0, W, 3]];
+    for (const [ox, oz, m] of trunkSides) {
+      for (let y = baseY + 1; y < top - 1; y++) if (r() < 0.45) { const x = wx + ox, z = wz + oz; if (get(x, y, z) === 0) set(x, y, z, B.vines, m); }
+    }
+    const R = Math.ceil(rad) + 1;
+    for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+      const x = Math.floor(cx) + dx, z = Math.floor(cz) + dz;
+      if (get(x, top - 1, z) !== 0 || r() > 0.3) continue;
+      // which neighbour is a leaf to hang from?
+      let m = 0;
+      if (get(x - 1, top - 1, z) === leafId) m = 1; else if (get(x + 1, top - 1, z) === leafId) m = 2; else if (get(x, top - 1, z - 1) === leafId) m = 3; else if (get(x, top - 1, z + 1) === leafId) m = 4;
+      if (!m) continue;
+      const len = 1 + Math.floor(r() * 5);
+      for (let k = 0; k < len; k++) { const y = top - 1 - k; if (get(x, y, z) !== 0) break; set(x, y, z, B.vines, m); }
+    }
+  }
+
+  // Giant mushrooms: a red dome or a broad brown cap on a pale stem.
+  giantMushroom(ctx, wx, baseY, wz, red, r) {
+    const { set, get } = ctx;
+    const hgt = (red ? 5 : 4) + Math.floor(r() * 3);
+    const top = baseY + hgt;
+    const cap = red ? B.red_mushroom_block : B.brown_mushroom_block;
+    const put = (x, y, z, id) => { const c = get(x, y, z); if (c === 0 || c === B.tall_grass || c === B.fern || c === B.red_mushroom || c === B.brown_mushroom) set(x, y, z, id, 0); };
+    if (red) {
+      for (let dy = -3; dy <= 0; dy++) {
+        const rr = dy === 0 ? 1 : 2;
+        for (let dz = -rr; dz <= rr; dz++) for (let dx = -rr; dx <= rr; dx++) {
+          if (dy < 0 && Math.abs(dx) < 2 && Math.abs(dz) < 2) continue; // hollow under the dome
+          if (Math.abs(dx) === rr && Math.abs(dz) === rr) continue;
+          put(wx + dx, top + dy, wz + dz, cap);
+        }
+      }
+    } else {
+      for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+        if (Math.abs(dx) === 3 && Math.abs(dz) === 3) continue;
+        put(wx + dx, top, wz + dz, cap);
+      }
+    }
+    for (let y = baseY; y < top; y++) put(wx, y, wz, B.mushroom_stem);
+  }
+
+  // A spike of packed ice, a few of them towering.
+  iceSpike(ctx, wx, baseY, wz, r) {
+    const { set, get } = ctx;
+    const tall = r() < 0.12;
+    const hgt = tall ? 20 + Math.floor(r() * 18) : 5 + Math.floor(r() * 8);
+    const base = tall ? 2.2 : 1.4;
+    for (let y = -2; y < hgt; y++) {
+      const t = Math.max(0, y) / hgt, rr = base * (1 - t) + 0.3;
+      const R = Math.ceil(rr);
+      for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+        if (dx * dx + dz * dz > rr * rr) continue;
+        const c = get(wx + dx, baseY + y, wz + dz);
+        if (c === 0 || c === B.snow_block || c === B.dirt || c === B.snowy_grass) set(wx + dx, baseY + y, wz + dz, B.packed_ice, 0);
+      }
+    }
   }
 
   // Write a tree into the chunk (only blocks that fall inside it).
   placeTree(ctx, wx, baseY, wz, kind, r) {
     const { set, get } = ctx;
     const leaf = (x, y, z, id) => { const c = get(x, y, z); if (c === 0 || c === B.tall_grass || c === B.fern) set(x, y, z, id, 0); };
-    const log = (x, y, z, id) => { const c = get(x, y, z); if (c === 0 || c === B.tall_grass || c === B.fern || c === B.oak_leaves || c === B.birch_leaves || c === B.spruce_leaves || c === B.water) set(x, y, z, id, 0); };
+    const log = (x, y, z, id) => { const c = get(x, y, z); if (c === 0 || c === B.tall_grass || c === B.fern || c === B.oak_leaves || c === B.birch_leaves || c === B.spruce_leaves || c === B.jungle_leaves || c === B.dark_oak_leaves || c === B.vines || c === B.water) set(x, y, z, id, 0); };
+    if (kind === 'ice_spike') { this.iceSpike(ctx, wx, baseY, wz, r); return; }
+    if (kind === 'red_shroom' || kind === 'brown_shroom') { this.giantMushroom(ctx, wx, baseY, wz, kind === 'red_shroom', r); return; }
+    if (kind === 'jungle' || kind === 'giant_jungle' || kind === 'jungle_bush' || kind === 'dark_oak') { this.broadTree(ctx, wx, baseY, wz, kind, r, leaf, log); return; }
     set(wx, baseY - 1, wz, B.dirt, 0);
     if (kind === 'oak' || kind === 'birch' || kind === 'swamp') {
       const logId = kind === 'birch' ? B.birch_log : B.oak_log;
@@ -338,6 +467,9 @@ export class WorldGen {
         case BIOME.SNOWY_PEAKS:
           if (slope > 3) { top = B.stone; fill = B.stone; } else { top = B.snow_block; fill = B.snow_block; fillDepth = 2; }
           break;
+        case BIOME.BADLANDS: top = B.red_sand; fill = -1; fillDepth = 18; break; // -1: terracotta bands
+        case BIOME.MUSHROOM_FIELDS: top = B.mycelium; break;
+        case BIOME.ICE_SPIKES: top = B.snow_block; fill = sn > 0.3 ? B.packed_ice : B.dirt; break;
         default: break;
       }
       if (h < SEA - 1) {
@@ -356,7 +488,7 @@ export class WorldGen {
         let id = B.stone;
         if (y <= 4 && rand3(seed ^ 0xbed, wx, y, wz) < (5 - y) / 5) id = B.bedrock;
         else if (y === h) id = top;
-        else if (y > h - fillDepth) id = fill;
+        else if (y > h - fillDepth) id = fill === -1 ? B[BANDS[((y + Math.floor(sn * 3)) % BANDS.length + BANDS.length) % BANDS.length]] : fill;
         else if (under && y > h - fillDepth - 3) id = under;
         blocks[idx(x, y, z)] = id;
       }
@@ -485,17 +617,28 @@ export class WorldGen {
         if (bio === BIOME.FOREST || bio === BIOME.BIRCH_FOREST) { grassP = 0.2; flowerP = 0.015; }
         if (bio === BIOME.TAIGA) grassP = 0.2;
         if (bio === BIOME.SWAMP) grassP = 0.15;
+        if (bio === BIOME.JUNGLE) { grassP = 0.55; flowerP = 0.004; }
+        if (bio === BIOME.DARK_FOREST) { grassP = 0.18; flowerP = 0.004; }
         if (fl > 0.45) flowerP *= 4;
         if (r < flowerP) {
           const k = r2 < 0.45 ? B.dandelion : r2 < 0.85 ? B.poppy : B.cornflower;
           blocks[idx(x, h + 1, z)] = k;
         } else if (r < flowerP + grassP) {
-          blocks[idx(x, h + 1, z)] = (bio === BIOME.TAIGA || bio === BIOME.MOUNTAINS) && r2 < 0.5 ? B.fern : B.tall_grass;
+          blocks[idx(x, h + 1, z)] = (bio === BIOME.TAIGA || bio === BIOME.MOUNTAINS || bio === BIOME.JUNGLE) && r2 < 0.5 ? B.fern : B.tall_grass;
+        } else if (r > 0.996 && bio === BIOME.JUNGLE) {
+          blocks[idx(x, h + 1, z)] = B.melon;
+        } else if (r > 0.993 && bio === BIOME.DARK_FOREST) {
+          blocks[idx(x, h + 1, z)] = r2 < 0.5 ? B.brown_mushroom : B.red_mushroom;
         } else if (r > 0.9993 && (bio === BIOME.PLAINS || bio === BIOME.FOREST || bio === BIOME.SAVANNA)) {
           blocks[idx(x, h + 1, z)] = B.pumpkin; meta[idx(x, h + 1, z)] = 2 + Math.floor(r2 * 4);
         } else if (r > 0.9985 && bio === BIOME.SWAMP) {
           blocks[idx(x, h + 1, z)] = r2 < 0.5 ? B.brown_mushroom : B.red_mushroom;
         }
+      } else if (topId === B.mycelium) {
+        if (r < 0.035) blocks[idx(x, h + 1, z)] = r2 < 0.5 ? B.brown_mushroom : B.red_mushroom;
+      } else if (topId === B.red_sand) {
+        if (r > 0.985) blocks[idx(x, h + 1, z)] = B.dead_bush;
+        else if (r < 0.003 && x > 0 && x < 15 && z > 0 && z < 15) { const ch = 1 + Math.floor(r2 * 3); for (let y = h + 1; y <= h + ch && y < HEIGHT; y++) blocks[idx(x, y, z)] = B.cactus; }
       } else if (topId === B.snowy_grass) {
         if (r < 0.04) blocks[idx(x, h + 1, z)] = B.fern;
       } else if (topId === B.sand && h > SEA) {
@@ -518,6 +661,8 @@ export class WorldGen {
     for (const v of this.villages.near(X0, Z0, X0 + 15, Z0 + 15)) this.villages.write(v, ctx, X0, Z0, extra);
     // Buried observatories.
     for (const o of this.observatories.near(X0, Z0, X0 + 15, Z0 + 15)) this.observatories.write(o, ctx, X0, Z0, extra);
+    // Mineshafts, temples, shrines, huts, citadels and manors.
+    for (const s of this.landmarks.near(X0, Z0, X0 + 15, Z0 + 15)) this.landmarks.write(s, ctx, X0, Z0, extra);
 
     // cave mushrooms
     const mr = rng(hash2(seed ^ 0x3a1, cx, cz));
@@ -561,6 +706,10 @@ export class WorldGen {
       else if (bio === BIOME.TAIGA) types = ['sheep', 'hound', 'hound', 'pig'];
       else if (bio === BIOME.SNOWY_TAIGA) types = ['sheep', 'hound'];
       else if (bio === BIOME.SNOWY_PLAINS || bio === BIOME.MOUNTAINS) types = ['sheep'];
+      else if (bio === BIOME.MUSHROOM_FIELDS) types = ['shroomcow'];
+      else if (bio === BIOME.JUNGLE) types = ['chicken', 'pig'];
+      else if (bio === BIOME.DARK_FOREST) types = ['pig', 'cow', 'hound'];
+      else if (bio === BIOME.BADLANDS || bio === BIOME.ICE_SPIKES) types = [];
       if (bio === BIOME.DESERT || bio === BIOME.BEACH || bio === BIOME.SNOWY_BEACH || colH(8, 8) <= SEA) types = [];
       if (types.length) {
         const type = types[Math.floor(sr() * types.length)];

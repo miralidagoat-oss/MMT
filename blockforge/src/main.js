@@ -10,7 +10,7 @@ import { Game } from './game.js';
 import { Storage } from './storage.js';
 import { Icons } from './icons.js';
 import { hashSeed } from './noise.js';
-import { WorldGen } from './worldgen.js';
+import { WorldGen, BIOMES } from './worldgen.js';
 import { I } from './items.js';
 import { B } from './blocks.js';
 import { PRESETS, VIDEO_KEYS, applyPreset, matchPreset, detectPreset, applyQuality } from './quality.js';
@@ -280,7 +280,7 @@ async function boot() {
     }
   };
   requestAnimationFrame(loop);
-  window.__blockforge = { game, ui, renderer, settings, B, I, quality: { applyPreset, PRESETS } };
+  window.__blockforge = { game, ui, renderer, settings, B, I, BIOMES, quality: { applyPreset, PRESETS } };
 }
 
 boot().catch((err) => { console.error(err); fatal('Blockforge failed to start.', err); });

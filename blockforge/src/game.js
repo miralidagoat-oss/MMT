@@ -19,6 +19,7 @@ import { hashSeed, rng } from './noise.js';
 import { ADVANCEMENTS } from './advancements.js';
 import { newFurnace, newChest, Container } from './inventory.js';
 import { WorldGen, BIOME } from './worldgen.js';
+import { LANDMARKS } from './landmarks.js';
 import { Circuits } from './circuits.js';
 import { installNet } from './net.js';
 import { installBlaster } from './blaster.js';
@@ -326,6 +327,7 @@ export class Game {
     this.fluids.tick(this.tickCount);
     this.randomTicks();
     this.tickSpawning();
+    this.tickExplorer();
     this.tickSpawners();
     this.tickFurnaces();
     this.tickTime();
@@ -1226,11 +1228,28 @@ export class Game {
     const w = this.world;
     for (const ch of chests) {
       const key = `${ch.x},${ch.y},${ch.z}`;
-      if (!w.blockEntities.has(key)) w.blockEntities.set(key, { type: 'chest', slots: rollLoot(ch.loot) });
+      if (w.blockEntities.has(key)) continue;
+      if (ch.loot === 'trap') { // an arrow trap's dispenser
+        const be = { type: 'dispenser', slots: new Array(9).fill(null) };
+        be.slots[0] = { id: I.arrow, count: 16 + Math.floor(Math.random() * 16) };
+        w.blockEntities.set(key, be);
+      } else w.blockEntities.set(key, { type: 'chest', slots: rollLoot(ch.loot) });
     }
     for (const sp of spawners) {
       const key = `${sp.x},${sp.y},${sp.z}`;
       if (!w.blockEntities.has(key)) w.blockEntities.set(key, { type: 'spawner', mob: sp.mob, delay: 60 });
+    }
+  }
+
+  // Milestones for reaching the new biomes and a tide citadel.
+  tickExplorer() {
+    if (this.tickCount % 40 !== 7 || this.dim !== 'overworld' || !this.world.gen.biomeAt) return;
+    const p = this.player, g = this.world.gen;
+    const bio = g.biomeAt(Math.floor(p.x), Math.floor(p.z));
+    if (bio === BIOME.JUNGLE || bio === BIOME.BADLANDS || bio === BIOME.MUSHROOM_FIELDS) this.advance('biome');
+    if (this.tickCount % 200 === 7 && g.landmarks && (bio === BIOME.DEEP_OCEAN || bio === BIOME.OCEAN)) {
+      const c = g.landmarks.locate('tide_citadel', p.x, p.z, 1);
+      if (c && Math.hypot(c.x - p.x, c.z - p.z) < 40) this.advance('citadel');
     }
   }
 
@@ -1276,7 +1295,11 @@ export class Game {
       if (this.net && this.nearestPlayerDist(x + 0.5, z + 0.5) < 24) continue;
       const r = Math.random();
       let type = under ? (r < 0.75 ? 'imp' : 'archer') : (r < 0.47 ? 'ghoul' : r < 0.74 ? 'archer' : r < 0.97 ? 'crawler' : 'gloamer');
-      if (!under && Math.random() < 0.3 && y >= w.surfaceY(x, z) - 1 && w.gen.biomeAt(x, z) === BIOME.SWAMP) type = 'hexer';
+      if (!under && y >= w.surfaceY(x, z) - 1) {
+        const bio = w.gen.biomeAt(x, z);
+        if (bio === BIOME.MUSHROOM_FIELDS) continue; // the mushroom fields are peaceful
+        if (Math.random() < 0.3 && bio === BIOME.SWAMP) type = 'hexer';
+      }
       const opts = {};
       if ((type === 'ghoul' || type === 'archer') && Math.random() < 0.06) opts.armor = [Math.random() < 0.5 ? I.iron_helmet : I.leather_helmet, Math.random() < 0.3 ? I.iron_chestplate : null, null, null];
       const mob = new Mob(type, x + 0.5, y, z + 0.5, opts);
@@ -1685,7 +1708,7 @@ export class Game {
         if (h < 3 && w.getBlock(x, y + 1, z) === 0 && this.canSurvive(id, 0, x, y + 1, z)) w.setBlock(x, y + 1, z, id, 0, { urgent: false });
         return;
       }
-      case B.oak_leaves: case B.birch_leaves: case B.spruce_leaves:
+      case B.oak_leaves: case B.birch_leaves: case B.spruce_leaves: case B.jungle_leaves: case B.dark_oak_leaves:
         if (w.getMeta(x, y, z) === 0 && Math.random() < 0.3) this.checkLeafDecay(x, y, z);
         return;
       case B.ice: {
@@ -1712,11 +1735,13 @@ export class Game {
   checkLeafDecay(x, y, z) {
     const w = this.world;
     const id = w.getBlock(x, y, z);
-    if (!(id === B.oak_leaves || id === B.birch_leaves || id === B.spruce_leaves) || w.getMeta(x, y, z) !== 0) return;
-    // search through leaves for a log within 4 steps
+    const LEAVES = [B.oak_leaves, B.birch_leaves, B.spruce_leaves, B.jungle_leaves, B.dark_oak_leaves];
+    const LOGS = [B.oak_log, B.birch_log, B.spruce_log, B.jungle_log, B.dark_oak_log];
+    if (!LEAVES.includes(id) || w.getMeta(x, y, z) !== 0) return;
+    // search through leaves for a log within 6 steps
     const seen = new Set([`${x},${y},${z}`]);
     let frontier = [[x, y, z]];
-    for (let d = 0; d < 4; d++) {
+    for (let d = 0; d < 6; d++) {
       const next = [];
       for (const [cx, cy, cz] of frontier) {
         for (const [dx, dy, dz] of DIR6) {
@@ -1725,8 +1750,8 @@ export class Game {
           if (seen.has(k)) continue;
           seen.add(k);
           const nid = w.getBlock(nx, ny, nz);
-          if (nid === B.oak_log || nid === B.birch_log || nid === B.spruce_log) return;
-          if (nid === B.oak_leaves || nid === B.birch_leaves || nid === B.spruce_leaves) next.push([nx, ny, nz]);
+          if (LOGS.includes(nid)) return;
+          if (LEAVES.includes(nid)) next.push([nx, ny, nz]);
         }
       }
       frontier = next;
@@ -2014,7 +2039,7 @@ export class Game {
     };
     switch ((cmd || '').toLowerCase()) {
       case 'help':
-        return `Commands: /time set <day|noon|night|midnight|ticks>, /time add <ticks>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <${Object.keys(MOB_TYPES).join('|')}>, /weather <clear|rain|thunder>, /xp <amount>[L], /enchant <name> [level], /locate <village|observatory|spire>, /dimension <overworld|underworld|void>, /effect <give|clear> [effect] [seconds] [level], /seed, /spawnpoint, /kill, /heal, /clear, /difficulty <peaceful|normal>`;
+        return `Commands: /time set <day|noon|night|midnight|ticks>, /time add <ticks>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <${Object.keys(MOB_TYPES).join('|')}>, /weather <clear|rain|thunder>, /xp <amount>[L], /enchant <name> [level], /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor>, /dimension <overworld|underworld|void>, /effect <give|clear> [effect] [seconds] [level], /seed, /spawnpoint, /kill, /heal, /clear, /difficulty <peaceful|normal>`;
       case 'time': {
         const named = { day: 1000, noon: 6000, sunset: 12000, night: 13000, midnight: 18000, sunrise: 23000 };
         if (args[0] === 'set') {
@@ -2123,7 +2148,15 @@ export class Game {
           const sp = g.locateSpire(p.x, p.z, 5);
           return sp ? `The nearest spire is at ${sp.x}, ${sp.y}, ${sp.z} (${Math.round(Math.hypot(sp.x - p.x, sp.z - p.z))} blocks away)` : 'No spire found nearby';
         }
-        if (what !== 'village') return 'Usage: /locate <village|observatory|spire>';
+        const LM = { mineshaft: 'mineshaft', temple: 'sun_temple', sun_temple: 'sun_temple', shrine: 'jungle_shrine', jungle_shrine: 'jungle_shrine', hut: 'swamp_hut', swamp_hut: 'swamp_hut', citadel: 'tide_citadel', tide_citadel: 'tide_citadel', manor: 'manor' };
+        if (LM[what]) {
+          const lm = this.world.gen.landmarks;
+          if (!lm) return 'Nothing like that in this dimension';
+          const s = lm.locate(LM[what], p.x, p.z, 8);
+          if (!s) return `No ${LANDMARKS[LM[what]].name.toLowerCase()} found nearby`;
+          return `The nearest ${LANDMARKS[LM[what]].name.toLowerCase()} is at ${s.x}, ${s.y}, ${s.z} (${Math.round(Math.hypot(s.x - p.x, s.z - p.z))} blocks away)`;
+        }
+        if (what !== 'village') return 'Usage: /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor>';
         const vs = this.world.gen.villages;
         if (!vs) return 'There are no villages in this dimension';
         const v = vs.locate(p.x, p.z, 8);
