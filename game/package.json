@@ -1,0 +1,34 @@
+{
+  "name": "tidewake",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tidewake — an original 1-4 player co-op ocean-island survival game",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "server": "tsx src/server/main.ts",
+    "start": "npm run build && tsx src/server/main.ts --serve-client",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "tsx tools/e2e-smoke.ts",
+    "profile": "tsx tools/profile-sim.ts"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "msgpackr": "^2.1.0",
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.2",
+    "playwright-core": "^1.63.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  }
+}
