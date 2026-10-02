@@ -11,10 +11,12 @@ import { Storage } from './storage.js';
 import { Icons } from './icons.js';
 import { hashSeed } from './noise.js';
 import { WorldGen, BIOMES } from './worldgen.js';
-import { I } from './items.js';
+import { I, matchRecipe } from './items.js';
 import { B } from './blocks.js';
+import { Mob } from './entities.js';
 import { PRESETS, VIDEO_KEYS, applyPreset, matchPreset, detectPreset, applyQuality } from './quality.js';
 import { NetSession, availableLinks, relayLink, makeCode } from './net.js';
+import { setBrokers } from './online.js';
 
 const VERSION = '1.0';
 const SETTINGS_KEY = 'blockforge:settings';
@@ -108,8 +110,8 @@ async function boot() {
     // Open the world being played to friends.
     host: async (link) => {
       if (game.net || game.state === 'title') return null;
-      const code = makeCode();
-      const room = await link.open('bf-' + code);
+      const code = link.makeCode ? link.makeCode() : makeCode();
+      const room = link.hostRoom ? await link.hostRoom(code) : await link.open('bf-' + code);
       const lobby = await link.open(null).catch(() => null);
       const session = new NetSession(game, room, { role: 'host', name: app.playerName(), code, link });
       session.lobby = lobby;
@@ -121,9 +123,13 @@ async function boot() {
     },
     stopHosting: () => { if (game.net && game.net.isHost) { game.net.close(); game.net = null; } },
     // Join someone else's world by room code.
-    join: (link, code) => new Promise((resolve, reject) => {
+    join: async (link, code, onStatus) => {
+      const room = link.joinRoom ? await link.joinRoom(code, onStatus) : await link.open('bf-' + code.toLowerCase());
+      return app.joinRoom(room, link, code);
+    },
+    // Play in the world at the other end of an open room.
+    joinRoom: (room, link, code = '') => new Promise((resolve, reject) => {
       (async () => {
-        const room = await link.open('bf-' + code.toLowerCase());
         const session = new NetSession(game, room, { role: 'guest', name: app.playerName(), code, link });
         // until the world is running, a timer keeps the conversation going
         const timer = setInterval(() => {
@@ -299,7 +305,7 @@ async function boot() {
     }
   };
   requestAnimationFrame(loop);
-  window.__blockforge = { game, ui, renderer, settings, B, I, BIOMES, quality: { applyPreset, PRESETS } };
+  window.__blockforge = { game, ui, renderer, settings, B, I, BIOMES, Mob, matchRecipe, quality: { applyPreset, PRESETS }, setBrokers };
 }
 
 boot().catch((err) => { console.error(err); fatal('Blockforge failed to start.', err); });

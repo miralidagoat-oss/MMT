@@ -29,7 +29,8 @@ const FRAGILE = new Set();
 function initSets() {
   if (IMMOVABLE.size) return;
   for (const n of ['bedrock', 'obsidian', 'piston_head', 'spawner', 'star_frame', 'void_gate', 'void_gateway', 'rift',
-    'chest', 'furnace', 'furnace_lit', 'brewing_stand', 'dispenser', 'hopper', 'oak_sign', 'oak_wall_sign', 'enchanting_table']) IMMOVABLE.add(B[n]);
+    'chest', 'furnace', 'furnace_lit', 'brewing_stand', 'dispenser', 'hopper', 'oak_sign', 'oak_wall_sign', 'enchanting_table',
+    'dropper', 'beacon', 'void_chest', 'crafter', 'lectern', 'bee_nest', 'beehive', 'banner', 'wall_banner']) IMMOVABLE.add(B[n]);
   for (const n of ['spark_wire', 'spark_torch', 'spark_torch_off', 'torch', 'lever', 'stone_button', 'oak_button',
     'stone_pressure_plate', 'oak_pressure_plate', 'repeater', 'rail', 'powered_rail', 'detector_rail', 'fire', 'cobweb',
     'wheat', 'carrots', 'potatoes', 'tall_grass', 'fern', 'dandelion', 'poppy', 'cornflower', 'dead_bush', 'sugar_cane',
@@ -164,6 +165,7 @@ export class Circuits {
       case 'plate': return m & 1 ? 15 : 0;
       case 'detector': return m & 8 ? 15 : 0;
       case 'sensor': return m & 15;
+      case 'pulse': return (m >> 4) & 15; // lightning rods and sculk sensors
       case 'repeater': {
         if (!(m & 16)) return 0;
         const [dx, dz] = DIRS[m & 3];
@@ -347,6 +349,15 @@ export class Circuits {
         }
         break;
       }
+      case 'pulse': break;
+      case 'crafter': {
+        const p = this.receives(x, y, z);
+        if (p !== !!(m & 8)) {
+          w.setBlock(x, y, z, id, (m & 7) | (p ? 8 : 0), { notify: false, keepEntity: true });
+          if (p) this.schedule(x, y, z, 4, 'craft');
+        }
+        break;
+      }
       case 'hopper': {
         const p = this.receives(x, y, z);
         if (p !== !!(m & 8)) w.setBlock(x, y, z, id, (m & 7) | (p ? 8 : 0), { notify: false, keepEntity: true });
@@ -418,6 +429,9 @@ export class Circuits {
     const w = this.world;
     const id = w.getBlock(x, y, z), m = w.getMeta(x, y, z);
     switch (t.kind) {
+      case 'unpulse':
+        if (role(id) === 'pulse' && (m >> 4)) { w.setBlock(x, y, z, id, m & 15, { notify: false, keepEntity: true }); this.markOut(x, y, z); }
+        return;
       case 'torch': {
         if (role(id) !== 'torch') return;
         const [ax, ay, az] = this.torchAttach(x, y, z);
@@ -475,6 +489,9 @@ export class Circuits {
       }
       case 'dispense':
         if (id === B.dispenser || id === B.dropper) this.game.dispense(x, y, z, m & 7, id === B.dropper);
+        return;
+      case 'craft':
+        if (id === B.crafter) this.game.crafterCraft(x, y, z, m & 7);
         return;
       case 'comparator': {
         if (id !== B.comparator) return;

@@ -206,6 +206,13 @@ export class Particles {
         const id = w.getBlock(Math.floor(p.x), Math.floor(p.y + 0.1), Math.floor(p.z));
         if (id !== 12) continue;
       }
+      // petals and leaves sway as they fall
+      if (p.flutter) { const s = Math.sin(p.age * p.flutter + p.phase); p.vx += s * 0.9 * dt; p.vz += Math.cos(p.age * p.flutter * 0.7 + p.phase) * 0.6 * dt; }
+      // fireflies wander and glow on and off
+      if (p.firefly) {
+        if (Math.random() < dt * 1.5) { p.vx = (Math.random() - 0.5) * 0.8; p.vy = (Math.random() - 0.45) * 0.5; p.vz = (Math.random() - 0.5) * 0.8; }
+        p.a = Math.max(0, Math.sin(p.age * 2.2 + p.phase)) * Math.min(1, (p.life - p.age) * 2, p.age * 2);
+      }
       let nx = p.x + p.vx * dt, ny = p.y + p.vy * dt, nz = p.z + p.vz * dt;
       if (p.collide) {
         const bx = Math.floor(nx), by = Math.floor(ny), bz = Math.floor(nz);

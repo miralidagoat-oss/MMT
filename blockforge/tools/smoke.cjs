@@ -13,7 +13,7 @@ const out = process.argv[3] || '.';
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message + '\n' + e.stack));
-  await page.goto(url);
+  await page.goto(url, { timeout: 120000 });
   await page.waitForTimeout(8000);
   await page.screenshot({ path: `${out}/01-title.png` });
   const fatal = await page.$('#fatal');

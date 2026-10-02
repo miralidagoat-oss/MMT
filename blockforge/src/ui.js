@@ -1,7 +1,7 @@
 // HTML user interface: HUD, menus, inventory screens, chat and debug text.
 import { ITEMS, I, matchRecipe, itemName, maxStack, SMELTING, fuelValue, BANNER_COLORS } from './items.js';
 import { BANNER_PATTERN_NAMES, BANNER_PATTERNS, paintBanner } from './decor.js';
-import { anvilResult, loomResult, wearAnvil, ANVIL_LIMIT, MAX_PATTERNS, BEACON_POWERS, BEACON_PAYMENT, WOOL_COLOR } from './workshop.js';
+import { anvilResult, loomResult, wearAnvil, ANVIL_LIMIT, MAX_PATTERNS, BEACON_POWERS, BEACON_PAYMENT, WOOL_COLOR, grindstoneResult, smithingResult } from './workshop.js';
 import { enchantOptions, enchantLabel, applicableEnchants } from './loot.js';
 import { isIngredient, potionLabel, fmtTime } from './effects.js';
 import { MAP_SIZE } from './maps.js';
@@ -10,6 +10,7 @@ import { statusIcons, playerPortrait } from './icons.js';
 import { BIOMES } from './worldgen.js';
 import { DEFAULT_KEYS } from './input.js';
 import { PRESETS, PRESET_NAMES, applyPreset, matchPreset } from './quality.js';
+import { cleanCode, showCode } from './net.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = (tag, cls, html) => {
@@ -18,6 +19,17 @@ const el = (tag, cls, html) => {
   if (html !== undefined) e.innerHTML = html;
   return e;
 };
+// Copy to the clipboard, falling back to selecting a field and the old copy command.
+async function copyText(text, field) {
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch { /* blocked here */ }
+  const f = field || Object.assign(document.createElement('textarea'), { value: text });
+  if (!field) { f.style.position = 'fixed'; f.style.opacity = '0'; document.body.appendChild(f); }
+  f.focus(); f.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { /* unsupported */ }
+  if (!field) f.remove();
+  return ok;
+}
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const CREATIVE_ORDER = () => {
@@ -346,6 +358,65 @@ export class UI {
     });
     this.bind(m, '#b-done', () => this.closeScreen());
     setTimeout(() => inputs[0].focus(), 0);
+  }
+
+  // A book: a journal being written, a signed one being read, or whatever
+  // lies open on a lectern.
+  openBook(data) {
+    const g = this.game, p = g.player;
+    if (this.screen) this.closeScreen(true);
+    g.input.exitLock(); g.input.reset();
+    g.state = 'screen';
+    this.screen = { name: 'book', data };
+    const st = data.stack, edit = !!data.edit, lec = data.lectern;
+    let pages;
+    if (Array.isArray(st.pages) && st.pages.length) pages = st.pages.map((t) => String(t));
+    else if (edit) pages = [''];
+    else {
+      // a plain book is blank; an enchanted one lists what it holds
+      pages = new Array(10).fill('');
+      if (st.ench) pages[0] = Object.entries(st.ench).map(([k, v]) => enchantLabel(k, v)).join('\n');
+    }
+    let page = Math.min(pages.length - 1, lec ? lec.be.page || 0 : 0);
+    const title = st.id === I.written_journal ? (st.title || 'Journal') : itemName(st.id);
+    const by = st.id === I.written_journal && st.author ? `<div class="bby">by ${esc(st.author)}</div>` : '';
+    const m = this.menu(`<h2>${esc(title)}</h2>${by}<div class="book"><div class="bpage">${edit ? '<textarea maxlength="256" spellcheck="false"></textarea>' : '<div class="btext"></div>'}<div class="bnum"></div></div>
+      <div class="bnav"><button class="btn" id="b-prev" aria-label="Previous page">◀</button><button class="btn" id="b-next" aria-label="Next page">▶</button>${edit ? '<button class="btn" id="b-add">Add page</button>' : ''}</div>
+      ${edit ? '<div class="bsign" hidden><input id="b-title" maxlength="24" placeholder="Title"><button class="btn" id="b-signok">Sign and close</button></div>' : ''}
+      <div class="brow">${edit ? '<button class="btn" id="b-sign">Sign…</button>' : ''}${lec ? '<button class="btn" id="b-take">Take Book</button>' : ''}<button class="btn" id="b-done">Done</button></div></div>`, 'bookmenu');
+    const ta = m.querySelector('textarea'), tx = m.querySelector('.btext'), num = m.querySelector('.bnum');
+    const show = () => {
+      if (ta) ta.value = pages[page]; else tx.textContent = pages[page] || '';
+      num.textContent = `Page ${page + 1} of ${pages.length}`;
+      m.querySelector('#b-prev').disabled = page === 0;
+      m.querySelector('#b-next').disabled = page >= pages.length - 1;
+      const add = m.querySelector('#b-add');
+      if (add) add.disabled = pages.length >= 20 || page !== pages.length - 1;
+      if (lec) g.lecternPage(lec, page);
+    };
+    const turn = (d) => { this.click(); if (ta) pages[page] = ta.value; page = Math.max(0, Math.min(pages.length - 1, page + d)); show(); g.audio.play('page'); };
+    this.bind(m, '#b-prev', () => turn(-1));
+    this.bind(m, '#b-next', () => turn(1));
+    const save = () => { if (edit) { if (ta) pages[page] = ta.value; const h = p.inventory.get(data.slot); if (h && h.id === I.journal) h.pages = pages.slice(); } };
+    data.onClose = save;
+    if (edit) {
+      this.bind(m, '#b-add', () => { pages[page] = ta.value; pages.push(''); page = pages.length - 1; show(); });
+      this.bind(m, '#b-sign', () => { m.querySelector('.bsign').hidden = false; m.querySelector('#b-title').focus(); });
+      this.bind(m, '#b-signok', () => {
+        const t = m.querySelector('#b-title').value.trim().slice(0, 24) || 'Journal';
+        pages[page] = ta.value;
+        const h = p.inventory.get(data.slot);
+        if (h && h.id === I.journal) p.inventory.set(data.slot, { id: I.written_journal, count: 1, title: t, label: t, author: g.localName(), pages: pages.slice() });
+        data.onClose = null;
+        g.audio.play('page');
+        this.closeScreen();
+      });
+    }
+    if (lec) this.bind(m, '#b-take', () => { data.onClose = null; g.takeLecternBook(lec); this.closeScreen(); });
+    this.bind(m, '#b-done', () => this.closeScreen());
+    for (const inp of m.querySelectorAll('textarea, input')) inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.code === 'Escape') this.closeScreen(); });
+    show();
+    if (ta) setTimeout(() => ta.focus(), 0);
   }
 
   // Shown once after the guardian of the Void falls and the traveller returns home.
@@ -703,7 +774,7 @@ export class UI {
     const net = this.game && this.game.net;
     const players = net ? [net.name + (net.isHost ? ' (host)' : ''), ...[...net.remote.values()].map((rp) => rp.name + (rp.role === 'h' ? ' (host)' : ''))] : [];
     const shareRow = !net ? '<button id="b-share" class="btn wide">Open to Friends</button>'
-      : net.isHost ? `<div class="share-info">Room code <b class="code">${esc(net.code)}</b><span>${players.length} playing: ${esc(players.join(', '))}</span></div><button id="b-unshare" class="btn wide">Stop Sharing</button>`
+      : net.isHost ? `<div class="share-info">Room code <b class="code">${esc(showCode(net.code))}</b><span>${players.length} playing: ${esc(players.join(', '))}</span></div><div class="row"><button id="b-invite" class="btn">Invite Friends…</button><button id="b-unshare" class="btn">Stop Sharing</button></div>`
         : `<div class="share-info">Playing on a shared world<span>${esc(players.join(', '))}</span></div>`;
     const m = this.menu(`
       <h2>Game Menu</h2>
@@ -716,6 +787,7 @@ export class UI {
     this.bind(m, '#b-resume', () => this.resume());
     this.bind(m, '#b-share', () => this.showShare());
     this.bind(m, '#b-unshare', () => { this.app.stopHosting(); this.message('Your world is private again.', '#f2e27a'); this.showPause(); });
+    this.bind(m, '#b-invite', () => this.showSharing());
     this.bind(m, '#b-opt', () => this.showOptions(() => this.showPause()));
     this.bind(m, '#b-ctl', () => this.showControls(() => this.showPause()));
     this.bind(m, '#b-quit', () => this.app.quit());
@@ -757,6 +829,8 @@ export class UI {
   }
 
   async showShare() {
+    const net = this.game && this.game.net;
+    if (net && net.isHost) { this.showSharing(); return; }
     const m = this.menu(`<h2>Open to Friends</h2>
       <p class="muted">Friends join from Multiplayer on the title screen with your room code. They play in your world while you are here.</p>
       <div id="share-links" class="links-box"></div>
@@ -771,67 +845,186 @@ export class UI {
         if (!link) throw new Error('No way to connect was found in this browser.');
         err.textContent = 'Opening…';
         const code = await this.app.host(link);
-        this.message(`Your world is open! Room code: ${code}`, '#f2e27a');
-        this.showPause();
+        if (!code) throw new Error('This world is already shared.');
+        this.message(`Your world is open! Room code: ${showCode(code)}`, '#f2e27a');
+        this.showSharing();
       } catch (e) { err.textContent = e.message || String(e); }
     });
+  }
+
+  // While hosting: the code to hand out, and the serverless way in.
+  showSharing() {
+    const net = this.game && this.game.net;
+    if (!net || !net.isHost) { this.showPause(); return; }
+    const link = net.link || {};
+    const online = link.kind === 'online';
+    const players = [net.name + ' (host)', ...[...net.remote.values()].map((rp) => rp.name)];
+    const how = {
+      claude: 'Friends who can open this same claude.ai page (shared with them, and signed in) join from Multiplayer with this code.',
+      tabs: 'Only other tabs of this browser can join with this code (handy for testing).',
+      relay: 'Friends using the same relay server join from Multiplayer with this code.',
+    };
+    const m = this.menu(`<h2>Open to Friends</h2>
+      <div class="share-info">Room code <b class="code">${esc(showCode(net.code))}</b><span>${players.length} playing: ${esc(players.join(', '))}</span></div>
+      <div class="row"><button id="b-copy" class="btn">Copy Code</button><button id="b-unshare" class="btn">Stop Sharing</button></div>
+      <p class="muted small" id="sh-status">${online ? '' : esc(how[link.kind] || '')}</p>
+      ${online ? `<details class="manual" id="sh-manual">
+        <summary>A friend can't get in with the code?</summary>
+        <p class="muted small">They choose Multiplayer, then Join with a Request, and send you their request. Paste it here, then send them the reply. No server is needed.</p>
+        <textarea id="sh-req" rows="3" spellcheck="false" placeholder="Paste a join request (BFJOIN1…)"></textarea>
+        <button id="b-reply" class="btn wide">Make Reply</button>
+        <div id="sh-reply" hidden><textarea id="sh-out" rows="3" readonly spellcheck="false"></textarea><button id="b-copy-reply" class="btn wide">Copy Reply</button></div>
+      </details>` : ''}
+      <p class="warn" id="sh-err"></p>
+      <button id="b-back" class="btn wide">Back</button>`, 'pause share');
+    const err = $('#sh-err', m);
+    this.bind(m, '#b-copy', () => copyText(showCode(net.code)).then((ok) => { err.textContent = ok ? 'Copied.' : 'Select the code and copy it by hand.'; }));
+    this.bind(m, '#b-unshare', () => { this.app.stopHosting(); this.message('Your world is private again.', '#f2e27a'); this.showPause(); });
+    this.bind(m, '#b-back', () => this.showPause());
+    if (!online) return;
+    const room = net.room, status = $('#sh-status', m), manual = $('#sh-manual', m);
+    const showState = () => {
+      if (!status.isConnected) return;
+      const st = room.signalState;
+      status.textContent = st === 'online' ? 'Friends anywhere can join: Multiplayer, then type this code.'
+        : st === 'offline' ? 'The matchmaking servers can\'t be reached from this page, so the code won\'t work right now. Use join requests below instead.'
+          : 'Connecting to matchmaking…';
+      if (st === 'offline') manual.open = true;
+    };
+    showState();
+    room.onSignal = showState;
+    this.bind(m, '#b-reply', async () => {
+      const text = $('#sh-req', m).value;
+      if (!text.trim()) { err.textContent = 'Paste your friend\'s join request first.'; return; }
+      err.textContent = 'Making a reply…';
+      try {
+        const reply = await link.acceptRequest(room, text);
+        $('#sh-out', m).value = reply;
+        $('#sh-reply', m).hidden = false;
+        err.textContent = 'Send this reply to your friend. They paste it and connect.';
+        copyText(reply).then((ok) => { if (ok) err.textContent = 'Reply copied. Send it to your friend; they paste it and connect.'; });
+      } catch (e) { err.textContent = e.message || String(e); }
+    });
+    this.bind(m, '#b-copy-reply', () => copyText($('#sh-out', m).value, $('#sh-out', m)).then((ok) => { err.textContent = ok ? 'Reply copied.' : 'Select the reply and copy it by hand.'; }));
   }
 
   async showMultiplayer() {
     const name = this.app.playerName();
     const m = this.menu(`<h2>Multiplayer</h2>
       <label class="field"><span>Your name</span><input id="mp-name" maxlength="16" value="${esc(name)}"></label>
-      <div id="mp-links" class="links-box"></div>
       <div class="games" id="mp-games"><p class="muted">Looking for open worlds…</p></div>
-      <div class="join-row"><input id="mp-code" maxlength="8" placeholder="Room code" autocomplete="off"><button id="b-join" class="btn">Join</button></div>
+      <div class="join-row"><input id="mp-code" maxlength="12" placeholder="Room code" autocomplete="off" spellcheck="false"><button id="b-join" class="btn">Join</button></div>
       <p class="warn" id="mp-err"></p>
-      <p class="muted small">To host, open one of your worlds, press Esc and choose Open to Friends.</p>
+      <div class="row"><button id="b-request" class="btn">Join with a Request</button><button id="b-relay" class="btn">Relay Server…</button></div>
+      <label class="field relay" id="mp-relay" ${this.settings.useRelay ? '' : 'hidden'}><span>Relay address (run tools/relay.mjs); clear it to stop using a relay</span><input id="relay-url" placeholder="ws://192.168.1.20:8787" value="${esc(this.settings.relayUrl || '')}"></label>
+      <p class="muted small">To host, open one of your worlds, press Esc and choose Open to Friends. The room code it shows is all your friends need.</p>
       <button id="b-back" class="btn wide">Back</button>`, 'worlds multiplayer');
     const nameIn = $('#mp-name', m);
-    nameIn.addEventListener('change', () => { this.settings.playerName = nameIn.value.trim().slice(0, 16) || name; this.saveSettings(); });
-    let lobby = null, closed = false;
-    const box = $('#mp-links', m);
-    const getLink = await this.connectionPicker(m, '#mp-links');
-    const games = $('#mp-games', m);
-    const err = $('#mp-err', m);
-    const showGames = (list) => {
-      const open = list.filter((p) => !p.isMe && p.presence && p.presence.bf && p.presence.bf.code);
-      games.innerHTML = open.length ? open.map((p) => {
-        const b = p.presence.bf;
-        return `<button class="world game" data-code="${esc(String(b.code))}"><b>${esc(String(b.wn || 'World'))}</b><span>${esc(String(b.hn || 'Someone'))} · ${b.np | 0} playing</span></button>`;
-      }).join('') : '<p class="muted">No open worlds found yet. Ask a friend for their room code.</p>';
+    const saveName = () => { this.settings.playerName = nameIn.value.trim().slice(0, 16) || name; this.saveSettings(); };
+    nameIn.addEventListener('change', saveName);
+    const games = $('#mp-games', m), err = $('#mp-err', m);
+    const relayBox = $('#mp-relay', m), relayIn = $('#relay-url', m);
+    this.bind(m, '#b-relay', () => { relayBox.hidden = !relayBox.hidden; this.settings.useRelay = !relayBox.hidden && !!this.settings.relayUrl; this.saveSettings(); if (!relayBox.hidden) relayIn.focus(); });
+    relayIn.addEventListener('change', () => { this.settings.relayUrl = relayIn.value.trim(); this.settings.useRelay = !!this.settings.relayUrl; this.saveSettings(); });
+    let closed = false;
+    const lobbies = [];
+    // the buttons work at once; finding connections can take a few seconds on some pages
+    const linksP = this.app.links();
+    // worlds open on the connections that can list them (this page's room, other tabs)
+    const showGames = () => {
+      const open = [];
+      for (const lb of lobbies) for (const p of lb.peers()) if (!p.isMe && p.presence && p.presence.bf && p.presence.bf.code) open.push(p.presence.bf);
+      games.innerHTML = open.length ? open.map((b) => `<button class="world game" data-code="${esc(String(b.code))}"><b>${esc(String(b.wn || 'World'))}</b><span>${esc(String(b.hn || 'Someone'))} · ${b.np | 0} playing</span></button>`).join('')
+        : '<p class="muted">Type the room code your friend sees in their game.</p>';
       for (const b of games.querySelectorAll('.game')) b.addEventListener('click', () => { this.click(); $('#mp-code', m).value = b.dataset.code; join(); });
     };
-    const browse = async () => {
-      if (lobby) { lobby.close(); lobby = null; }
-      let link;
-      try { link = getLink(); } catch { return; }
-      if (!link) { games.innerHTML = '<p class="muted">No way to connect was found in this browser.</p>'; return; }
-      if (link.kind === 'relay') { games.innerHTML = '<p class="muted">Enter the room code to join through the relay.</p>'; }
-      try {
-        lobby = await link.open(null);
-        if (closed) { lobby.close(); return; }
-        lobby.onPeers(showGames);
-        lobby.presence({ bfl: 1 });
-        showGames(lobby.peers());
-      } catch (e) { games.innerHTML = `<p class="muted">${esc(e.message || String(e))}</p>`; }
-    };
-    box.onPick = () => browse();
-    browse();
+    linksP.then((links) => {
+      for (const l of links) {
+        if (l.kind === 'online' || closed) continue;
+        l.open(null).then((lb) => {
+          if (!lb) return;
+          if (closed) { lb.close(); return; }
+          lobbies.push(lb);
+          lb.onPeers(showGames);
+          lb.presence({ bfl: 1 });
+          showGames();
+        }).catch(() => {});
+      }
+    });
+    showGames();
+    const leaveLobbies = () => { closed = true; for (const lb of lobbies) { try { lb.close(); } catch { /* closed */ } } lobbies.length = 0; };
     const join = async () => {
-      const code = $('#mp-code', m).value.trim().toLowerCase();
-      if (!/^[a-z0-9]{4,8}$/.test(code)) { err.textContent = 'Enter the room code your friend sees in their game menu.'; return; }
-      this.settings.playerName = nameIn.value.trim().slice(0, 16) || name; this.saveSettings();
-      let link;
-      try { link = getLink(); } catch (e) { err.textContent = e.message; return; }
-      if (!link) { err.textContent = 'No way to connect was found in this browser.'; return; }
-      closed = true; if (lobby) { lobby.close(); lobby = null; }
-      this.showLoading('Connecting to ' + code, 0);
-      try { await this.app.join(link, code); } catch (e) { this.showMultiplayer(); setTimeout(() => { const er = $('#mp-err'); if (er) er.textContent = e.message || String(e); }, 0); }
+      const code = cleanCode($('#mp-code', m).value);
+      saveName();
+      let link = null;
+      if (code.length === 8) err.textContent = '';
+      const links = await linksP;
+      const relayUrl = (this.settings.relayUrl || '').trim();
+      if (!relayBox.hidden && relayUrl) {
+        if (!/^wss?:\/\//.test(relayUrl)) { err.textContent = 'Enter the relay address, like ws://192.168.1.20:8787'; return; }
+        link = this.app.relayLink(relayUrl);
+      } else link = links.find((l) => l.accepts && l.accepts(code)) || null;
+      if (!link) {
+        if (!code) err.textContent = 'Enter the room code your friend sees in their game menu.';
+        else if (code.length === 5) err.textContent = 'That code is for people viewing the same claude.ai page, which isn\'t available here. Ask your friend to stop sharing and share again with "Online".';
+        else if (code.length === 6) err.textContent = 'That code only reaches other tabs of your friend\'s own browser. Ask them to share again with "Online".';
+        else if (code.length === 8) err.textContent = 'This browser can\'t make direct online connections. Try an up-to-date Chrome, Edge, Firefox or Safari.';
+        else err.textContent = 'Room codes look like abcd-2345 (8 letters and numbers). Check it and try again.';
+        return;
+      }
+      leaveLobbies();
+      const shown = showCode(code);
+      this.showLoading('Connecting to ' + shown, 0);
+      try {
+        await this.app.join(link, code, (msg) => { const t = $('#ld-text'); if (t) t.textContent = msg; });
+      } catch (e) {
+        await this.showMultiplayer();
+        const er = $('#mp-err'), ci = $('#mp-code');
+        if (ci) ci.value = shown;
+        if (er) er.textContent = e.message || String(e);
+      }
     };
     this.bind(m, '#b-join', join);
     $('#mp-code', m).addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
-    this.bind(m, '#b-back', () => { closed = true; if (lobby) lobby.close(); this.showTitle(); });
+    this.bind(m, '#b-request', async () => { saveName(); const o = (await linksP).find((l) => l.kind === 'online'); if (!o) { err.textContent = 'This browser can\'t make direct online connections.'; return; } leaveLobbies(); this.showJoinRequest(o); });
+    this.bind(m, '#b-back', () => { leaveLobbies(); this.showTitle(); });
+  }
+
+  // Joining without a code or a server: swap a request and a reply by hand.
+  async showJoinRequest(link) {
+    const m = this.menu(`<h2>Join with a Request</h2>
+      <p class="muted small">Send this request to your friend in any chat app. They paste it in their game (Esc, then Open to Friends) and send you back a reply.</p>
+      <textarea id="jr-out" rows="4" readonly spellcheck="false">Making your request…</textarea>
+      <button id="b-copy" class="btn wide" disabled>Copy Request</button>
+      <label class="field"><span>Then paste your friend's reply here</span><textarea id="jr-in" rows="3" spellcheck="false" placeholder="BFREPLY1…"></textarea></label>
+      <button id="b-connect" class="btn wide">Connect</button>
+      <p class="warn" id="jr-err"></p>
+      <button id="b-back" class="btn wide">Back</button>`, 'worlds multiplayer request');
+    const err = $('#jr-err', m), out = $('#jr-out', m);
+    let req = null, busy = false;
+    this.bind(m, '#b-back', () => { if (req && !busy) req.cancel(); this.showMultiplayer(); });
+    try {
+      req = await link.makeRequest();
+      if (!m.isConnected) { req.cancel(); return; }
+      out.value = req.text;
+      $('#b-copy', m).disabled = false;
+    } catch (e) { err.textContent = 'Could not make a request: ' + (e.message || String(e)); return; }
+    this.bind(m, '#b-copy', () => copyText(req.text, out).then((ok) => { err.textContent = ok ? 'Request copied. Send it to your friend.' : 'Select the request and copy it by hand.'; }));
+    this.bind(m, '#b-connect', async () => {
+      if (busy) return;
+      const reply = $('#jr-in', m).value;
+      if (!reply.trim()) { err.textContent = 'Paste the reply your friend sends you.'; return; }
+      busy = true;
+      err.textContent = 'Connecting…';
+      let room;
+      try { room = await req.finish(reply); } catch (e) { busy = false; err.textContent = e.message || String(e); return; }
+      this.showLoading('Joining your friend\'s world', 0);
+      try { await this.app.joinRoom(room, link, ''); } catch (e) {
+        await this.showMultiplayer();
+        const er = $('#mp-err');
+        if (er) er.textContent = e.message || String(e);
+      }
+    });
   }
 
   showDeath(msg) {
@@ -969,7 +1162,10 @@ export class UI {
     if (!s) return;
     if (s.name === 'chat') { this.closeChat(false); return; }
     if (s.name === 'sleep') { if (g.player.sleeping) g.wakeUp(); else this.showSleep(false); return; }
-    if (s.name === 'sign' || s.name === 'epilogue') { this.screen = null; this.closeMenus(); if (!silent) this.resume(); return; }
+    if (s.name === 'sign' || s.name === 'epilogue' || s.name === 'book') {
+      if (s.data && s.data.onClose) s.data.onClose();
+      this.screen = null; this.closeMenus(); if (!silent) this.resume(); return;
+    }
     if (s.name === 'trade') g.tradingWith = null;
     if (s.name === 'chest' && !silent) g.audio.play('chest_close');
     // put back crafting ingredients and the cursor stack
@@ -1012,11 +1208,18 @@ export class UI {
         accept: index === 0 ? (st) => ITEMS[st.id] && ITEMS[st.id].banner !== undefined : (st) => WOOL_COLOR()[st.id] !== undefined,
       };
       case 'bcn': return { get: () => g.beaconSlot.get(0), set: (s) => g.beaconSlot.set(0, s), accept: (st) => BEACON_PAYMENT().includes(st.id), single: true };
+      case 'gri': return { get: () => g.grindSlots.get(index), set: (s) => g.grindSlots.set(index, s), single: true };
+      case 'smi': return {
+        get: () => g.smithSlots.get(index), set: (s) => g.smithSlots.set(index, s),
+        accept: index === 1 ? (st) => st.id === I.starsteel_ingot : (st) => !!(ITEMS[st.id] && ITEMS[st.id].name.startsWith('diamond_') && ITEMS[st.id].durability),
+        single: index === 0,
+      };
       case 'c3': return { get: () => g.craft3.get(index), set: (s) => g.craft3.set(index, s) };
       case 'box': {
         const be = sc.data.be;
         let accept;
         if (sc.name === 'furnace' && index === 2) accept = () => false;
+        if (sc.name === 'crafter' && be.off && be.off[index]) accept = () => false;
         if (sc.name === 'brewing') {
           if (index < 3) accept = (st) => !!(ITEMS[st.id] && ITEMS[st.id].potion);
           else if (index === 3) accept = (st) => isIngredient(st.id);
@@ -1059,7 +1262,7 @@ export class UI {
     const panel = el('div', 'panel');
     m.appendChild(panel);
     this.panel = panel;
-    const title = (data && data.title) || { inventory: 'Inventory', crafting: 'Crafting', furnace: 'Furnace', chest: 'Chest', creative: 'Creative', trade: 'Trade', enchant: 'Enchanting', brewing: 'Brewing Stand', dispenser: 'Dispenser', hopper: 'Hopper', anvil: 'Anvil', loom: 'Loom', beacon: 'Beacon' }[name];
+    const title = (data && data.title) || { inventory: 'Inventory', crafting: 'Crafting', furnace: 'Furnace', chest: 'Chest', creative: 'Creative', trade: 'Trade', enchant: 'Enchanting', brewing: 'Brewing Stand', dispenser: 'Dispenser', hopper: 'Hopper', anvil: 'Anvil', loom: 'Loom', beacon: 'Beacon', grindstone: 'Grindstone', smithing: 'Smithing Table', crafter: 'Crafter' }[name];
     panel.appendChild(el('h3', 'ptitle', title));
     const mkGrid = (cls, cols, kind, from, count) => {
       const gr = el('div', `grid ${cls}`);
@@ -1099,7 +1302,26 @@ export class UI {
       f.append(col, ar, o);
       top.appendChild(f);
     } else if (name === 'chest') {
-      top.appendChild(mkGrid('chestgrid', 9, 'box', 0, 27));
+      top.appendChild(mkGrid('chestgrid', 9, 'box', 0, (data.be && data.be.slots && data.be.slots.length) || 27));
+    } else if (name === 'grindstone' || name === 'smithing') {
+      const box = el('div', 'anvil');
+      const slot = (kind, i, cls) => { const sl = this.slotEl(); sl.dataset.kind = kind; sl.dataset.i = i; if (cls) sl.classList.add(cls); return sl; };
+      const k = name === 'grindstone' ? 'gri' : 'smi';
+      const row = el('div', 'arow');
+      row.append(slot(k, 0), el('span', 'plus', '+'), slot(k, 1), el('div', 'arrow', '<i></i>'), slot(k === 'gri' ? 'gout' : 'sout', 0, 'result'));
+      const hint = el('div', 'acost', name === 'grindstone'
+        ? 'Grind off enchantments for a little experience, or join two worn tools of the same kind.'
+        : 'Diamond gear and a starsteel ingot make starsteel gear.');
+      box.append(row, hint);
+      top.appendChild(box);
+    } else if (name === 'crafter') {
+      const box = el('div', 'craft crafter');
+      box.appendChild(mkGrid('cgrid', 3, 'box', 0, 9));
+      box.appendChild(el('div', 'arrow', '<i></i>'));
+      const pre = this.slotEl(); pre.classList.add('result', 'preview'); pre.dataset.kind = 'cpre'; pre.dataset.i = 0;
+      box.appendChild(pre);
+      top.appendChild(box);
+      top.appendChild(el('div', 'acost', 'Power it with a spark to craft. Click an empty slot to block it off.'));
     } else if (name === 'dispenser') {
       top.appendChild(mkGrid('dispgrid', 3, 'box', 0, 9));
     } else if (name === 'hopper') {
@@ -1232,6 +1454,9 @@ export class UI {
     if (kind === 'result') { const r = this.craftResult().res; return r ? { id: r.id, count: r.count } : null; }
     if (kind === 'aout') { const r = this.anvilOut(); return r ? r.out : null; }
     if (kind === 'lout') return this.loomOut();
+    if (kind === 'gout') { const r = this.grindOut(); return r ? r.out : null; }
+    if (kind === 'sout') return this.smithOut();
+    if (kind === 'cpre') return this.crafterPreview();
     if (kind === 'palette') return { id: i, count: 1 };
     if (kind === 'trash') return null;
     const src = this.slotSource(kind, i);
@@ -1240,8 +1465,10 @@ export class UI {
 
   refreshSlots() {
     if (!this.panel) return;
+    const crafter = this.screen && this.screen.name === 'crafter' ? this.screen.data.be : null;
     for (const s of this.panel.querySelectorAll('.slot')) {
       if (s.dataset.kind === 'palette' || s.dataset.kind === 'trash') continue;
+      if (crafter && s.dataset.kind === 'box') s.classList.toggle('off', !!crafter.off[+s.dataset.i]);
       this.fillSlot(s, this.stackIn(s));
       s.classList.toggle('drag', !!(this.drag && this.drag.slots.includes(s)));
     }
@@ -1257,6 +1484,10 @@ export class UI {
       this.updateEnchant();
     }
     if (this.screen && this.screen.name === 'anvil') this.updateAnvil();
+    if (this.screen && (this.screen.name === 'grindstone' || this.screen.name === 'smithing' || this.screen.name === 'crafter')) {
+      const d = this.screen.data, want = { grindstone: B.grindstone, smithing: B.smithing_table, crafter: B.crafter }[this.screen.name];
+      if (this.game.world.getBlock(d.x, d.y, d.z) !== want) { this.closeScreen(); return; }
+    }
     if (this.screen && this.screen.name === 'loom') this.updateLoom();
     if (this.screen && this.screen.name === 'beacon') this.updateBeacon();
     if (this.screen && this.screen.name === 'brewing') {
@@ -1342,6 +1573,40 @@ export class UI {
     c.title = full ? 'This banner has all the patterns it can hold' : '';
   }
 
+  // Grindstone, smithing table and crafter
+  grindOut() { const g = this.game; return grindstoneResult(g.grindSlots.get(0), g.grindSlots.get(1)); }
+  takeGrind() {
+    const g = this.game;
+    const r = this.grindOut();
+    if (!r || this.cursor) return;
+    this.cursor = r.out;
+    g.grindSlots.set(0, null); g.grindSlots.set(1, null);
+    const d = this.screen.data;
+    if (r.xp) g.spawnXp(d.x + 0.5, d.y + 1, d.z + 0.5, r.xp);
+    g.audio.play('grind', d.x + 0.5, d.y + 0.5, d.z + 0.5);
+    this.updateCursor(); this.refreshSlots();
+  }
+  smithOut() { const g = this.game; return smithingResult(g.smithSlots.get(0), g.smithSlots.get(1)); }
+  takeSmith() {
+    const g = this.game;
+    const out = this.smithOut();
+    if (!out || this.cursor) return;
+    this.cursor = out;
+    g.smithSlots.set(0, null);
+    const ing = g.smithSlots.get(1); ing.count--; if (ing.count <= 0) g.smithSlots.set(1, null);
+    const d = this.screen.data;
+    g.audio.material('metal', 'place', d.x + 0.5, d.y + 0.5, d.z + 0.5);
+    for (let k = 0; k < 6; k++) g.particles.crit(d.x + 0.5 + (Math.random() - 0.5), d.y + 1.1, d.z + 0.5 + (Math.random() - 0.5));
+    g.advance('starsteel');
+    this.updateCursor(); this.refreshSlots();
+  }
+  crafterPreview() {
+    const be = this.screen && this.screen.data.be;
+    if (!be) return null;
+    const r = matchRecipe(be.slots.map((st, i) => (st && !be.off[i] ? st.id : 0)), 3);
+    return r ? { id: r.id, count: r.count } : null;
+  }
+
   takeLoom() {
     const g = this.game;
     const out = this.loomOut();
@@ -1401,19 +1666,27 @@ export class UI {
       o._stack = st;
       return o;
     };
+    const price = (st) => this.tradePrice(st);
     mob.trades.forEach((t, k) => {
       const row = el('button', 'offer');
       const gives = el('div', 'gives');
-      for (const st of t.give) gives.appendChild(mkIcon(st));
+      for (const st of t.give) gives.appendChild(mkIcon(price(st)));
       row.append(gives, el('i', 'to'), mkIcon(t.get));
       const out = t.uses >= t.max;
       row.appendChild(el('span', 'left', out ? 'Sold out' : `${t.max - t.uses} left`));
-      const can = !out && t.give.every((st) => countItem(p.inventory, st.id) >= st.count);
+      const can = !out && t.give.every((st) => countItem(p.inventory, st.id) >= price(st).count);
       row.disabled = !can;
       row.addEventListener('click', (e) => this.doTrade(k, e.shiftKey));
       list.appendChild(row);
     });
     this.offerKey = this.tradeKey();
+  }
+
+  // Heroes of the village pay less.
+  tradePrice(st) {
+    const p = this.game.player;
+    if (st.id !== I.emerald || !(p.effects && p.effects.village_hero)) return st;
+    return { ...st, count: Math.max(1, Math.ceil(st.count * 0.7)) };
   }
 
   tradeKey() {
@@ -1429,8 +1702,9 @@ export class UI {
     let n = 0;
     while (n < (repeat ? 64 : 1)) {
       if (t.uses >= t.max) break;
-      if (!t.give.every((st) => countItem(p.inventory, st.id) >= st.count)) break;
-      for (const st of t.give) takeItem(p.inventory, st.id, st.count);
+      const cost = t.give.map((st) => this.tradePrice(st));
+      if (!cost.every((st) => countItem(p.inventory, st.id) >= st.count)) break;
+      for (const st of cost) takeItem(p.inventory, st.id, st.count);
       const got = { id: t.get.id, count: t.get.count };
       if (t.get.ench) got.ench = { ...t.get.ench };
       const left = p.inventory.give(got);
@@ -1491,7 +1765,9 @@ export class UI {
       if (p.xpLevel < Math.max(o.cost, need)) return;
       p.xpLevel -= need;
     }
-    g.enchantSlot.set(0, { ...st, ench: { ...o.ench } });
+    // a book becomes an enchanted book that carries the enchantment to anything
+    if (st.id === I.book) g.enchantSlot.set(0, { id: I.enchanted_book, count: 1, ench: { ...o.ench } });
+    else g.enchantSlot.set(0, { ...st, ench: { ...o.ench } });
     p.enchantSeed = (Math.random() * 0x7fffffff) | 0;
     const d = this.screen.data;
     g.audio.play('enchant', d.x + 0.5, d.y + 0.5, d.z + 0.5);
@@ -1625,6 +1901,14 @@ export class UI {
     if (kind === 'result') { this.takeResult(shift); return; }
     if (kind === 'aout') { this.takeAnvil(); return; }
     if (kind === 'lout') { this.takeLoom(); return; }
+    if (kind === 'gout') { this.takeGrind(); return; }
+    if (kind === 'sout') { this.takeSmith(); return; }
+    if (kind === 'cpre') return;
+    // an empty crafter slot clicked with nothing in hand is blocked off (or opened again)
+    if (kind === 'box' && this.screen && this.screen.name === 'crafter' && !this.cursor) {
+      const be = this.screen.data.be;
+      if (!be.slots[i]) { be.off[i] = !be.off[i]; s.classList.toggle('off', be.off[i]); g.audio.play('click', undefined, undefined, undefined, 0.4); if (g.net) g.net.blockEntityChanged(this.screen.data.key); this.refreshSlots(); return; }
+    }
     const src = this.slotSource(kind, i);
     if (!src) return;
     const st = src.get();

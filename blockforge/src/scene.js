@@ -10,6 +10,8 @@ import { FallingBlock, PrimedCrate, Mob, Projectile, Lightning } from './entitie
 import { LASER_COLOR } from './laser.js';
 
 const M = mat4(), P = mat4(), T = mat4();
+// Wool tints for dyed sheep, by colour index (white, red, orange, yellow, green, blue, purple, black).
+const DYE_TINT = [[1, 1, 1], [0.74, 0.22, 0.2], [0.96, 0.52, 0.16], [0.98, 0.85, 0.24], [0.38, 0.6, 0.2], [0.24, 0.32, 0.74], [0.54, 0.26, 0.74], [0.17, 0.17, 0.19]];
 const lerp = (a, b, t) => a + (b - a) * t;
 const lerpAngle = (a, b, t) => {
   let d = b - a;
@@ -240,7 +242,7 @@ export class SceneRenderer {
       const [x, y, z] = e.lerpPos(alpha);
       const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
       if (dx * dx + dz * dz > 96 * 96 && !(e instanceof Lightning) && !e.isWyrm) continue;
-      if (e instanceof Mob) this.drawMob(e, x, y, z, cam, env, alpha, world);
+      if (e instanceof Mob) { this.drawMob(e, x, y, z, cam, env, alpha, world); if (e.leash) this.drawLeash(game, e, x, y, z, cam, env, alpha); }
       else if (e.isCart) this.drawCart(e, x, y, z, cam, env, alpha, world);
       else if (e.isBoat) this.drawBoat(e, x, y, z, cam, env, alpha, world);
       else if (e.isPylon) this.drawPylon(e, x, y, z, cam, env, alpha, game);
@@ -303,6 +305,12 @@ export class SceneRenderer {
       this.r.drawModel(this.unitBox, T, 'block', [1, 1], env, { mode: 1, glow: 1, blend: true, alpha: 0.28, tintColor: LASER_COLOR, noCull: true });
       scale(M, M, 0.06, 0.06, len);
       this.r.drawModel(this.unitBox, M, 'block', [1, 1], env, { mode: 1, glow: 1, tintColor: [0.85, 1, 1] });
+      return;
+    }
+    if (e.kind === 'spit') {
+      rotateY(M, M, -cam.yaw);
+      scale(M, M, 0.12, 0.12, 0.12);
+      this.r.drawModel(this.unitBox, M, 'block', light, env, { tintColor: [0.95, 0.95, 0.9] });
       return;
     }
     const mesh = this.items.get(e.kind === 'egg' ? I.egg : e.kind === 'snowball' ? I.snowball : e.kind === 'pearl' ? I.void_pearl : e.item);
@@ -374,13 +382,13 @@ export class SceneRenderer {
     return out;
   }
 
-  drawParts(name, poses, base, light, env, opts, hidden, meshSet) {
+  drawParts(name, poses, base, light, env, opts, hidden, meshSet, partTint) {
     const def = MODELS[name];
     const meshes = meshSet || this.models[name];
     for (const pn of Object.keys(def.parts)) {
       if (hidden && hidden.has(pn)) continue;
       this.partMatrix(P, base, def, pn, poses);
-      this.r.drawModel(meshes[pn], P, 'skin', light, env, opts);
+      this.r.drawModel(meshes[pn], P, 'skin', light, env, partTint && partTint[pn] ? { ...opts, tintColor: partTint[pn], blockMode: 3 } : opts);
     }
   }
 
@@ -397,6 +405,52 @@ export class SceneRenderer {
         this.r.drawModel(part.model, P, 'skin', light, env, opts);
       }
     }
+  }
+
+  // A lead: a sagging rope from a creature's neck to the hand that holds it
+  // or to a knot on a fence post.
+  drawLeash(game, e, x, y, z, cam, env, alpha) {
+    const L = e.leash;
+    let hx, hy, hz, knot = false;
+    if (L.kind === 'knot') { hx = L.x + 0.5; hy = L.y + 0.62; hz = L.z + 0.5; knot = true; }
+    else {
+      const o = game.ownerOf(L.name);
+      if (!o) return;
+      const [ox, oy, oz] = o.lerpPos ? o.lerpPos(alpha) : [o.x, o.y, o.z];
+      const yaw = o.bodyYaw ?? o.yaw;
+      hx = ox + Math.cos(yaw) * 0.38 - Math.sin(yaw) * 0.25; hy = oy + 0.95; hz = oz + Math.sin(yaw) * 0.38 + Math.cos(yaw) * 0.25;
+    }
+    const by = e.bodyYaw ?? e.yaw;
+    const ax = x + Math.sin(by) * e.w * 0.9, ay = y + e.h * 0.72, az = z - Math.cos(by) * e.w * 0.9;
+    const len = Math.hypot(hx - ax, hy - ay, hz - az);
+    const sag = Math.max(0.05, 0.7 - len * 0.1);
+    const light = this.lightAt(game.world, (ax + hx) / 2, (ay + hy) / 2, (az + hz) / 2);
+    const opts = { blockMode: 3, tintColor: [0.5, 0.36, 0.2] };
+    const N = 10;
+    let px = ax, py = ay, pz = az;
+    for (let i = 1; i <= N; i++) {
+      const t = i / N;
+      const nx = ax + (hx - ax) * t, ny = ay + (hy - ay) * t - sag * 4 * t * (1 - t), nz = az + (hz - az) * t;
+      this.segment([px, py, pz], [nx, ny, nz], cam, 0.045, light, env, opts);
+      px = nx; py = ny; pz = nz;
+    }
+    if (knot) {
+      identity(M); translate(M, M, hx - cam.x, hy - cam.y, hz - cam.z); scale(M, M, 0.3, 0.2, 0.3);
+      this.r.drawModel(this.unitBox, M, 'block', light, env, opts);
+    }
+  }
+
+  // Something carried in the mouth (a fox's find).
+  drawMouthItem(name, id, poses, base, light, env) {
+    const mesh = this.items.get(id);
+    if (!mesh) return;
+    const def = MODELS[name];
+    this.partMatrix(P, base, def, 'head', poses);
+    translate(P, P, 0, 7.5, -12);
+    rotateY(P, P, Math.PI / 2);
+    if (mesh.kind === 'block') scale(P, P, 4, 4, 4); else scale(P, P, 7, 7, 7);
+    translate(P, P, -0.5, -0.5, 0);
+    this.r.drawModel(mesh.model, P, mesh.tex, light, env, { blockMode: mesh.blockMode, tintColor: mesh.tint, noCull: mesh.kind !== 'block' });
   }
 
   // Held item at the end of a humanoid's arm.
@@ -493,6 +547,101 @@ export class SceneRenderer {
       else if (e.swing > 0) poses.armR = [1.4 * Math.sin(((10 - e.swing + alpha) / 10) * Math.PI), 0, 0];
     }
     if (e.type === 'tide_warden') { poses.tail = [0, Math.sin(e.limbSwing * 0.6 + t * 0.15) * 0.5, 0]; }
+    // --- round five animals ---
+    if (e.type === 'fox') {
+      poses.tail = [-0.35 + la * 0.3, Math.sin(t * 0.15) * 0.15, 0];
+      if (e.sleeping) {
+        translate(T, T, 0, -3.5, 0);
+        poses.leg0 = poses.leg1 = [-1.5, 0, 0]; poses.leg2 = poses.leg3 = [1.5, 0, 0];
+        poses.head = [0.5, 0.9, 0.2]; poses.tail = [0.25, -1.3, 0];
+      }
+    }
+    if (e.type === 'cat') {
+      poses.tail = [-0.9 + la * 0.5, Math.sin(t * 0.12) * 0.3, 0]; poses.tail2 = [0.6, 0, 0];
+      if (e.sitting) {
+        translate(T, T, 0, -2, 0);
+        poses.body = [-0.6, 0, 0]; poses.leg2 = poses.leg3 = [1.4, 0, 0]; poses.leg0 = poses.leg1 = [-0.3, 0, 0];
+        poses.tail = [0.9, 0.4, 0];
+      }
+    }
+    if (e.type === 'parrot') {
+      const fly = e.flying ? 1 : 0;
+      const flap = fly ? Math.sin((e.wingFlap || 0) + alpha) * 1.1 : 0;
+      poses.wingR = [fly ? 0.2 : 0, 0, fly ? -0.6 - flap : -0.05]; poses.wingL = [fly ? 0.2 : 0, 0, fly ? 0.6 + flap : 0.05];
+      poses.legR = fly ? [0.9, 0, 0] : [sw * 0.6, 0, 0]; poses.legL = fly ? [0.9, 0, 0] : [-sw * 0.6, 0, 0];
+      poses.tail = [fly ? 0.6 : 0.2, 0, 0];
+      if (e.dancing > 0) { translate(T, T, 0, Math.abs(Math.sin(t * 0.4)) * 1.5, 0); poses.head = [0, 0, Math.sin(t * 0.4) * 0.4]; poses.body = [0, 0, Math.sin(t * 0.4) * 0.15]; }
+      if (e.sitting || e.perch) { poses.legR = poses.legL = [0, 0, 0]; }
+    }
+    if (e.type === 'bee') {
+      const flap = Math.sin(t * 2.6) * 0.5;
+      poses.wingR = [0, 0, -0.2 - flap]; poses.wingL = [0, 0, 0.2 + flap];
+      translate(T, T, 0, Math.sin(t * 0.18) * 0.6, 0);
+      poses.body = [e.angry > 0 ? 0.25 : 0.05, 0, 0];
+    }
+    if (e.type === 'alpaca') {
+      poses.neck = [(e.headPitch || 0) * 0.3, (e.headYaw || 0) * 0.5, 0];
+      delete poses.head;
+      poses.tail = [0.2 + Math.sin(t * 0.1) * 0.1, 0, 0];
+      if (e.sitting) { translate(T, T, 0, -5, 0); poses.leg0 = poses.leg1 = [-1.4, 0, 0]; poses.leg2 = poses.leg3 = [1.4, 0, 0]; }
+    }
+    if (e.type === 'dolphin') {
+      const pt = e.pitchSwim || 0;
+      translate(T, T, 0, 3.5, 0); rotateX(T, T, pt * 0.8); translate(T, T, 0, -3.5, 0);
+      const k = Math.sin(e.limbSwing * 0.5 + t * 0.12);
+      poses.body = [0, 0, 0]; poses.tail = [k * 0.35, 0, 0]; poses.fluke = [k * 0.3, 0, 0];
+      poses.flipR = [0, 0, -0.3 - k * 0.1]; poses.flipL = [0, 0, 0.3 + k * 0.1];
+      delete poses.head;
+    }
+    if (e.type === 'ranger' && (e.target || e.aim > 0)) {
+      poses.armR = [Math.PI / 2 - headPitch, -0.1, 0]; poses.armL = [Math.PI / 2 - headPitch, 0.5, 0];
+    }
+    if (e.type === 'marauder') {
+      let arm = e.target ? 0.9 : 0.1;
+      if (e.swing > 0) arm += Math.sin(((10 - e.swing + alpha) / 10) * Math.PI) * 1.3;
+      poses.armR = [arm - sw * 0.3, 0, 0.05];
+      if (e.celebrating) { poses.armR = [Math.PI - 0.3, 0, 0.2]; poses.armL = [Math.PI - 0.3, 0, -0.2]; translate(T, T, 0, Math.abs(Math.sin(t * 0.3)) * 2, 0); }
+    }
+    if (e.type === 'rabbit' || e.type === 'frog') {
+      // tucked in on the ground, stretched out mid-hop
+      const air = e.onGround === false || Math.abs((e.y - e.py)) > 0.01 ? 1 : 0;
+      poses.leg0 = poses.leg1 = [air ? -0.6 : 0, 0, 0];
+      poses.leg2 = poses.leg3 = [air ? 0.9 : 0, 0, 0];
+      if (e.type === 'rabbit') poses.head = [headPitch, headYaw, 0];
+    }
+    if (e.type === 'goat') {
+      if (e.ram) { poses.head = [0.55, 0, 0]; }
+      poses.tail = [Math.sin(t * 0.3) * 0.2, 0, 0];
+    }
+    if (e.type === 'turtle') {
+      const k = Math.sin(e.limbSwing * 0.8 + t * (e.inWater ? 0.15 : 0)) * (e.inWater ? 0.6 : 0.35 * la);
+      poses.flipR = [0, k, 0]; poses.flipL = [0, -k, 0]; poses.backR = [0, -k * 0.6, 0]; poses.backL = [0, k * 0.6, 0];
+    }
+    if (e.type === 'squid') {
+      // tentacles close as it pulses, then trail open
+      const ph = ((e.limbSwing || 0) + alpha) / 30;
+      const open = 0.25 + 0.5 * Math.max(0, Math.cos(ph * Math.PI * 2));
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; poses['t' + i] = [Math.sin(a) * -open, 0, Math.cos(a) * open]; }
+      delete poses.head;
+    }
+    if (e.type === 'camel') {
+      poses.neck = [-0.15 + (e.headPitch || 0) * 0.3, (e.headYaw || 0) * 0.5, 0];
+      delete poses.head;
+      if (e.sitting) { translate(T, T, 0, -12, 0); poses.leg0 = poses.leg1 = [-1.5, 0, 0]; poses.leg2 = poses.leg3 = [1.5, 0, 0]; }
+    }
+    if (e.type === 'listener') {
+      // it rises out of (and sinks into) the ground; its fronds flare as it listens
+      const sink = e.emerging > 0 ? e.emerging / 100 : e.digging > 0 ? 1 - e.digging / 100 : 0;
+      if (sink) translate(T, T, 0, -sink * 44, 0);
+      const flare = e.listening > 0 || e.heard ? 0.6 + Math.sin(t * 0.8) * 0.2 : 0.15;
+      poses.frondR = [0, 0, flare]; poses.frondL = [0, 0, -flare];
+      poses.armR = [-sw * 0.6, 0, 0.08]; poses.armL = [sw * 0.6, 0, -0.08];
+      if (e.swing > 0) { const k = Math.sin(((10 - e.swing + alpha) / 10) * Math.PI) * 1.6; poses.armR = [k, 0, 0.08]; poses.armL = [k, 0, -0.08]; }
+      if (e.boom > 0) poses.head = [0.35, 0, 0];
+    }
+    if (e.type === 'brute') {
+      poses.head = [headPitch * 0.5 + (e.swing > 0 ? -0.5 * Math.sin(((10 - e.swing + alpha) / 10) * Math.PI) : 0), headYaw * 0.5, 0];
+    }
     const light = e.type === 'imp' ? [0.4, 1] : this.lightAt(world, x, y + def.height * 0.6, z);
     const hurt = e.hurtTime > 0 || e.dead;
     const opts = { tint: hurt ? [0.9, 0.1, 0.1, 0.45] : e.fire > 0 ? [1, 0.5, 0.1, 0.15] : undefined };
@@ -503,13 +652,21 @@ export class SceneRenderer {
       if (!e.saddled) hidden = new Set(['saddle', 'strapR', 'strapL', 'bridle']);
       if (e.variant && this.models['steed:' + e.variant]) meshes = this.models['steed:' + e.variant];
     }
+    if (e.variant && this.models[e.def.model + ':' + e.variant]) meshes = this.models[e.def.model + ':' + e.variant];
+    if (e.type === 'alpaca' && !e.pack) hidden = new Set(['packR', 'packL']);
+    if (e.type === 'camel' && !e.saddled) hidden = new Set(['saddle']);
+    if (e.type === 'bee' && e.stung) hidden = new Set(['stinger']);
     if (e.type === 'settler') {
       const prof = e.profession || 'farmer';
       meshes = this.models[`settler:${prof}`] || this.models.settler;
       if (!OUTFITS[prof] || !OUTFITS[prof].hat) hidden = new Set(['brim', 'crown']);
     }
-    this.drawParts(e.def.model, poses, T, light, env, opts, hidden, meshes);
+    const partTint = e.type === 'sheep' && e.color ? { wool: DYE_TINT[e.color], headWool: DYE_TINT[e.color] } : null;
+    this.drawParts(e.def.model, poses, T, light, env, opts, hidden, meshes, partTint);
     if (e.armor) this.drawArmor(e.def.model, e.armor, poses, T, light, env, opts);
+    if (e.type === 'fox' && e.held) this.drawMouthItem('fox', e.held.id, poses, T, light, env);
+    if (e.type === 'marauder') this.drawHeld('marauder', e.variant === 'captain' ? I.iron_sword : I.iron_axe, poses, T, light, env, 'armR');
+    if (e.type === 'ranger') this.drawHeld('marauder', I.bow, poses, T, light, env, 'armL', true);
     if (e.type === 'archer') this.drawHeld('archer', I.bow, poses, T, light, env, 'armL', true);
     if (e.type === 'hexer' && e.drinking > 0) this.drawHeld('hexer', e.drinkKind === 'fire_resistance' ? I.potion_fire_resistance : I.potion_healing, poses, T, light, env, 'armR');
     if (e.type === 'tide_warden' && e.beamTarget && e.beam > 0) {

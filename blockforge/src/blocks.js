@@ -58,6 +58,19 @@ const TEX_NAMES = [
   'brown_mushroom_block', 'mushroom_stem', 'dark_oak_log', 'dark_oak_log_top', 'dark_oak_planks',
   'dark_oak_leaves', 'dark_oak_sapling', 'packed_ice', 'tidestone', 'tidestone_bricks', 'dark_tidestone',
   'lumen_lantern', 'sponge', 'wet_sponge', 'chiseled_sandstone', 'pumpkin_face', 'pumpkin_face_lit',
+  // round five: bees, berries, workstations, the blossom grove, starsteel
+  'bee_nest_top', 'bee_nest_side', 'bee_nest_front', 'bee_nest_honey', 'beehive_top', 'beehive_side',
+  'beehive_front', 'beehive_honey', 'berry_bush0', 'berry_bush1', 'berry_bush2', 'berry_bush3',
+  'grindstone_side', 'grindstone_wheel', 'grindstone_leg', 'smithing_table_top', 'smithing_table_side',
+  'smithing_table_front', 'composter_side', 'composter_top', 'composter_bottom', 'compost', 'compost_ready',
+  'lectern_top', 'lectern_side', 'lectern_base', 'lectern_front', 'lectern_book', 'crafter_top', 'crafter_side',
+  'crafter_front', 'crafter_front_on', 'blossom_log', 'blossom_log_top', 'blossom_planks', 'blossom_leaves',
+  'blossom_sapling', 'petals', 'starsteel_ore_side', 'starsteel_ore_top', 'starsteel_block', 'p_petal', 'p_honey',
+  // round seven: copper that weathers, lightning rods, the deep dark
+  'exposed_copper', 'weathered_copper', 'oxidized_copper', 'lightning_rod', 'sculk', 'sculk_sensor_top',
+  'sculk_sensor_side', 'sculk_sensor_tendril', 'sculk_sensor_tendril_on', 'sculk_shrieker_top', 'sculk_shrieker_side',
+  'sculk_catalyst_top', 'sculk_catalyst_side', 'deep_stone', 'deep_bricks', 'deep_tiles', 'wisp_lantern', 'p_wax',
+  'p_vibration', 'p_sonic', 'p_sculk_soul',
 ];
 const ANIM_NAMES = ['water', 'lava', 'rift', 'fire', 'void_gate'];
 
@@ -88,6 +101,9 @@ export const ALPHA_TEXTURES = new Set([
   'p_effect', 'p_note', 'p_spark_dust', 'p_void', 'p_fish',
   'p_laser', 'banner_pole', 'jungle_leaves', 'jungle_sapling', 'vines', 'dark_oak_leaves', 'dark_oak_sapling',
   'beacon_core', 'cauldron_inner',
+  'berry_bush0', 'berry_bush1', 'berry_bush2', 'berry_bush3', 'blossom_leaves', 'blossom_sapling', 'petals',
+  'p_petal', 'p_honey', 'lectern_book', 'grindstone_wheel', 'lightning_rod', 'wisp_lantern', 'p_wax', 'p_vibration',
+  'p_sonic', 'p_sculk_soul',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -445,6 +461,45 @@ def(183, 'wet_sponge', { hardness: 0.6, sound: 'grass' });
 def(184, 'chiseled_sandstone', stoneLike({ hardness: 0.8, faces: { top: 'sandstone_top', bottom: 'sandstone_bottom', side: 'chiseled_sandstone' } }));
 def(185, 'carved_pumpkin', { hardness: 1, tool: 'axe', sound: 'wood', orient: 'facing', faces: { top: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_face' } });
 def(186, 'jack_o_lantern', { hardness: 1, tool: 'axe', sound: 'wood', orient: 'facing', light: 15, display: "Jack o'Lantern", faces: { top: 'pumpkin_top', side: 'pumpkin_side', front: 'pumpkin_face_lit' } });
+// --- round five: bees, berries, workstations, the blossom grove, starsteel ---
+// Bee nests and hives: meta bits 0-2 facing, bits 3-5 honey level (0..5).
+def(187, 'bee_nest', woodLike({ hardness: 0.3, orient: 'facing', faces: { top: 'bee_nest_top', bottom: 'bee_nest_top', side: 'bee_nest_side', front: 'bee_nest_front' } }));
+def(188, 'beehive', woodLike({ hardness: 0.6, orient: 'facing', faces: { top: 'beehive_top', bottom: 'beehive_top', side: 'beehive_side', front: 'beehive_front' } }));
+// Berry bushes grow through four stages (meta 0..3) and catch at whatever walks through them.
+def(189, 'berry_bush', plant({ wave: 2, faces: 'berry_bush0', slow: 0.7, flammable: true, burn: 0.6, item: false, creative: false, support: 'ground', drops: (r, m) => [[I_('sweet_berries'), (m & 3) >= 2 ? 1 + Math.floor(r() * 2) + ((m & 3) === 3 ? 1 : 0) : 1]] }));
+def(190, 'grindstone', shaped0(33, { pass: PASS.CUTOUT, ...stoneLike({ hardness: 2 }), faces: { top: 'grindstone_wheel', side: 'grindstone_side' }, orient: 'facing4', icon: 'cube' }));
+def(191, 'smithing_table', woodLike({ hardness: 2.5, orient: 'facing', faces: { top: 'smithing_table_top', bottom: 'smithing_table_side', side: 'smithing_table_side', front: 'smithing_table_front' } }));
+// Composter: meta 0..7 fill level, 8 ready.
+def(192, 'composter', shaped0(34, { pass: PASS.CUTOUT, ...woodLike({ hardness: 0.6 }), faces: { top: 'composter_top', bottom: 'composter_bottom', side: 'composter_side' }, icon: 'cube' }));
+// Lectern: bits 0-1 facing, bit 2 holds a book; the page lives in its block entity.
+def(193, 'lectern', shaped0(35, { pass: PASS.CUTOUT, ...woodLike({ hardness: 2.5 }), faces: { top: 'lectern_top', bottom: 'lectern_base', side: 'lectern_side' }, orient: 'facing4', icon: 'cube', spark: 'lectern' }));
+def(194, 'crafter', stoneLike({ hardness: 3.5, orient: 'facing6', spark: 'crafter', faces: { top: 'crafter_top', bottom: 'crafter_top', side: 'crafter_side', front: 'crafter_front' } }));
+def(195, 'blossom_log', woodLike({ orient: 'axis', faces: { top: 'blossom_log_top', side: 'blossom_log' } }));
+def(196, 'blossom_planks', woodLike());
+def(197, 'blossom_leaves', {
+  pass: PASS.CUTOUT, opaque: false, opacity: 1, hardness: 0.2, tool: 'shears', sound: 'grass', wave: 1, flammable: true, burn: 0.6, replaceable: false,
+  drops: (r) => (r() < 0.05 ? [[B.blossom_sapling, 1]] : []),
+});
+def(198, 'blossom_sapling', plant({ wave: 2 }));
+def(199, 'petals', shaped0(36, { ...flat, render: RENDER.SHAPE, hardness: 0, sound: 'grass', faces: 'petals', support: 'ground', replaceable: true, flammable: true, burn: 0.6, icon: 'petals' }));
+def(200, 'starsteel_ore', stoneLike({ hardness: 30, level: 3, faces: { top: 'starsteel_ore_top', side: 'starsteel_ore_side' }, display: 'Fallen Starsteel' }));
+def(201, 'starsteel_block', stoneLike({ display: 'Block of Starsteel', hardness: 50, level: 3, sound: 'metal' }));
+
+// --- round seven: copper ages (meta bit 3 = waxed), lightning rods, the deep dark ---
+def(202, 'exposed_copper', stoneLike({ hardness: 3, level: 1, sound: 'metal' }));
+def(203, 'weathered_copper', stoneLike({ hardness: 3, level: 1, sound: 'metal' }));
+def(204, 'oxidized_copper', stoneLike({ hardness: 3, level: 1, sound: 'metal' }));
+// a rod draws lightning and sends a pulse when struck (meta bits 0-2 facing, 4-7 output)
+def(205, 'lightning_rod', shaped0(26, { pass: PASS.CUTOUT, ...stoneLike({ hardness: 3, sound: 'metal' }), faces: 'lightning_rod', orient: 'facing6', spark: 'pulse', icon: 'cube' }));
+def(206, 'sculk', { hardness: 0.2, tool: 'hoe', sound: 'cloth', drops: () => [] });
+// sensors listen for vibrations: meta bits 0-3 output (a pulse), the shape lights its tendrils
+def(207, 'sculk_sensor', shaped0(37, { pass: PASS.CUTOUT, hardness: 1.5, tool: 'hoe', sound: 'cloth', light: 1, spark: 'pulse', faces: { top: 'sculk_sensor_top', side: 'sculk_sensor_side' }, icon: 'cube' }));
+def(208, 'sculk_shrieker', shaped0(38, { pass: PASS.CUTOUT, hardness: 3, tool: 'hoe', sound: 'cloth', faces: { top: 'sculk_shrieker_top', side: 'sculk_shrieker_side' }, icon: 'cube' }));
+def(209, 'sculk_catalyst', { hardness: 3, tool: 'hoe', sound: 'cloth', light: 6, faces: { top: 'sculk_catalyst_top', bottom: 'deep_stone', side: 'sculk_catalyst_side' } });
+def(210, 'deep_stone', stoneLike({ hardness: 3, display: 'Gloomstone' }));
+def(211, 'deep_bricks', stoneLike({ hardness: 3.5, display: 'Gloomstone Bricks' }));
+def(212, 'deep_tiles', stoneLike({ hardness: 3.5, display: 'Gloomstone Tiles' }));
+def(213, 'wisp_lantern', shaped0(23, { pass: PASS.CUTOUT, ...stoneLike({ hardness: 3.5, sound: 'metal' }), light: 10, faces: 'wisp_lantern', icon: 'cube', support: 'lantern' }));
 
 export const BLOCK_COUNT = BLOCKS.length;
 
@@ -478,11 +533,16 @@ export function faceTexture(id, face, meta) {
   }
   if (d.orient === 'facing' && d.frontTex !== undefined && face >= 2) {
     const front = (meta & 7) || 4; // default facing +Z
-    if (face === front) return d.frontTex;
+    if (face === front) {
+      if ((id === B.bee_nest || id === B.beehive) && (meta >> 3) >= 5) return id === B.bee_nest ? TEX.bee_nest_honey : TEX.beehive_honey;
+      return d.frontTex;
+    }
   }
+  if (id === B.berry_bush) return TEX.berry_bush0 + Math.min(3, meta & 3);
   if (d.orient === 'facing6' && d.frontTex !== undefined && face === (meta & 7)) {
     if (face < 2 && id === B.dispenser) return TEX.dispenser_front_v;
     if (face < 2 && id === B.dropper) return TEX.dropper_front_v;
+    if (id === B.crafter) return meta & 8 ? TEX.crafter_front_on : TEX.crafter_front;
     return d.frontTex;
   }
   if (id === B.spark_lamp_on) return TEX.spark_lamp_on;

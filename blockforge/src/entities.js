@@ -7,6 +7,11 @@ import { MODELS } from './models.js';
 import { potionEffect, addEffect, EFFECTS } from './effects.js';
 import { laserTrail, laserImpact, laserHitBlock } from './laser.js';
 import { CREATURE_TYPES } from './creatures.js';
+import { WILD_TYPES, VARIANTS } from './wildlife.js';
+import { RAIDER_TYPES } from './raiders.js';
+import { FAUNA_TYPES, FAUNA_VARIANTS } from './fauna.js';
+import { DEEP_TYPES, listenerHurt } from './deepdark.js';
+import { navigate, handleDoors, groundY } from './pathfind.js';
 
 let nextEntityId = 1;
 
@@ -91,7 +96,7 @@ const pick = (r, n) => Math.floor(r() * n);
 export const MOB_TYPES = {
   pig: { model: 'pig', health: 10, wander: 0.04, panic: 0.085, food: [I.carrot, I.potato], xp: 2, drops: (r) => [[I.raw_pork, 1 + pick(r, 3)]], sound: 'pig' },
   cow: { model: 'cow', health: 10, wander: 0.035, panic: 0.08, food: [I.wheat], xp: 2, drops: (r) => [[I.raw_beef, 1 + pick(r, 3)], [I.leather, pick(r, 3)]], sound: 'cow' },
-  sheep: { model: 'sheep', health: 8, wander: 0.038, panic: 0.085, food: [I.wheat], xp: 2, drops: (r, m) => [[I.raw_mutton, 1 + pick(r, 2)], ...(m.sheared ? [] : [[B.white_wool, 1]])], sound: 'sheep' },
+  sheep: { model: 'sheep', health: 8, wander: 0.038, panic: 0.085, food: [I.wheat], xp: 2, drops: (r, m) => [[I.raw_mutton, 1 + pick(r, 2)], ...(m.sheared ? [] : [[WOOL_BY_COLOR()[m.color || 0] || B.white_wool, 1]])], sound: 'sheep' },
   chicken: { model: 'chicken', health: 4, wander: 0.035, panic: 0.08, food: [I.wheat_seeds], xp: 1, drops: (r) => [[I.raw_chicken, 1], [I.feather, pick(r, 3)]], sound: 'chicken' },
   settler: { model: 'settler', health: 20, wander: 0.03, panic: 0.07, xp: 0, drops: () => [], sound: 'settler', villager: true },
   ghoul: { model: 'ghoul', health: 20, wander: 0.03, chase: 0.058, hostile: true, damage: 3, burns: true, xp: 5, drops: (r) => [[I.tainted_flesh, pick(r, 3)], ...(r() < 0.04 ? [[I.iron_ingot, 1]] : []), ...(r() < 0.03 ? [[I.carrot, 1]] : [])], sound: 'ghoul' },
@@ -100,7 +105,9 @@ export const MOB_TYPES = {
   imp: { model: 'imp', health: 14, wander: 0.04, chase: 0.072, hostile: true, fireproof: true, ignites: true, damage: 3, xp: 6, drops: (r) => [[I.ember_dust, pick(r, 3)], [I.gold_nugget, pick(r, 2)], ...(r() < 0.3 ? [[I.imp_horn, 1]] : [])], sound: 'imp' },
   gloamer: { model: 'gloamer', health: 40, wander: 0.03, chase: 0.1, hostile: true, neutral: true, teleports: true, damage: 6, xp: 5, drops: (r) => (r() < 0.5 ? [[I.void_pearl, 1]] : []), sound: 'gloamer' },
 };
-Object.assign(MOB_TYPES, CREATURE_TYPES);
+Object.assign(MOB_TYPES, CREATURE_TYPES, WILD_TYPES, RAIDER_TYPES, FAUNA_TYPES, DEEP_TYPES);
+FAUNA_TYPES.turtle.grownDrop = I.scute; // a turtle sheds a scute as it grows up
+const WOOL_BY_COLOR = () => ['white', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black'].map((c) => B[c + '_wool']);
 // Creatures that are harmed by healing and healed by harming.
 export const UNDEAD = new Set(['ghoul', 'archer']);
 
@@ -133,7 +140,16 @@ export class Mob extends Entity {
     // taming, riding and naming (round four creatures)
     this.tamed = !!opts.tamed; this.owner = opts.owner || null; this.sitting = !!opts.sitting;
     this.saddled = !!opts.saddled; this.temper = opts.temper || 0;
-    this.variant = opts.variant ?? (type === 'steed' ? ['brown', 'white', 'black'][Math.floor(Math.random() * 3)] : null);
+    const vs = type === 'steed' ? ['brown', 'white', 'black'] : VARIANTS[type] || FAUNA_VARIANTS[type];
+    this.variant = opts.variant ?? (vs ? vs[Math.floor(Math.random() * vs.length)] : null);
+    // round five: dyed sheep, a fox's find, packs, hives
+    this.color = opts.color || 0;
+    this.held = opts.held || null;
+    this.trusted = opts.trusted || null;
+    this.pack = opts.pack || null;
+    this.hive = opts.hive || null;
+    this.stung = !!opts.stung;
+    this.leash = opts.leash || null; // { kind: 'player', name } or { kind: 'knot', x, y, z }
     this.speedAttr = opts.speedAttr ?? (type === 'steed' ? 0.2 + Math.random() * 0.1 : undefined);
     this.jumpStr = opts.jumpStr ?? (type === 'steed' ? 0.55 + Math.random() * 0.2 : undefined);
     this.maxHp = opts.maxHp;
@@ -151,7 +167,7 @@ export class Mob extends Entity {
   get hostile() { return !!this.def.hostile; }
   get isMob() { return true; }
   get targetable() { return !this.dead; }
-  hitBoxes() { return [[this.x - this.w, this.y, this.z - this.w, this.x + this.w, this.y + this.h, this.z + this.w]]; }
+  hitBoxes() { return this.perch ? [] : [[this.x - this.w, this.y, this.z - this.w, this.x + this.w, this.y + this.h, this.z + this.w]]; }
 
   // Blink to a random spot nearby (gloamers).
   teleport(game) {
@@ -191,6 +207,8 @@ export class Mob extends Entity {
     if (this.def.spiky && attacker && attacker.isPlayer && (source === 'player' || source.startsWith('remote:')) && attacker.damage) attacker.damage(game, 2, 'thorns', this.x, this.z);
     if (this.sitting && attacker) this.sitting = false;
     if (this.def.teleports && (source === 'arrow_player' || source === 'arrow') && this.teleport(game)) return false;
+    if (this.type === 'listener') listenerHurt(this, attacker);
+    if (game.vibrate) game.vibrate(this.x, this.y, this.z, attacker || this, 'hurt');
     const byPlayer = source === 'player' || source === 'arrow_player' || (typeof source === 'string' && source.startsWith('remote:'));
     if (this.def.neutral && byPlayer) this.angry = 600;
     this.health -= dmg;
@@ -261,7 +279,10 @@ export class Mob extends Entity {
       return;
     }
     if (this.noAI) { this.physics(world, 0, 0); return; }
-    if (this.growth < 0) { this.growth++; if (this.growth === 0) this.resize(); }
+    if (this.growth < 0) {
+      this.growth++;
+      if (this.growth === 0) { this.resize(); if (this.def.grownDrop) game.dropItem(this.x, this.y + 0.3, this.z, { id: this.def.grownDrop, count: 1 }); }
+    }
     if (this.angry > 0) this.angry--;
     if (this.effects) {
       for (const [name, e] of Object.entries(this.effects)) {
@@ -303,7 +324,7 @@ export class Mob extends Entity {
     }
     if (this.inLava && !this.def.fireproof) { this.fire = 300; if (this.age % 10 === 0) this.hurt(game, 4, undefined, undefined, 'lava'); }
 
-    let tx = null, tz = null;
+    let tx = null, tz = null, ty = null, usePath = false, urgent = false;
     const lookAt = (x, y, z, turnBody = false) => {
       const dx = x - this.x, dz = z - this.z;
       const want = Math.atan2(dx, -dz);
@@ -312,7 +333,10 @@ export class Mob extends Entity {
       this.headPitch = Math.max(-0.7, Math.min(0.7, -Math.atan2(y - (this.y + this.h * 0.85), Math.hypot(dx, dz))));
     };
 
-    const custom = this.def.ai ? this.def.ai(this, game, p, pdist, lookAt) : null;
+    // something it is afraid of (crawlers keep away from cats)
+    const fleeing = this.fleeTime > 0 && this.fleeFrom && !this.fleeFrom.dead && !this.fleeFrom.removed;
+    if (fleeing) { this.fleeTime--; this.target = null; } else this.fleeFrom = null;
+    const custom = this.def.ai && !fleeing ? this.def.ai(this, game, p, pdist, lookAt) : null;
     if (custom && custom.moved) {
       if (this.swing > 0) this.swing--;
       if (this.hurtTime > 0 && this.y < -64) this.hurt(game, 100);
@@ -321,15 +345,20 @@ export class Mob extends Entity {
     }
     const T = this.target;
     const tdx = T ? T.x - this.x : 0, tdz = T ? T.z - this.z : 0, tdist = T ? Math.hypot(tdx, tdz, T.y - this.y) : 0;
-    if (custom) {
+    if (fleeing) {
+      const F = this.fleeFrom, dx = this.x - F.x, dz = this.z - F.z, l = Math.hypot(dx, dz) || 1;
+      tx = this.x + (dx / l) * 6; tz = this.z + (dz / l) * 6; ty = this.y; usePath = true;
+      speed = (this.def.chase || this.def.wander) * 1.2;
+    } else if (custom) {
       tx = custom.tx; tz = custom.tz; speed = custom.speed || 0;
       if (custom.steer) this.steer = custom.steer;
+      if (custom.ty != null) { ty = custom.ty; usePath = true; urgent = !!custom.urgent; }
     } else if (T && this.def.ranged) {
       // keep a middle distance and shoot
       const d = Math.hypot(tdx, tdz);
       const see = game.canSee(this, T);
       lookAt(T.x, T.y + (T.h || 1.8) * 0.8, T.z, true);
-      if (d > 11 || !see) { tx = T.x; tz = T.z; speed = this.def.chase; }
+      if (d > 11 || !see) { tx = T.x; tz = T.z; ty = T.y; speed = this.def.chase; usePath = true; urgent = true; }
       else if (d < 5) { tx = this.x - tdx; tz = this.z - tdz; speed = this.def.chase; }
       else { const s = Math.sin(this.age / 30) > 0 ? 1 : -1; tx = this.x - tdz * s; tz = this.z + tdx * s; speed = this.def.wander; }
       if (see && d < 16) {
@@ -341,7 +370,7 @@ export class Mob extends Entity {
         }
       } else this.aim = 0;
     } else if (T) {
-      tx = T.x; tz = T.z; speed = this.def.chase;
+      tx = T.x; tz = T.z; ty = T.y; speed = this.def.chase; usePath = true; urgent = true;
       lookAt(T.x, T.y + (T.h || 1.8) * 0.8, T.z, false);
       if (this.def.climb && tdist < 3.5 && tdist > 1.2 && this.onGround && this.leapCooldown <= 0) {
         const l = Math.hypot(tdx, tdz) || 1;
@@ -374,16 +403,19 @@ export class Mob extends Entity {
         }
       }
       if (mate) {
-        tx = mate.x; tz = mate.z; speed = this.def.wander * 1.4;
+        tx = mate.x; tz = mate.z; ty = mate.y; usePath = true; speed = this.def.wander * 1.4;
         if (Math.hypot(mate.x - this.x, mate.z - this.z) < 1.4) game.breed(this, mate);
       } else if (this.def.villager) {
         this.villagerAI(game, p, pdist);
-        if (this.wx != null) { tx = this.wx; tz = this.wz; speed = this.def.wander; }
+        if (this.wx != null) {
+          tx = this.wx; tz = this.wz; speed = this.def.wander; usePath = true;
+          ty = this.wy ?? (this.wy = groundY(world, this.wx, this.home ? this.home.y : this.y, this.wz));
+        }
       } else {
         // tempted by food held nearby
         const held = p.inventory.held;
         if (this.def.food && held && this.def.food.includes(held.id) && pdist < 8 && !p.dead) {
-          tx = p.x; tz = p.z; speed = this.def.wander * 1.2;
+          tx = p.x; tz = p.z; ty = p.y; usePath = true; speed = this.def.wander * 1.2;
           if (Math.hypot(pdx, pdz) < 2) { tx = null; }
           lookAt(p.x, p.y + 1.5, p.z);
         } else {
@@ -391,10 +423,11 @@ export class Mob extends Entity {
             if (Math.random() < 0.4) {
               const a = Math.random() * Math.PI * 2, d = 3 + Math.random() * 7;
               this.wx = this.x + Math.cos(a) * d; this.wz = this.z + Math.sin(a) * d;
+              this.wy = groundY(world, this.wx, this.y, this.wz);
             } else this.wx = null;
             this.wanderTimer = 60 + Math.floor(Math.random() * 120);
           }
-          if (this.wx != null) { tx = this.wx; tz = this.wz; speed = this.def.wander * (this.baby ? 1.3 : 1); }
+          if (this.wx != null) { tx = this.wx; tz = this.wz; ty = this.wy ?? this.y; usePath = true; speed = this.def.wander * (this.baby ? 1.3 : 1); }
           if (pdist < 8 && !p.dead) lookAt(p.x, p.y + 1.5, p.z);
           else { this.headYaw *= 0.9; this.headPitch *= 0.9; }
         }
@@ -404,9 +437,23 @@ export class Mob extends Entity {
     if (this.leapCooldown > 0) this.leapCooldown--;
     if (this.swing > 0) this.swing--;
 
+    // find a way around obstacles toward the goal
+    let onPath = false;
+    if (tx != null && usePath && speed > 0 && !this.rider && !this.def.aquatic && (this.onGround || this.inWater)) {
+      const gd = Math.hypot(tx - this.x, tz - this.z);
+      if (gd > 1.2 || Math.abs(ty - this.y) > 1.5) {
+        const wp = navigate(this, game, tx, ty, tz, { urgent, opensDoors: !!this.def.villager });
+        if (wp) {
+          tx = wp.x; tz = wp.z; onPath = true;
+          this.steer = Math.max(this.steer || 0, 0.5);
+          if (this.def.villager) handleDoors(this, game, wp);
+        }
+      }
+    } else if (tx == null && this.nav) this.nav.path = null;
+    if (this.openedDoor && !onPath) handleDoors(this, game, null);
     if (tx != null) {
       const dx = tx - this.x, dz = tz - this.z, d = Math.hypot(dx, dz);
-      if (d > 0.6) {
+      if (d > (onPath ? 0.1 : 0.6)) {
         const want = Math.atan2(dx, -dz);
         if (!(this.target && this.def.ranged)) this.bodyYaw += wrap(want - this.bodyYaw) * (this.steer || 0.3);
         const mv = this.target && this.def.ranged ? want : this.bodyYaw;
@@ -435,6 +482,8 @@ export class Mob extends Entity {
         game.audio.play('pop', this.x, this.y, this.z, 0.5);
       }
     }
+    // hoppers (rabbits, frogs) bound along
+    if (this.def.hops && this.onGround && (ax || az) && Math.random() < 0.3) this.vy = 0.36;
     // jump over obstacles (step assist handles half blocks)
     if ((this.hitX || this.hitZ) && this.onGround && (ax || az) && !this.def.climb) this.vy = 0.42;
     if (this.inWater && this.eyesInWater) this.vy += 0.045;
@@ -468,6 +517,7 @@ export class Mob extends Entity {
     }
     if (threat) {
       this.wx = this.x + (this.x - threat.x) * 2; this.wz = this.z + (this.z - threat.z) * 2;
+      this.wy = this.y;
       this.wanderTimer = 20;
       return;
     }
@@ -482,6 +532,7 @@ export class Mob extends Entity {
       const range = night ? 3 : 14;
       if (Math.random() < (night ? 0.2 : 0.5)) {
         this.wx = h.x + (Math.random() - 0.5) * range * 2; this.wz = h.z + (Math.random() - 0.5) * range * 2;
+        this.wy = groundY(game.world, this.wx, h.y, this.wz);
       } else this.wx = null;
       this.wanderTimer = 60 + Math.floor(Math.random() * 140);
     }
@@ -498,6 +549,17 @@ export class Mob extends Entity {
 
   interact(game, stack) {
     if (this.dead) return false;
+    // leads: put one on, or take it off again
+    if (this.leash && this.leash.kind === 'player' && this.leash.name === game.localName() && (!stack || stack.id !== I.lead)) {
+      this.leash = null;
+      game.dropItem(this.x, this.y + 0.5, this.z, { id: I.lead, count: 1 });
+      return 'unleash';
+    }
+    if (stack && stack.id === I.lead && !this.hostile && !this.def.villager && !this.leash && !this.perch) {
+      this.leash = { kind: 'player', name: game.localName() };
+      game.audio.play('lead', this.x, this.y + 0.5, this.z);
+      return 'consume';
+    }
     if (stack && stack.id === I.name_tag && !this.hostile) {
       this.customName = (stack.label || '').slice(0, 24) || this.customName || 'Buddy';
       this.persistent = true;
@@ -512,10 +574,15 @@ export class Mob extends Entity {
       game.audio.play('milk', this.x, this.y + 1, this.z);
       return 'milked';
     }
+    if (this.type === 'sheep' && stack && ITEMS[stack.id] && ITEMS[stack.id].dye !== undefined && !this.sheared) {
+      if (this.color === ITEMS[stack.id].dye) return false;
+      this.color = ITEMS[stack.id].dye;
+      return 'consume';
+    }
     if (this.type === 'sheep' && !this.sheared && !this.baby && stack && stack.id === I.shears) {
       this.sheared = true;
       const n = 1 + Math.floor(Math.random() * 3);
-      game.dropItem(this.x, this.y + 1, this.z, { id: B.white_wool, count: n });
+      game.dropItem(this.x, this.y + 1, this.z, { id: WOOL_BY_COLOR()[this.color || 0] || B.white_wool, count: n });
       game.audio.play('shear', this.x, this.y, this.z);
       return 'damage_tool';
     }
@@ -536,6 +603,9 @@ export class Mob extends Entity {
       tamed: this.tamed || undefined, owner: this.owner || undefined, sitting: this.sitting || undefined, saddled: this.saddled || undefined,
       temper: this.temper || undefined, variant: this.variant || undefined, speedAttr: this.speedAttr, jumpStr: this.jumpStr,
       maxHp: this.maxHp, customName: this.customName || undefined, persistent: this.persistent || undefined,
+      color: this.color || undefined, held: this.held || undefined, trusted: this.trusted || undefined,
+      pack: this.pack || undefined, hive: this.hive || undefined, stung: this.stung || undefined,
+      pollen: this.pollen || undefined, air: this.air, leash: this.leash || undefined, horns: this.horns,
     };
   }
 
@@ -544,7 +614,11 @@ export class Mob extends Entity {
       profession: m.profession, home: m.home, trades: m.trades, armor: m.armor, baby: (m.growth || 0) < 0,
       tamed: m.tamed, owner: m.owner, sitting: m.sitting, saddled: m.saddled, temper: m.temper, variant: m.variant,
       speedAttr: m.speedAttr, jumpStr: m.jumpStr, maxHp: m.maxHp, customName: m.customName, persistent: m.persistent,
+      color: m.color, held: m.held, trusted: m.trusted, pack: m.pack, hive: m.hive, stung: m.stung, leash: m.leash,
     });
+    if (m.horns !== undefined) mob.horns = m.horns;
+    if (m.pollen) mob.pollen = true;
+    if (m.air !== undefined) mob.air = m.air;
     mob.health = m.health ?? mob.health; mob.sheared = !!m.sheared; mob.bodyYaw = mob.yaw = m.yaw || 0;
     if (m.growth) { mob.growth = m.growth; mob.resize(); }
     return mob;
@@ -672,8 +746,10 @@ export class Projectile extends Entity {
       this.land(game);
     } else {
       const o = this.owner;
-      if (e.isPlayer) e.damage(game, 0, 'thrown', this.x - this.vx, this.z - this.vz);
-      else if (o && o.isMob) e.hurt(game, e.type === 'imp' ? 3 : 0, this.x - this.vx, this.z - this.vz, 'mob:' + o.type, o);
+      const spit = this.kind === 'spit' ? 1 : 0;
+      if (e.isRemote) { if (spit && game.net) game.net.hitRemote(e, spit, 'thrown', this.x - this.vx, this.z - this.vz); }
+      else if (e.isPlayer) e.damage(game, spit, 'thrown', this.x - this.vx, this.z - this.vz);
+      else if (o && o.isMob) e.hurt(game, spit || (e.type === 'imp' ? 3 : 0), this.x - this.vx, this.z - this.vz, 'mob:' + o.type, o);
       else e.hurt(game, 0, this.x - this.vx, this.z - this.vz, 'player');
       this.shatter(game);
     }
@@ -720,6 +796,7 @@ export class Projectile extends Entity {
   }
 
   hitBlock(game, hit) {
+    if (game.vibrate) game.vibrate(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5, this.owner, 'impact');
     if (this.kind === 'laser') {
       this.removed = true;
       laserHitBlock(this, game, hit);

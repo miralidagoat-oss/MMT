@@ -124,6 +124,27 @@ export class UnderworldGen {
       }
     }
 
+    // Fallen starsteel: rare lumps buried low in the scorchstone, never in the open.
+    {
+      const r = rng(hash2(seed ^ 0x5757, cx, cz));
+      const lumps = 1 + (r() < 0.5 ? 1 : 0);
+      for (let i = 0; i < lumps; i++) {
+        const lx = Math.floor(r() * 16), lz = Math.floor(r() * 16), ly = 8 + Math.floor(r() * 18);
+        const n = 1 + Math.floor(r() * 3);
+        for (let k = 0; k < n; k++) {
+          const x = Math.min(15, lx + (k & 1)), y = ly + (k >> 1), z = lz;
+          if (blocks[idx(x, y, z)] !== B.scorchstone) continue;
+          let open = false;
+          for (const [ox, oy, oz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+            const ax = x + ox, az = z + oz;
+            if (ax < 0 || ax > 15 || az < 0 || az > 15) continue;
+            if (blocks[idx(ax, y + oy, az)] === 0) open = true;
+          }
+          if (!open) blocks[idx(x, y, z)] = B.starsteel_ore;
+        }
+      }
+    }
+
     // Occasional ruined shrine with a chest.
     const chests = [];
     const sr = rng(hash2(seed ^ 0x5a1, cx, cz));

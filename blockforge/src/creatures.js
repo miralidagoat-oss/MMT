@@ -9,14 +9,14 @@ import { I } from './items.js';
 import { moveBox } from './physics.js';
 
 const pick = (r, n) => Math.floor(r() * n);
-const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-const MEAT = () => [I.raw_pork, I.cooked_pork, I.raw_beef, I.cooked_beef, I.raw_chicken, I.cooked_chicken, I.raw_mutton, I.cooked_mutton, I.tainted_flesh];
+export const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+export const MEAT = () => [I.raw_pork, I.cooked_pork, I.raw_beef, I.cooked_beef, I.raw_chicken, I.cooked_chicken, I.raw_mutton, I.cooked_mutton, I.tainted_flesh];
 
 // Is `e` still something worth fighting?
-function alive(e) { return !!e && !e.removed && !e.dead; }
+export function alive(e) { return !!e && !e.removed && !e.dead; }
 
 // Nearest hostile creature within r of m.
-function nearestHostile(m, game, r) {
+export function nearestHostile(m, game, r) {
   let best = null, bd = r;
   for (const e of game.entities) {
     if (!e.isMob || !e.hostile || e.dead || e === m) continue;
@@ -28,7 +28,7 @@ function nearestHostile(m, game, r) {
 }
 
 // Melee: walk at the target and strike when close.
-function melee(m, game, T, lookAt, { reach, speed, damage, cooldown = 20, knockUp = 0 }) {
+export function melee(m, game, T, lookAt, { reach, speed, damage, cooldown = 20, knockUp = 0 }) {
   const d = Math.hypot(T.x - m.x, T.z - m.z);
   lookAt(T.x, T.y + (T.h || 1.6) * 0.8, T.z, false);
   if (d < reach && Math.abs(T.y - m.y) < 2 && m.attackCooldown <= 0) {
@@ -41,7 +41,7 @@ function melee(m, game, T, lookAt, { reach, speed, damage, cooldown = 20, knockU
     if (hit && knockUp) T.vy = Math.max(T.vy || 0, knockUp);
     game.audio.mob(m.def.sound, 'idle', m.x, m.y, m.z);
   }
-  return { tx: T.x, tz: T.z, speed: d < reach * 0.7 ? 0 : speed };
+  return { tx: T.x, tz: T.z, ty: T.y, urgent: true, speed: d < reach * 0.7 ? 0 : speed };
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ function houndAI(m, game, p, pdist, lookAt) {
       m.vx = m.vy = m.vz = 0;
       return { tx: null, tz: null, speed: 0 };
     }
-    if (d > 6) { lookAt(owner.x, owner.y + 1.5, owner.z); return { tx: owner.x, tz: owner.z, speed: d > 12 ? 0.09 : 0.06 }; }
+    if (d > 6) { lookAt(owner.x, owner.y + 1.5, owner.z); return { tx: owner.x, tz: owner.z, ty: owner.y, speed: d > 12 ? 0.09 : 0.06 }; }
     if (d < 4 && Math.random() < 0.02) lookAt(owner.x, owner.y + 1.5, owner.z);
   }
   return null;
@@ -96,7 +96,7 @@ function houndInteract(m, game, stack) {
 }
 
 // ---------------------------------------------------------------------------
-function steedAI(m, game, p, pdist, lookAt) {
+export function steedAI(m, game, p, pdist, lookAt) {
   const rider = m.rider;
   if (!rider) return null;
   const ri = m.riderInput || {};
@@ -130,7 +130,7 @@ function steedAI(m, game, p, pdist, lookAt) {
   return { tx: m.x + Math.sin(dir) * 6, tz: m.z - Math.cos(dir) * 6, speed: sp, steer: 0.5 };
 }
 
-function steedInteract(m, game, stack) {
+export function steedInteract(m, game, stack) {
   if (m.baby) return undefined;
   const p = game.player;
   if (stack && stack.id === I.saddle && m.tamed && !m.saddled) {
@@ -161,7 +161,7 @@ function sentinelAI(m, game, p, pdist, lookAt) {
   else if (!m.target && (m.age + m.id) % 10 === 0) m.target = nearestHostile(m, game, 16);
   if (m.target) return melee(m, game, m.target, lookAt, { reach: 2.6, speed: 0.06, damage: () => 7 + Math.floor(Math.random() * 14), cooldown: 25, knockUp: 0.55 });
   // stroll near home
-  if (m.home && Math.hypot(m.home.x - m.x, m.home.z - m.z) > 20) return { tx: m.home.x, tz: m.home.z, speed: 0.035 };
+  if (m.home && Math.hypot(m.home.x - m.x, m.home.z - m.z) > 20) return { tx: m.home.x, tz: m.home.z, ty: m.home.y, speed: 0.035 };
   return null;
 }
 
@@ -227,7 +227,7 @@ function hexerAI(m, game, p, pdist, lookAt) {
     game.mobThrow(m, 'potion', T.x + (T.vx || 0) * 8, T.y + 1.1, T.z + (T.vz || 0) * 8, 0.75, { item: I['splash_potion_' + kind] });
     game.audio.mob('hexer', 'idle', m.x, m.y, m.z);
   }
-  if (d > 9 || !see) return { tx: T.x, tz: T.z, speed: m.def.chase };
+  if (d > 9 || !see) return { tx: T.x, tz: T.z, ty: T.y, urgent: true, speed: m.def.chase };
   if (d < 5) return { tx: m.x - dx, tz: m.z - dz, speed: m.def.chase };
   return { tx: null, tz: null, speed: 0 };
 }

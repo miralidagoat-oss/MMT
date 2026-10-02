@@ -18,8 +18,11 @@ export const LANDMARKS = {
   swamp_hut: { cell: 256, chance: 0.6, biomes: ['SWAMP'], name: 'Swamp Hut' },
   tide_citadel: { cell: 448, chance: 0.75, biomes: ['DEEP_OCEAN'], name: 'Tide Citadel' },
   manor: { cell: 512, chance: 0.75, biomes: ['DARK_FOREST'], name: 'Woodland Manor' },
+  outpost: { cell: 416, chance: 0.6, biomes: ['PLAINS', 'SAVANNA', 'TAIGA', 'DESERT', 'MEADOW', 'SNOWY_PLAINS'], name: 'Raider Outpost' },
+  igloo: { cell: 320, chance: 0.55, biomes: ['SNOWY_PLAINS', 'SNOWY_TAIGA'], name: 'Igloo' },
+  shipwreck: { cell: 336, chance: 0.6, biomes: ['OCEAN', 'DEEP_OCEAN', 'BEACH'], name: 'Shipwreck' },
 };
-const SALT = { mineshaft: 0x51ab, sun_temple: 0x7e30, jungle_shrine: 0x5a71, swamp_hut: 0x4a7, tide_citadel: 0x71de, manor: 0x3a40 };
+const SALT = { mineshaft: 0x51ab, sun_temple: 0x7e30, jungle_shrine: 0x5a71, swamp_hut: 0x4a7, tide_citadel: 0x71de, manor: 0x3a40, outpost: 0x0b05, igloo: 0x1910, shipwreck: 0x5b1b };
 
 export class Landmarks {
   constructor(gen, BIOME) { this.gen = gen; this.BIOME = BIOME; this.cache = new Map(); }
@@ -92,6 +95,7 @@ export class Landmarks {
       },
       chest(x, y, z, loot, meta = 2) { if (inChunk(x, z)) { ctx.set(x, y, z, B.chest, meta); out.chests.push({ x, y, z, loot }); } },
       spawn(type, x, y, z, extra = {}) { out.spawns.push({ type, x: x + 0.5, y, z: z + 0.5, persistent: true, ...extra }); },
+      banner(x, y, z, base, bn, meta = 0) { if (inChunk(x, z)) { ctx.set(x, y, z, B.banner, meta); out.chests.push({ x, y, z, banner: { base, bn } }); } },
       spawner(x, y, z, mob) { if (inChunk(x, z)) { ctx.set(x, y, z, B.spawner, 0); out.spawners.push({ x, y, z, mob }); } },
       // the ground height of a column (from the noise, so all chunks agree)
       ground: (x, z) => this.gen.heightAt(x, z),
@@ -131,6 +135,12 @@ const LAYOUT = {
   swamp_hut(s, r, g) { s.y = Math.max(SEA + 2, g.heightAt(s.x, s.z) + 2); bounds(s, [[s.x - 5, s.z - 6, s.x + 5, s.z + 6]]); },
   tide_citadel(s, r, g) { s.y = g.heightAt(s.x, s.z) + 1; bounds(s, [[s.x - 19, s.z - 19, s.x + 19, s.z + 19]]); },
   manor(s, r, g) { s.y = g.heightAt(s.x, s.z) + 1; bounds(s, [[s.x - 17, s.z - 13, s.x + 17, s.z + 13]]); },
+  outpost(s, r, g) { s.y = g.heightAt(s.x, s.z) + 1; s.cage = Math.floor(r() * 4); bounds(s, [[s.x - 14, s.z - 14, s.x + 14, s.z + 14]]); },
+  igloo(s, r, g) { s.y = g.heightAt(s.x, s.z) + 1; s.face = Math.floor(r() * 4); s.basement = r() < 0.5; bounds(s, [[s.x - 7, s.z - 7, s.x + 7, s.z + 7]]); },
+  shipwreck(s, r, g) {
+    s.y = Math.min(SEA - 2, g.heightAt(s.x, s.z) + 1); s.axis = Math.floor(r() * 2); s.broken = Math.floor(r() * 3); s.mast = 4 + Math.floor(r() * 6);
+    bounds(s, [[s.x - 13, s.z - 13, s.x + 13, s.z + 13]]);
+  },
 };
 function bounds(s, rects) {
   s.bx0 = Math.min(...rects.map((q) => q[0])); s.bz0 = Math.min(...rects.map((q) => q[1]));
@@ -140,6 +150,175 @@ function bounds(s, rects) {
 // ---------------------------------------------------------------------------
 // Builders
 const BUILD = {
+  // A raider watchtower of dark wood: four storeys climbed by ladder, a
+  // lookout with the raiders' banner, tents around it and a caged alpaca.
+  outpost(s, w) {
+    const { x, z } = s, y = s.y;
+    const log = B.dark_oak_log, plank = B.dark_oak_planks, fence = B.oak_fence;
+    // level a yard around the tower
+    for (let dx = -12; dx <= 12; dx++) for (let dz = -12; dz <= 12; dz++) {
+      const cx = x + dx, cz = z + dz;
+      if (!w.inChunk(cx, cz) || dx * dx + dz * dz > 150) continue;
+      const gh = w.ground(cx, cz);
+      const top = w.get(cx, gh, cz);
+      for (let yy = gh + 1; yy < y; yy++) w.set(cx, yy, cz, B.dirt, 0);
+      if (gh < y - 1) w.set(cx, y - 1, cz, top === B.sand || top === B.snowy_grass ? top : B.grass, 0);
+      for (let yy = y; yy <= y + 24; yy++) w.set(cx, yy, cz, 0, 0);
+    }
+    // the tower: corner posts, plank walls with windows, floors every five blocks
+    for (let dy = 0; dy <= 19; dy++) {
+      const yy = y + dy, floor = dy % 5 === 4;
+      w.box(x - 3, yy, z - 3, x + 3, yy, z + 3, (cx, cy, cz) => {
+        const ex = Math.abs(cx - x) === 3, ez = Math.abs(cz - z) === 3;
+        if (ex && ez) return log;
+        if (ex || ez) {
+          const along = ex ? cz - z : cx - x;
+          if (dy % 5 === 2 && Math.abs(along) === 1) return 0; // windows
+          if (dy < 3 && cz === z + 3 && cx === x) return 0;     // the door
+          if (dy < 3 && cz === z + 3 && cx === x + 1 && dy < 2) return 0;
+          return plank;
+        }
+        if (floor) return cx === x - 2 && cz === z - 2 ? 0 : plank; // a hatch for the ladder
+        return 0;
+      });
+      if (w.inChunk(x - 2, z - 2)) w.set(x - 2, yy, z - 2, B.ladder, 1);
+    }
+    // the lookout: an overhanging platform with a railing
+    w.box(x - 4, y + 20, z - 4, x + 4, y + 20, z + 4, (cx, cy, cz) => (cx === x - 2 && cz === z - 2 ? B.ladder : plank), 0);
+    if (w.inChunk(x - 2, z - 2)) w.set(x - 2, y + 20, z - 2, B.ladder, 1);
+    w.box(x - 4, y + 21, z - 4, x + 4, y + 21, z + 4, (cx, cy, cz) => (Math.abs(cx - x) === 4 || Math.abs(cz - z) === 4 ? fence : 0));
+    for (const [cx, cz] of [[x - 4, z - 4], [x + 4, z - 4], [x - 4, z + 4], [x + 4, z + 4]]) for (let yy = y + 22; yy <= y + 24; yy++) if (w.inChunk(cx, cz)) w.set(cx, yy, cz, log, 0);
+    w.box(x - 4, y + 25, z - 4, x + 4, y + 25, z + 4, plank);
+    w.chest(x + 2, y + 21, z + 2, 'outpost', 2);
+    w.banner(x, y + 21, z, 0, [['chevron', 7], ['circle', 1], ['border', 7]]);
+    // tents of wool
+    for (const [tx, tz] of [[x + 8, z - 6], [x - 8, z + 6]]) {
+      for (let k = -1; k <= 1; k++) {
+        w.box(tx - 2, y, tz + k, tx + 2, y + 2, tz + k, (cx, cy, cz) => {
+          const d = Math.abs(cx - tx);
+          if (cy - y === 2 - d || (d === 2 && cy === y)) return B.white_wool;
+          return 0;
+        });
+      }
+    }
+    // a cage of fences with a captive alpaca
+    const [cx0, cz0] = [[x + 7, z + 6], [x - 7, z - 7], [x + 7, z - 9], [x - 9, z + 7]][s.cage];
+    w.box(cx0 - 2, y, cz0 - 2, cx0 + 2, y + 2, cz0 + 2, (cx, cy, cz) => (Math.abs(cx - cx0) === 2 || Math.abs(cz - cz0) === 2 ? fence : 0));
+    w.box(cx0 - 2, y + 3, cz0 - 2, cx0 + 2, y + 3, cz0 + 2, plank);
+    if (w.inChunk(cx0, cz0)) w.spawn('alpaca', cx0, y, cz0);
+    // the garrison
+    if (w.inChunk(x, z)) {
+      w.spawn('marauder', x + 1, y + 21, z - 1, { variant: 'captain' });
+      w.spawn('marauder', x + 1, y, z + 5);
+      w.spawn('ranger', x - 1, y + 21, z + 1);
+      w.spawn('marauder', x - 5, y, z - 2);
+    }
+  },
+
+  // A snow dome with a bed and a stove; some hide a laboratory below a
+  // trapdoor in the floor.
+  igloo(s, w) {
+    const { x, z } = s, y = s.y;
+    const D = [[0, -1], [1, 0], [0, 1], [-1, 0]][s.face];
+    for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) {
+      const cx = x + dx, cz = z + dz;
+      if (!w.inChunk(cx, cz)) continue;
+      const gh = w.ground(cx, cz);
+      for (let yy = gh + 1; yy < y; yy++) w.set(cx, yy, cz, B.snow_block, 0);
+      for (let yy = y; yy <= y + 6; yy++) w.set(cx, yy, cz, 0, 0);
+      if (dx * dx + dz * dz <= 16) w.set(cx, y - 1, cz, B.snow_block, 0);
+    }
+    // the dome: an ellipsoid shell
+    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (let dy = 0; dy <= 4; dy++) {
+      const cx = x + dx, cz = z + dz;
+      if (!w.inChunk(cx, cz)) continue;
+      const v = (dx * dx) / 16 + (dz * dz) / 16 + (dy * dy) / 13;
+      if (v <= 1.08 && v > 0.55) w.set(cx, y + dy, cz, B.snow_block, 0);
+    }
+    // windows of ice to the sides, a doorway to the front
+    for (const side of [-1, 1]) {
+      const wx = x + (D[1] ? side * 4 : 0), wz = z + (D[0] ? side * 4 : 0);
+      if (w.inChunk(wx, wz)) w.set(wx, y + 1, wz, B.ice, 0);
+    }
+    for (let k = 3; k <= 5; k++) for (let yy = y; yy <= y + 1; yy++) {
+      const cx = x + D[0] * k, cz = z + D[1] * k;
+      if (!w.inChunk(cx, cz)) continue;
+      w.set(cx, yy, cz, 0, 0);
+      if (k === 5) for (const o of [-1, 1]) { const ox = cx + (D[1] ? o : 0), oz = cz + (D[0] ? o : 0); if (w.inChunk(ox, oz)) { w.set(ox, yy, oz, B.snow_block, 0); w.set(ox, y + 2, oz, B.snow_block, 0); } }
+      if (k === 5) w.set(cx, y + 2, cz, B.snow_block, 0);
+    }
+    // inside: a wool floor, a bed, a stove and a workbench, a lantern
+    w.box(x - 3, y - 1, z - 3, x + 3, y - 1, z + 3, (cx, cy, cz) => ((cx - x) ** 2 + (cz - z) ** 2 <= 9 ? B.white_wool : B.snow_block));
+    const back = [x - D[0] * 2, z - D[1] * 2];
+    const sideV = [D[1], -D[0]];
+    if (w.inChunk(back[0] + sideV[0] * 2, back[1] + sideV[1] * 2)) w.set(back[0] + sideV[0] * 2, y, back[1] + sideV[1] * 2, B.furnace, [5, 2, 4, 3][s.face]);
+    if (w.inChunk(back[0] - sideV[0] * 2, back[1] - sideV[1] * 2)) w.set(back[0] - sideV[0] * 2, y, back[1] - sideV[1] * 2, B.crafting_table, 0);
+    const bf = (s.face + 2) & 3; // the bed points away from the door
+    if (w.inChunk(back[0], back[1]) && w.inChunk(back[0] - D[0], back[1] - D[1])) {
+      w.set(back[0] + D[0], y, back[1] + D[1], B.bed, bf);
+      w.set(back[0], y, back[1], B.bed, bf | 4);
+    }
+    if (w.inChunk(x, z)) w.set(x, y + 3, z, B.lantern, 1);
+    if (!s.basement) return;
+    // the laboratory below
+    const ly = y - 9;
+    const hx = x + sideV[0], hz = z + sideV[1];
+    if (w.inChunk(hx, hz)) {
+      w.set(hx, y - 1, hz, B.oak_trapdoor, 0);
+      for (let yy = ly + 1; yy < y - 1; yy++) { w.set(hx, yy, hz, B.ladder, 0); }
+    }
+    w.box(x - 4, ly - 1, z - 3, x + 4, ly + 4, z + 3, B.stone_bricks, 0, true);
+    w.box(x - 3, ly, z - 2, x + 3, ly + 3, z + 2, 0);
+    for (let yy = ly + 1; yy < y - 1; yy++) for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const cx = hx + ox, cz = hz + oz; if (w.inChunk(cx, cz) && w.get(cx, yy, cz) === 0) w.set(cx, yy, cz, B.stone_bricks, 0); }
+    // ladders cling to a wall: give the shaft one
+    if (w.inChunk(hx, hz)) for (let yy = ly; yy < y - 1; yy++) { w.set(hx - 1, yy, hz, B.stone_bricks, 0); w.set(hx, yy, hz, B.ladder, 1); }
+    if (w.inChunk(x - 3, z)) w.set(x - 3, ly, z, B.brewing_stand, 0);
+    if (w.inChunk(x - 3, z + 1)) w.set(x - 3, ly, z + 1, B.cauldron, 2);
+    w.chest(x + 3, ly, z - 2, 'igloo', 4);
+    if (w.inChunk(x + 2, z + 2)) w.set(x + 2, ly + 3, z + 2, B.cobweb, 0);
+    if (w.inChunk(x, z)) w.set(x, ly + 3, z, B.lantern, 2);
+  },
+
+  // A broken merchant ship on the sea floor (or run aground), its hold
+  // still full.
+  shipwreck(s, w) {
+    const { x, z } = s, y = s.y;
+    const along = s.axis === 0; // the keel runs along x
+    const at = (u, v) => (along ? [x + u, z + v] : [x + v, z + u]);
+    const fill = (yy) => (yy <= SEA - 1 ? B.water : 0);
+    const plank = B.spruce_planks, log = B.spruce_log;
+    for (let u = -11; u <= 11; u++) {
+      const half = Math.max(1, Math.round(3.2 * Math.sqrt(Math.max(0, 1 - (u / 12) ** 2))));
+      const broken = (s.broken === 0 && u > 4) || (s.broken === 1 && u < -5);
+      for (let v = -half - 1; v <= half + 1; v++) {
+        const [cx, cz] = at(u, v);
+        if (!w.inChunk(cx, cz)) continue;
+        for (let dy = 0; dy <= 5; dy++) {
+          const yy = y + dy;
+          const rim = Math.abs(v) === half + 1 || Math.abs(u) === 11;
+          const keel = dy === 0 && Math.abs(v) <= half;
+          let id = 0;
+          if ((rim && dy <= 4) || keel) id = plank;
+          if (dy === 3 && Math.abs(v) <= half && Math.abs(u) < 10) id = plank; // the deck
+          if (rim && dy === 4) id = B.oak_fence;
+          if (id && broken && w.rnd(cx, yy, cz, 3) < 0.55) id = 0;
+          if (id && w.rnd(cx, yy, cz, 4) < 0.08) id = 0; // holes from the reef
+          w.set(cx, yy, cz, id || fill(yy), 0);
+        }
+        // sand drifts into the hull
+        if (w.rnd(cx, y, cz, 6) < 0.3 && Math.abs(v) <= half) w.set(cx, y + 1, cz, B.sand, 0);
+      }
+    }
+    // the mast, snapped off
+    const [mx, mz] = at(-1, 0);
+    if (w.inChunk(mx, mz)) for (let dy = 1; dy <= 3 + s.mast; dy++) w.set(mx, y + dy, mz, log, 0);
+    // supplies at the stern, treasure in the hold
+    const [sx, sz] = at(-8, 0), [tx, tz] = at(2, 0), [px, pz] = at(7, 1);
+    w.chest(sx, y + 1, sz, 'shipwreck', 2);
+    w.chest(tx, y + 1, tz, 'shipwreck_treasure', 2);
+    if (s.broken !== 0) w.chest(px, y + 1, pz, 'shipwreck', 3);
+  },
+
   // Wooden-propped tunnels with rails, cobwebs, lanterns and the odd chest.
   mineshaft(s, w) {
     const y = s.y;

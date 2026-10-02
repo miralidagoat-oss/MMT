@@ -14,7 +14,7 @@ export const BIOME = {
   OCEAN: 0, DEEP_OCEAN: 1, FROZEN_OCEAN: 2, BEACH: 3, SNOWY_BEACH: 4, PLAINS: 5, FOREST: 6,
   BIRCH_FOREST: 7, TAIGA: 8, SNOWY_PLAINS: 9, SNOWY_TAIGA: 10, DESERT: 11, SAVANNA: 12, SWAMP: 13,
   MOUNTAINS: 14, SNOWY_PEAKS: 15, RIVER: 16, FROZEN_RIVER: 17, MEADOW: 18,
-  JUNGLE: 19, BADLANDS: 20, DARK_FOREST: 21, MUSHROOM_FIELDS: 22, ICE_SPIKES: 23,
+  JUNGLE: 19, BADLANDS: 20, DARK_FOREST: 21, MUSHROOM_FIELDS: 22, ICE_SPIKES: 23, BLOSSOM_GROVE: 24,
 };
 
 const W_DEFAULT = [60, 110, 220], W_COLD = [52, 84, 196], W_WARM = [68, 150, 214], W_SWAMP = [84, 98, 64];
@@ -47,6 +47,7 @@ export const BIOMES = [
   { name: 'Dark Forest', grass: [82, 130, 50], foliage: [60, 116, 38], water: W_DEFAULT, trees: 0.12, tree: 'dark_oak' },
   { name: 'Mushroom Fields', grass: [85, 201, 63], foliage: [43, 187, 20], water: W_DEFAULT, trees: 0.012, tree: 'mushroom' },
   { name: 'Ice Spikes', grass: G_SNOW, foliage: F_SNOW, water: W_COLD, trees: 0.005, tree: 'ice_spike', cold: true },
+  { name: 'Blossom Grove', grass: [140, 204, 98], foliage: [118, 190, 78], water: [80, 140, 230], trees: 0.011, tree: 'blossom' },
 ];
 // Terracotta bands of the badlands, repeating up the cliffs.
 const BANDS = ['terracotta', 'orange_terracotta', 'terracotta', 'yellow_terracotta', 'brown_terracotta', 'terracotta', 'red_terracotta', 'white_terracotta', 'orange_terracotta', 'light_gray_terracotta', 'terracotta', 'red_terracotta', 'brown_terracotta', 'orange_terracotta'];
@@ -148,6 +149,8 @@ export class WorldGen {
       biome = humid < -0.05 ? (humid < -0.36 ? BIOME.BADLANDS : BIOME.DESERT) : humid < 0.3 ? BIOME.SAVANNA : BIOME.JUNGLE;
     } else if (mount < 0.15 && h > SEA + 1 && this.nTemp.fbm2(x / 760 + 913, z / 760 - 377, 2) > 0.45) {
       biome = BIOME.MUSHROOM_FIELDS; // rare, from a noise of its own
+    } else if (h > SEA + 8 && mount < 0.3 && temp > -0.1 && temp < 0.3 && humid > -0.32 && humid < 0.32 && this.nTemp.fbm2(x / 640 - 271, z / 640 + 619, 2) > 0.38) {
+      biome = BIOME.BLOSSOM_GROVE; // rolling hills in pink bloom, from a noise of its own
     } else if (humid > 0.4 && h < SEA + 6) {
       biome = BIOME.SWAMP;
     } else if (humid > 0.08) {
@@ -242,6 +245,67 @@ export class WorldGen {
     else if (kind === 'dark_oak' && r2 < 0.08) kind = r2 < 0.04 ? 'red_shroom' : 'brown_shroom';
     else if (kind === 'mushroom') kind = r2 < 0.5 ? 'red_shroom' : 'brown_shroom';
     return { kind, r: rng(hv) };
+  }
+
+  // Now and then a bee nest hangs from the side of a tree, with its bees.
+  beeNest(ctx, wx, baseY, wz, kind, bio, extra) {
+    if (kind !== 'oak' && kind !== 'birch' && kind !== 'blossom') return;
+    const chance = bio === BIOME.MEADOW || bio === BIOME.BLOSSOM_GROVE ? 0.2 : bio === BIOME.PLAINS ? 0.12 : bio === BIOME.FOREST || bio === BIOME.BIRCH_FOREST ? 0.02 : 0;
+    if (!chance || rand2(this.seed ^ 0xbee5, wx, wz) >= chance) return;
+    const sides = [[1, 0, 2], [-1, 0, 3], [0, 1, 4], [0, -1, 5]];
+    const [dx, dz, face] = sides[Math.floor(rand2(this.seed ^ 0xbee6, wx, wz) * 4)];
+    for (let y = baseY + 3; y >= baseY + 1; y--) {
+      if (ctx.get(wx, y, wz) !== (kind === 'birch' ? B.birch_log : kind === 'blossom' ? B.blossom_log : B.oak_log)) continue;
+      const nx = wx + dx, nz = wz + dz;
+      if (ctx.get(nx, y, nz) !== 0 || ctx.get(nx + dx, y, nz + dz) !== 0) continue;
+      ctx.set(nx, y, nz, B.bee_nest, face);
+      const n = 2 + Math.floor(rand2(this.seed ^ 0xbee7, wx, wz) * 2);
+      for (let i = 0; i < n; i++) extra.spawns.push({ type: 'bee', x: nx + dx + 0.5, y: y - 0.2, z: nz + dz + 0.5, hive: { x: nx, y, z: nz } });
+      return;
+    }
+  }
+
+  // Blossom trees: a short trunk that forks into two or three boughs, each
+  // under a broad, drooping canopy of pink blossom.
+  blossomTree(ctx, wx, baseY, wz, r, leaf, log) {
+    const { set, get } = ctx;
+    if (get(wx, baseY - 1, wz) === B.grass) set(wx, baseY - 1, wz, B.dirt, 0);
+    const trunk = 3 + Math.floor(r() * 2);
+    for (let y = baseY; y < baseY + trunk; y++) log(wx, y, wz, B.blossom_log);
+    const n = 2 + (r() < 0.4 ? 1 : 0), a0 = r() * Math.PI * 2;
+    const tops = [];
+    for (let i = 0; i < n; i++) {
+      const a = a0 + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.6;
+      const len = 2 + Math.floor(r() * 2), rise = 2 + Math.floor(r() * 2);
+      let x = wx, y = baseY + trunk - 1, z = wz;
+      for (let k = 1; k <= len + rise; k++) {
+        const t = k / (len + rise);
+        const nx = wx + Math.round(Math.cos(a) * len * t), nz = wz + Math.round(Math.sin(a) * len * t), ny = baseY + trunk - 1 + Math.round(rise * t);
+        const axis = ny > y ? 0 : nx !== x ? 1 : 2;
+        x = nx; y = ny; z = nz;
+        const c = get(x, y, z);
+        if (c === 0 || c === B.blossom_leaves || c === B.tall_grass) set(x, y, z, B.blossom_log, axis);
+      }
+      tops.push([x, y, z]);
+    }
+    for (const [cx, cy, cz] of tops) {
+      for (let dy = -1; dy <= 2; dy++) {
+        const rr = dy === 2 ? 1 : dy === -1 ? 2 : 3;
+        for (let dz = -rr; dz <= rr; dz++) for (let dx = -rr; dx <= rr; dx++) {
+          const d = dx * dx + dz * dz;
+          if (d > rr * rr - (r() < 0.5 ? 0 : 2)) continue;
+          if (dy === -1 && d < 2) continue; // hollow underneath
+          leaf(cx + dx, cy + dy, cz + dz, B.blossom_leaves);
+        }
+      }
+      // garlands hang from the rim
+      for (let k = 0; k < 6; k++) {
+        const a = r() * Math.PI * 2, d = 2 + r();
+        const hx = cx + Math.round(Math.cos(a) * d), hz = cz + Math.round(Math.sin(a) * d);
+        const hl = 1 + Math.floor(r() * 2);
+        for (let y = cy - 2; y > cy - 2 - hl; y--) leaf(hx, y, hz, B.blossom_leaves);
+      }
+    }
   }
 
   // Jungle trees (tall, vine-hung, some with 2x2 trunks), jungle bushes and
@@ -358,6 +422,7 @@ export class WorldGen {
     if (kind === 'ice_spike') { this.iceSpike(ctx, wx, baseY, wz, r); return; }
     if (kind === 'red_shroom' || kind === 'brown_shroom') { this.giantMushroom(ctx, wx, baseY, wz, kind === 'red_shroom', r); return; }
     if (kind === 'jungle' || kind === 'giant_jungle' || kind === 'jungle_bush' || kind === 'dark_oak') { this.broadTree(ctx, wx, baseY, wz, kind, r, leaf, log); return; }
+    if (kind === 'blossom') { this.blossomTree(ctx, wx, baseY, wz, r, leaf, log); return; }
     set(wx, baseY - 1, wz, B.dirt, 0);
     if (kind === 'oak' || kind === 'birch' || kind === 'swamp') {
       const logId = kind === 'birch' ? B.birch_log : B.oak_log;
@@ -597,7 +662,10 @@ export class WorldGen {
       const h = colH(dx, dz), bio = colB(dx, dz);
       if (!BIOMES[bio].trees) continue;
       const t = this.treeAt(X0 + dx, Z0 + dz, h, bio);
-      if (t) this.placeTree(ctx, X0 + dx, h + 1, Z0 + dz, t.kind, t.r);
+      if (t) {
+        this.placeTree(ctx, X0 + dx, h + 1, Z0 + dz, t.kind, t.r);
+        this.beeNest(ctx, X0 + dx, h + 1, Z0 + dz, t.kind, bio, extra);
+      }
     }
 
     // 5. Ground cover: grass, flowers, cacti, sugar cane, pumpkins, mushrooms.
@@ -619,8 +687,13 @@ export class WorldGen {
         if (bio === BIOME.SWAMP) grassP = 0.15;
         if (bio === BIOME.JUNGLE) { grassP = 0.55; flowerP = 0.004; }
         if (bio === BIOME.DARK_FOREST) { grassP = 0.18; flowerP = 0.004; }
+        if (bio === BIOME.BLOSSOM_GROVE) { grassP = 0.25; flowerP = 0.01; }
         if (fl > 0.45) flowerP *= 4;
-        if (r < flowerP) {
+        if (bio === BIOME.BLOSSOM_GROVE && fl > -0.1 && r2 < 0.42 && r >= flowerP) {
+          blocks[idx(x, h + 1, z)] = B.petals; // fallen blossom carpets the ground
+        } else if ((bio === BIOME.TAIGA || bio === BIOME.SNOWY_TAIGA) && r > 0.992) {
+          blocks[idx(x, h + 1, z)] = B.berry_bush; meta[idx(x, h + 1, z)] = 2 + Math.floor(r2 * 2);
+        } else if (r < flowerP) {
           const k = r2 < 0.45 ? B.dandelion : r2 < 0.85 ? B.poppy : B.cornflower;
           blocks[idx(x, h + 1, z)] = k;
         } else if (r < flowerP + grassP) {
@@ -641,6 +714,7 @@ export class WorldGen {
         else if (r < 0.003 && x > 0 && x < 15 && z > 0 && z < 15) { const ch = 1 + Math.floor(r2 * 3); for (let y = h + 1; y <= h + ch && y < HEIGHT; y++) blocks[idx(x, y, z)] = B.cactus; }
       } else if (topId === B.snowy_grass) {
         if (r < 0.04) blocks[idx(x, h + 1, z)] = B.fern;
+        else if (r > 0.994 && bio === BIOME.SNOWY_TAIGA) { blocks[idx(x, h + 1, z)] = B.berry_bush; meta[idx(x, h + 1, z)] = 3; }
       } else if (topId === B.sand && h > SEA) {
         if (bio === BIOME.DESERT) {
           if (r < 0.006 && x > 0 && x < 15 && z > 0 && z < 15) {
@@ -700,17 +774,23 @@ export class WorldGen {
     if (sr() < 0.12) {
       const bio = colB(8, 8);
       let types = ['pig', 'cow', 'sheep', 'chicken'];
-      if (bio === BIOME.PLAINS || bio === BIOME.MEADOW) types = ['pig', 'cow', 'sheep', 'chicken', 'steed'];
-      else if (bio === BIOME.SAVANNA) types = ['cow', 'sheep', 'steed', 'steed'];
+      if (bio === BIOME.PLAINS || bio === BIOME.MEADOW) types = ['pig', 'cow', 'sheep', 'chicken', 'steed', 'rabbit'];
+      else if (bio === BIOME.SAVANNA) types = ['cow', 'sheep', 'steed', 'steed', 'alpaca'];
       else if (bio === BIOME.FOREST || bio === BIOME.BIRCH_FOREST) types = ['pig', 'cow', 'sheep', 'chicken', 'hound'];
-      else if (bio === BIOME.TAIGA) types = ['sheep', 'hound', 'hound', 'pig'];
-      else if (bio === BIOME.SNOWY_TAIGA) types = ['sheep', 'hound'];
-      else if (bio === BIOME.SNOWY_PLAINS || bio === BIOME.MOUNTAINS) types = ['sheep'];
+      else if (bio === BIOME.TAIGA) types = ['sheep', 'hound', 'hound', 'pig', 'fox', 'fox'];
+      else if (bio === BIOME.SNOWY_TAIGA) types = ['sheep', 'hound', 'fox'];
+      else if (bio === BIOME.SNOWY_PLAINS) types = ['sheep', 'rabbit', 'rabbit'];
+      else if (bio === BIOME.MOUNTAINS) types = ['sheep', 'alpaca', 'alpaca', 'goat'];
+      else if (bio === BIOME.SNOWY_PEAKS) types = ['goat', 'goat'];
+      else if (bio === BIOME.SWAMP) types = ['frog', 'frog', 'pig'];
       else if (bio === BIOME.MUSHROOM_FIELDS) types = ['shroomcow'];
-      else if (bio === BIOME.JUNGLE) types = ['chicken', 'pig'];
+      else if (bio === BIOME.JUNGLE) types = ['chicken', 'pig', 'parrot', 'parrot'];
+      else if (bio === BIOME.BLOSSOM_GROVE) types = ['pig', 'sheep', 'rabbit'];
       else if (bio === BIOME.DARK_FOREST) types = ['pig', 'cow', 'hound'];
       else if (bio === BIOME.BADLANDS || bio === BIOME.ICE_SPIKES) types = [];
-      if (bio === BIOME.DESERT || bio === BIOME.BEACH || bio === BIOME.SNOWY_BEACH || colH(8, 8) <= SEA) types = [];
+      if (bio === BIOME.DESERT) types = sr() < 0.3 ? ['rabbit'] : [];
+      if (bio === BIOME.BEACH) types = sr() < 0.5 ? ['turtle'] : [];
+      if (bio === BIOME.SNOWY_BEACH || colH(8, 8) <= SEA - 1 || (colH(8, 8) <= SEA && bio !== BIOME.BEACH)) types = [];
       if (types.length) {
         const type = types[Math.floor(sr() * types.length)];
         const n = type === 'steed' ? 2 + Math.floor(sr() * 2) : 2 + Math.floor(sr() * 3);
@@ -718,8 +798,14 @@ export class WorldGen {
           const x = Math.floor(sr() * 16), z = Math.floor(sr() * 16);
           const h = colH(x, z);
           const t = blocks[idx(x, h, z)];
-          if ((t === B.grass || t === B.snowy_grass || t === B.mycelium) && h + 2 < HEIGHT && blocks[idx(x, h + 1, z)] !== B.oak_log) {
-            spawns.push({ type, x: X0 + x + 0.5, y: h + 1, z: Z0 + z + 0.5 });
+          const leafy = t === B.jungle_leaves || t === B.oak_leaves;
+          const ground = t === B.grass || t === B.snowy_grass || t === B.mycelium || t === B.stone || t === B.snow_block || ((type === 'rabbit' || type === 'turtle') && t === B.sand);
+          if ((ground || (type === 'parrot' && leafy)) && h + 2 < HEIGHT && blocks[idx(x, h + 1, z)] !== B.oak_log) {
+            const cold = bio === BIOME.SNOWY_TAIGA || bio === BIOME.SNOWY_PLAINS || bio === BIOME.SNOWY_PEAKS;
+            const variant = type === 'fox' ? (cold ? 'snow' : 'red')
+              : type === 'rabbit' ? (cold ? 'white' : bio === BIOME.DESERT ? 'gold' : 'brown')
+                : type === 'frog' ? (sr() < 0.6 ? 'marsh' : 'cold') : undefined;
+            spawns.push({ type, x: X0 + x + 0.5, y: h + 1, z: Z0 + z + 0.5, variant });
           }
         }
       }

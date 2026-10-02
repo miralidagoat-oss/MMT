@@ -45,6 +45,19 @@ export function anvilResult(a, b, name) {
       if (a.dur) cost += 2;
       used = 1; changed = true;
       cost += mergeEnchants(out, b.ench, a.id);
+    } else if (b.id === I.enchanted_book && b.ench) {
+      // an enchanted book passes its enchantments on (books combine with books too)
+      const before = JSON.stringify(out.ench || {});
+      if (a.id === I.enchanted_book) {
+        out.ench = out.ench || {};
+        for (const [k, lvl] of Object.entries(b.ench)) {
+          const cur = out.ench[k] || 0;
+          out.ench[k] = cur === lvl ? Math.min(ENCHANTS[k].max, lvl + 1) : Math.max(cur, lvl);
+          cost += out.ench[k] * 2;
+        }
+      } else cost += mergeEnchants(out, b.ench, a.id);
+      if (JSON.stringify(out.ench || {}) === before) return null;
+      used = 1; changed = true;
     } else if (material && b.id === material && a.dur) {
       const per = Math.ceil(d.durability / 4);
       used = Math.min(b.count, Math.ceil(a.dur / per));
@@ -97,7 +110,10 @@ export function wearAnvil(world, x, y, z) {
 
 // ---------------------------------------------------------------------------
 // Loom: a banner, a wool of the pattern's colour, and a chosen pattern.
-export const WOOL_COLOR = () => Object.fromEntries(BANNER_COLORS.map((c, i) => [B[`${c}_wool`], i]).filter(([id]) => id));
+// The loom takes a wool or a dye of the pattern's colour.
+export const WOOL_COLOR = () => Object.fromEntries([
+  ...BANNER_COLORS.map((c, i) => [B[`${c}_wool`], i]), ...BANNER_COLORS.map((c, i) => [I[`${c}_dye`], i]),
+].filter(([id]) => id));
 export const MAX_PATTERNS = 6;
 
 export function loomResult(banner, wool, pattern) {
@@ -149,3 +165,58 @@ export function beaconClear(world, x, y, z) {
   }
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Grindstone: strips enchantments (paying back some experience) and joins two
+// worn items of the same kind into one.
+export function grindstoneResult(a, b) {
+  if (!a && !b) return null;
+  if (a && b && a.id !== b.id) return null;
+  const one = a || b;
+  const d = ITEMS[one.id];
+  if (!d) return null;
+  if (one.id === I.enchanted_book) return a && b ? null : { out: { id: I.book, count: 1 }, xp: xpOf(one.ench) };
+  if (!d.durability && !(one.ench)) return null;
+  const out = { id: one.id, count: 1 };
+  if (one.label) out.label = one.label;
+  let xp = xpOf(a && a.ench) + xpOf(b && b.ench);
+  if (a && b && d.durability) {
+    const rem = Math.min(d.durability, (d.durability - (a.dur || 0)) + (d.durability - (b.dur || 0)) + Math.floor(d.durability * 0.05));
+    const dur = d.durability - rem;
+    if (dur > 0) out.dur = dur;
+  } else if (one.dur) out.dur = one.dur;
+  if (!xp && !(a && b)) return null; // nothing to grind off
+  return { out, xp };
+}
+function xpOf(ench) {
+  if (!ench) return 0;
+  let x = 0;
+  for (const lvl of Object.values(ench)) x += lvl * 3;
+  return x;
+}
+
+// Smithing table: diamond gear plus a starsteel ingot becomes starsteel gear,
+// keeping its enchantments, name and wear.
+export function smithingResult(base, ingot) {
+  if (!base || !ingot || ingot.id !== I.starsteel_ingot) return null;
+  const d = ITEMS[base.id];
+  if (!d || !d.name.startsWith('diamond_')) return null;
+  const to = I['starsteel_' + d.name.slice(8)];
+  if (to === undefined) return null;
+  const out = { ...JSON.parse(JSON.stringify(base)), id: to, count: 1 };
+  if (base.dur) out.dur = Math.round((base.dur / d.durability) * ITEMS[to].durability);
+  return out;
+}
+
+// Composter: chance that an item raises the fill level.
+export const COMPOST_CHANCE = () => {
+  const m = new Map();
+  const add = (p, ...names) => { for (const n of names) if (I[n] !== undefined) m.set(I[n], p); };
+  add(0.3, 'wheat_seeds', 'sweet_berries', 'oak_leaves', 'birch_leaves', 'spruce_leaves', 'jungle_leaves', 'dark_oak_leaves', 'blossom_leaves',
+    'oak_sapling', 'birch_sapling', 'spruce_sapling', 'jungle_sapling', 'dark_oak_sapling', 'blossom_sapling', 'tall_grass', 'fern', 'petals', 'vines');
+  add(0.5, 'melon_slice', 'cactus', 'sugar_cane', 'dead_bush');
+  add(0.65, 'wheat', 'carrot', 'potato', 'apple', 'dandelion', 'poppy', 'cornflower', 'pumpkin', 'melon', 'brown_mushroom', 'red_mushroom', 'glowcap');
+  add(0.85, 'bread', 'baked_potato', 'hay_bale', 'red_mushroom_block', 'brown_mushroom_block');
+  add(1, 'cake');
+  return m;
+};

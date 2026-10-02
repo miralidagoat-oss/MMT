@@ -23,7 +23,7 @@ export function daylight(dayTime, rain = 0) {
   return d * (1 - rain * 0.25);
 }
 
-export function computeEnv(o, { dayTime, day, rain, thunder = 0, underwater, inLava, renderDist, gamma, flicker, blindness = 0, snow = false, dim = 'overworld', flash = 0, nightVision = 0 }) {
+export function computeEnv(o, { dayTime, day, rain, thunder = 0, underwater, inLava, renderDist, gamma, flicker, blindness = 0, snow = false, dim = 'overworld', flash = 0, nightVision = 0, darkness = 0 }) {
   const sd = sunDirection(dayTime);
   const e = sd[1];
   const dayF = smoothstep(-0.2, 0.25, e);
@@ -100,6 +100,19 @@ export function computeEnv(o, { dayTime, day, rain, thunder = 0, underwater, inL
     o.fogColor = mix3(o.fogColor, [0.85, 0.87, 1], flash * 0.55);
     o.zenith = mix3(o.zenith, [0.8, 0.82, 1], flash * 0.5);
     o.skyBright = Math.min(1, o.skyBright + flash * 0.6);
+  }
+  // darkness: the world throbs in and out of a black fog, slow as a heartbeat
+  if (darkness > 0) {
+    o.fogMode = 1;
+    o.fogColor = mix3(o.fogColor, [0.005, 0.008, 0.012], darkness);
+    o.zenith = mix3(o.zenith, [0, 0, 0.004], darkness);
+    o.fogStart = o.fogStart + (1.5 - o.fogStart) * darkness;
+    o.fogEnd = o.fogEnd + (9 + 7 * (1 - darkness) - o.fogEnd) * darkness;
+    o.skyBright *= 1 - 0.85 * darkness;
+    o.stars *= 1 - darkness;
+    o.sunset = [o.sunset[0], o.sunset[1], o.sunset[2], o.sunset[3] * (1 - darkness)];
+    if (o.ambient) o.ambient = mix3(o.ambient, [0.02, 0.02, 0.03], darkness * 0.8);
+    o.gamma = o.gamma * (1 - darkness);
   }
   if (blindness) { o.fogMode = 1; o.fogColor = [0, 0, 0]; o.fogStart = 0; o.fogEnd = 5; }
   void thunder; void snow;

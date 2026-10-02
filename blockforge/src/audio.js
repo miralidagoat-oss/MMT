@@ -165,7 +165,7 @@ export class Audio {
 
   play(name, x, y, z, vol = 1) {
     if (!this.ctx) return;
-    const dest = this.out(x, y, z, vol, name === 'explode' ? 48 : name === 'thunder' ? 200 : name === 'portal_hum' ? 10 : name === 'firework' ? 96 : 16);
+    const dest = this.out(x, y, z, vol, name === 'explode' ? 48 : name === 'thunder' ? 200 : name === 'portal_hum' ? 10 : name === 'firework' || name === 'horn' || name.startsWith('goat_horn') ? 96 : 16);
     if (!dest) return;
     const t = this.ctx.currentTime + 0.001;
     const r = () => 0.9 + Math.random() * 0.2;
@@ -367,6 +367,56 @@ export class Audio {
       case 'page':
         this.burst(dest, t, 0.2, 'highpass', 2500, 0.5, 0.3, 0.03);
         break;
+      case 'pick':
+        this.burst(dest, t, 0.12, 'bandpass', 1400, 1.5, 0.5);
+        this.tone(dest, t + 0.03, 0.06, 'sine', 700, 500, 0.2);
+        break;
+      case 'fill_bottle':
+        for (let i = 0; i < 4; i++) this.tone(dest, t + i * 0.06, 0.08, 'sine', 380 + i * 140, 420 + i * 160, 0.18);
+        this.burst(dest, t, 0.3, 'lowpass', 800, 1, 0.2, 0.02);
+        break;
+      case 'goat_horn0': case 'goat_horn1': case 'goat_horn2': case 'goat_horn3': {
+        const k = +name.slice(-1);
+        const c = this.ctx, f0 = [196, 220, 247, 175][k];
+        for (const [m, v] of [[1, 0.45], [2, 0.18], [3, 0.08]]) {
+          const o = c.createOscillator(); o.type = k === 3 ? 'square' : 'sawtooth';
+          o.frequency.setValueAtTime(f0 * m * 0.94, t); o.frequency.linearRampToValueAtTime(f0 * m, t + 0.25);
+          if (k === 1) o.frequency.setValueAtTime(f0 * m * 1.26, t + 1.1);
+          if (k === 2) o.frequency.linearRampToValueAtTime(f0 * m * 0.8, t + 2.4);
+          const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100;
+          const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.2); g.gain.setValueAtTime(v, t + 2.0); g.gain.exponentialRampToValueAtTime(0.001, t + 2.8);
+          o.connect(lp); lp.connect(g); g.connect(dest); o.start(t); o.stop(t + 2.9);
+        }
+        break;
+      }
+      case 'horn': {
+        // a low, wavering war horn
+        const c = this.ctx;
+        for (const [f, v] of [[110, 0.5], [165, 0.25], [220, 0.12]]) {
+          const o = c.createOscillator(); o.type = 'sawtooth';
+          o.frequency.setValueAtTime(f * 0.92, t); o.frequency.linearRampToValueAtTime(f, t + 0.4); o.frequency.setValueAtTime(f, t + 1.8); o.frequency.linearRampToValueAtTime(f * 0.85, t + 2.4);
+          const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700;
+          const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.3); g.gain.setValueAtTime(v, t + 1.9); g.gain.exponentialRampToValueAtTime(0.001, t + 2.6);
+          o.connect(lp); lp.connect(g); g.connect(dest); o.start(t); o.stop(t + 2.7);
+        }
+        break;
+      }
+      case 'lead':
+        this.burst(dest, t, 0.12, 'bandpass', 700, 1.5, 0.5);
+        this.burst(dest, t + 0.06, 0.08, 'bandpass', 1100, 2, 0.3);
+        break;
+      case 'lead_snap':
+        this.burst(dest, t, 0.08, 'highpass', 2500, 1, 0.8);
+        this.tone(dest, t, 0.15, 'triangle', 400, 120, 0.3);
+        break;
+      case 'grind':
+        this.burst(dest, t, 0.5, 'bandpass', 900, 0.8, 0.5, 0.05);
+        this.burst(dest, t + 0.1, 0.4, 'highpass', 2600, 0.6, 0.25, 0.05);
+        break;
+      case 'craft':
+        this.burst(dest, t, 0.08, 'lowpass', 500, 1, 0.9);
+        this.burst(dest, t + 0.05, 0.05, 'highpass', 3000, 1, 0.4);
+        break;
       case 'laser': {
         // a bright downward zap with a buzzy undertone
         this.tone(dest, t, 0.16, 'square', 1900 * r(), 260, 0.16);
@@ -502,6 +552,61 @@ export class Audio {
       case 'warden':
         this.burst(dest, t, hurt ? 0.3 : 0.6, 'lowpass', 600 * pitch, 1.2, 0.6, 0.08);
         this.tone(dest, t, 0.25, 'sine', 300 * pitch, 180 * pitch, 0.3);
+        break;
+      case 'fox':
+        // a short yip, or a thin scream when hurt
+        if (hurt || death) { voice('sawtooth', 900 * pitch, 600 * pitch, 0.35, 1600, 3, 0.35, 18); break; }
+        for (let i = 0; i < 2; i++) this.tone(dest, t + i * 0.12, 0.08, 'square', 700 * pitch, 520 * pitch, 0.12);
+        break;
+      case 'cat':
+        if (action === 'purr') { voice('sawtooth', 48, 46, 1.1, 220, 1, 0.5, 22); break; }
+        if (hurt || death) { voice('sawtooth', 700 * pitch, 900 * pitch, 0.3, 1800, 2, 0.4, 14); break; }
+        voice('triangle', 520 * pitch, 760 * pitch, 0.18, 1400, 2.5, 0.5, 6);
+        voice('triangle', 760 * pitch, 480 * pitch, 0.32, 1200, 2.5, 0.4, 6);
+        break;
+      case 'parrot':
+        for (let i = 0; i < (hurt ? 1 : 3); i++) this.tone(dest, t + i * 0.07, 0.06, 'square', (1600 + Math.random() * 900) * pitch, (1100 + Math.random() * 700) * pitch, 0.1);
+        break;
+      case 'bee': {
+        // a buzz, harsher when angry
+        const f0 = action === 'angry' ? 260 : 190;
+        voice('sawtooth', f0 * pitch, f0 * pitch * 1.05, hurt ? 0.25 : 0.6, 900, 1.5, action === 'angry' ? 0.35 : 0.18, 40);
+        break;
+      }
+      case 'alpaca':
+        if (action === 'spit') { this.burst(dest, t, 0.12, 'bandpass', 2200, 2, 0.5); break; }
+        voice('sawtooth', 300 * pitch, 260 * pitch, hurt ? 0.25 : 0.45, 900, 2, 0.4, 9);
+        voice('square', 150 * pitch, 140 * pitch, 0.2, 500, 2, 0.15);
+        break;
+      case 'dolphin':
+        for (let i = 0; i < (hurt ? 2 : 5); i++) this.tone(dest, t + i * 0.05, 0.05, 'sine', (2400 + i * 300) * pitch, (2000 + i * 200) * pitch, 0.12);
+        if (!hurt) voice('sine', 1800 * pitch, 3200 * pitch, 0.3, 2600, 2, 0.15, 30);
+        break;
+      case 'marauder':
+        voice('sawtooth', 140 * pitch, 110 * pitch, hurt ? 0.2 : 0.5, 700, 1.6, 0.6, 5);
+        voice('square', 210 * pitch, 160 * pitch, hurt ? 0.2 : 0.4, 1100, 2.5, 0.2);
+        break;
+      case 'rabbit':
+        if (hurt || death) { voice('sine', 1400 * pitch, 900 * pitch, 0.2, 2000, 2, 0.35, 20); break; }
+        this.burst(dest, t, 0.05, 'bandpass', 3000, 3, 0.15);
+        break;
+      case 'goat':
+        if (action === 'ram') { this.burst(dest, t, 0.2, 'lowpass', 400, 1, 1); this.tone(dest, t, 0.15, 'sine', 120, 60, 0.6); break; }
+        voice('sawtooth', 380 * pitch, 300 * pitch, hurt ? 0.3 : 0.6, 1300, 2, 0.5, 26);
+        break;
+      case 'turtle':
+        voice('sine', 160 * pitch, 120 * pitch, 0.3, 500, 1.5, 0.4);
+        break;
+      case 'squid':
+        this.burst(dest, t, 0.3, 'lowpass', 500 * pitch, 1, 0.4, 0.05);
+        break;
+      case 'frog':
+        // a two-part croak
+        for (let i = 0; i < 2; i++) voice('square', (180 - i * 30) * pitch, (150 - i * 30) * pitch, 0.14, 500, 3, 0.45, 40);
+        break;
+      case 'brute':
+        voice('sawtooth', 60 * pitch, 45 * pitch, death ? 1.6 : 0.9, 260, 1, 1, 6);
+        this.burst(dest, t, 0.5, 'lowpass', 220, 0.8, 0.8, 0.1);
         break;
       default: break;
     }

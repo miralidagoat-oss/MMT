@@ -1,13 +1,17 @@
 # Blockforge
 
 An open-world voxel sandbox that runs in the browser. It has infinite
-procedural terrain with 24 biomes, villages, mineshafts, temples, shrines,
-swamp huts, undersea citadels, manors, dungeons and observatories, a fiery
-second dimension (the Underworld) reached through rift portals, a third (the
-Void) with a boss to defeat, spark circuits with comparators and observers,
+procedural terrain with 25 biomes, villages, mineshafts, temples, shrines,
+swamp huts, undersea citadels, manors, raider outposts, igloos, shipwrecks,
+dungeons and observatories, a fiery second dimension (the Underworld)
+reached through rift portals, a third (the Void) with a boss to defeat,
+village raids, spark circuits with comparators, observers and crafters,
 rails, minecarts and boats, brewing and potions, a photon blaster laser gun
-and fireworks, tameable hounds, rideable steeds, buildable sentinels, anvils,
-looms and banners, item frames and paintings, beacons, survival and creative
+and fireworks, tameable hounds, cats, parrots and alpacas, rideable steeds,
+foxes, bees, dolphins, rabbits, goats, turtles, squid and frogs, leads,
+journals and lecterns, buildable sentinels, anvils, grindstones and
+smithing tables, looms, dyes and banners, item frames and paintings,
+beacons, creatures that find their way with pathfinding, survival and creative
 modes, mining, building, crafting, smelting, farming, armor, bows, beds,
 trading, experience and enchanting, fishing, maps, day/night, thunderstorms,
 flowing water and lava, saved worlds, shared multiplayer worlds, HD textures
@@ -20,7 +24,7 @@ asset files.
 ## Play
 
 Open **`dist/blockforge.html`** in Chrome, Edge, Firefox or Safari. It is one
-self-contained file (~850 KB), so it works from disk or from any static host.
+self-contained file (~980 KB), so it works from disk or from any static host.
 It needs WebGL 2.
 
 Click the game view to capture the mouse. Press **Esc** to pause.
@@ -33,7 +37,7 @@ Click the game view to capture the mouse. Press **Esc** to pause.
 | Ctrl or double-tap W | Sprint |
 | Mouse (or arrow keys) | Look |
 | Left click | Break block · attack |
-| Right click | Place block · use (crafting table, furnace, chest, brewing stand, hopper, dispenser, dropper, enchanting table, anvil, loom, beacon, void chest, cauldron, doors, trapdoors, gates, levers, buttons, comparators, beds, signs) · eat and drink · buckets · trade with settlers · hold to draw a bow, raise a shield or fire the blaster · wear armor · ride minecarts, boats and steeds · feed, tame, sit or saddle animals · hang item frames, paintings and banners · cast a fishing line |
+| Right click | Place block · use (crafting table, furnace, chest, brewing stand, hopper, dispenser, dropper, crafter, enchanting table, anvil, grindstone, smithing table, loom, beacon, void chest, cauldron, composter, lectern, beehive, berry bush, fence (to tie or untie leads), doors, trapdoors, gates, levers, buttons, comparators, beds, signs) · eat and drink · write in or read journals · blow a goat horn · buckets · trade with settlers · hold to draw a bow, raise a shield or fire the blaster · wear armor · ride minecarts, boats and steeds · feed, tame, sit or saddle animals (sneak-use a packed alpaca to open its pack) · dye sheep · hang item frames, paintings and banners · cast a fishing line |
 | Shift (riding) | Get out of a minecart or boat, or off a steed |
 | Jump while falling | Open a glider worn in the chest slot |
 | Middle click | Pick block |
@@ -49,10 +53,10 @@ slot to swap it with the hotbar. Touch screens get an on-screen stick and button
 
 Commands: `/time set day|night|<ticks>`, `/gamemode survival|creative`,
 `/tp x y z` (supports `~`), `/give <item> [count]`,
-`/summon <creature>|minecart|boat|wyrm`, `/weather clear|rain|thunder`,
+`/summon <creature> [variant]|minecart|boat|wyrm`, `/weather clear|rain|thunder`,
 `/xp <points>` or `/xp <levels>L`, `/enchant <name> [level]`,
 `/effect give <effect> [seconds] [level]` · `/effect clear`,
-`/locate village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor`,
+`/locate village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck`,
 `/dimension overworld|underworld|void`,
 `/seed`, `/spawnpoint`, `/kill`, `/heal`, `/clear`, `/difficulty peaceful|normal`.
 
@@ -87,20 +91,39 @@ devices and Balanced otherwise.
 
 One player hosts a world and friends join it:
 
-1. Open one of your worlds, press **Esc** and choose **Open to Friends**. Pick
-   how friends reach you; the menu then shows a **room code**.
-2. Friends choose **Multiplayer** on the title screen, pick the same kind of
-   connection, and click your world in the list or type the code.
+1. Open one of your worlds, press **Esc** and choose **Open to Friends**, then
+   **Start Sharing**. The menu shows a **room code** like `ysqn-kz9h`.
+2. Friends choose **Multiplayer** on the title screen, type the code and press
+   **Join**. Case and the dash don't matter; the code itself says which kind of
+   connection to use, so there is nothing else to pick.
 
-Ways to connect:
-- **Everyone viewing this page**: when the game runs as a shared claude.ai
-  artifact, people with the page open can play together. Guests only need to
-  be able to view the page; the host needs edit or contributor access.
+Ways to connect (chosen when you start sharing):
+- **Online — friends anywhere** (the default): each friend's browser connects
+  straight to the host's (WebRTC data channels; the host's page passes
+  messages between everyone). To find each other with the code, both games
+  briefly meet on public MQTT brokers (EMQX, HiveMQ, Mosquitto test brokers).
+  The code derives both the meeting topic and an AES-GCM key (PBKDF2), so the
+  brokers only ever see ciphertext on a topic that doesn't reveal the code;
+  nothing is sent through them once you're connected.
+  - **Join with a Request** works with no server at all, for when the brokers
+    can't be reached (the sharing menu says so): the friend chooses
+    Multiplayer → Join with a Request and sends the host the request text; the
+    host pastes it under "A friend can't get in with the code?" in Open to
+    Friends and sends back the reply; the friend pastes the reply and
+    connects.
+  - Direct connections use public STUN servers and no TURN relay, so a few
+    network pairs (some strict school/work firewalls, some mobile carriers)
+    can't connect; the game says so, and a relay server or another network
+    works around it.
+- **People viewing this claude.ai page**: when the game runs as a claude.ai
+  artifact, signed-in people the page is shared with (members of the owner's
+  organization, or invited guests) can use the page's own room. People opening
+  a public link can't use this room; they use Online instead.
 - **Other tabs in this browser**: handy for trying it out.
 - **Relay server**: run `node tools/relay.mjs` (no dependencies) on one
   computer. It prints addresses like `http://192.168.1.20:8787/`, where
   everyone on the network can open the game, and `ws://192.168.1.20:8787` to
-  enter as the relay address.
+  enter under Multiplayer → Relay Server….
 
 The host's game runs the world: creatures, crops, fluids, circuits, weather and
 time. Everyone generates the same terrain from the seed, so only changes
@@ -117,17 +140,18 @@ in the host's browser.
 
 **World**
 - Infinite terrain streamed in 16×16×256 chunks, generated on worker threads.
-- Continents, oceans, rivers, beaches, mountains with snowy peaks and 24 biomes
+- Continents, oceans, rivers, beaches, mountains with snowy peaks and 25 biomes
   (plains, meadow, forest, birch forest, dark forest, taiga, snowy plains and
   taiga, ice spikes, desert, badlands with terraced terracotta mesas, savanna,
-  jungle, swamp, mushroom fields and more), with smoothly blended grass,
-  foliage and water colours.
+  jungle, swamp, mushroom fields, the pink-blossomed Blossom Grove and more),
+  with smoothly blended grass, foliage and water colours.
 - Worm tunnels and large caverns, lava lakes deep down, ore veins (coal, iron,
   copper, gold, diamond, emerald in mountains), gravel/dirt/clay pockets, bedrock.
 - Oak, big oak, birch, spruce, swamp, jungle (some with 2×2 trunks, hung with
-  vines), jungle bush and dark oak trees; giant red and brown mushrooms;
-  packed-ice spikes; tall grass, ferns, flowers, cacti, sugar cane, melons,
-  dead bushes, pumpkins, mushrooms.
+  vines), jungle bush, dark oak and forked blossom trees; giant red and brown
+  mushrooms; packed-ice spikes; tall grass, ferns, flowers, fallen petals,
+  berry bushes, cacti, sugar cane, melons, dead bushes, pumpkins, mushrooms;
+  bee nests hanging from trees in meadows, plains and the blossom grove.
 - Mineshafts (propped tunnels with rails, lanterns, cobwebs, chests and a
   crawler spawner), sun temples in the desert (two towers and a treasure room
   guarded by a pressure plate over blast crates), jungle shrines (an arrow
@@ -135,6 +159,11 @@ in the host's browser.
   citadels on the deep sea floor (gold and treasure, guarded by tide
   wardens) and woodland manors in dark forests (library, dining room,
   bedrooms, strongroom, kept by hexers and archers).
+- Raider outposts: a four-storey dark-wood watchtower with a lookout, loot
+  and the raiders' banner, tents and a caged alpaca, held by marauders,
+  rangers and their captain. Igloos in the snow (bed, stove, workbench; half
+  of them hide a laboratory under a trapdoor) and shipwrecks on the sea floor
+  or run aground, with supply and treasure chests.
 - Villages in four styles (oak, spruce, birch, sandstone) with a well, dirt
   paths, lamp posts, houses with beds, doors, windows and stair roofs, a
   smithy, fenced animal pens, irrigated crop fields and loot chests. Settlers
@@ -144,7 +173,7 @@ in the host's browser.
   and a ring of twelve star gate frames.
 - **The Underworld**: a 128-block-tall cavern dimension with a lava sea,
   scorchstone, cinder sand that slows you down, glowing ember crystals,
-  glowcaps, quartz and gold ores, magma rock that burns, ruined ember-brick
+  glowcaps, quartz and gold ores, rare fallen starsteel, magma rock that burns, ruined ember-brick
   outposts with loot, and three regions (Glowing Grove, Cinder Flats, Ashen
   Wastes). Distances there count eight times over.
 - **The Void**: reached by filling all twelve star gate frames with eyes of
@@ -220,8 +249,14 @@ in the host's browser.
   alight, prime blast crates and shatter glass. **Sky rockets** burst into
   coloured fireworks, or boost a glider in flight.
 - **Workstations**: the anvil repairs (with materials or a second item),
-  merges enchantments and renames for a level cost, and wears out; the loom
-  adds up to six patterns (12 designs, coloured with wool) to banners; a
+  merges enchantments (and applies enchanted books) and renames for a level
+  cost, and wears out; the grindstone strips enchantments for experience and
+  joins worn tools; the smithing table upgrades diamond gear to starsteel
+  (scrap from the Underworld, smelted and alloyed with gold), keeping its
+  enchantments; the composter turns plant matter into bone meal; a lectern
+  holds a book whose page a comparator reads; the crafter crafts its 3×3
+  pattern each time it is powered (slots can be blocked off); the loom
+  adds up to six patterns (12 designs, coloured with wool or dye) to banners; a
   beacon on an iron, gold, diamond or emerald pyramid sends up a beam and,
   paid with an ingot or gem, grants Speed, Jump Boost, Fire Resistance,
   Night Vision or Strength (plus Regeneration at full size) to players
@@ -244,7 +279,10 @@ in the host's browser.
 - Experience orbs from mining, smelting, breeding, trading and fighting;
   levels shown on the XP bar. Spend them at an enchanting table (more power
   with bookshelves around it): Efficiency, Sharpness, Unbreaking, Protection,
-  Feather Falling, Power, Fortune and Knockback.
+  Feather Falling, Power, Fortune and Knockback. Enchant a book to carry an
+  enchantment to anything at the anvil; books turn up in loot and trades.
+- Dyes from flowers, bone meal, coal and cactus (mixed for orange and
+  purple) colour wool, sheep (which then grow coloured wool) and banners.
 - Trading with settlers: each profession has its own offers, which sell out
   and restock.
 - Animals breed when fed and grow up from babies; chickens lay eggs.
@@ -256,11 +294,49 @@ in the host's browser.
   you can build one (four iron blocks and a carved pumpkin) or a frost
   sentinel (two snow blocks) that pelts creatures with snowballs. Shroom cows
   on mycelium give mushroom stew. Name tags name creatures.
+- Foxes (red, or white in the snow) are shy, doze by day, hunt chickens at
+  night and carry what they find in their mouths; foxes you breed trust you.
+  Stray cats live in villages: win one over with fish and it sits, follows,
+  keeps crawlers away and leaves you presents after you sleep. Parrots flit
+  through the jungle, dance to note blocks, mimic the creatures they hear and,
+  once tamed with seeds, ride on your shoulder. Bees gather pollen, help
+  crops grow and fill their nests with honey (bottle it, or shear honeycomb
+  for beehives; a fire beneath keeps them calm, otherwise they sting).
+  Alpacas in the hills are won over with wheat or hay, carry a chest of your
+  things and spit at what threatens them. Dolphins swim in pods, need air,
+  leap from the waves, lend swimmers Sea Grace and, fed a fish, lead the way
+  to sunken treasure. Sweet berries grow on bushes in the taiga.
+- Rabbits (brown, white in the snow, gold in the desert) hop about and raid
+  carrot fields; their hide makes leather and a lucky foot brews leaping.
+  Goats leap about the peaks, now and then lower their heads and ram
+  whatever stands near, and a charge into rock can knock off a horn that
+  sounds one of four calls. Turtles plod along beaches and shed a scute as
+  they grow; five make a turtle shell that lends ten seconds of breath after
+  each dip. Squid pulse through oceans and rivers and squirt ink when hurt
+  (ink sacs make black dye and journals). Frogs (three colours) hop and swim
+  in swamps and croak at night.
+- Leads (string and leather) tie a creature to you; it follows, can be tied
+  to a fence post and taken off again, and the lead snaps if pulled too far.
+- Journals: write in a journal and quill (pages you can add, then sign with
+  a title); read signed journals in hand or on a lectern, whose page a
+  comparator reads.
+- The living landscape: petals drift down from blossom trees, fireflies glow
+  over swamps, meadows, plains and forests on warm nights, and full hives
+  drip honey.
+- Creatures find their way with pathfinding: around walls, up steps, down
+  safe drops and away from lava and cacti; settlers open doors and close
+  them behind them.
 - Hostile creatures: ghouls that burn in daylight, bone archers that shoot
   arrows, wall-climbing cave crawlers that leap, cinder imps in the
   Underworld, hexers in swamps that throw slowing, poisoning and harming
   potions and drink healing ones, and tide wardens that charge a beam at
-  swimmers around the citadels. Some wear armor.
+  swimmers around the citadels. Some wear armor. Raiders: axe-wielding
+  marauders, rangers with bows and the brutes that march with them.
+- **Raids**: defeat an outpost's captain and an Ill Omen follows you; walk
+  into a village with it and the raiders come in waves (three or more, with
+  a war horn and a progress bar). Beat every wave and you are the Village
+  Hero, with better prices from its settlers; lose the villagers and the
+  raiders celebrate.
 - Thunderstorms with lightning strikes, a clock and a compass, milestone
   toasts for firsts (first timber, iron, diamonds, the Underworld and more).
 - Worlds (both dimensions), inventories, experience, block containers,
@@ -268,15 +344,17 @@ in the host's browser.
   with autosave every 30 seconds.
 
 **Not included (yet)**: compared with the game that inspired it, there are
-still fewer biomes and structures (no cherry groves, deep dark, ancient
-cities, trial chambers, pillager outposts, igloos or shipwrecks), no raids or
-pillager-type mobs, no parrots, cats, foxes, bees, llamas or dolphins, no
-dyes (wool colours banners), no enchanted books, grindstone or smithing
-table, no lecterns, composters or crafters, and creatures move by simple
-steering rather than full pathfinding. In multiplayer everyone shares the
-host's dimension, and the host's world lives in their browser (browsers may
-still slow a hidden tab's timers). Frame rate depends on the device; the
-presets exist so slower machines can trade detail for speed.
+still fewer biomes and structures (no deep dark, ancient cities, trial
+chambers, ocean monuments' full interiors or end cities), no armor trims,
+copper ageing, sculk, axolotls, camels, glow squid or turtle eggs (turtles
+breed like other animals), and eight dye colours rather than sixteen.
+Pathfinding is
+bounded (a few hundred steps per search) and doesn't plan ladder climbs or
+swims through deep water. Raids are not saved mid-wave. In multiplayer
+everyone shares the host's dimension, guests can't open an alpaca's pack,
+and the host's world lives in their browser (browsers may still slow a
+hidden tab's timers). Frame rate depends on the device; the presets exist so
+slower machines can trade detail for speed.
 
 **Sound** – synthesised block sounds per material (stone, wood, grass, gravel,
 sand, snow, glass, cloth, metal), footsteps, creature voices, splashes, rain,
@@ -317,9 +395,14 @@ needed.
 | `src/quality.js` | Graphics presets and settings |
 | `src/blaster.js`, `src/laser.js` | The photon blaster, laser bolts and sky rockets |
 | `src/creatures.js` | Hounds, steeds, sentinels, hexers, tide wardens, shroom cows |
-| `src/decor.js`, `src/workshop.js` | Banners, item frames, paintings; anvil, loom and beacon rules |
-| `src/landmarks.js` | Mineshafts, temples, shrines, huts, citadels and manors |
+| `src/wildlife.js`, `src/raiders.js` | Foxes, cats, parrots, bees, alpacas, dolphins; marauders, rangers, brutes and raids |
+| `src/fauna.js` | Rabbits, goats, turtles, squid and frogs |
+| `src/pathfind.js` | Bounded A* pathfinding over the block grid, doors |
+| `src/features5.js` | Hives and honey, berry bushes, composter, lectern, crafter, sea life, treasure, leads, ambient life |
+| `src/decor.js`, `src/workshop.js` | Banners, item frames, paintings; anvil, loom, beacon, grindstone, smithing and compost rules |
+| `src/landmarks.js` | Mineshafts, temples, shrines, huts, citadels, manors, outposts, igloos and shipwrecks |
 | `src/net.js`, `tools/relay.mjs` | Shared worlds and their transports; the relay server |
+| `src/online.js`, `tools/broker.mjs` | Online play: WebRTC hub, encrypted matchmaking over MQTT, copy-paste requests; a tiny test broker |
 
 Tests drive the built game in headless Chromium and save screenshots:
 
@@ -331,9 +414,14 @@ NODE_PATH=$(npm root -g) node tools/gallery.cjs file://$PWD/dist/blockforge.html
 NODE_PATH=$(npm root -g) node tools/round3.cjs file://$PWD/dist/blockforge.html /tmp/shots
 NODE_PATH=$(npm root -g) node tools/graphics.cjs file://$PWD/dist/blockforge.html /tmp/shots
 NODE_PATH=$(npm root -g) node tools/round4.cjs file://$PWD/dist/blockforge.html /tmp/shots
+NODE_PATH=$(npm root -g) node tools/round5.cjs file://$PWD/dist/blockforge.html /tmp/shots
+NODE_PATH=$(npm root -g) node tools/round6.cjs file://$PWD/dist/blockforge.html /tmp/shots
 node tools/relay.mjs 8799 &   # serves the game and relays messages
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots tabs
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots relay
+node tools/broker.mjs 8899 &  # a minimal MQTT-over-WebSocket broker for the handshake
+NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots online ws://localhost:8899
+NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots manual
 ```
 
 `tools/texture-sheet.mjs out.png [detail] [tile px] [filter]` renders the

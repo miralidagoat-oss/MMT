@@ -189,13 +189,14 @@ export class Player extends Entity {
       this.sprinting = input.sprint && input.forward > 0;
       this.fallDistance = 0;
     } else if (this.inWater || this.inLava) {
-      const acc = 0.02;
+      // dolphins lend their grace: much quicker swimming
+      const acc = this.inWater && this.effects.sea_grace ? 0.05 : 0.02;
       this.vx += dirX * acc; this.vz += dirZ * acc;
       if (input.jump) this.vy += 0.04;
       else if (input.sneak) this.vy -= 0.02;
       const r = moveBox(world, this, this.vx, this.vy, this.vz);
       this.applyHits(r);
-      const drag = this.inWater ? 0.8 : 0.5;
+      const drag = this.inWater ? (this.effects.sea_grace ? 0.86 : 0.8) : 0.5;
       this.vx *= drag; this.vy *= drag; this.vz *= drag;
       this.vy -= 0.02;
       // climb out onto a ledge
@@ -263,6 +264,7 @@ export class Player extends Entity {
         this.stepDist = 0;
         const under = world.getBlock(Math.floor(this.x), Math.floor(this.y - 0.2), Math.floor(this.z));
         if (under) game.audio.blockSound(under, 'step', this.x, this.y, this.z);
+        if (game.vibrate) game.vibrate(this.x, this.y, this.z, this, 'step');
       }
       if (this.sprinting) {
         this.addExhaustion(moved * 0.1);
@@ -332,12 +334,16 @@ export class Player extends Entity {
     }
     if (dist > 1.5 && under) {
       game.audio.blockSound(under, 'step', this.x, this.y, this.z);
+      if (game.vibrate) game.vibrate(this.x, this.y, this.z, this, 'land');
       game.landParticles(this, under, Math.min(30, Math.floor(dist * 3)));
     }
   }
 
   survival(game) {
     const world = game.world;
+    // a turtle shell lends ten seconds of breath after each dip
+    const helm = this.inventory.get(36);
+    if (helm && helm.id === I.turtle_shell && !this.eyesInWaterAt(world)) addEffect(this, 'water_breathing', 0, 200);
     // air
     if (this.eyesInWaterAt(world) && !this.effects.water_breathing) {
       this.air--;

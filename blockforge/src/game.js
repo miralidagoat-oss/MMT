@@ -24,6 +24,9 @@ import { Circuits } from './circuits.js';
 import { installNet } from './net.js';
 import { installBlaster } from './blaster.js';
 import { installFeatures, solidTop } from './features.js';
+import { installFeatures5 } from './features5.js';
+import { installRaids } from './raiders.js';
+import { installFeatures7 } from './features7.js';
 import { isRail, Minecart, Boat } from './vehicles.js';
 import { potionEffect, EFFECTS, addEffect } from './effects.js';
 import { DIM_NAMES } from './dims.js';
@@ -61,6 +64,7 @@ export class Game {
     this.craft3 = new Container(9);
     this.enchantSlot = new Container(1);
     this.anvilSlots = new Container(2); this.loomSlots = new Container(2); this.beaconSlot = new Container(1);
+    this.grindSlots = new Container(2); this.smithSlots = new Container(2);
     this.flicker = 1;
     this.shake = 0;
     this.caveSoundTimer = 600;
@@ -100,7 +104,10 @@ export class Game {
       hooks: {
         onBlockChanged: (...a) => this.onBlockChanged(...a),
         onChunkGenerated: (c, spawns, chests, spawners) => this.onChunkGenerated(c, spawns, chests, spawners),
-        onAnyChange: (...a) => { if (this.net) this.net.onWorldChange(...a); if (!this.demo && !(this.net && this.net.isGuest)) this.circuits.observe(a[0], a[1], a[2]); },
+        onAnyChange: (...a) => {
+          if (this.net) this.net.onWorldChange(...a);
+          if (!this.demo && !(this.net && this.net.isGuest)) { this.circuits.observe(a[0], a[1], a[2]); this.onBlockChange7(a[0], a[1], a[2], a[3]); }
+        },
         onChunkReady: (c) => { if (this.net && this.net.isGuest) this.net.onChunkReady(c); },
         onBaseline: (msg) => { if (this.net && this.net.isHost) this.net.onBaseline(msg); },
       },
@@ -108,7 +115,7 @@ export class Game {
     this.particles.setWorld(this.world);
     this.fluids.clear();
     this.circuits.clear();
-    this._fires = new Set(); this._maps = new Map();
+    this._fires = new Set(); this._maps = new Map(); this.sculks = null;
     this.wyrm = null;
     if (this.player) { this.player.vehicle = null; this.player.fishing = null; }
     this.entities = []; this.items = []; this.orbs = [];
@@ -337,6 +344,9 @@ export class Game {
     this.tickHoppers();
     this.tickBeacons();
     this.tickCauldrons();
+    this.tickFeatures5();
+    this.tickRaids();
+    this.tickFeatures7();
     this.tickFires();
     this.fluids.tick(this.tickCount);
     this.randomTicks();
@@ -544,7 +554,7 @@ export class Game {
       id === B.lever || id === B.stone_button || id === B.oak_button || id === B.repeater || id === B.note_block ||
       id === B.oak_trapdoor || id === B.brewing_stand || id === B.dispenser || id === B.hopper || id === B.cake ||
       id === B.oak_sign || id === B.oak_wall_sign || id === B.comparator || id === B.dropper || id === B.anvil ||
-      id === B.loom || id === B.beacon || id === B.void_chest || id === B.cauldron;
+      id === B.loom || id === B.beacon || id === B.void_chest || id === B.cauldron || this.isInteractive5(hit);
   }
 
   breakSpeed(id) {
@@ -627,6 +637,8 @@ export class Game {
     const b = BLOCKS[id];
     // container contents spill out
     const be = w.blockEntities.get(`${x},${y},${z}`);
+    this.onBlockBroken5(x, y, z, id, meta, be);
+    this.vibrate(x + 0.5, y + 0.5, z + 0.5, this.player, 'break');
     if (be) {
       if (be.slots) for (const s of be.slots) if (s) this.dropItem(x + 0.5, y + 0.5, z + 0.5, s, true);
       // a banner keeps its colour and patterns
@@ -919,6 +931,7 @@ export class Game {
     if (SOLID[id] && !this.spaceFree(tx, ty, tz, 1)) return;
     w.setBlock(tx, ty, tz, id, meta);
     this.audio.blockSound(id, 'place', tx + 0.5, ty + 0.5, tz + 0.5);
+    this.vibrate(tx + 0.5, ty + 0.5, tz + 0.5, this.player, 'place');
     this.startSwing();
     if (!p.creative) p.inventory.useHeld();
     if (id === B.carved_pumpkin || id === B.jack_o_lantern) this.tryBuildGolem(tx, ty, tz);
@@ -1007,7 +1020,7 @@ export class Game {
         this.sleepInBed(hit.x, hit.y, hit.z);
         return true;
       default:
-        return this.useBlockExtra(hit, held);
+        return this.useBlock5(hit, held) || this.useBlockExtra(hit, held);
     }
   }
 
@@ -1031,7 +1044,14 @@ export class Game {
       puff(hit.x, hit.y, hit.z);
       return true;
     }
-    if (id === B.oak_sapling || id === B.birch_sapling || id === B.spruce_sapling) {
+    if (id === B.berry_bush) {
+      const m = w.getMeta(hit.x, hit.y, hit.z) & 3;
+      if (m >= 3) return false;
+      w.setBlock(hit.x, hit.y, hit.z, id, m + 1);
+      puff(hit.x, hit.y, hit.z);
+      return true;
+    }
+    if (id === B.oak_sapling || id === B.birch_sapling || id === B.spruce_sapling || id === B.jungle_sapling || id === B.dark_oak_sapling || id === B.blossom_sapling) {
       puff(hit.x, hit.y, hit.z);
       if (Math.random() < 0.45) this.growTree(hit.x, hit.y, hit.z, id);
       return true;
@@ -1193,6 +1213,7 @@ export class Game {
   // ---------------------------------------------------------------------------
   tickEntities() {
     const p = this.player;
+    this.pathBudget = 3; // path searches allowed this tick, shared by all creatures
     const net = this.net;
     if (net && net.isGuest) net.tickMirrors();
     for (const e of this.entities) {
@@ -1235,7 +1256,7 @@ export class Game {
       if (s.type === 'pylon') { if (this.meta.voidBoss !== 'dead') this.spawnPylon(s); continue; }
       if (this.entities.length > 220) break;
       const home = s.type === 'settler' || s.home ? { x: s.x, y: s.y, z: s.z } : null;
-      const mob = new Mob(s.type, s.x, s.y, s.z, { profession: s.profession, home, persistent: !!s.persistent });
+      const mob = new Mob(s.type, s.x, s.y, s.z, { profession: s.profession, home, persistent: !!s.persistent, variant: s.variant, hive: s.hive });
       if (!boxFree(this.world, mob.x, mob.y, mob.z, mob.w, mob.h) && mob.h > 2) mob.y = Math.ceil(mob.y);
       this.entities.push(mob);
     }
@@ -1243,6 +1264,8 @@ export class Game {
     for (const ch of chests) {
       const key = `${ch.x},${ch.y},${ch.z}`;
       if (w.blockEntities.has(key)) continue;
+      if (ch.banner) { w.blockEntities.set(key, { type: 'banner', base: ch.banner.base, bn: ch.banner.bn }); continue; }
+      if (ch.sculk) { w.blockEntities.set(key, { type: 'sculk', cool: 0 }); this.sculks = null; continue; }
       if (ch.loot === 'trap') { // an arrow trap's dispenser
         const be = { type: 'dispenser', slots: new Array(9).fill(null) };
         be.slots[0] = { id: I.arrow, count: 16 + Math.floor(Math.random() * 16) };
@@ -1377,9 +1400,12 @@ export class Game {
 
   strike(x, y, z) {
     const p = this.player;
+    // a lightning rod nearby takes the bolt
+    const rod = this.rodNear(x, z);
+    if (rod) { x = rod.x + 0.5; y = rod.y + 1; z = rod.z + 0.5; this.rodStruck(rod); }
     this.entities.push(new Lightning(x, y, z));
     this.flash = 1;
-    if (Math.random() < 0.5) this.placeFire(Math.floor(x), Math.floor(y), Math.floor(z));
+    if (!rod && Math.random() < 0.5) this.placeFire(Math.floor(x), Math.floor(y), Math.floor(z));
     const d = Math.hypot(p.x - x, p.z - z);
     setTimeout(() => this.audio.play('thunder', p.x + (x - p.x) * 0.2, p.y, p.z + (z - p.z) * 0.2, Math.max(0.3, 1 - d / 200)), Math.min(3000, d * 8));
     for (const e of [p, ...this.entities]) {
@@ -1510,6 +1536,7 @@ export class Game {
       this.rainTime = 12000 + Math.floor(Math.random() * 168000);
       this.advance('sleep');
       this.wakeUp();
+      this.onNightSkipped();
     } else if (p.sleeping >= 100) this.wakeUp();
   }
 
@@ -1535,6 +1562,10 @@ export class Game {
 
   onMobKilled(mob) {
     if (mob.hostile && mob.lastHitBy === 'player') this.advance('hostile');
+    // an alpaca's pack spills its contents
+    if (mob.pack) for (const st of mob.pack.slots) if (st) this.dropItem(mob.x, mob.y + 0.8, mob.z, st);
+    if (this.onMobKilled5) this.onMobKilled5(mob);
+    this.onMobKilled7(mob);
   }
 
   breed(a, b) {
@@ -1542,6 +1573,12 @@ export class Game {
     a.breedCooldown = b.breedCooldown = 6000;
     const baby = new Mob(a.type, (a.x + b.x) / 2, Math.max(a.y, b.y), (a.z + b.z) / 2, { baby: true });
     baby.growth = BABY_AGE;
+    // babies take after a parent; tame parents have tame young, and foxes trust whoever bred them
+    if (a.variant && b.variant) baby.variant = Math.random() < 0.5 ? a.variant : b.variant;
+    if (a.type === 'sheep') baby.color = Math.random() < 0.5 ? a.color || 0 : b.color || 0;
+    if (a.tamed && b.tamed && a.owner) { baby.tamed = true; baby.owner = a.owner; }
+    if (a.type === 'fox') baby.trusted = this.localName();
+    if (a.type === 'bee') baby.hive = a.hive || b.hive || null;
     this.entities.push(baby);
     for (let i = 0; i < 7; i++) this.particles.heart(baby.x + (Math.random() - 0.5), baby.y + 0.6 + Math.random() * 0.5, baby.z + (Math.random() - 0.5));
     this.spawnXp(baby.x, baby.y + 0.5, baby.z, 1 + Math.floor(Math.random() * 7));
@@ -1710,7 +1747,13 @@ export class Game {
         }
         return;
       }
-      case B.oak_sapling: case B.birch_sapling: case B.spruce_sapling: {
+      case B.berry_bush: {
+        const m = w.getMeta(x, y, z) & 3;
+        const l = w.getLight(x, y + 1, z);
+        if (m < 3 && Math.random() < 0.2 && ((l >> 4) >= 9 || (l & 15) >= 9)) w.setBlock(x, y, z, id, m + 1, { urgent: false });
+        return;
+      }
+      case B.oak_sapling: case B.birch_sapling: case B.spruce_sapling: case B.jungle_sapling: case B.dark_oak_sapling: case B.blossom_sapling: {
         if (Math.random() > 0.12) return;
         const l = w.getLight(x, y, z);
         if ((l >> 4) < 9 && (l & 15) < 9) return;
@@ -1724,7 +1767,7 @@ export class Game {
         if (h < 3 && w.getBlock(x, y + 1, z) === 0 && this.canSurvive(id, 0, x, y + 1, z)) w.setBlock(x, y + 1, z, id, 0, { urgent: false });
         return;
       }
-      case B.oak_leaves: case B.birch_leaves: case B.spruce_leaves: case B.jungle_leaves: case B.dark_oak_leaves:
+      case B.oak_leaves: case B.birch_leaves: case B.spruce_leaves: case B.jungle_leaves: case B.dark_oak_leaves: case B.blossom_leaves:
         if (w.getMeta(x, y, z) === 0 && Math.random() < 0.3) this.checkLeafDecay(x, y, z);
         return;
       case B.ice: {
@@ -1744,6 +1787,7 @@ export class Game {
       }
       case B.daylight_sensor: this.circuits.sensors.add(`${x},${y},${z}`); return;
       default:
+        if (this.randomTick7(x, y, z, id)) return;
         if (BLOCKS[id] && BLOCKS[id].spark) this.circuits.mark(x, y, z);
     }
   }
@@ -1751,8 +1795,8 @@ export class Game {
   checkLeafDecay(x, y, z) {
     const w = this.world;
     const id = w.getBlock(x, y, z);
-    const LEAVES = [B.oak_leaves, B.birch_leaves, B.spruce_leaves, B.jungle_leaves, B.dark_oak_leaves];
-    const LOGS = [B.oak_log, B.birch_log, B.spruce_log, B.jungle_log, B.dark_oak_log];
+    const LEAVES = [B.oak_leaves, B.birch_leaves, B.spruce_leaves, B.jungle_leaves, B.dark_oak_leaves, B.blossom_leaves];
+    const LOGS = [B.oak_log, B.birch_log, B.spruce_log, B.jungle_log, B.dark_oak_log, B.blossom_log];
     if (!LEAVES.includes(id) || w.getMeta(x, y, z) !== 0) return;
     // search through leaves for a log within 6 steps
     const seen = new Set([`${x},${y},${z}`]);
@@ -1778,8 +1822,8 @@ export class Game {
 
   growTree(x, y, z, sapling) {
     const w = this.world;
-    const kind = sapling === B.birch_sapling ? 'birch' : sapling === B.spruce_sapling ? 'spruce' : 'oak';
-    const hgt = kind === 'spruce' ? 9 : 7;
+    const kind = { [B.birch_sapling]: 'birch', [B.spruce_sapling]: 'spruce', [B.jungle_sapling]: 'jungle', [B.dark_oak_sapling]: 'dark_oak', [B.blossom_sapling]: 'blossom' }[sapling] || 'oak';
+    const hgt = kind === 'spruce' || kind === 'jungle' ? 9 : 7;
     for (let dy = 1; dy <= hgt; dy++) {
       const id = w.getBlock(x, y + dy, z);
       if (id && !REPLACEABLE[id] && !BLOCKS[id].name.endsWith('leaves')) return;
@@ -1965,6 +2009,7 @@ export class Game {
       const l = w.getLight(Math.floor(p.x), Math.floor(p.y + 1), Math.floor(p.z));
       if ((l >> 4) === 0 && (l & 15) < 5) this.audio.play('cave', p.x + (Math.random() - 0.5) * 8, p.y, p.z + (Math.random() - 0.5) * 8, 0.8);
     }
+    this.tickAmbientLife();
     // bubbles while submerged
     if (p.eyesInWater && Math.random() < 0.1) this.particles.bubble(p.x, p.y + p.eye - 0.2, p.z);
     // splash when entering water
@@ -2032,7 +2077,7 @@ export class Game {
 
   returnCraftingItems() {
     const p = this.player;
-    for (const c of [this.craft2, this.craft3, this.enchantSlot, this.anvilSlots, this.loomSlots, this.beaconSlot]) {
+    for (const c of [this.craft2, this.craft3, this.enchantSlot, this.anvilSlots, this.loomSlots, this.beaconSlot, this.grindSlots, this.smithSlots]) {
       for (let i = 0; i < c.size; i++) {
         const s = c.get(i);
         if (!s) continue;
@@ -2055,7 +2100,7 @@ export class Game {
     };
     switch ((cmd || '').toLowerCase()) {
       case 'help':
-        return `Commands: /time set <day|noon|night|midnight|ticks>, /time add <ticks>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <${Object.keys(MOB_TYPES).join('|')}>, /weather <clear|rain|thunder>, /xp <amount>[L], /enchant <name> [level], /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor>, /dimension <overworld|underworld|void>, /effect <give|clear> [effect] [seconds] [level], /seed, /spawnpoint, /kill, /heal, /clear, /difficulty <peaceful|normal>`;
+        return `Commands: /time set <day|noon|night|midnight|ticks>, /time add <ticks>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <${Object.keys(MOB_TYPES).join('|')}>, /weather <clear|rain|thunder>, /xp <amount>[L], /enchant <name> [level], /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck>, /dimension <overworld|underworld|void>, /effect <give|clear> [effect] [seconds] [level], /seed, /spawnpoint, /kill, /heal, /clear, /difficulty <peaceful|normal>`;
       case 'time': {
         const named = { day: 1000, noon: 6000, sunset: 12000, night: 13000, midnight: 18000, sunrise: 23000 };
         if (args[0] === 'set') {
@@ -2112,7 +2157,7 @@ export class Game {
           return 'The Void Wyrm rises';
         }
         if (!MOB_TYPES[t]) return `Usage: /summon <${[...Object.keys(MOB_TYPES), 'minecart', 'boat', 'wyrm'].join('|')}>`;
-        const opts = t === 'settler' ? { profession: args[1] || ['farmer', 'smith', 'shepherd', 'scholar'][Math.floor(Math.random() * 4)] } : {};
+        const opts = t === 'settler' ? { profession: args[1] || ['farmer', 'smith', 'shepherd', 'scholar'][Math.floor(Math.random() * 4)] } : args[1] ? { variant: args[1].toLowerCase() } : {};
         this.entities.push(new Mob(t, p.x + dx * 2, p.y, p.z + dz * 2, opts));
         return `Summoned a ${t}`;
       }
@@ -2164,7 +2209,7 @@ export class Game {
           const sp = g.locateSpire(p.x, p.z, 5);
           return sp ? `The nearest spire is at ${sp.x}, ${sp.y}, ${sp.z} (${Math.round(Math.hypot(sp.x - p.x, sp.z - p.z))} blocks away)` : 'No spire found nearby';
         }
-        const LM = { mineshaft: 'mineshaft', temple: 'sun_temple', sun_temple: 'sun_temple', shrine: 'jungle_shrine', jungle_shrine: 'jungle_shrine', hut: 'swamp_hut', swamp_hut: 'swamp_hut', citadel: 'tide_citadel', tide_citadel: 'tide_citadel', manor: 'manor' };
+        const LM = { mineshaft: 'mineshaft', temple: 'sun_temple', sun_temple: 'sun_temple', shrine: 'jungle_shrine', jungle_shrine: 'jungle_shrine', hut: 'swamp_hut', swamp_hut: 'swamp_hut', citadel: 'tide_citadel', tide_citadel: 'tide_citadel', manor: 'manor', outpost: 'outpost', igloo: 'igloo', shipwreck: 'shipwreck' };
         if (LM[what]) {
           const lm = this.world.gen.landmarks;
           if (!lm) return 'Nothing like that in this dimension';
@@ -2172,7 +2217,7 @@ export class Game {
           if (!s) return `No ${LANDMARKS[LM[what]].name.toLowerCase()} found nearby`;
           return `The nearest ${LANDMARKS[LM[what]].name.toLowerCase()} is at ${s.x}, ${s.y}, ${s.z} (${Math.round(Math.hypot(s.x - p.x, s.z - p.z))} blocks away)`;
         }
-        if (what !== 'village') return 'Usage: /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor>';
+        if (what !== 'village') return 'Usage: /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck>';
         const vs = this.world.gen.villages;
         if (!vs) return 'There are no villages in this dimension';
         const v = vs.locate(p.x, p.z, 8);
@@ -2276,6 +2321,7 @@ export class Game {
       underwater, inLava, renderDist: this.demo ? Math.min(8, s.renderDistance) : s.renderDistance,
       gamma: s.brightness / 100, flicker: this.flicker, dim: this.dim, flash: this.flash,
       nightVision: p && p.effects.night_vision ? Math.min(1, p.effects.night_vision.time / 100) : 0,
+      darkness: this.darknessLevel(p),
     });
     const scene = {
       cam, env: this.env, chunks: this.world.chunks.values(), renderDist: this.demo ? Math.min(8, s.renderDistance) : s.renderDistance,
@@ -2304,12 +2350,15 @@ export class Game {
     }
     this.ui.frame(dt, {
       underwater, inLava, portal: this.portalProgress, sleep: p && p.sleeping ? Math.min(1, p.sleeping / 60) : 0,
-      boss: this.wyrm && !this.wyrm.removed && Math.hypot(this.wyrm.x - p.x, this.wyrm.z - p.z) < 200 ? { name: 'Void Wyrm', f: this.wyrm.health / this.wyrm.maxHealth } : null,
+      boss: this.raidBar() || this.wyrm && !this.wyrm.removed && Math.hypot(this.wyrm.x - p.x, this.wyrm.z - p.z) < 200 ? { name: 'Void Wyrm', f: this.wyrm.health / this.wyrm.maxHealth } : null,
     });
     if (p && p.dead) this.deadTicks = (this.deadTicks || 0) + dt * 20; else this.deadTicks = 0;
   }
 }
 
 installFeatures(Game);
+installFeatures5(Game);
+installRaids(Game, Mob);
+installFeatures7(Game);
 installNet(Game);
 installBlaster(Game);

@@ -200,6 +200,11 @@ export class Villages {
     const y = p.y;
     // every village has an iron sentinel keeping watch beside the well
     if (out) out.spawns.push({ type: 'sentinel', x: p.x0 - 1.5, y: y + 1, z: p.z0 + 2, persistent: true, home: true });
+    // and a stray cat or two about the square
+    if (out) {
+      out.spawns.push({ type: 'cat', x: p.x0 + 5.5, y: y + 1, z: p.z0 - 1.5, persistent: true });
+      if ((v.seed & 3) === 1) out.spawns.push({ type: 'cat', x: p.x0 - 2.5, y: y + 1, z: p.z0 + 5.5, persistent: true });
+    }
     for (let dx = 0; dx < 4; dx++) for (let dz = 0; dz < 4; dz++) {
       const x = p.x0 + dx, z = p.z0 + dz;
       const edge = dx === 0 || dz === 0 || dx === 3 || dz === 3;

@@ -14,6 +14,7 @@ export const SHAPE = {
   BUTTON: 10, PLATE: 11, REPEATER: 12, TRAPDOOR: 13, PISTON: 14, PISTON_HEAD: 15, LEVER: 16, BREWING: 17,
   SENSOR: 18, STAR_FRAME: 19, PANE: 20, STALK: 21, CAKE: 22, LANTERN: 23, SIGN: 24, HOPPER: 25, ROD: 26, EGG: 27,
   COMPARATOR: 28, ANVIL: 29, BEACON: 30, BANNER: 31, CAULDRON: 32,
+  GRINDSTONE: 33, COMPOSTER: 34, LECTERN: 35, PETALS: 36, SCULK_SENSOR: 37, SHRIEKER: 38,
 };
 
 // Lever/button meta: bits 0-2 attach (0 floor, 1 wall at -X, 2 wall at +X, 3 wall at -Z, 4 wall at +Z,
@@ -181,6 +182,68 @@ export function shapeBoxes(ctx, id, meta, get) {
       const t = ctx.bedTex(head, f);
       return [box(0, 0, 0, 16, 9, 16, t.faces, t.rot)];
     }
+    case SHAPE.GRINDSTONE: {
+      const f = meta & 3;
+      const fn = (p) => rotY(p, f);
+      const wheel = ctx.tex('grindstone_wheel'), side = ctx.tex('grindstone_side'), leg = all6(ctx.tex('grindstone_leg'));
+      // the wheel turns on an axle between two legs; its round faces point sideways
+      return [
+        orientBox([2, 0, 6, 4, 7, 10], leg, fn, 'ry' + f), orientBox([12, 0, 6, 14, 7, 10], leg, fn, 'ry' + f),
+        orientBox([2, 7, 5, 4, 13, 11], leg, fn, 'ry' + f), orientBox([12, 7, 5, 14, 13, 11], leg, fn, 'ry' + f),
+        orientBox([4, 4, 2, 12, 16, 14], [side, side, wheel, wheel, side, side], fn, 'ry' + f),
+      ];
+    }
+    case SHAPE.COMPOSTER: {
+      const side = ctx.tex('composter_side'), top = ctx.tex('composter_top'), bot = ctx.tex('composter_bottom');
+      const inner = side;
+      const out = [
+        box(0, 0, 0, 16, 16, 2, [top, bot, side, side, side, inner]), box(0, 0, 14, 16, 16, 16, [top, bot, side, side, inner, side]),
+        box(0, 0, 2, 2, 16, 14, [top, bot, inner, side, side, side]), box(14, 0, 2, 16, 16, 14, [top, bot, side, inner, side, side]),
+        box(2, 0, 2, 14, 2, 14, [bot, bot, bot, bot, bot, bot]),
+      ];
+      const lvl = Math.min(8, meta & 15);
+      if (lvl) out.push(box(2, 2, 2, 14, lvl >= 8 ? 15 : 2 + lvl * 1.6, 14, all6(ctx.tex(lvl >= 8 ? 'compost_ready' : 'compost'))));
+      return out;
+    }
+    case SHAPE.LECTERN: {
+      const f = meta & 3, book = meta & 4;
+      const fn = (p) => rotY(p, f);
+      const side = ctx.tex('lectern_side'), base = ctx.tex('lectern_base'), front = ctx.tex('lectern_front'), top = ctx.tex('lectern_top');
+      const out = [
+        orientBox([0, 0, 0, 16, 2, 16], [base, base, base, base, base, base], fn, 'ry' + f),
+        orientBox([4, 2, 4, 12, 13, 12], [side, side, side, side, side, front], fn, 'ry' + f),
+      ];
+      // the reading desk slopes up toward the back
+      const slant = (h, lift, t) => {
+        const pts = [];
+        for (let k = 0; k < 8; k++) {
+          const x = k & 1 ? h[3] : h[0], z = k & 4 ? h[5] : h[2];
+          const y = (k & 2 ? h[4] : h[1]) + lift * (z - h[2]) / (h[5] - h[2]);
+          pts.push(fn([x, y, z]));
+        }
+        return { pts, uvb: h, t };
+      };
+      out.push(slant([0, 11, 0, 16, 14, 16], 3, [top, base, side, side, side, side]));
+      if (book) out.push(slant([3, 14, 2, 13, 15, 14], 2.6, all6(ctx.tex('lectern_book'))));
+      return out;
+    }
+    case SHAPE.PETALS: return [box(0, 0, 0, 16, 1, 16, all6(ctx.tex('petals')))];
+    case SHAPE.SCULK_SENSOR: {
+      const top = ctx.tex('sculk_sensor_top'), side = ctx.tex('sculk_sensor_side');
+      const td = all6(ctx.tex(meta >> 4 ? 'sculk_sensor_tendril_on' : 'sculk_sensor_tendril'));
+      return [
+        box(0, 0, 0, 16, 8, 16, [top, side, side, side, side, side]),
+        box(3, 8, 3, 5, 16, 5, td), box(11, 8, 3, 13, 16, 5, td), box(3, 8, 11, 5, 16, 13, td), box(11, 8, 11, 13, 16, 13, td),
+      ];
+    }
+    case SHAPE.SHRIEKER: {
+      const top = ctx.tex('sculk_shrieker_top'), side = ctx.tex('sculk_shrieker_side'), sc = ctx.tex('sculk');
+      const bone = all6(side);
+      return [
+        box(0, 0, 0, 16, 8, 16, [top, sc, sc, sc, sc, sc]),
+        box(1, 8, 1, 15, 15, 3, bone), box(1, 8, 13, 15, 15, 15, bone), box(1, 8, 3, 3, 15, 13, bone), box(13, 8, 3, 15, 15, 13, bone),
+      ];
+    }
     case SHAPE.FLAT15: return [box(0, 0, 0, 16, 15, 16)];
     case SHAPE.TABLE12: return [box(0, 0, 0, 16, 12, 16)];
     case SHAPE.SINK14: return [box(0, 0, 0, 16, 16, 16)];
@@ -288,7 +351,7 @@ export function shapeBoxes(ctx, id, meta, get) {
     }
     case SHAPE.LANTERN: {
       const hang = meta & 1, o = hang ? 1 : 0;
-      const lt = ctx.tex('lantern');
+      const lt = ctx.tex(id === ctx.id('wisp_lantern') ? 'wisp_lantern' : 'lantern');
       const uo = [[-5, -5], [-5, -5], [0, 0], [0, 0], [0, 0], [0, 0]];
       const out = [
         { b: [5, o, 5, 11, 7 + o, 11], t: all6(lt), r: null, uo },
@@ -311,6 +374,11 @@ export function shapeBoxes(ctx, id, meta, get) {
     case SHAPE.ROD: {
       const f = meta & 7;
       const fn = (p) => facingPoint(p, f);
+      if (id === ctx.id('lightning_rod')) {
+        // a copper rod with a bulb at its tip
+        const t = all6(ctx.tex('lightning_rod'));
+        return [orientBox([7, 0, 7, 9, 12, 9], t, fn, 'f6' + f), orientBox([6, 12, 6, 10, 16, 10], t, fn, 'f6' + f)];
+      }
       const t = all6(ctx.tex('glow_rod'));
       return [orientBox([7, 1, 7, 9, 16, 9], t, fn, 'f6' + f), orientBox([6, 0, 6, 10, 1, 10], t, fn, 'f6' + f)];
     }
@@ -394,6 +462,8 @@ export function collisionBoxes(ctx, id, meta, get) {
     return [r.map((v) => v / 16)];
   }
   if (kind === SHAPE.SINK14) return [[0, 0, 0, 1, 14 / 16, 1]];
+  if (kind === SHAPE.LECTERN) return [[0, 0, 0, 1, 2 / 16, 1], [4 / 16, 0, 4 / 16, 12 / 16, 15 / 16, 12 / 16]];
+  if (kind === SHAPE.COMPOSTER) return [[0, 0, 0, 1, 2 / 16, 1], [0, 0, 0, 1, 1, 2 / 16], [0, 0, 14 / 16, 1, 1, 1], [0, 0, 0, 2 / 16, 1, 1], [14 / 16, 0, 0, 1, 1, 1]];
   if (kind === SHAPE.PANE) {
     // thin full-height bars along each connection
     return shapeBoxes(ctx, id, meta, get).map((b) => b.b.map((v) => v / 16));

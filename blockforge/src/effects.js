@@ -16,6 +16,10 @@ export const EFFECTS = {
   jump_boost: { name: 'Leaping', color: [120, 230, 90], good: true },
   slow_falling: { name: 'Slow Falling', color: [240, 220, 200], good: true },
   absorption: { name: 'Absorption', color: [240, 200, 60], good: true },
+  sea_grace: { name: 'Sea Grace', color: [80, 170, 230], good: true },
+  ill_omen: { name: 'Ill Omen', color: [40, 70, 40] },
+  village_hero: { name: 'Village Hero', color: [70, 200, 90], good: true },
+  darkness: { name: 'Darkness', color: [34, 38, 52] },
   instant_health: { name: 'Healing', color: [250, 80, 90], good: true, instant: true },
   instant_damage: { name: 'Harming', color: [90, 20, 40], instant: true },
 };
@@ -67,7 +71,8 @@ export const fmtTime = (ticks) => {
 const BASE = () => ({
   [I.sugar]: 'swiftness', [I.ember_dust]: 'strength', [I.glistering_melon]: 'healing', [I.crawler_eye]: 'poison',
   [I.imp_horn]: 'regeneration', [I.golden_carrot]: 'night_vision', [I.pufferfish]: 'water_breathing',
-  [B.magma_rock]: 'fire_resistance', [I.feather]: 'slow_falling', [I.string]: 'leaping',
+  [B.magma_rock]: 'fire_resistance', [I.feather]: 'slow_falling', [I.string]: 'leaping', [I.rabbit_foot]: 'leaping',
+  [I.scute]: 'water_breathing',
 });
 const CORRUPT = { swiftness: 'slowness', leaping: 'slowness', healing: 'harming', poison: 'harming', night_vision: 'invisibility', strength: 'weakness', regeneration: 'weakness' };
 let baseMap = null;

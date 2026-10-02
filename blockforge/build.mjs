@@ -50,9 +50,11 @@ ${app}
 ${scripts}
 `;
 
-mkdirSync('dist', { recursive: true });
-writeFileSync('dist/blockforge.html', page);
-writeFileSync('dist/artifact.html', fragment);
+// BF_OUT writes somewhere else (handy while tests are reading dist/)
+const OUT = process.env.BF_OUT || 'dist';
+mkdirSync(OUT, { recursive: true });
+writeFileSync(`${OUT}/blockforge.html`, page);
+writeFileSync(`${OUT}/artifact.html`, fragment);
 const kb = (s) => (Buffer.byteLength(s) / 1024).toFixed(0) + ' KB';
-console.log(`dist/blockforge.html ${kb(page)} (main ${kb(mainSrc)}, worker ${kb(workerSrc)})`);
-console.log(`dist/artifact.html ${kb(fragment)}`);
+console.log(`${OUT}/blockforge.html ${kb(page)} (main ${kb(mainSrc)}, worker ${kb(workerSrc)})`);
+console.log(`${OUT}/artifact.html ${kb(fragment)}`);

@@ -183,6 +183,36 @@ item('tide_crystal');
 export const BANNER_COLORS = ['white', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black'];
 BANNER_COLORS.forEach((c, i) => item(`${c}_banner`, { maxStack: 16, banner: i }));
 
+// --- round five ---
+item('sweet_berries', { food: [2, 0.4], plantsOn: 'berry_bush' });
+item('honeycomb');
+item('honey_bottle', { maxStack: 16, food: [6, 1.2], drink: true, leaves: 'glass_bottle' });
+BANNER_COLORS.forEach((c, i) => item(`${c}_dye`, { dye: i }));
+item('enchanted_book', { maxStack: 1 });
+item('starsteel_scrap');
+item('starsteel_ingot');
+for (const type of ['pickaxe', 'axe', 'shovel', 'sword', 'hoe']) {
+  item(`starsteel_${type}`, { maxStack: 1, durability: 2031, tool: { type, tier: 4, speed: 9 }, damage: type === 'hoe' ? 1 : TOOL_BASE_DMG[type] + 4, fireproof: true });
+}
+ARMOR_MATS.starsteel = { pts: [3, 8, 6, 3], tough: 3, dur: 37, color: [74, 64, 96] };
+ARMOR_PIECES.forEach((piece, slot) => {
+  item(`starsteel_${piece}`, { maxStack: 1, durability: ARMOR_BASE_DUR[slot] * 37, armor: { slot, points: ARMOR_MATS.starsteel.pts[slot], tough: 3, mat: 'starsteel' }, fireproof: true });
+});
+
+// --- round six ---
+item('lead');
+item('journal', { maxStack: 1, display: 'Journal and Quill' });
+item('written_journal', { maxStack: 16, display: 'Written Journal' });
+item('raw_rabbit', { food: [3, 1.8] });
+item('cooked_rabbit', { food: [5, 6] });
+item('rabbit_hide');
+item('rabbit_foot', { display: "Rabbit's Foot" });
+item('goat_horn', { maxStack: 1 });
+item('scute');
+ARMOR_MATS.turtle = { pts: [2, 0, 0, 0], tough: 0, dur: 25, color: [72, 140, 64] };
+item('turtle_shell', { maxStack: 1, durability: 275, armor: { slot: 0, points: 2, tough: 0, mat: 'turtle' } });
+item('ink_sac');
+
 // Shaped blocks shown with their own sprite in the inventory and in hand.
 for (const b of BLOCKS) {
   if (!b || !b.item || !b.icon || b.icon === 'cube' || !ITEMS[b.id]) continue;
@@ -202,6 +232,7 @@ const BLOCK_FUEL = {
   spruce_log: 300, crafting_table: 300, bookshelf: 300, chest: 300, ladder: 300,
   jungle_planks: 300, jungle_log: 300, dark_oak_planks: 300, dark_oak_log: 300, jungle_sapling: 100, dark_oak_sapling: 100, loom: 300,
   oak_sapling: 100, birch_sapling: 100, spruce_sapling: 100, coal_block: 16000,
+  blossom_planks: 300, blossom_log: 300, blossom_sapling: 100, beehive: 300, composter: 300, lectern: 300, smithing_table: 300,
 };
 for (const [n, v] of Object.entries(BLOCK_FUEL)) ITEMS[B[n]].fuel = v;
 
@@ -397,6 +428,43 @@ shaped(['SS', 'SS'], { S: 'sandstone' }, 'chiseled_sandstone', 4);
 
 for (const c of BANNER_COLORS) shaped(['WWW', 'WWW', ' S '], { W: `${c}_wool`, S: 'stick' }, `${c}_banner`);
 
+// round five
+const ALL_PLANKS = [...PLANKS, 'blossom_planks'];
+shapeless(['blossom_log'], 'blossom_planks', 4);
+shaped(['PPP', 'HHH', 'PPP'], { P: ALL_PLANKS, H: 'honeycomb' }, 'beehive');
+shaped(['SCS', 'P P'], { S: 'stick', C: 'stone_slab', P: ALL_PLANKS }, 'grindstone');
+shaped(['II', 'PP', 'PP'], { I: 'iron_ingot', P: ALL_PLANKS }, 'smithing_table');
+shaped(['P P', 'P P', 'PPP'], { P: 'oak_slab' }, 'composter');
+shaped(['SSS', ' B ', ' S '], { S: 'oak_slab', B: 'bookshelf' }, 'lectern');
+shaped(['III', 'ICI', 'DRD'], { I: 'iron_ingot', C: 'crafting_table', D: 'spark_dust', R: 'dropper' }, 'crafter');
+shaped(['SS', 'SS'], { S: 'starsteel_ingot' }, 'starsteel_block');
+shaped(['SSS', 'SSS', 'SSS'], { S: 'starsteel_ingot' }, 'starsteel_block');
+shapeless(['starsteel_block'], 'starsteel_ingot', 9);
+shapeless(['starsteel_scrap', 'starsteel_scrap', 'starsteel_scrap', 'starsteel_scrap', 'gold_ingot', 'gold_ingot', 'gold_ingot', 'gold_ingot'], 'starsteel_ingot');
+shapeless(['honey_bottle'], 'sugar', 3);
+// dyes from flowers and the like, and mixed dyes
+shapeless(['poppy'], 'red_dye');
+shapeless(['dandelion'], 'yellow_dye', 2);
+shapeless(['cornflower'], 'blue_dye');
+shapeless(['bone_meal'], 'white_dye');
+shapeless(['coal'], 'black_dye', 2);
+shapeless(['charcoal'], 'black_dye', 2);
+shapeless(['red_dye', 'yellow_dye'], 'orange_dye', 2);
+shapeless(['red_dye', 'blue_dye'], 'purple_dye', 2);
+shapeless(['petals'], 'red_dye');
+shapeless(['ink_sac'], 'black_dye');
+shaped(['SS ', 'SL ', '  S'], { S: 'string', L: 'leather' }, 'lead', 2);
+shapeless(['book', 'feather', 'ink_sac'], 'journal');
+shapeless(['book', 'feather', 'black_dye'], 'journal');
+shaped(['HH', 'HH'], { H: 'rabbit_hide' }, 'leather');
+shaped(['SSS', 'S S'], { S: 'scute' }, 'turtle_shell');
+// wool takes any colour: one with a dye, or eight around one
+for (const c of BANNER_COLORS) {
+  const others = BANNER_COLORS.filter((o) => o !== c).map((o) => `${o}_wool`);
+  shapeless(['white_wool', `${c}_dye`], `${c}_wool`);
+  shaped(['WWW', 'WDW', 'WWW'], { W: ['white_wool', ...others], D: `${c}_dye` }, `${c}_wool`, 8);
+}
+
 // Match a crafting grid (array of item ids or 0, size n*n) against recipes.
 export function matchRecipe(grid, n) {
   // bounding box of non-empty cells
@@ -448,5 +516,6 @@ export const SMELTING = new Map([
   [B.spark_ore, I.spark_dust], [I.raw_silverfin, I.cooked_silverfin], [I.raw_rosefin, I.cooked_rosefin],
   [I.void_fruit, I.popped_void_fruit], [B.jungle_log, I.charcoal], [B.dark_oak_log, I.charcoal],
   [B.red_sand, B.glass], [B.wet_sponge, B.sponge],
+  [B.starsteel_ore, I.starsteel_scrap], [I.raw_rabbit, I.cooked_rabbit], [B.cactus, I.green_dye], [B.blossom_log, I.charcoal],
 ]);
 export const fuelValue = (id) => (ITEMS[id] && ITEMS[id].fuel) || 0;

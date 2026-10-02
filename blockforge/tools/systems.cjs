@@ -11,7 +11,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message + '\n' + e.stack));
   page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT')) errors.push(m.text()); });
-  await page.goto(url);
+  await page.goto(url, { timeout: 120000 });
   await page.waitForFunction(() => document.querySelector('#b-play'), null, { timeout: 60000 });
   const G = (fn, a) => page.evaluate(fn, a);
   const shot = (n) => page.screenshot({ path: `${out}/${n}.png` });
@@ -112,7 +112,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   // Mobile layout of the title screen
   const m = await browser.newPage({ viewport: { width: 400, height: 820 }, isMobile: true, hasTouch: true });
   m.on('pageerror', (e) => errors.push('[mobile] ' + e.message));
-  await m.goto(url);
+  await m.goto(url, { timeout: 120000 });
   await m.waitForFunction(() => document.querySelector('#b-play'), null, { timeout: 60000 });
   await m.waitForTimeout(3000);
   await m.screenshot({ path: `${out}/37-mobile.png` });

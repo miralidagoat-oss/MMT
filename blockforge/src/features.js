@@ -96,6 +96,7 @@ const methods = {
   playNote(x, y, z) {
     const w = this.world;
     if (SOLID[w.getBlock(x, y + 1, z)]) return;
+    this.lastNote = { x, y, z, t: this.tickCount }; // parrots dance to it
     const pitch = w.getMeta(x, y, z) & 31;
     const below = BLOCKS[w.getBlock(x, y - 1, z)];
     const inst = (below && (below.id === B.gold_block ? 'bell' : INSTRUMENT[below.sound])) || 'harp';
@@ -265,6 +266,8 @@ const methods = {
   // cauldron's water, a cake's slices; -1 for blocks that give no reading.
   measureBlock(x, y, z, id) {
     const w = this.world;
+    const m5 = this.measureBlock5(x, y, z, id);
+    if (m5 >= 0) return m5;
     if (id === B.cauldron) return w.getMeta(x, y, z) & 3;
     if (id === B.cake) return (7 - (w.getMeta(x, y, z) & 7)) * 2;
     if (id === B.chest || id === B.dispenser || id === B.dropper || id === B.hopper || id === B.furnace || id === B.furnace_lit || id === B.brewing_stand || id === B.void_chest) {
@@ -530,6 +533,7 @@ const methods = {
 
   useItemFirst(held, hit) {
     const p = this.player, w = this.world;
+    if (this.useItem7(held, hit) || this.useItem5(held, hit)) return true;
     const d = ITEMS[held.id];
     const [ex, ey, ez] = this.eyePos();
     const [dx, dy, dz] = this.lookDir();

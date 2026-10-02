@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 const PORT = +(process.argv[2] || process.env.PORT || 8787);
 const here = path.dirname(fileURLToPath(import.meta.url));
-const PAGE = path.join(here, '..', 'dist', 'blockforge.html');
+const PAGE = process.env.BF_PAGE || path.join(here, '..', 'dist', 'blockforge.html');
 const MAX_MESSAGE = 256 * 1024;
 
 const rooms = new Map(); // name -> Map(id -> client)

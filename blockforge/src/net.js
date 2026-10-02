@@ -10,8 +10,10 @@
 // outbox the host acknowledges. That works even where a viewer may only set
 // presence. The host answers with broadcast messages.
 //
-// Transports: the claude.ai room of a shared artifact, other tabs of this
+// Transports: direct online connections between friends anywhere
+// (online.js), the claude.ai room of a shared artifact, other tabs of this
 // browser (BroadcastChannel), or a tiny relay server (tools/relay.mjs).
+// The length of a room code says which one it belongs to.
 import { B, BLOCKS, isLiquid } from './blocks.js';
 import { ITEMS, I } from './items.js';
 import { Mob, ItemEntity, Projectile, PrimedCrate, FallingBlock, Lightning, MOB_TYPES } from './entities.js';
@@ -22,6 +24,7 @@ import { makeTrades } from './loot.js';
 import { ItemFrame, Painting } from './decor.js';
 import { CHUNK_VOLUME, chunkKey } from './constants.js';
 import { STATE } from './world.js';
+import { OnlineLink } from './online.js';
 
 export const NET_VERSION = 1;
 // event topics the host sends on (declared for the claude.ai room)
@@ -31,12 +34,16 @@ const r2 = (v) => Math.round(v * 100) / 100;
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const randomId = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 
-export function makeCode() {
+export function makeCode(n = 5) {
   const a = 'abcdefghjkmnpqrstuvwxyz23456789';
   let s = '';
-  for (let i = 0; i < 5; i++) s += a[Math.floor(Math.random() * a.length)];
+  for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)];
   return s;
 }
+// What players type: case, spaces and dashes don't matter.
+export const cleanCode = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+// Shown in groups of four so it reads aloud easily.
+export const showCode = (c) => (c && c.length === 8 ? c.slice(0, 4) + '-' + c.slice(4) : c || '');
 
 function b64(u8) {
   let s = '';
@@ -70,12 +77,15 @@ function unpackDiff(str) {
 //   peers() -> [{ peer, isMe, presence }], onPeers(fn), connected(), close()
 
 class ClaudeLink {
-  constructor(api) { this.api = api; this.kind = 'claude'; this.label = 'Everyone viewing this page'; this.limited = true; }
+  constructor(api) { this.api = api; this.kind = 'claude'; this.label = 'People viewing this claude.ai page'; this.limited = true; }
+  makeCode() { return makeCode(5); }
+  accepts(code) { return code.length === 5; }
   static async create() {
     const c = globalThis.claude;
     if (!c || typeof c.use !== 'function') return null;
     try {
-      const room = await Promise.race([c.use('room'), new Promise((res) => setTimeout(() => res(null), 10500))]);
+      // the page's room answers within a second or so where it exists; don't hold menus up for long
+      const room = await Promise.race([c.use('room'), new Promise((res) => setTimeout(() => res(null), 3000))]);
       return room ? new ClaudeLink(room) : null;
     } catch { return null; }
   }
@@ -110,6 +120,8 @@ class ClaudeRoom {
 
 class ChannelLink {
   constructor() { this.kind = 'tabs'; this.label = 'Other tabs in this browser'; this.me = randomId(); this.limited = false; }
+  makeCode() { return makeCode(6); }
+  accepts(code) { return code.length === 6; }
   static create() { return typeof BroadcastChannel === 'function' ? new ChannelLink() : null; }
   async open(name) { return new ChannelRoom('blockforge:' + (name || 'lobby'), this.me); }
 }
@@ -133,7 +145,8 @@ class ChannelRoom {
   sweep() {
     const now = Date.now();
     let ch = false;
-    for (const [k, v] of this.peerMap) if (now - v.seen > 5000) { this.peerMap.delete(k); ch = true; }
+    // a tab busy loading a dimension can miss a few beats
+    for (const [k, v] of this.peerMap) if (now - v.seen > 15000) { this.peerMap.delete(k); ch = true; }
     if (ch) this.changed();
   }
   changed() { const list = this.peers(); for (const f of this.peerFns) f(list); }
@@ -187,6 +200,8 @@ class SocketRoom {
 // The connections this page can make, best first.
 export async function availableLinks(relayUrl) {
   const out = [];
+  const o = OnlineLink.create();
+  if (o) out.push(o);
   const c = await ClaudeLink.create();
   if (c) out.push(c);
   const t = ChannelLink.create();
@@ -268,6 +283,29 @@ export class RemotePlayer {
 }
 
 // ---------------------------------------------------------------------------
+// How a creature looks right now, beyond its pose: coat, tameness, dye,
+// what it carries. Only what is set is sent.
+function mobLook(e) {
+  const o = {};
+  if (e.variant) o.v = e.variant;
+  if (e.tamed) o.t = 1;
+  if (e.sitting) o.s = 1;
+  if (e.saddled) o.d = 1;
+  if (e.color) o.c = e.color;
+  if (e.held) o.h = e.held.id;
+  if (e.sleeping) o.z = 1;
+  if (e.pack) o.p = 1;
+  if (e.flying) o.f = 1;
+  if (e.perch) o.r = 1;
+  if (e.dancing > 0) o.n = 1;
+  if (e.stung) o.g = 1;
+  if (e.customName) o.m = e.customName;
+  if (e.celebrating) o.e = 1;
+  if (e.type === 'dolphin' && e.pitchSwim) o.w = Math.round(e.pitchSwim * 10) / 10;
+  if (e.leash) o.l = e.leash.kind === 'knot' ? [e.leash.x, e.leash.y, e.leash.z] : e.leash.name;
+  return Object.keys(o).length ? o : 0;
+}
+
 // Entity snapshots (host -> guests).
 function entityEntry(e, ctrl) {
   if (e instanceof Mob) {
@@ -283,7 +321,8 @@ function entityEntry(e, ctrl) {
     if (e.aim > 0) f |= 256;
     if (e.effects && e.effects.invisibility) f |= 512;
     const out = ['m', e.id, e.type, r2(e.x), r2(e.y), r2(e.z), r3(e.bodyYaw), r3(e.headYaw), r3(e.headPitch), f];
-    if (e.profession || e.armor) out.push(e.profession || 0, e.armor || 0);
+    const look = mobLook(e);
+    if (e.profession || e.armor || look) out.push(e.profession || 0, e.armor || 0, look);
     return out;
   }
   if (e instanceof ItemEntity) return ['i', e.id, r2(e.x), r2(e.y), r2(e.z), e.stack.id, e.stack.count, e.stack.ench ? 1 : 0];
@@ -312,9 +351,9 @@ function makeMirror(en) {
   let e = null;
   switch (k) {
     case 'm': {
-      const [, , type, x, y, z, , , , f, prof, armor] = en;
+      const [, , type, x, y, z, , , , f, prof, armor, look] = en;
       if (!MOB_TYPES[type]) return null;
-      e = new Mob(type, x, y, z, { profession: prof || null, armor: armor || null, baby: !!(f & 2) });
+      e = new Mob(type, x, y, z, { profession: prof || null, armor: armor || null, baby: !!(f & 2), variant: (look && look.v) || null });
       e.bodyYaw = e.yaw = e.pyaw = en[6];
       break;
     }
@@ -354,6 +393,14 @@ function updateMirror(e, en) {
       if (f & 128 && !e.hurtTime) e.hurtTime = 10;
       e.aim = f & 256 ? 10 : 0;
       e.effects = f & 512 ? { invisibility: { amp: 0, time: 20 } } : null;
+      const look = en[12] || {};
+      if (look.v) e.variant = look.v;
+      e.tamed = !!look.t; e.sitting = !!look.s; e.saddled = !!look.d; e.color = look.c || 0;
+      e.held = look.h ? { id: look.h, count: 1 } : null;
+      e.sleeping = !!look.z; e.pack = look.p ? { type: 'pack', slots: [] } : null;
+      e.flying = !!look.f; e.perch = look.r ? e.perch || {} : null; e.dancing = look.n ? 10 : 0;
+      e.stung = !!look.g; e.customName = look.m || null; e.celebrating = !!look.e; e.pitchSwim = look.w || 0;
+      e.leash = Array.isArray(look.l) ? { kind: 'knot', x: look.l[0] | 0, y: look.l[1] | 0, z: look.l[2] | 0 } : typeof look.l === 'string' ? { kind: 'player', name: look.l } : null;
       break;
     }
     case 'i': e.tx = en[2]; e.ty = en[3]; e.tz = en[4]; e.stack.id = en[5]; e.stack.count = en[6]; break;
@@ -410,6 +457,7 @@ function tickMirror(e, game) {
     if (e.swing > 0) e.swing--;
     if (e.dead) { e.deathTime++; if (e.deathTime >= 20) { e.removed = true; game.particles.poof(e.x, e.y, e.z, e.w, e.h); } }
     if (e.type === 'chicken') e.wingFlap = Math.abs(e.y - e.py) > 0.01 ? e.wingFlap + 0.6 : e.wingFlap * 0.7;
+    if (e.def.flier) e.wingFlap = e.flying ? (e.wingFlap || 0) + 1.1 : (e.wingFlap || 0) * 0.7;
     if (e.fire > 0 && Math.random() < 0.4) game.particles.flame(e.x + (Math.random() - 0.5) * e.w * 2, e.y + Math.random() * e.h, e.z + (Math.random() - 0.5) * e.w * 2);
     if (e.love > 0 && e.age % 10 === 0) game.particles.heart(e.x, e.y + e.h + 0.2, e.z);
   } else if (e.isWyrm) {
@@ -927,6 +975,13 @@ export class NetSession {
     const stand = Object.create(g);
     stand.player = rp;
     stand.replaceHeld = (stack) => this.event(peer, { t: 'held', op: 'set', stack });
+    // what the guest tames is theirs; messages go to them, not the host's screen
+    stand.localName = () => rp.name;
+    stand.ui = Object.assign(Object.create(g.ui), {
+      message: (text, color) => this.event(peer, { t: 'msg', text: String(text), color }),
+      openScreen: () => this.event(peer, { t: 'msg', text: 'Only the host can open that for now.' }),
+    });
+    stand.advance = () => {};
     const res = e.interact(stand, d.held ? { id: d.held, count: 1 } : null);
     if (res === 'consume') this.event(peer, { t: 'held', op: 'consume' });
     else if (res === 'damage_tool') this.event(peer, { t: 'held', op: 'damage' });
@@ -1271,6 +1326,7 @@ export class NetSession {
         break;
       }
       case 'xp': p.addXp(g, d.n | 0); break;
+      case 'msg': if (typeof d.text === 'string') g.ui.message(d.text.slice(0, 200), typeof d.color === 'string' ? d.color : undefined); break;
       case 'trades': {
         const m = g.entities.find((e) => e.netId === d.id);
         if (!m || !Array.isArray(d.trades)) break;
@@ -1306,7 +1362,6 @@ export class NetSession {
       case 'travel': if (this.isGuest) { this.travelling = d.dim; g.ui.message('The host is travelling…', '#c8b8f0'); } break;
       case 'arrive': if (this.isGuest && this.onHostTravel) this.onHostTravel(d); break;
       case 'tp': p.x = p.px = +d.x; p.y = p.py = +d.y; p.z = p.pz = +d.z; break;
-      case 'msg': g.ui.message(String(d.text || '').slice(0, 200), d.color || '#f2e27a'); break;
       case 'bye': this.hostGone(); break;
       default: break;
     }

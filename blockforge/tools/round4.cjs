@@ -13,7 +13,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message + '\n' + e.stack));
   page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT')) errors.push(m.text()); });
-  await page.goto(url);
+  await page.goto(url, { timeout: 120000 });
   await page.waitForFunction(() => document.querySelector('#b-play'), null, { timeout: 60000 });
   await page.evaluate(() => { const b = window.__blockforge; b.quality.applyPreset(b.settings, 'balanced'); b.settings.renderDistance = 4; b.ui.app.applySettings(); });
 

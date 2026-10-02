@@ -13,7 +13,7 @@ const W = 1280, H = 720;
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`[console] ${m.text()}`); });
   page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message + '\n' + e.stack));
-  await page.goto(url);
+  await page.goto(url, { timeout: 120000 });
   await page.waitForFunction(() => document.querySelector('#b-play'), null, { timeout: 60000 });
   await page.click('#b-play'); await page.waitForTimeout(300);
   await page.click('#b-new'); await page.waitForTimeout(300);

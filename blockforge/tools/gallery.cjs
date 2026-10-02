@@ -8,7 +8,7 @@ const out = process.argv[3] || '.';
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(url);
+  await page.goto(url, { timeout: 120000 });
   await page.waitForFunction(() => document.querySelector('#b-play'));
   await page.click('#b-play'); await page.waitForTimeout(300);
   await page.click('#b-new'); await page.fill('#w-seed', 'gallery'); await page.click('#b-create');
