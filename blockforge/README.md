@@ -56,7 +56,7 @@ Commands: `/time set day|night|<ticks>`, `/gamemode survival|creative`,
 `/summon <creature> [variant]|minecart|boat|wyrm`, `/weather clear|rain|thunder`,
 `/xp <points>` or `/xp <levels>L`, `/enchant <name> [level]`,
 `/effect give <effect> [seconds] [level]` · `/effect clear`,
-`/locate village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck`,
+`/locate village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck|ancient_city`,
 `/dimension overworld|underworld|void`,
 `/seed`, `/spawnpoint`, `/kill`, `/heal`, `/clear`, `/difficulty peaceful|normal`.
 
@@ -323,6 +323,25 @@ in the host's browser.
 - The living landscape: petals drift down from blossom trees, fireflies glow
   over swamps, meadows, plains and forests on warm nights, and full hives
   drip honey.
+- **The Deep Dark**: far below the hills lie ancient cities, vast dark
+  caverns floored with gloomstone and sculk, with a plaza before a great
+  arch, pillars lit by teal wisp lanterns and broken rooms whose chests hold
+  echo shards, diamond gear and Swift Sneak books (sneak at up to
+  three-quarter pace). Sculk sensors hear footsteps, landings, breaking,
+  placing and fighting within eight blocks and send a spark pulse (sneaking
+  is silent). Shriekers scream at players who set them off, bringing
+  Darkness (the world throbs into black fog); a fourth warning raises the
+  Listener from the ground: blind, it hunts by sound, its anger rising with
+  every noise, hits for 14 up close and charges a sonic blast that goes
+  through walls. Left alone it digs back down. Sculk catalysts spread sculk
+  where creatures die.
+- Copper weathers from bright to exposed, weathered and green oxidized;
+  honeycomb waxes it to keep its colour, an axe scrapes off wax or a stage of
+  patina. Lightning rods (three copper ingots) draw strikes within 48
+  blocks, give a spark pulse and scour the copper they stand on.
+- Camels roam the deserts: ridden like steeds (cactus heals them and puts
+  them in the mood to breed), tall enough to keep you above most trouble,
+  and a tap of jump sends one dashing forward.
 - Creatures find their way with pathfinding: around walls, up steps, down
   safe drops and away from lava and cacti; settlers open doors and close
   them behind them.
@@ -344,10 +363,12 @@ in the host's browser.
   with autosave every 30 seconds.
 
 **Not included (yet)**: compared with the game that inspired it, there are
-still fewer biomes and structures (no deep dark, ancient cities, trial
-chambers, ocean monuments' full interiors or end cities), no armor trims,
-copper ageing, sculk, axolotls, camels, glow squid or turtle eggs (turtles
-breed like other animals), and eight dye colours rather than sixteen.
+still fewer biomes and structures (no trial chambers, ocean monuments' full
+interiors or end cities; the Deep Dark exists only around ancient cities),
+no armor trims, copper stairs, doors or bulbs, axolotls, glow squid or
+turtle eggs (turtles breed like other animals), and eight dye colours rather
+than sixteen. Any shrieker can summon the Listener, including ones you
+place.
 Pathfinding is
 bounded (a few hundred steps per search) and doesn't plan ladder climbs or
 swims through deep water. Raids are not saved mid-wave. In multiplayer
@@ -396,7 +417,8 @@ needed.
 | `src/blaster.js`, `src/laser.js` | The photon blaster, laser bolts and sky rockets |
 | `src/creatures.js` | Hounds, steeds, sentinels, hexers, tide wardens, shroom cows |
 | `src/wildlife.js`, `src/raiders.js` | Foxes, cats, parrots, bees, alpacas, dolphins; marauders, rangers, brutes and raids |
-| `src/fauna.js` | Rabbits, goats, turtles, squid and frogs |
+| `src/fauna.js` | Rabbits, goats, turtles, squid, frogs and camels |
+| `src/features7.js`, `src/deepdark.js` | Copper ageing, lightning rods, vibrations, sculk, darkness and the Listener |
 | `src/pathfind.js` | Bounded A* pathfinding over the block grid, doors |
 | `src/features5.js` | Hives and honey, berry bushes, composter, lectern, crafter, sea life, treasure, leads, ambient life |
 | `src/decor.js`, `src/workshop.js` | Banners, item frames, paintings; anvil, loom, beacon, grindstone, smithing and compost rules |
@@ -416,6 +438,7 @@ NODE_PATH=$(npm root -g) node tools/graphics.cjs file://$PWD/dist/blockforge.htm
 NODE_PATH=$(npm root -g) node tools/round4.cjs file://$PWD/dist/blockforge.html /tmp/shots
 NODE_PATH=$(npm root -g) node tools/round5.cjs file://$PWD/dist/blockforge.html /tmp/shots
 NODE_PATH=$(npm root -g) node tools/round6.cjs file://$PWD/dist/blockforge.html /tmp/shots
+NODE_PATH=$(npm root -g) node tools/round7.cjs file://$PWD/dist/blockforge.html /tmp/shots
 node tools/relay.mjs 8799 &   # serves the game and relays messages
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots tabs
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots relay

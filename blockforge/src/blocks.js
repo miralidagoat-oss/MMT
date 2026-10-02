@@ -491,7 +491,7 @@ def(203, 'weathered_copper', stoneLike({ hardness: 3, level: 1, sound: 'metal' }
 def(204, 'oxidized_copper', stoneLike({ hardness: 3, level: 1, sound: 'metal' }));
 // a rod draws lightning and sends a pulse when struck (meta bits 0-2 facing, 4-7 output)
 def(205, 'lightning_rod', shaped0(26, { pass: PASS.CUTOUT, ...stoneLike({ hardness: 3, sound: 'metal' }), faces: 'lightning_rod', orient: 'facing6', spark: 'pulse', icon: 'cube' }));
-def(206, 'sculk', { hardness: 0.2, tool: 'hoe', sound: 'cloth', drops: () => [] });
+def(206, 'sculk', { hardness: 0.2, tool: 'hoe', sound: 'cloth' });
 // sensors listen for vibrations: meta bits 0-3 output (a pulse), the shape lights its tendrils
 def(207, 'sculk_sensor', shaped0(37, { pass: PASS.CUTOUT, hardness: 1.5, tool: 'hoe', sound: 'cloth', light: 1, spark: 'pulse', faces: { top: 'sculk_sensor_top', side: 'sculk_sensor_side' }, icon: 'cube' }));
 def(208, 'sculk_shrieker', shaped0(38, { pass: PASS.CUTOUT, hardness: 3, tool: 'hoe', sound: 'cloth', faces: { top: 'sculk_shrieker_top', side: 'sculk_shrieker_side' }, icon: 'cube' }));

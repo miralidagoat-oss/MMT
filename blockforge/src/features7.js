@@ -139,13 +139,17 @@ const methods = {
       if (Math.hypot(pl.x - x, pl.z - z) > 40) continue;
       if (pl.isRemote) { if (pl.applyPotion) pl.applyPotion(this, { effect: 'darkness', amp: 0, ticks: 260 }); } else addEffect(pl, 'darkness', 0, 260);
     }
-    const p = this.player;
+    // each player carries their own warning, friends included
+    const p = who && who.isPlayer ? who : this.player;
     p.warning = Math.min(4, (p.warning || 0) + 1);
     p.warningAt = this.tickCount;
     if (p.warning >= 4) {
       p.warning = 0;
       if (!this.entities.some((e) => e.type === 'listener' && !e.dead && Math.hypot(e.x - x, e.z - z) < 48)) this.summonListener(x, y, z, who);
-    } else this.ui.message(['The shrieker screams…', 'Something stirs in the deep…', 'It is close. Move quietly.'][p.warning - 1], '#7ec8d0');
+    } else {
+      const text = ['The shrieker screams…', 'Something stirs in the deep…', 'It is close. Move quietly.'][p.warning - 1];
+      if (p.isRemote) { if (this.net) this.net.event(p.peer, { t: 'msg', text, color: '#7ec8d0' }); } else this.ui.message(text, '#7ec8d0');
+    }
   },
 
   // The guardian rises out of the ground near a shrieker.
@@ -162,6 +166,9 @@ const methods = {
         this.entities.push(m);
         this.audio.mob('listener', 'emerge', m.x, m.y, m.z);
         this.ui.message('The Listener has risen. Stay silent.', '#7ec8d0');
+        if (this.net && this.net.isHost) this.net.send('ev', { t: 'msg', text: 'The Listener has risen. Stay silent.', color: '#7ec8d0' }, 0);
+        // survive a minute near it and it counts
+        this.listenerSince = this.tickCount;
         return m;
       }
     }
@@ -216,6 +223,10 @@ const methods = {
   // The warning a shrieker keeps fades with time.
   tickFeatures7() {
     const p = this.player;
+    if (this.listenerSince && this.tickCount - this.listenerSince > 1200) {
+      this.listenerSince = 0;
+      if (!p.dead) this.advance('listener');
+    }
     if (p.warning && this.tickCount - (p.warningAt || 0) > 12000) { p.warning--; p.warningAt = this.tickCount; }
   },
 };

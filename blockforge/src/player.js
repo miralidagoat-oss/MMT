@@ -156,7 +156,11 @@ export class Player extends Entity {
     const len = Math.hypot(fwd, str);
     if (len > 1) { fwd /= len; str /= len; }
     fwd *= 0.98; str *= 0.98;
-    if (this.sneaking) { fwd *= 0.3; str *= 0.3; }
+    if (this.sneaking) {
+      // Swift Sneak on leggings: creeping at up to three-quarters pace
+      const legs = this.inventory.get(38), ss = legs && legs.ench ? legs.ench.swift_sneak || 0 : 0;
+      fwd *= 0.3 + 0.15 * ss; str *= 0.3 + 0.15 * ss;
+    }
     if (this.eating) { fwd *= 0.2; str *= 0.2; }
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     const dirX = str * cy + fwd * sy, dirZ = str * sy - fwd * cy;

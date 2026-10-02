@@ -22,6 +22,7 @@ const TABLES = {
   outpost: { rolls: [3, 6], items: [[I.arrow, 4, 12, 12], [I.wheat, 3, 6, 10], [I.potato, 2, 5, 10], [I.carrot, 2, 5, 10], [I.string, 1, 6, 8], [I.bow, 1, 1, 6], [I.iron_ingot, 1, 3, 6], [I.iron_axe, 1, 1, 3], [I.enchanted_book, 1, 1, 3], [B.dark_oak_log, 2, 6, 6], [I.emerald, 1, 3, 4], [I.sky_rocket, 1, 3, 3]] },
   igloo: { rolls: [2, 5], items: [[I.apple, 1, 3, 12], [I.coal, 1, 4, 12], [I.gold_nugget, 1, 3, 10], [I.wheat, 2, 4, 8], [I.emerald, 1, 1, 4], [I.stone_axe, 1, 1, 4], [I.golden_apple, 1, 1, 2], [I.snowball, 4, 12, 6], [I.potion_slowness, 1, 1, 3]] },
   shipwreck: { rolls: [3, 7], items: [[I.paper, 2, 7, 10], [I.potato, 2, 6, 8], [I.carrot, 2, 6, 8], [I.wheat, 4, 10, 8], [I.coal, 2, 6, 8], [I.feather, 1, 5, 6], [I.leather, 1, 4, 6], [I.emerald, 1, 3, 4], [I.empty_map, 1, 1, 4], [I.clock, 1, 1, 2], [I.compass, 1, 1, 3], [I.leather_helmet, 1, 1, 3], [I.iron_ingot, 1, 3, 4], [I.raw_silverfin, 2, 5, 6]] },
+  ancient_city: { rolls: [4, 8], items: [[I.echo_shard, 1, 3, 12], [I.bone, 2, 6, 10], [B.sculk, 4, 10, 8], [B.sculk_sensor, 1, 3, 6], [I.diamond, 1, 2, 4], [I.emerald, 1, 4, 6], [I.golden_apple, 1, 1, 3], [I.diamond_leggings, 1, 1, 3], [I.diamond_hoe, 1, 1, 3], [I.iron_leggings, 1, 1, 4], [I.enchanted_book, 1, 1, 6, 'swift_sneak'], [I.enchanted_book, 1, 1, 4], [B.wisp_lantern, 1, 3, 5], [I.name_tag, 1, 1, 3]] },
   shipwreck_treasure: { rolls: [4, 8], items: [[I.iron_ingot, 2, 8, 12], [I.gold_ingot, 2, 6, 10], [I.gold_nugget, 4, 12, 10], [I.emerald, 2, 6, 10], [I.diamond, 1, 3, 5], [I.tide_shard, 2, 6, 6], [I.enchanted_book, 1, 1, 4], [I.spark_dust, 3, 8, 6], [I.sky_rocket, 1, 4, 4]] },
   underworld: { rolls: [3, 6], items: [[I.gold_ingot, 2, 6, 10], [I.gold_nugget, 4, 12, 10], [I.quartz, 3, 9, 10], [B.obsidian, 1, 4, 6], [I.flint_and_steel, 1, 1, 5], [I.iron_ingot, 1, 5, 8], [I.diamond, 1, 3, 3], [I.golden_sword, 1, 1, 4], [I.golden_helmet, 1, 1, 3], [I.ember_dust, 2, 8, 8], [I.emerald, 1, 3, 3]] },
 };
@@ -35,13 +36,13 @@ export function rollLoot(table, r = Math.random) {
   const n = rint(r, t.rolls[0], t.rolls[1]);
   for (let i = 0; i < n; i++) {
     let x = r() * total;
-    for (const [id, min, max, w] of t.items) {
+    for (const [id, min, max, w, ench] of t.items) {
       x -= w;
       if (x <= 0) {
         if (ITEMS[id]) {
           const s = { id, count: rint(r, min, max) };
           if (r() < 0.12 && ITEMS[id].durability) s.ench = randomEnchant(id, 10 + Math.floor(r() * 20), r);
-          if (id === I.enchanted_book) { s.count = 1; s.ench = randomEnchant(I.book, 8 + Math.floor(r() * 22), r); }
+          if (id === I.enchanted_book) { s.count = 1; s.ench = ench ? { [ench]: rint(r, 1, ENCHANTS[ench].max) } : randomEnchant(I.book, 8 + Math.floor(r() * 22), r); }
           out.push(s);
         }
         break;
@@ -135,6 +136,8 @@ export const ENCHANTS = {
   rapid_fire: { name: 'Rapid Fire', max: 2, for: ['blaster'] },
   fortune: { name: 'Fortune', max: 3, for: ['pickaxe'] },
   knockback: { name: 'Knockback', max: 2, for: ['sword'] },
+  // found only in ancient cities
+  swift_sneak: { name: 'Swift Sneak', max: 3, for: ['leggings'], treasure: true },
 };
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 export const enchantLabel = (key, lvl) => `${ENCHANTS[key].name} ${ROMAN[lvl] || lvl}`;
@@ -144,7 +147,7 @@ export function itemKind(id) {
   if (!d) return null;
   if (id === I.book || id === I.enchanted_book) return 'book';
   if (d.tool) return d.tool.type;
-  if (d.armor) return d.armor.slot === 3 ? 'boots' : 'armor';
+  if (d.armor) return d.armor.slot === 3 ? 'boots' : d.armor.slot === 2 ? 'leggings' : 'armor';
   if (id === I.bow) return 'bow';
   if (ITEMS[id].blaster) return 'blaster';
   return null;
@@ -156,13 +159,14 @@ export function applicableEnchants(id) {
   if (kind === 'book') return Object.keys(ENCHANTS); // a book takes any enchantment
   return Object.keys(ENCHANTS).filter((k) => {
     const f = ENCHANTS[k].for;
-    return f.includes(kind) || (kind === 'boots' && f.includes('armor'));
+    return f.includes(kind) || ((kind === 'boots' || kind === 'leggings') && f.includes('armor'));
   });
 }
 
 // Pick one to three enchantments whose strength scales with the level cost.
 export function randomEnchant(id, cost, r = Math.random) {
-  const keys = applicableEnchants(id);
+  // treasure enchantments are found, never made
+  const keys = applicableEnchants(id).filter((k) => !ENCHANTS[k].treasure);
   if (!keys.length) return null;
   const out = {};
   const count = 1 + (r() < cost / 50 ? 1 : 0) + (r() < cost / 100 ? 1 : 0);

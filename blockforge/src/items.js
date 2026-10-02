@@ -212,6 +212,8 @@ item('scute');
 ARMOR_MATS.turtle = { pts: [2, 0, 0, 0], tough: 0, dur: 25, color: [72, 140, 64] };
 item('turtle_shell', { maxStack: 1, durability: 275, armor: { slot: 0, points: 2, tough: 0, mat: 'turtle' } });
 item('ink_sac');
+// round seven
+item('echo_shard');
 
 // Shaped blocks shown with their own sprite in the inventory and in hand.
 for (const b of BLOCKS) {
@@ -458,6 +460,12 @@ shapeless(['book', 'feather', 'ink_sac'], 'journal');
 shapeless(['book', 'feather', 'black_dye'], 'journal');
 shaped(['HH', 'HH'], { H: 'rabbit_hide' }, 'leather');
 shaped(['SSS', 'S S'], { S: 'scute' }, 'turtle_shell');
+// round seven: lightning rods, gloomstone, wisp lanterns
+shaped(['C', 'C', 'C'], { C: 'copper_ingot' }, 'lightning_rod');
+shaped(['SS', 'SS'], { S: 'deep_stone' }, 'deep_bricks', 4);
+shaped(['SS', 'SS'], { S: 'deep_bricks' }, 'deep_tiles', 4);
+shaped(['NNN', 'NTN', 'NSN'], { N: 'iron_nugget', T: 'torch', S: 'sculk' }, 'wisp_lantern');
+shaped(['EEE', 'ESE', 'EEE'], { E: 'echo_shard', S: 'sculk' }, 'sculk_catalyst');
 // wool takes any colour: one with a dye, or eight around one
 for (const c of BANNER_COLORS) {
   const others = BANNER_COLORS.filter((o) => o !== c).map((o) => `${o}_wool`);

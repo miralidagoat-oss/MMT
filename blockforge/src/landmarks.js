@@ -21,8 +21,9 @@ export const LANDMARKS = {
   outpost: { cell: 416, chance: 0.6, biomes: ['PLAINS', 'SAVANNA', 'TAIGA', 'DESERT', 'MEADOW', 'SNOWY_PLAINS'], name: 'Raider Outpost' },
   igloo: { cell: 320, chance: 0.55, biomes: ['SNOWY_PLAINS', 'SNOWY_TAIGA'], name: 'Igloo' },
   shipwreck: { cell: 336, chance: 0.6, biomes: ['OCEAN', 'DEEP_OCEAN', 'BEACH'], name: 'Shipwreck' },
+  ancient_city: { cell: 448, chance: 0.6, name: 'Ancient City' },
 };
-const SALT = { mineshaft: 0x51ab, sun_temple: 0x7e30, jungle_shrine: 0x5a71, swamp_hut: 0x4a7, tide_citadel: 0x71de, manor: 0x3a40, outpost: 0x0b05, igloo: 0x1910, shipwreck: 0x5b1b };
+const SALT = { mineshaft: 0x51ab, sun_temple: 0x7e30, jungle_shrine: 0x5a71, swamp_hut: 0x4a7, tide_citadel: 0x71de, manor: 0x3a40, outpost: 0x0b05, igloo: 0x1910, shipwreck: 0x5b1b, ancient_city: 0xdeed };
 
 export class Landmarks {
   constructor(gen, BIOME) { this.gen = gen; this.BIOME = BIOME; this.cache = new Map(); }
@@ -97,6 +98,8 @@ export class Landmarks {
       spawn(type, x, y, z, extra = {}) { out.spawns.push({ type, x: x + 0.5, y, z: z + 0.5, persistent: true, ...extra }); },
       banner(x, y, z, base, bn, meta = 0) { if (inChunk(x, z)) { ctx.set(x, y, z, B.banner, meta); out.chests.push({ x, y, z, banner: { base, bn } }); } },
       spawner(x, y, z, mob) { if (inChunk(x, z)) { ctx.set(x, y, z, B.spawner, 0); out.spawners.push({ x, y, z, mob }); } },
+      // sculk sensors and shriekers need to be listening from the start
+      sculk(x, y, z, id) { if (inChunk(x, z)) { ctx.set(x, y, z, id, 0); out.chests.push({ x, y, z, sculk: 1 }); } },
       // the ground height of a column (from the noise, so all chunks agree)
       ground: (x, z) => this.gen.heightAt(x, z),
       rnd: (x, y, z, salt = 0) => rand3(s.seed ^ salt, x, y, z),
@@ -136,6 +139,7 @@ const LAYOUT = {
   tide_citadel(s, r, g) { s.y = g.heightAt(s.x, s.z) + 1; bounds(s, [[s.x - 19, s.z - 19, s.x + 19, s.z + 19]]); },
   manor(s, r, g) { s.y = g.heightAt(s.x, s.z) + 1; bounds(s, [[s.x - 17, s.z - 13, s.x + 17, s.z + 13]]); },
   outpost(s, r, g) { s.y = g.heightAt(s.x, s.z) + 1; s.cage = Math.floor(r() * 4); bounds(s, [[s.x - 14, s.z - 14, s.x + 14, s.z + 14]]); },
+  ancient_city(s, r) { s.y = 14 + Math.floor(r() * 6); s.face = Math.floor(r() * 2); bounds(s, [[s.x - 30, s.z - 30, s.x + 30, s.z + 30]]); },
   igloo(s, r, g) { s.y = g.heightAt(s.x, s.z) + 1; s.face = Math.floor(r() * 4); s.basement = r() < 0.5; bounds(s, [[s.x - 7, s.z - 7, s.x + 7, s.z + 7]]); },
   shipwreck(s, r, g) {
     s.y = Math.min(SEA - 2, g.heightAt(s.x, s.z) + 1); s.axis = Math.floor(r() * 2); s.broken = Math.floor(r() * 3); s.mast = 4 + Math.floor(r() * 6);
@@ -150,6 +154,81 @@ function bounds(s, rects) {
 // ---------------------------------------------------------------------------
 // Builders
 const BUILD = {
+  // Deep under the hills: a vast dark cavern floored in gloomstone and
+  // sculk, a plaza before a great arch, pillars lit by wisp lanterns and the
+  // broken rooms of whoever lived here. Sensors listen; shriekers wait.
+  ancient_city(s, w) {
+    const { x, z } = s, y = s.y, R = 27;
+    const deep = B.deep_stone, brick = B.deep_bricks, tile = B.deep_tiles;
+    const roll = (cx, cy, cz, salt) => w.rnd(cx, cy, cz, salt);
+    // the cavern: a low dome, its floor and walls turned to gloomstone
+    for (let dx = -R - 2; dx <= R + 2; dx++) for (let dz = -R - 2; dz <= R + 2; dz++) {
+      const cx = x + dx, cz = z + dz;
+      if (!w.inChunk(cx, cz)) continue;
+      const d = Math.hypot(dx, dz * 1.1) / R;
+      if (d > 1.08) continue;
+      const roof = d < 1 ? Math.floor(5 + 13 * Math.sqrt(1 - d * d)) : 0;
+      for (let yy = y - 4; yy <= y + roof + 2; yy++) {
+        const cur = w.get(cx, yy, cz);
+        if (cur === B.bedrock) continue;
+        if (yy < y) w.set(cx, yy, cz, yy === y - 1 && roll(cx, yy, cz, 1) < 0.55 + 0.4 * (1 - d) ? B.sculk : deep, 0);
+        else if (yy <= y + roof && d < 1) w.set(cx, yy, cz, 0, 0);
+        else if (cur && cur !== B.water && cur !== B.lava) w.set(cx, yy, cz, deep, 0);
+      }
+    }
+    // the plaza and the paths of tiles that cross it
+    w.box(x - 10, y - 1, z - 10, x + 10, y - 1, z + 10, (cx, cy, cz) => ((Math.abs(cx - x) + Math.abs(cz - z)) % 4 === 0 ? tile : brick));
+    w.box(x - R, y - 1, z - 1, x + R, y - 1, z + 1, tile);
+    w.box(x - 1, y - 1, z - R, x + 1, y - 1, z + R, tile);
+    // the great arch at the plaza's far side (across x or across z)
+    const along = s.face === 1;
+    for (let k = -7; k <= 7; k++) for (let dy = 0; dy <= 11; dy++) {
+      const leg = Math.abs(k) >= 5, top = dy >= 9 && Math.abs(k) <= 7 - (dy - 9);
+      if (!leg && !top) continue;
+      const bx = along ? x + k : x - 8, bz = along ? z - 8 : z + k;
+      for (let t = 0; t <= 1; t++) {
+        const px = along ? bx : bx - t, pz = along ? bz - t : bz;
+        if (w.inChunk(px, pz)) w.set(px, y + dy, pz, dy === 11 || (leg && dy === 0) ? tile : brick, 0);
+      }
+    }
+    // pillars around the plaza, crowned with wisp lanterns
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2, px = x + Math.round(Math.cos(a) * 15), pz = z + Math.round(Math.sin(a) * 15);
+      const hgt = 4 + Math.floor(roll(px, y, pz, 2) * 4);
+      if (!w.inChunk(px, pz)) continue;
+      for (let dy = 0; dy < hgt; dy++) w.set(px, y + dy, pz, roll(px, y + dy, pz, 3) < 0.12 ? deep : brick, 0);
+      w.set(px, y + hgt, pz, B.wisp_lantern, 0);
+    }
+    // lanterns on short posts along the paths
+    for (let k = -24; k <= 24; k += 8) for (const [px, pz] of [[x + k, z + 2], [x + 2, z + k]]) {
+      if (!w.inChunk(px, pz) || Math.abs(k) < 11) continue;
+      w.set(px, y, pz, brick, 0); w.set(px, y + 1, pz, B.wisp_lantern, 0);
+    }
+    // four broken rooms, each with a chest
+    const rooms = [[x - 18, z - 18], [x + 18, z - 18], [x - 18, z + 18], [x + 18, z + 18]];
+    rooms.forEach(([rx, rz], i) => {
+      w.box(rx - 3, y - 1, rz - 3, rx + 3, y - 1, rz + 3, tile);
+      w.box(rx - 3, y, rz - 3, rx + 3, y + 3, rz + 3, (cx, cy, cz) => {
+        const edge = Math.abs(cx - rx) === 3 || Math.abs(cz - rz) === 3;
+        if (!edge) return 0;
+        if (cy - y >= 2 && roll(cx, cy, cz, 4) < 0.45) return 0; // crumbled tops
+        if (cy - y < 2 && Math.abs(cx - rx) <= 0 && cz === rz + (i < 2 ? 3 : -3)) return 0; // doorway
+        return brick;
+      });
+      w.chest(rx + 1, y, rz + 1, 'ancient_city', 2);
+      if (w.inChunk(rx - 2, rz - 2)) w.set(rx - 2, y, rz - 2, B.wisp_lantern, 0);
+    });
+    // sculk growth: sensors and shriekers on the sculk, two catalysts by the arch
+    for (let dx = -R; dx <= R; dx++) for (let dz = -R; dz <= R; dz++) {
+      const cx = x + dx, cz = z + dz;
+      if (!w.inChunk(cx, cz) || w.get(cx, y - 1, cz) !== B.sculk || w.get(cx, y, cz) !== 0) continue;
+      const q = roll(cx, y, cz, 5);
+      if (q < 0.022) w.sculk(cx, y, cz, B.sculk_sensor);
+      else if (q < 0.03 && Math.hypot(dx, dz) > 8) w.sculk(cx, y, cz, B.sculk_shrieker);
+    }
+    for (const [cx, cz] of along ? [[x - 4, z - 6], [x + 4, z - 6]] : [[x - 6, z - 4], [x - 6, z + 4]]) if (w.inChunk(cx, cz)) w.set(cx, y - 1, cz, B.sculk_catalyst, 0);
+  },
+
   // A raider watchtower of dark wood: four storeys climbed by ladder, a
   // lookout with the raiders' banner, tents around it and a caged alpaca.
   outpost(s, w) {

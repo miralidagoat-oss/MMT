@@ -788,18 +788,18 @@ export class WorldGen {
       else if (bio === BIOME.BLOSSOM_GROVE) types = ['pig', 'sheep', 'rabbit'];
       else if (bio === BIOME.DARK_FOREST) types = ['pig', 'cow', 'hound'];
       else if (bio === BIOME.BADLANDS || bio === BIOME.ICE_SPIKES) types = [];
-      if (bio === BIOME.DESERT) types = sr() < 0.3 ? ['rabbit'] : [];
+      if (bio === BIOME.DESERT) { const q = sr(); types = q < 0.3 ? ['rabbit'] : q < 0.55 ? ['camel'] : []; }
       if (bio === BIOME.BEACH) types = sr() < 0.5 ? ['turtle'] : [];
       if (bio === BIOME.SNOWY_BEACH || colH(8, 8) <= SEA - 1 || (colH(8, 8) <= SEA && bio !== BIOME.BEACH)) types = [];
       if (types.length) {
         const type = types[Math.floor(sr() * types.length)];
-        const n = type === 'steed' ? 2 + Math.floor(sr() * 2) : 2 + Math.floor(sr() * 3);
+        const n = type === 'steed' ? 2 + Math.floor(sr() * 2) : type === 'camel' ? 1 + Math.floor(sr() * 2) : 2 + Math.floor(sr() * 3);
         for (let i = 0; i < n; i++) {
           const x = Math.floor(sr() * 16), z = Math.floor(sr() * 16);
           const h = colH(x, z);
           const t = blocks[idx(x, h, z)];
           const leafy = t === B.jungle_leaves || t === B.oak_leaves;
-          const ground = t === B.grass || t === B.snowy_grass || t === B.mycelium || t === B.stone || t === B.snow_block || ((type === 'rabbit' || type === 'turtle') && t === B.sand);
+          const ground = t === B.grass || t === B.snowy_grass || t === B.mycelium || t === B.stone || t === B.snow_block || ((type === 'rabbit' || type === 'turtle' || type === 'camel') && t === B.sand);
           if ((ground || (type === 'parrot' && leafy)) && h + 2 < HEIGHT && blocks[idx(x, h + 1, z)] !== B.oak_log) {
             const cold = bio === BIOME.SNOWY_TAIGA || bio === BIOME.SNOWY_PLAINS || bio === BIOME.SNOWY_PEAKS;
             const variant = type === 'fox' ? (cold ? 'snow' : 'red')

@@ -36,6 +36,8 @@ const DIR6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1
 const GRASS_OK = new Set([2, 3, 34, 74]);
 // experience from mining ores: [min, max]
 const ORE_XP = { 14: [0, 2], 18: [3, 7], 19: [3, 7], 93: [2, 5], 94: [0, 1] };
+// sculk keeps the experience of what fed it (no fortune bonus)
+const SCULK_XP = { 206: 1, 207: 1, 208: 5, 209: 5 };
 
 export class Game {
   constructor({ renderer, scene, audio, input, ui, storage, settings }) {
@@ -689,6 +691,7 @@ export class Game {
         this.dropItem(x + 0.5, y + 0.3, z + 0.5, { id: did, count: c }, true);
       }
       if (ore) this.spawnXp(x + 0.5, y + 0.5, z + 0.5, ore[0] + Math.floor(Math.random() * (ore[1] - ore[0] + 1)));
+      else if (SCULK_XP[id]) this.spawnXp(x + 0.5, y + 0.5, z + 0.5, SCULK_XP[id]);
     }
   }
 
@@ -1287,6 +1290,10 @@ export class Game {
     if (this.tickCount % 200 === 7 && g.landmarks && (bio === BIOME.DEEP_OCEAN || bio === BIOME.OCEAN)) {
       const c = g.landmarks.locate('tide_citadel', p.x, p.z, 1);
       if (c && Math.hypot(c.x - p.x, c.z - p.z) < 40) this.advance('citadel');
+    }
+    if (this.tickCount % 200 === 47 && g.landmarks && p.y < 40) {
+      const c = g.landmarks.locate('ancient_city', p.x, p.z, 1);
+      if (c && Math.hypot(c.x - p.x, c.z - p.z) < 30 && Math.abs(p.y - c.y) < 16) this.advance('ancient_city');
     }
   }
 
@@ -2100,7 +2107,7 @@ export class Game {
     };
     switch ((cmd || '').toLowerCase()) {
       case 'help':
-        return `Commands: /time set <day|noon|night|midnight|ticks>, /time add <ticks>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <${Object.keys(MOB_TYPES).join('|')}>, /weather <clear|rain|thunder>, /xp <amount>[L], /enchant <name> [level], /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck>, /dimension <overworld|underworld|void>, /effect <give|clear> [effect] [seconds] [level], /seed, /spawnpoint, /kill, /heal, /clear, /difficulty <peaceful|normal>`;
+        return `Commands: /time set <day|noon|night|midnight|ticks>, /time add <ticks>, /gamemode <survival|creative>, /tp <x> <y> <z>, /give <item> [count], /summon <${Object.keys(MOB_TYPES).join('|')}>, /weather <clear|rain|thunder>, /xp <amount>[L], /enchant <name> [level], /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck|ancient_city>, /dimension <overworld|underworld|void>, /effect <give|clear> [effect] [seconds] [level], /seed, /spawnpoint, /kill, /heal, /clear, /difficulty <peaceful|normal>`;
       case 'time': {
         const named = { day: 1000, noon: 6000, sunset: 12000, night: 13000, midnight: 18000, sunrise: 23000 };
         if (args[0] === 'set') {
@@ -2209,7 +2216,7 @@ export class Game {
           const sp = g.locateSpire(p.x, p.z, 5);
           return sp ? `The nearest spire is at ${sp.x}, ${sp.y}, ${sp.z} (${Math.round(Math.hypot(sp.x - p.x, sp.z - p.z))} blocks away)` : 'No spire found nearby';
         }
-        const LM = { mineshaft: 'mineshaft', temple: 'sun_temple', sun_temple: 'sun_temple', shrine: 'jungle_shrine', jungle_shrine: 'jungle_shrine', hut: 'swamp_hut', swamp_hut: 'swamp_hut', citadel: 'tide_citadel', tide_citadel: 'tide_citadel', manor: 'manor', outpost: 'outpost', igloo: 'igloo', shipwreck: 'shipwreck' };
+        const LM = { mineshaft: 'mineshaft', temple: 'sun_temple', sun_temple: 'sun_temple', shrine: 'jungle_shrine', jungle_shrine: 'jungle_shrine', hut: 'swamp_hut', swamp_hut: 'swamp_hut', citadel: 'tide_citadel', tide_citadel: 'tide_citadel', manor: 'manor', outpost: 'outpost', igloo: 'igloo', shipwreck: 'shipwreck', ancient_city: 'ancient_city', city: 'ancient_city' };
         if (LM[what]) {
           const lm = this.world.gen.landmarks;
           if (!lm) return 'Nothing like that in this dimension';
@@ -2217,7 +2224,7 @@ export class Game {
           if (!s) return `No ${LANDMARKS[LM[what]].name.toLowerCase()} found nearby`;
           return `The nearest ${LANDMARKS[LM[what]].name.toLowerCase()} is at ${s.x}, ${s.y}, ${s.z} (${Math.round(Math.hypot(s.x - p.x, s.z - p.z))} blocks away)`;
         }
-        if (what !== 'village') return 'Usage: /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck>';
+        if (what !== 'village') return 'Usage: /locate <village|observatory|spire|mineshaft|temple|shrine|hut|citadel|manor|outpost|igloo|shipwreck|ancient_city>';
         const vs = this.world.gen.villages;
         if (!vs) return 'There are no villages in this dimension';
         const v = vs.locate(p.x, p.z, 8);

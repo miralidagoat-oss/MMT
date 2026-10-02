@@ -38,4 +38,7 @@ export const ADVANCEMENTS = {
   starsteel: ['Forged in the Stars', 'Upgrade diamond gear with starsteel'],
   raid: ['Village Hero', 'Defend a village from a raid'],
   parrot: ['Shoulder Companion', 'Carry a parrot on your shoulder'],
+  wax: ['Waxed Up', 'Seal copper with honeycomb so it never weathers'],
+  ancient_city: ['Deeper Than Dark', 'Find an ancient city far underground'],
+  listener: ['Hush', 'Hear the Listener rise, and live'],
 };

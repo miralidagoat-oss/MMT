@@ -303,6 +303,8 @@ function mobLook(e) {
   if (e.celebrating) o.e = 1;
   if (e.type === 'dolphin' && e.pitchSwim) o.w = Math.round(e.pitchSwim * 10) / 10;
   if (e.leash) o.l = e.leash.kind === 'knot' ? [e.leash.x, e.leash.y, e.leash.z] : e.leash.name;
+  // the Listener rising out of the ground (+) or sinking back (-)
+  if (e.emerging > 0) o.u = e.emerging; else if (e.digging > 0) o.u = -e.digging;
   return Object.keys(o).length ? o : 0;
 }
 
@@ -400,6 +402,7 @@ function updateMirror(e, en) {
       e.sleeping = !!look.z; e.pack = look.p ? { type: 'pack', slots: [] } : null;
       e.flying = !!look.f; e.perch = look.r ? e.perch || {} : null; e.dancing = look.n ? 10 : 0;
       e.stung = !!look.g; e.customName = look.m || null; e.celebrating = !!look.e; e.pitchSwim = look.w || 0;
+      e.emerging = look.u > 0 ? +look.u : 0; e.digging = look.u < 0 ? -look.u : 0;
       e.leash = Array.isArray(look.l) ? { kind: 'knot', x: look.l[0] | 0, y: look.l[1] | 0, z: look.l[2] | 0 } : typeof look.l === 'string' ? { kind: 'player', name: look.l } : null;
       break;
     }
@@ -645,8 +648,14 @@ export class NetSession {
     if (this.closed) return;
     this.ticks++;
     for (const rp of this.remote.values()) rp.tick();
-    if (this.isHost) this.hostTick();
-    else this.guestTick();
+    if (this.isHost) {
+      this.hostTick();
+      // guests' footsteps are vibrations in the host's world too
+      if (this.game.vibrate) for (const rp of this.remote.values()) {
+        rp.stepDist = (rp.stepDist || 0) + Math.hypot(rp.x - rp.px, rp.z - rp.pz);
+        if (rp.stepDist > 1.6) { rp.stepDist = 0; if (!rp.sneaking && !rp.flying && !rp.riding) this.game.vibrate(rp.x, rp.y, rp.z, rp, 'step'); }
+      }
+    } else this.guestTick();
     if (this.ticks % 2 === 0 || this.presenceDirty) { this.pushPresence(); this.presenceDirty = false; }
     this.flush();
     if (this.room.error && !this.reportedError) {

@@ -197,10 +197,29 @@ function camelAI(m, game, p, pdist, lookAt) {
   return steedAI(m, game, p, pdist, lookAt);
 }
 
+// Cactus is a camel's treat: it heals them, wins them over and, once they
+// are tame and well, puts them in the mood for a calf.
+function camelInteract(m, game, stack) {
+  if (stack && stack.id === B.cactus && !m.baby) {
+    if (m.tamed && m.health >= m.maxHealth) {
+      if (m.love > 0) return undefined;
+      m.love = 600;
+      game.particles.heart(m.x, m.y + m.h, m.z);
+      return 'consume';
+    }
+    m.health = Math.min(m.maxHealth, m.health + 2);
+    m.temper = Math.min(100, (m.temper || 0) + 6);
+    game.particles.heart(m.x, m.y + m.h, m.z);
+    game.audio.play('eat', m.x, m.y + 1, m.z);
+    return 'consume';
+  }
+  return steedInteract(m, game, stack);
+}
+
 export const FAUNA_TYPES = {
   camel: {
     model: 'camel', health: 32, wander: 0.03, panic: 0.07, xp: 3, sound: 'camel', noPanic: false, rideable: true,
-    food: [], drops: (r) => [[I.leather, pick(r, 3)]], ai: camelAI, interact: steedInteract,
+    food: [], drops: (r) => [[I.leather, pick(r, 3)]], ai: camelAI, interact: camelInteract,
   },
   rabbit: {
     model: 'rabbit', health: 3, wander: 0.05, panic: 0.11, xp: 1, sound: 'rabbit', hops: true, noFall: true,
