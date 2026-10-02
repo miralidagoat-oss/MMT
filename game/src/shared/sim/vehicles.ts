@@ -11,10 +11,14 @@ export function vehicleForward(yaw: number): [number, number] { return [-Math.si
 
 /** world position of a seat */
 export function seatWorld(v: VehicleState, seat: number): { x: number; y: number; z: number } {
-  const def = VEHICLES[v.type]!;
+  return seatPosition(v.type, v.x, v.y, v.z, v.yaw, seat);
+}
+
+export function seatPosition(type: string, x: number, y: number, z: number, yaw: number, seat: number): { x: number; y: number; z: number } {
+  const def = VEHICLES[type]!;
   const s = def.seats[seat] ?? def.seats[0]!;
-  const c = Math.cos(v.yaw), n = Math.sin(v.yaw);
-  return { x: v.x + c * s.x + n * s.z, y: v.y + def.deckHeight, z: v.z - n * s.x + c * s.z };
+  const c = Math.cos(yaw), n = Math.sin(yaw);
+  return { x: x + c * s.x + n * s.z, y: y + def.deckHeight, z: z - n * s.x + c * s.z };
 }
 
 export function createVehicle(sim: Simulation, type: string, x: number, z: number, yaw: number, owner: string): VehicleState {
