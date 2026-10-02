@@ -172,7 +172,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
     w.setBlock(x + 1, y + 1, z, B.wheat, 0);
     return { x, y, z };
   });
-  await page.waitForTimeout(2000); // let the chunk relight
+  // let the chunk relight (slow under software GL)
+  await page.waitForFunction(({ x, y, z }) => (window.__blockforge.game.world.getLight(x + 1, y + 1, z) >> 4) >= 9, plot, { timeout: 30000 }).catch(() => {});
   const farm = await G(({ x, y, z }) => {
     const g = window.__blockforge.game, w = g.world, { B } = window.__blockforge;
     for (let i = 0; i < 400; i++) g.randomTick(x + 1, y + 1, z, B.wheat);

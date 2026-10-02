@@ -33,7 +33,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
     const g = window.__blockforge.game, p = g.player, w = g.world, { B } = window.__blockforge;
     g.dayTime = 6000; g.settings.daylightCycle = false; g.rain = 0; p.mode = 'survival';
     const x0 = Math.floor(p.x), z0 = Math.floor(p.z), y0 = w.surfaceY(x0, z0);
-    for (let x = -12; x <= 12; x++) for (let z = -12; z <= 12; z++) { w.setBlock(x0 + x, y0 - 1, z0 + z, B.grass, 0); for (let y = 0; y < 10; y++) w.setBlock(x0 + x, y0 + y, z0 + z, 0, 0); }
+    // open to the sky (beacons need it)
+    for (let x = -12; x <= 12; x++) for (let z = -12; z <= 12; z++) { w.setBlock(x0 + x, y0 - 1, z0 + z, B.grass, 0); for (let y = 0; y < 48; y++) w.setBlock(x0 + x, y0 + y, z0 + z, 0, 0); }
     p.x = p.px = x0 + 0.5; p.z = p.pz = z0 + 0.5; p.y = p.py = y0;
     g.entities = g.entities.filter((e) => !e.isMob);
     window.__pad = { x0, y0, z0 };
