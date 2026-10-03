@@ -135,6 +135,12 @@ async function main() {
     setTimeout(() => process.exit(0), 200);
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));
+  if (args['exit-with-parent']) {
+    // used by test tooling: stop when the launching process goes away (its pipe closes)
+    process.stdin.resume();
+    process.stdin.on('end', () => void shutdown('parent exited'));
+    process.stdin.on('close', () => void shutdown('parent exited'));
+  }
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
   process.on('uncaughtException', (e) => { log(`uncaught: ${e.stack}`); void shutdown('crash'); });
 }

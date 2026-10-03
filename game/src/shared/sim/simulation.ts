@@ -120,7 +120,7 @@ export class Simulation {
     const online = Object.values(this.world.players).filter((x) => x.connected).length;
     if (!p) {
       const idx = Object.keys(this.world.players).length;
-      const sp = this.gen.spawnPoint(online);
+      const sp = this.clearSpot(this.gen.spawnPoint(online));
       p = this.newPlayer(id, name, color ?? COLORS[idx % COLORS.length]!, sp);
       this.world.players[id] = p;
       this.notify(null, `${name} washed ashore.`, 'info');
@@ -136,6 +136,21 @@ export class Simulation {
     this.recentActions.set(id, new Set());
     this.out.roster = true;
     this.markPlayer(id);
+    return p;
+  }
+
+  /** Nudge a position out of trees, rocks and structures (spiral search). */
+  clearSpot(p: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
+    for (let r = 0; r < 12; r += 0.75) {
+      for (let a = 0; a < Math.PI * 2; a += r === 0 ? 7 : 0.6) {
+        const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+        const h = this.gen.heightAt(x, z);
+        if (h < 0.2) continue;
+        if (this.col.solidNodeNear(x, z, PLAYER.radius + 0.4)) continue;
+        if (this.col.overlapsStructure(x, h + 0.9, z, PLAYER.radius, 0.85, PLAYER.radius, 0)) continue;
+        return { x, y: h + 0.05, z };
+      }
+    }
     return p;
   }
 
@@ -520,7 +535,7 @@ export class Simulation {
       else { this.notify(p.id, 'Your bed was destroyed. Respawning on the beach.', 'warn'); }
     }
     pos.y = Math.max(pos.y, this.gen.heightAt(pos.x, pos.z) + 0.05);
-    p.pos = { ...pos };
+    p.pos = at === 'bed' && p.respawn ? { ...pos } : this.clearSpot(pos);
     p.vel = { x: 0, y: 0, z: 0 };
     p.dead = false;
     p.downed = 0;

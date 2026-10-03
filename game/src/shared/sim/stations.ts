@@ -8,6 +8,7 @@ import { STRUCTURES } from '../defs/structures';
 import { CROPS } from '../defs/crops';
 import { daylight, ambientTemp } from '../systems/weather';
 import type { StructureState } from '../state';
+import { damageStructure } from './wildlife';
 import type { Simulation } from './simulation';
 
 const STEP = 5; // run every 5 ticks (4 Hz)
@@ -57,6 +58,12 @@ export function tickStations(sim: Simulation, dtTick: number): void {
       if (!!s.on !== want) { s.on = want; sim.markStructure(s.id); }
     }
     if (def.planter) tickPlanter(sim, s, dt, hour);
+    // violent storms slowly tear thatch apart (repair with the mallet)
+    if (w.rain > 0.85 && w.wind > 0.8 && def.tier === 0 && def.category !== 'vehicle') {
+      s.hp -= def.maxHp * 0.0025 * dt;
+      if (sim.world.tick % 100 === 0) sim.markStructure(s.id);
+      if (s.hp <= 0) damageStructure(sim, s, 1, 'storm');
+    }
   }
   tickBeacon(sim);
 }

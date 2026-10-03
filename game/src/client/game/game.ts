@@ -194,6 +194,7 @@ export class Game {
         case 'craft_start': if (mine) this.audio.play('craft', { gain: 0.6 }, undefined, 'ui'); break;
         case 'craft_done': if (mine) this.audio.play('pickup', {}, undefined, 'ui'); break;
         case 'build': case 'upgrade': case 'repair': this.audio.play('build', {}, pos); part.dust(pos); break;
+        case 'structure_hit': this.audio.play('chop', { pitch: 0.7 }, pos); part.chips(pos, '#8a6440', 8); break;
         case 'demolish': case 'collapse': this.audio.play('demolish', {}, pos); part.dust(pos); part.chips(pos, '#8a6440', 16); break;
         case 'ignite': this.audio.play('ignite', {}, pos); part.sparkle(pos, '#ffb347'); break;
         case 'spark': part.sparkle(pos, '#ffcf6b'); this.audio.play('gather', { gain: 0.4 }, pos); break;
@@ -305,6 +306,7 @@ export class Game {
     this.updateTarget(camPos);
     if (active) this.handleActions(dt, camPos);
     else { this.renderer.setGhost(null); }
+    this.setPrompt(); // after placement so prompt and ghost always agree
 
     // ---------------- audio
     this.updateAudio(dt, vp, camPos, underwater, moveSpeed);
@@ -447,7 +449,6 @@ export class Game {
     this.target = best;
     const obj = best && best.kind === 'structure' ? ents?.structureObject(best.id) ?? null : null;
     this.renderer.setHighlight(this.holdingHammer() && !this.blueprint ? obj : null);
-    this.setPrompt();
   }
 
   /** March the view ray against terrain/structures; returns hit distance or null. */

@@ -19,6 +19,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #071318; col
 #ui { position: fixed; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
 #ui .passthru { pointer-events: none; }
+/* pointer-events is inherited: interactive panels inside pass-through layers must opt back in */
+#ui .inv-root, #ui .map-root, #ui .build-menu, #ui .overlay:not(.passthru), #ui .ctx, #ui .chat input { pointer-events: auto; }
+.tooltip { pointer-events: none; }
 button { font: inherit; color: inherit; }
 .hidden { display: none !important; }
 
@@ -165,6 +168,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 .queue .prog { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--accent); border-radius: 2px; }
 .station-info { font-size: 13px; color: var(--muted); line-height: 1.6; }
 .station-info b { color: var(--text); }
+.build-menu .dialog-head { flex-direction: column; align-items: flex-start; gap: 6px; }
 .build-menu { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(860px, 94vw); max-height: 80vh; display: flex; flex-direction: column; }
 .bp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; overflow: auto; padding: 14px; }
 .bp { padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.03); cursor: pointer; font-size: 13px; }

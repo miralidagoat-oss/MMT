@@ -273,3 +273,30 @@ describe('structures catalogue', () => {
     }
   });
 });
+
+describe('defense & structure damage', () => {
+  it('spike barricades hurt creatures and enraged animals batter walls', async () => {
+    const { damageStructure } = await import('../src/shared/sim/wildlife');
+    const sim = newSim();
+    const p = sim.addPlayer('tok-defense', 'Def');
+    const spot = flatLand(sim);
+    place(p, spot);
+    // a spike barricade next to a boar
+    sim.addStructure({ id: 'spk', type: 'spike_barricade', x: spot.x + 4, y: spot.y, z: spot.z, yaw: 0, hp: 250, owner: p.id, builtAt: 0 });
+    const boar = { id: 'testboar', kind: 'boar' as const, zone: 'none', x: spot.x + 4.5, y: spot.y, z: spot.z, yaw: 0, speed: 0, hp: 90, mode: 'idle' as 'idle', target: null, tx: 0, tz: 0, ty: 0, modeUntil: 1e9, nextAttackAt: 0, rng: 7, diedAt: 0, butchered: false, lastHitBy: null, bleed: 0 };
+    sim.world.creatures[boar.id] = boar;
+    ticks(sim, 21);
+    expect(sim.world.creatures[boar.id]!.hp).toBeLessThan(90);
+    // structure damage collapses supported pieces
+    give(p, 'build_hammer'); give(p, 'stick', 20); give(p, 'palm_frond', 20); give(p, 'rope', 10);
+    p.hotbar = p.inventory.slots.findIndex((s) => s?.id === 'build_hammer');
+    const ctx = { structures: sim.world.structures, col: sim.col, gen: sim.gen, waterLevel: sim.waterLevel };
+    const f = computePlacement(ctx, 'thatch_foundation', { x: spot.x - 4, y: spot.y, z: spot.z }, 0);
+    expect(act(sim, p, { a: 'build', structure: 'thatch_foundation', x: f.x, y: f.y, z: f.z, yaw: f.yaw }).ok).toBe(true);
+    const fnd = Object.values(sim.world.structures).find((s) => s.type === 'thatch_foundation')!;
+    const w = computePlacement(ctx, 'thatch_wall', { x: fnd.x, y: fnd.y + 1, z: fnd.z + 1.4 }, 0);
+    expect(act(sim, p, { a: 'build', structure: 'thatch_wall', x: w.x, y: w.y, z: w.z, yaw: w.yaw }).ok).toBe(true);
+    damageStructure(sim, fnd, 10000, 'boar');
+    expect(Object.values(sim.world.structures).some((s) => s.type === 'thatch_wall')).toBe(false);
+  });
+});

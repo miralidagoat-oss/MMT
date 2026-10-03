@@ -80,10 +80,28 @@ function roundEffects(e: Record<string, number>): Record<string, number> {
   return o;
 }
 
-export function buildSnapshot(sim: Simulation, playerId: string): Snapshot {
+/**
+ * Per-client snapshot memory: an entity is only re-sent when its quantized state
+ * changed, or as a keep-alive once per KEEPALIVE_TICKS (clients prune entities
+ * they have not heard about for a few seconds).
+ */
+export interface SnapshotCache { sent: Map<string, { sig: string; tick: number }> }
+export const KEEPALIVE_TICKS = 20;
+export function newSnapshotCache(): SnapshotCache { return { sent: new Map() }; }
+
+function shouldSend(cache: SnapshotCache | undefined, id: string, sig: string, tick: number): boolean {
+  if (!cache) return true;
+  const prev = cache.sent.get(id);
+  if (prev && prev.sig === sig && tick - prev.tick < KEEPALIVE_TICKS) return false;
+  cache.sent.set(id, { sig, tick });
+  return true;
+}
+
+export function buildSnapshot(sim: Simulation, playerId: string, cache?: SnapshotCache): Snapshot {
   const me = sim.world.players[playerId];
   const cx = me?.pos.x ?? 0, cz = me?.pos.z ?? 0;
   const R2 = SIM.interestRadius ** 2;
+  const tick = sim.world.tick;
   const inRange = (x: number, z: number) => (x - cx) ** 2 + (z - cz) ** 2 <= R2;
   const players: NetPlayer[] = [];
   for (const p of Object.values(sim.world.players)) {
@@ -94,15 +112,20 @@ export function buildSnapshot(sim: Simulation, playerId: string): Snapshot {
   for (const c of Object.values(sim.world.creatures)) {
     if (!inRange(c.x, c.z)) continue;
     if (c.mode === 'dead' && c.butchered) continue;
-    creatures.push({ id: c.id, k: c.kind, x: q(c.x), y: q(c.y), z: q(c.z), yaw: q(c.yaw, 0.001), m: c.mode, h: Math.ceil(c.hp), sp: q(c.speed, 0.1) });
+    const nc: NetCreature = { id: c.id, k: c.kind, x: q(c.x, 0.02), y: q(c.y, 0.02), z: q(c.z, 0.02), yaw: q(c.yaw, 0.01), m: c.mode, h: Math.ceil(c.hp), sp: q(c.speed, 0.1) };
+    // distant creatures update at a reduced rate
+    const far = (c.x - cx) ** 2 + (c.z - cz) ** 2 > 120 * 120;
+    if (far && (tick + c.id.length) % 4 !== 0 && cache?.sent.has(c.id)) continue;
+    if (shouldSend(cache, c.id, `${nc.x}|${nc.y}|${nc.z}|${nc.yaw}|${nc.m}|${nc.h}|${nc.sp}`, tick)) creatures.push(nc);
   }
   const vehicles: NetVehicle[] = [];
   for (const v of Object.values(sim.world.vehicles)) {
     if (!inRange(v.x, v.z) && !(me && me.vehicleId === v.id)) continue;
-    vehicles.push({
+    const nv: NetVehicle = {
       id: v.id, k: v.type, x: q(v.x), y: q(v.y), z: q(v.z), yaw: q(v.yaw, 0.001), p: q(v.pitch, 0.001), r: q(v.roll, 0.001),
       vx: q(v.vx), vz: q(v.vz), h: Math.ceil(v.hp), an: v.anchored, sl: v.sail, seats: v.seats, cid: v.containerId,
-    });
+    };
+    if (shouldSend(cache, v.id, JSON.stringify(nv), tick)) vehicles.push(nv);
   }
   const projectiles = [...sim.projectiles.values()].filter((p) => inRange(p.x, p.z))
     .map((p) => ({ id: p.id, x: q(p.x), y: q(p.y), z: q(p.z), vx: q(p.vx), vy: q(p.vy), vz: q(p.vz) }));

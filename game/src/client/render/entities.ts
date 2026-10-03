@@ -195,7 +195,7 @@ export class EntityRenderer {
     if (v) return v;
     const h = humanoid(p.c);
     const tag = makeTag(p.n, p.c);
-    tag.position.y = 2.1;
+    tag.position.y = 2.05;
     h.root.add(tag);
     h.root.traverse((c) => { c.userData.pick = { kind: 'player', id: p.id } satisfies Pickable; });
     this.group.add(h.root);
@@ -431,6 +431,6 @@ function makeTag(name: string, color: string): THREE.Sprite {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, transparent: true }));
-  s.scale.set(1.6, 0.4, 1);
+  s.scale.set(1.1, 0.275, 1);
   return s;
 }

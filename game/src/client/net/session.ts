@@ -219,13 +219,14 @@ export class ClientSession {
     this.weather = s.weather;
     this.dayOffset = s.dayOffset;
     const t = s.time;
-    const seenP = new Set<string>(), seenC = new Set<string>(), seenV = new Set<string>();
+    const seenP = new Set<string>();
     for (const p of s.players) { push(this.playerHist, p.id, t, p); seenP.add(p.id); }
-    for (const c of s.creatures) { push(this.creatureHist, c.id, t, c); seenC.add(c.id); }
-    for (const v of s.vehicles) { push(this.vehicleHist, v.id, t, v); seenV.add(v.id); }
+    for (const c of s.creatures) push(this.creatureHist, c.id, t, c);
+    for (const v of s.vehicles) push(this.vehicleHist, v.id, t, v);
+    // players are sent every snapshot; creatures/vehicles are delta-sent with a 1 s keep-alive
     prune(this.playerHist, seenP);
-    prune(this.creatureHist, seenC);
-    prune(this.vehicleHist, seenV);
+    pruneStale(this.creatureHist, t - 2.5);
+    pruneStale(this.vehicleHist, t - 2.5);
     this.projectiles = s.projectiles;
     if (s.self) this.reconcile(s.self);
     this.on.snapshot?.(s);
@@ -381,13 +382,21 @@ export class ClientSession {
 function push<T>(map: Map<string, Hist<T>[]>, id: string, t: number, s: T) {
   let h = map.get(id);
   if (!h) { h = []; map.set(id, h); }
-  if (h.length && h[h.length - 1]!.t >= t) return;
+  const last = h[h.length - 1];
+  if (last && last.t >= t) return;
+  // delta snapshots: after a long silence the entity was stationary until just now,
+  // so hold the previous state instead of smearing interpolation across the gap
+  if (last && t - last.t > 0.3) h.push({ t: t - 0.05, s: last.s });
   h.push({ t, s });
   if (h.length > 30) h.splice(0, h.length - 30);
 }
 
 function prune<T>(map: Map<string, Hist<T>[]>, seen: Set<string>) {
   for (const id of map.keys()) if (!seen.has(id)) map.delete(id);
+}
+
+function pruneStale<T>(map: Map<string, Hist<T>[]>, before: number) {
+  for (const [id, h] of map) if (!h.length || h[h.length - 1]!.t < before) map.delete(id);
 }
 
 const lerpN = (a: number, b: number, t: number) => a + (b - a) * t;

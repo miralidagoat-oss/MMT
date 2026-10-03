@@ -28,6 +28,7 @@ class App {
   private fpsWindow: number[] = [];
   private dynTimer = 0;
   private reconnect: { address: string; tries: number } | null = null;
+  private padPrev: boolean[] = [];
 
   constructor() {
     this.audio = new AudioEngine(this.settings.audio);
@@ -191,6 +192,7 @@ class App {
       this.last = now;
       this.lastFrame = now;
       try { this.tick(dt); } catch (e) { console.error(e); }
+      this.menuGamepad();
       this.input.endFrame();
       this.input.endPadFrame();
       this.dynamicResolution(dt);
@@ -215,6 +217,38 @@ class App {
       return;
     }
     this.renderer.renderMenu(dt);
+  }
+
+  /** Controller navigation for menus and in-game panels: D-pad/bumpers move focus, A activates, B backs out. */
+  private menuGamepad() {
+    const pad = [...(navigator.getGamepads?.() ?? [])].find((p) => p && p.connected);
+    if (!pad) return;
+    const now = pad.buttons.map((b) => b.pressed);
+    const pressed = (i: number) => !!now[i] && !this.padPrev[i];
+    this.padPrev = now;
+    const uiActive = this.menus.visible || !!this.game?.uiOpen;
+    if (!uiActive) return;
+    const els = [...document.querySelectorAll<HTMLElement>('#ui button:not([disabled]), #ui select, #ui input, #ui .recipe, #ui .bp, #ui .tab, #ui .slot')]
+      .filter((el) => el.offsetParent !== null);
+    if (!els.length) return;
+    let idx = els.indexOf(document.activeElement as HTMLElement);
+    let moved = false;
+    if (pressed(13) || pressed(15) || pressed(5)) { idx = (idx + 1) % els.length; moved = true; }
+    if (pressed(12) || pressed(14) || pressed(4)) { idx = (idx - 1 + els.length) % els.length; moved = true; }
+    if (moved) {
+      const el = els[idx]!;
+      if (el.tabIndex < 0) el.tabIndex = 0;
+      el.focus();
+      el.scrollIntoView({ block: 'nearest' });
+      this.audio.play('ui_hover', {}, undefined, 'ui');
+    }
+    if (pressed(0)) (document.activeElement as HTMLElement | null)?.click();
+    if (pressed(1)) {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Escape', key: 'Escape' }));
+      const back = [...document.querySelectorAll<HTMLButtonElement>('#ui .dialog-foot .btn')].find((b) => /back/i.test(b.textContent ?? ''));
+      back?.click();
+    }
   }
 
   private dynamicResolution(dt: number) {

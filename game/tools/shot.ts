@@ -34,7 +34,7 @@ async function main() {
   const scenes = process.argv.slice(2).filter((a) => !a.startsWith('--'));
   const list = scenes.length ? scenes : ['day', 'dusk', 'night', 'storm', 'underwater', 'fire', 'base'];
   rmSync(SAVES, { recursive: true, force: true });
-  const server = spawn(path.resolve('node_modules/.bin/tsx'), ['src/server/main.ts', '--serve-client', '--port', String(PORT), '--save-dir', SAVES], { stdio: 'ignore', detached: true });
+  const server = spawn(path.resolve('node_modules/.bin/tsx'), ['src/server/main.ts', '--serve-client', '--port', String(PORT), '--save-dir', SAVES, '--exit-with-parent'], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
   const kill = () => { try { process.kill(-server.pid!, 'SIGKILL'); } catch { /* gone */ } };
   process.on('exit', kill);
   await sleep(4000);

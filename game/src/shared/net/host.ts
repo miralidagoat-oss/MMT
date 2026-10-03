@@ -6,7 +6,7 @@
 import { SIM, PROTOCOL_VERSION, NET } from '../config';
 import { Simulation } from '../sim/simulation';
 import type { ClientMsg, ServerMsg, FxEvent } from './protocol';
-import { buildSnapshot, buildWelcome, buildSharedDelta, dirtyPlayers, privateOf, roster } from './replication';
+import { buildSnapshot, buildWelcome, buildSharedDelta, dirtyPlayers, privateOf, roster, newSnapshotCache, type SnapshotCache } from './replication';
 
 export interface Peer {
   id: number;
@@ -15,6 +15,7 @@ export interface Peer {
   close: (reason: string) => void;
   lastSeen: number;
   bytesOut: number;
+  snapCache: SnapshotCache;
 }
 
 export interface HostOptions {
@@ -40,7 +41,7 @@ export class GameHost {
   }
 
   connect(send: (msg: ServerMsg) => void, close: (reason: string) => void): Peer {
-    const peer: Peer = { id: this.nextPeer++, playerId: null, send, close, lastSeen: this.now(), bytesOut: 0 };
+    const peer: Peer = { id: this.nextPeer++, playerId: null, send, close, lastSeen: this.now(), bytesOut: 0, snapCache: newSnapshotCache() };
     this.peers.set(peer.id, peer);
     return peer;
   }
@@ -75,6 +76,7 @@ export class GameHost {
         }
         const p = this.sim.addPlayer(token, String(msg.name ?? 'Survivor'), msg.color);
         peer.playerId = p.id;
+        peer.snapCache = newSnapshotCache();
         peer.send(buildWelcome(this.sim, p.id));
         this.broadcast({ t: 'roster', list: roster(this.sim) });
         return;
@@ -129,7 +131,7 @@ export class GameHost {
     // snapshots
     const every = Math.max(1, Math.round(SIM.tickRate / SIM.snapshotRate));
     if (this.sim.world.tick % every === 0) {
-      for (const peer of this.peers.values()) if (peer.playerId) peer.send(buildSnapshot(this.sim, peer.playerId));
+      for (const peer of this.peers.values()) if (peer.playerId) peer.send(buildSnapshot(this.sim, peer.playerId, peer.snapCache));
     }
     // timeouts
     const now = this.now();

@@ -5,11 +5,13 @@
  */
 import { SIM, TIME } from '../config';
 import { CREATURES } from '../defs/creatures';
+import { STRUCTURES } from '../defs/structures';
 import { hashInts, hash01 } from '../math/rng';
 import { wrapAngle, clamp } from '../math/vec';
 import { isNight } from '../systems/weather';
 import type { CreatureDef, CreatureKind } from '../defs/types';
-import type { CreatureMode, CreatureState, PlayerState } from '../state';
+import type { CreatureMode, CreatureState, PlayerState, StructureState } from '../state';
+import { findUnsupported } from '../systems/building';
 import type { SpawnZone } from '../world/worldgen';
 import type { Simulation } from './simulation';
 import { applyDamage } from './survival';
@@ -70,7 +72,17 @@ export function tickWildlife(sim: Simulation, dt: number): void {
   const tick = sim.world.tick;
   const night = isNight(sim.hour);
   const R2 = SIM.creatureActiveRadius ** 2;
+  // defensive structures that hurt on touch (spike barricades)
+  const spikes = tick % 5 === 0 ? Object.values(sim.world.structures).filter((s) => STRUCTURES[s.type]?.damageOnTouch) : [];
   for (const c of Object.values(sim.world.creatures)) {
+    if (c.mode !== 'dead' && spikes.length && !CREATURES[c.kind].aquatic && CREATURES[c.kind].habitat !== 'air') {
+      for (const s of spikes) {
+        if (Math.hypot(s.x - c.x, s.z - c.z) > 1.6 + CREATURES[c.kind].radius) continue;
+        damageCreature(sim, c, STRUCTURES[s.type]!.damageOnTouch!, null, 0.3);
+        if ((c.mode as string) !== 'dead') fleeFrom(c, null, sim.now, 3); // damage may have killed it
+        break;
+      }
+    }
     if (c.mode === 'dead') {
       if (sim.now - c.diedAt > CARCASS_SECONDS || c.butchered) removeCreature(sim, c);
       continue;
@@ -265,8 +277,17 @@ function move(sim: Simulation, c: CreatureState, def: CreatureDef, dt: number): 
   }
   if (!def.aquatic && def.habitat !== 'air') {
     const res = sim.col.resolve(nx, ground, nz, def.radius, 1, 0.4);
+    const blocked = Math.hypot(res.x - nx, res.z - nz) > 0.01;
     nx = res.x; nz = res.z;
     c.y = sim.gen.heightAt(nx, nz);
+    // an enraged animal blocked by a building batters it
+    if (blocked && (c.mode === 'chase' || c.mode === 'attack') && def.attackDamage > 0 && sim.now >= c.nextAttackAt) {
+      const hit = nearestStructure(sim, nx, nz, def.radius + 1.2);
+      if (hit) {
+        c.nextAttackAt = sim.now + def.attackCooldown * 1.5;
+        damageStructure(sim, hit, def.attackDamage * 0.6, def.name.toLowerCase());
+      }
+    }
   } else if (def.habitat === 'air') {
     c.y += (Math.max(ground, 0) + 12 - c.y) * dt;
   } else {
@@ -346,6 +367,28 @@ export function butcher(sim: Simulation, c: CreatureState, p: PlayerState): { ok
   sim.fx('butcher', c.x, c.y, c.z, c.kind, undefined, p.id);
   p.stats.harvested++;
   return { ok: true };
+}
+
+function nearestStructure(sim: Simulation, x: number, z: number, r: number): StructureState | null {
+  let best: StructureState | null = null, bd = r;
+  for (const s of Object.values(sim.world.structures)) {
+    const d = Math.hypot(s.x - x, s.z - z) - Math.max(STRUCTURES[s.type]!.size[0], STRUCTURES[s.type]!.size[2]);
+    if (d < bd && STRUCTURES[s.type]!.solid) { bd = d; best = s; }
+  }
+  return best;
+}
+
+/** Damage a structure; destroyed pieces collapse along with anything they supported. */
+export function damageStructure(sim: Simulation, s: StructureState, amount: number, cause: string): void {
+  s.hp -= amount;
+  sim.fx('structure_hit', s.x, s.y + 1, s.z, cause, amount);
+  sim.markStructure(s.id);
+  if (s.hp > 0) return;
+  const fallen = findUnsupported(sim.world.structures, s.id);
+  sim.fx('collapse', s.x, s.y, s.z, s.type);
+  sim.removeStructure(s.id);
+  for (const f of fallen) sim.removeStructure(f);
+  sim.notify(null, `A ${STRUCTURES[s.type]?.name ?? 'structure'} was destroyed by a ${cause}!`, 'warn');
 }
 
 export function creatureKinds(): CreatureKind[] { return Object.keys(CREATURES) as CreatureKind[]; }
