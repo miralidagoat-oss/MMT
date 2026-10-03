@@ -1,6 +1,6 @@
 # Tidewake — Project Status
 
-_Last updated: 2026-10-03_
+_Last updated: 2026-10-03 (40/40 tests passing on 3 consecutive full runs; browser E2E passing)_
 
 ## Build status
 | Check | Command | Result |

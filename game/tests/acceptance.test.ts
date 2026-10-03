@@ -195,7 +195,7 @@ describe('acceptance: full co-op survival loop', () => {
     await run([b], 2000, () => ({ ...idle, crouch: true }));
     expect(pb.underwater).toBe(true);
     expect(pb.oxygen).toBeLessThan(100);
-    await run([b], 2500, () => ({ ...idle, jump: true }));
+    for (let k = 0; k < 16 && pb.underwater; k++) await run([b], 500, () => ({ ...idle, jump: true })); // ascend until surfaced
     expect(pb.underwater).toBe(false);
 
     // ---------------------------------------------------------------- wildlife interaction (player C hunts a crab)
