@@ -16,11 +16,29 @@ const BIG = new Set(['palm', 'hardwood', 'rock', 'iron_vein', 'obsidian_rock', '
 
 interface Batch { type: string; variant: number; solid: THREE.InstancedMesh; leaves: THREE.InstancedMesh | null; count: number }
 
-export interface WindUniforms { time: { value: number }; wind: { value: number }; windDir: { value: THREE.Vector2 } }
+export interface WindUniforms { time: { value: number }; wind: { value: number }; windDir: { value: THREE.Vector2 }; sunDirW: { value: THREE.Vector3 }; sunTint: { value: THREE.Color } }
 
-function windify(mat: THREE.Material, u: WindUniforms, strength: number, key: string, underwaterSway = false) {
+function windify(mat: THREE.Material, u: WindUniforms, strength: number, key: string, underwaterSway = false, translucent = false) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, u);
+    if (translucent) {
+      // back-lit leaves transmit warm sunlight (cheap foliage translucency)
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vLeafW;')
+        .replace('#include <project_vertex>', `#include <project_vertex>
+          #ifdef USE_INSTANCING
+            vLeafW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+          #else
+            vLeafW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+          #endif`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vLeafW; uniform vec3 sunDirW; uniform vec3 sunTint;')
+        .replace('#include <opaque_fragment>', `
+          vec3 toCam = normalize(cameraPosition - vLeafW);
+          float back = pow(max(dot(-toCam, sunDirW), 0.0), 3.0);
+          outgoingLight += diffuseColor.rgb * sunTint * (back * 1.6 + 0.12);
+          #include <opaque_fragment>`);
+    }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float time; uniform float wind; uniform vec2 windDir;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -43,7 +61,7 @@ function windify(mat: THREE.Material, u: WindUniforms, strength: number, key: st
 
 export class VegetationSystem {
   group = new THREE.Group();
-  wind: WindUniforms = { time: { value: 0 }, wind: { value: 0.3 }, windDir: { value: new THREE.Vector2(1, 0) } };
+  wind: WindUniforms = { time: { value: 0 }, wind: { value: 0.3 }, windDir: { value: new THREE.Vector2(1, 0) }, sunDirW: { value: new THREE.Vector3(0, 1, 0) }, sunTint: { value: new THREE.Color(0, 0, 0) } };
   private batches = new Map<string, Batch>();
   private lastCenter = new THREE.Vector3(1e9, 0, 1e9);
   private dirty = true;
@@ -72,7 +90,7 @@ export class VegetationSystem {
     windify(this.reefMat, this.wind, 0.05, 'reef', true);
     const leaf = (tex: THREE.Texture, k: string, strength: number) => {
       const m = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75 });
-      windify(m, this.wind, strength, k);
+      windify(m, this.wind, strength, k, false, true);
       return m;
     };
     this.leafMats = { palm: leaf(t.palmLeaf, 'palm', 0.0026), broad: leaf(t.broadLeaf, 'broad', 0.0022), grass: leaf(t.grassBlade, 'bush', 0.08) };
@@ -116,7 +134,7 @@ export class VegetationSystem {
     merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     merged.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     const gm = new THREE.MeshStandardMaterial({ map: t.grassBlade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9 });
-    windify(gm, this.wind, 0.5, 'grass');
+    windify(gm, this.wind, 0.5, 'grass', false, true);
     this.grass = new THREE.InstancedMesh(merged, gm, 9000);
     this.grass.count = 0;
     this.grass.frustumCulled = false;
@@ -134,6 +152,12 @@ export class VegetationSystem {
   }
 
   markDirty() { this.dirty = true; }
+
+  /** Sun direction/colour for leaf translucency (scaled by how much sun actually reaches the ground). */
+  setSun(dir: THREE.Vector3, color: THREE.Color, strength: number) {
+    this.wind.sunDirW.value.copy(dir);
+    this.wind.sunTint.value.copy(color).multiplyScalar(strength);
+  }
 
   update(cam: THREE.Vector3, time: number, wind: number, windDir: number) {
     this.wind.time.value = time;

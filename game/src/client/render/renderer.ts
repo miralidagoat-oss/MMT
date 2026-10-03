@@ -253,6 +253,7 @@ export class WorldRenderer {
       tu.sunIntensity.value = this.sky.daylight * (1 - w.cloud * 0.6);
     }
     if (this.ocean) this.updateOcean(this.ocean, v.time, v.camPos, w, this.terrain!.heightCenter);
+    this.vegetation?.setSun(this.sky.lightDir, this.sky.sunColor, this.sky.daylight * (1 - w.cloud * 0.75) * 0.9);
     this.vegetation?.update(v.camPos, v.time, w.wind, w.windDir);
     if (this.entities) {
       this.entities.syncStructures(session);

@@ -8,14 +8,17 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-const PORT = 7792;
+const PORT = 7793;
 const OUT = path.resolve('screenshots');
 const SAVES = path.resolve('.shot-saves');
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Step = { cmd?: string; yaw?: number; pitch?: number; wait?: number; eval?: string };
+const PEAK = `(async()=>{ const gen=g.session.gen; let best={x:0,z:0,h:-1}; for (let x=-200;x<=200;x+=6) for (let z=-200;z<=200;z+=6) { const h=gen.heightAt(x,z); if (h>best.h) best={x,z,h}; } await g.act({a:'chat',text:'/tp '+best.x+' '+best.z}); })()`;
 const SCENES: Record<string, Step[]> = {
+  vista: [{ cmd: '/time 9.5' }, { eval: PEAK }, { wait: 2500 }, { yaw: 2.3, pitch: -0.12, wait: 3500 }],
+  golden: [{ cmd: '/time 17.2' }, { eval: PEAK }, { wait: 2500 }, { yaw: -1.6, pitch: -0.08, wait: 3500 }],
   day: [{ cmd: '/time 10' }, { yaw: 0.6, pitch: 0.02, wait: 2500 }],
   beach: [{ cmd: '/time 15' }, { yaw: 2.6, pitch: -0.08, wait: 2500 }],
   dusk: [{ cmd: '/time 18.3' }, { yaw: -1.4, pitch: 0.05, wait: 3000 }],
@@ -32,7 +35,7 @@ const SCENES: Record<string, Step[]> = {
 
 async function main() {
   const scenes = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-  const list = scenes.length ? scenes : ['day', 'dusk', 'night', 'storm', 'underwater', 'fire', 'base'];
+  const list = scenes.length ? scenes : ['day', 'vista', 'golden', 'dusk', 'night', 'storm', 'underwater', 'fire', 'base'];
   rmSync(SAVES, { recursive: true, force: true });
   const server = spawn(path.resolve('node_modules/.bin/tsx'), ['src/server/main.ts', '--serve-client', '--port', String(PORT), '--save-dir', SAVES, '--exit-with-parent'], { stdio: ['pipe', 'ignore', 'ignore'], detached: true });
   const kill = () => { try { process.kill(-server.pid!, 'SIGKILL'); } catch { /* gone */ } };
