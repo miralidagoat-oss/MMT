@@ -22,11 +22,14 @@ export class ViewModel {
   private draw = 0;
   private eat = 0;
   private hidden = false;
+  private flame: THREE.Mesh;
+  private flameLit = false;
+  private time = 0;
   readonly tip = new THREE.Vector3();
 
   constructor(camera: THREE.Camera) {
     this.root.scale.setScalar(SCALE);
-    this.root.position.set(0.075, -0.07, -0.11);
+    this.root.position.set(0.1, -0.095, -0.15);
     camera.add(this.root);
     this.root.add(this.pivot);
     const skin = new THREE.MeshStandardMaterial({ color: '#c99a76', roughness: 0.75 });
@@ -34,6 +37,9 @@ export class ViewModel {
     this.arm.rotation.x = Math.PI / 2.3;
     this.arm.position.set(0.05, -0.12, 0.28);
     this.pivot.add(this.arm);
+    // emissive flame shown on torches / lanterns
+    this.flame = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 1.8, 0.5), transparent: true, opacity: 0.9, depthWrite: false }));
+    this.flame.visible = false;
     this.root.traverse((o) => { o.frustumCulled = false; });
   }
 
@@ -42,17 +48,27 @@ export class ViewModel {
     if (want === this.itemId) return;
     this.itemId = want;
     if (this.item) { this.pivot.remove(this.item); this.item = null; }
+    this.flameLit = false;
     if (!id) return;
     const g = itemModel(id, ITEMS[id]?.icon.color ?? '#fff');
     this.item = new THREE.Mesh(g, this.mat);
     this.item.frustumCulled = false;
     // hold upright-ish, angled away
     const long = id === 'crude_spear' || id === 'harpoon' || id === 'fishing_rod';
-    this.item.rotation.set(long ? -1.2 : -0.35, 0.2, long ? 0 : -0.15);
-    this.item.position.set(0, long ? -0.5 : -0.12, long ? 0.3 : 0);
+    this.item.rotation.set(long ? -1.2 : -0.75, 0.25, long ? 0 : -0.25);
+    this.item.position.set(0, long ? -0.5 : -0.2, long ? 0.3 : 0.05);
     if (id === 'bow') { this.item.rotation.set(0, Math.PI / 2, 0.15); this.item.position.set(-0.05, -0.4, -0.1); }
     if (id === 'chart') { this.item.rotation.set(-1.0, 0, 0); this.item.position.set(-0.15, 0.05, -0.05); }
     this.pivot.add(this.item);
+    const lit = id === 'torch' || id === 'lantern';
+    this.flameLit = lit;
+    this.flame.visible = lit;
+    if (lit) {
+      (this.flame.material as THREE.MeshBasicMaterial).color.set(id === 'torch' ? new THREE.Color(4, 1.7, 0.45) : new THREE.Color(3, 2.4, 1.2));
+      this.flame.position.set(0, id === 'torch' ? 0.64 : 0.12, 0);
+      this.flame.scale.setScalar(id === 'torch' ? 1 : 0.5);
+      this.item.add(this.flame);
+    }
   }
 
   triggerSwing(duration = 0.35) { this.swing = duration; this.swingDur = duration; }
@@ -62,6 +78,12 @@ export class ViewModel {
 
   update(dt: number, speed: number, lookDX: number, lookDY: number, swimming: boolean, headBob: boolean) {
     if (this.hidden) return;
+    this.time += dt;
+    this.flame.visible = this.flameLit && !swimming;
+    if (this.flame.visible) {
+      const f = 0.85 + Math.sin(this.time * 23) * 0.08 + Math.sin(this.time * 9.7) * 0.07;
+      this.flame.scale.set(f, f * (1.1 + Math.sin(this.time * 14) * 0.15), f);
+    }
     this.bobT += dt * (speed > 0.5 ? 2 + speed * 1.4 : 1);
     const bobAmp = headBob ? Math.min(1, speed / 4) : 0;
     this.sway.x += (-lookDX * 0.002 - this.sway.x) * Math.min(1, dt * 10);

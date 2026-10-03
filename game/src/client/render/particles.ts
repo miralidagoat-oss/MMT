@@ -21,7 +21,7 @@ function makePool(cap: number, additive: boolean): Pool {
   const mat = new THREE.ShaderMaterial({
     uniforms: { tex: { value: textures().particle }, scale: { value: 600 } },
     vertexShader: `attribute float size; attribute vec4 color; varying vec4 vCol; uniform float scale;
-      void main(){ vCol = color; vec4 mv = modelViewMatrix*vec4(position,1.0); gl_Position = projectionMatrix*mv; gl_PointSize = size*scale/max(-mv.z,0.1); }`,
+      void main(){ vCol = color; vec4 mv = modelViewMatrix*vec4(position,1.0); gl_Position = projectionMatrix*mv; gl_PointSize = min(size*scale/max(-mv.z,0.1), 96.0); }`,
     fragmentShader: `uniform sampler2D tex; varying vec4 vCol; void main(){ vec4 t = texture2D(tex, gl_PointCoord); gl_FragColor = vec4(vCol.rgb, vCol.a*t.a); if(gl_FragColor.a<0.01) discard; }`,
     transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
   });

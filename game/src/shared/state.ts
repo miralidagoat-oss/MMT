@@ -229,6 +229,8 @@ export interface GameSettings {
   resourceRespawnMul: number;
   creatureDamageMul: number;
   survivalDrainMul: number;
+  /** enables host debug commands (/time, /give, ...) */
+  cheats: boolean;
 }
 
 export interface Progression {
@@ -272,4 +274,5 @@ export const DEFAULT_SETTINGS: GameSettings = {
   resourceRespawnMul: 1,
   creatureDamageMul: 1,
   survivalDrainMul: 1,
+  cheats: false,
 };

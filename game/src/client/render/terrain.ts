@@ -55,7 +55,7 @@ export function makeTerrainMaterial(u: TerrainUniforms, far: boolean): THREE.Mes
         vec4 nz = texture2D(tNoise, vWPos.xz * 0.004);
         vec4 nz2 = texture2D(tNoise, vWPos.xz * 0.03);
         // macro variation breaks tiling
-        vec3 sand = texture2D(tSand, uv).rgb * (0.88 + nz.g*0.25);
+        vec3 sand = texture2D(tSand, uv).rgb * (0.62 + nz.g*0.2);
         vec3 grass = texture2D(tGrass, uv*0.8).rgb * (0.8 + nz.r*0.4);
         grass = mix(grass, grass*vec3(1.15,1.05,0.7), smoothstep(0.55,0.75,nz.b));
         vec3 dirt = texture2D(tDirt, uv).rgb;

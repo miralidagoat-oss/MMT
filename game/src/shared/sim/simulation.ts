@@ -420,22 +420,24 @@ export class Simulation {
   }
 
   private trackExploration(p: PlayerState): void {
-    const key = `${Math.floor(p.pos.x / 128)},${Math.floor(p.pos.z / 128)}`;
-    if (!p.explored.includes(key)) {
+    const cx = Math.floor(p.pos.x / 128), cz = Math.floor(p.pos.z / 128);
+    if (!p.explored.includes(`${cx},${cz}`)) {
       // reveal a 3x3 neighbourhood (you can see further than you stand)
-      const cx = Math.floor(p.pos.x / 128), cz = Math.floor(p.pos.z / 128);
       for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
         const k = `${cx + dx},${cz + dz}`;
         if (!p.explored.includes(k)) p.explored.push(k);
       }
       this.markPlayer(p.id);
-      const isl = this.gen.islandAt(p.pos.x, p.pos.z);
-      if (isl && this.gen.heightAt(p.pos.x, p.pos.z) > 0 && !this.world.progression.discoveredIslands.includes(isl.id)) {
-        this.world.progression.discoveredIslands.push(isl.id);
-        this.out.dirty.add('g');
-        this.notify(null, `${p.name} discovered ${isl.name}.`, 'good');
-        this.milestone(p, 'new_island');
-      }
+    }
+    // island discovery is checked independently of map reveal (cheap, a few times a second)
+    if ((this.world.tick + p.id.length) % 5 !== 0) return;
+    if (this.gen.heightAt(p.pos.x, p.pos.z) <= 0.3) return;
+    const isl = this.gen.islandAt(p.pos.x, p.pos.z);
+    if (isl && !this.world.progression.discoveredIslands.includes(isl.id)) {
+      this.world.progression.discoveredIslands.push(isl.id);
+      this.out.dirty.add('g');
+      this.notify(null, `${p.name} discovered ${isl.name}.`, 'good');
+      this.milestone(p, 'new_island');
     }
   }
 

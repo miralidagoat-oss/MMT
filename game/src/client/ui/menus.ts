@@ -85,14 +85,15 @@ export class Menus {
     diff.value = 'normal';
     const keep = h('input', { type: 'checkbox' }) as HTMLInputElement;
     const ff = h('input', { type: 'checkbox' }) as HTMLInputElement;
+    const cheats = h('input', { type: 'checkbox' }) as HTMLInputElement;
     const body = h('div', { class: 'dialog-body' },
       row('World name', name), row('Seed', seed, 'Same seed = same islands'), row('Difficulty', diff),
-      row('Keep inventory on death', keep), row('Friendly fire', ff),
+      row('Keep inventory on death', keep), row('Friendly fire', ff), row('Allow cheats', cheats, 'Host commands: /time /weather /give /tp /heal'),
     );
     this.show(h('div', { class: 'panel dialog' },
       h('div', { class: 'dialog-head' }, h('h2', { text: 'New World' })), body,
       h('div', { class: 'dialog-foot' }, this.btn('Back', () => void this.main()), this.btn('Start', () => {
-        this.actions.newWorld({ name: name.value.trim() || 'My Island', seed: seed.value.trim(), settings: { difficulty: diff.value as GameSettings['difficulty'], keepInventoryOnDeath: keep.checked, friendlyFire: ff.checked } });
+        this.actions.newWorld({ name: name.value.trim() || 'My Island', seed: seed.value.trim(), settings: { difficulty: diff.value as GameSettings['difficulty'], keepInventoryOnDeath: keep.checked, friendlyFire: ff.checked, cheats: cheats.checked } });
       }, 'primary')),
     ));
   }

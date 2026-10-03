@@ -10,6 +10,8 @@ import { plantModel } from './models';
 import { textures } from './textures';
 
 const VARIANTS = 3;
+const WOODY = new Set(['palm', 'hardwood', 'driftwood', 'loose_stick']);
+const ROCKY = new Set(['rock', 'iron_vein', 'loose_stone', 'clay_bank', 'scrap_pile']);
 const BIG = new Set(['palm', 'hardwood', 'rock', 'iron_vein', 'obsidian_rock', 'coral', 'scrap_pile']);
 
 interface Batch { type: string; variant: number; solid: THREE.InstancedMesh; leaves: THREE.InstancedMesh | null; count: number }
@@ -49,6 +51,8 @@ export class VegetationSystem {
   smallRadius = 110;
   density = 1;
   private solidMat: THREE.MeshStandardMaterial;
+  private barkMat: THREE.MeshStandardMaterial;
+  private rockMat: THREE.MeshStandardMaterial;
   private reefMat: THREE.MeshStandardMaterial;
   private leafMats: Record<string, THREE.MeshStandardMaterial>;
   instanceCount = 0;
@@ -61,6 +65,9 @@ export class VegetationSystem {
     const t = textures();
     this.solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, map: null });
     windify(this.solidMat, this.wind, 0.0016, 'solid');
+    this.barkMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, map: t.bark, color: new THREE.Color(3.2, 3.2, 3.2) });
+    windify(this.barkMat, this.wind, 0.0016, 'bark');
+    this.rockMat = triplanarRock(t.rock);
     this.reefMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide });
     windify(this.reefMat, this.wind, 0.05, 'reef', true);
     const leaf = (tex: THREE.Texture, k: string, strength: number) => {
@@ -75,7 +82,8 @@ export class VegetationSystem {
       for (let v = 0; v < VARIANTS; v++) {
         const model = plantModel(type, 11 + v * 37);
         const def = NODES[type]!;
-        const solid = new THREE.InstancedMesh(model.solid, def.underwater && type === 'kelp' ? this.reefMat : this.solidMat, 64);
+        const mat = type === 'kelp' ? this.reefMat : WOODY.has(type) ? this.barkMat : ROCKY.has(type) ? this.rockMat : this.solidMat;
+        const solid = new THREE.InstancedMesh(model.solid, mat, 64);
         solid.count = 0;
         solid.castShadow = BIG.has(type) && !def.underwater;
         solid.receiveShadow = true;
@@ -234,6 +242,25 @@ export class VegetationSystem {
     this.grass.count = count;
     this.grass.instanceMatrix.needsUpdate = true;
   }
+}
+
+/** Object-space triplanar rock texturing (procedural rock meshes have no UVs). */
+function triplanarRock(tex: THREE.Texture): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.tRock = { value: tex };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos; varying vec3 vObjN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position; vObjN = normal;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D tRock; varying vec3 vObjPos; varying vec3 vObjN;')
+      .replace('#include <map_fragment>', `
+        vec3 bw = pow(abs(normalize(vObjN)), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
+        vec3 tx = texture2D(tRock, vObjPos.zy * 0.7).rgb * bw.x + texture2D(tRock, vObjPos.xz * 0.7).rgb * bw.y + texture2D(tRock, vObjPos.xy * 0.7).rgb * bw.z;
+        diffuseColor.rgb *= tx * 3.6;`);
+  };
+  m.customProgramCacheKey = () => 'rock-triplanar';
+  return m;
 }
 
 function hashF(s: string): number {

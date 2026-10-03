@@ -59,15 +59,18 @@ export class WorldRenderer {
   private fpsAcc = 0;
   private fpsFrames = 0;
   dynScale = 1;
+  private menuOcean: OceanSystem | null = null;
+  private menuT = 0;
 
   constructor(public canvas: HTMLCanvasElement, settings: GraphicsSettings) {
     this.settings = settings;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false, depth: true });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 0.9;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.info.autoReset = false;
     this.camera = new THREE.PerspectiveCamera(settings.fov, 16 / 9, 0.05, 12000);
     this.scene.add(this.camera);
     this.sky = new SkySystem(this.scene, this.renderer);
@@ -94,6 +97,7 @@ export class WorldRenderer {
     this.vegetation = new VegetationSystem(gen, (id) => session.isNodeDepleted(id));
     this.scene.add(this.vegetation.group);
     this.entities = new EntityRenderer(this.scene, gen, this.particles);
+    if (this.menuOcean) this.menuOcean.mesh.visible = false;
     this.applySettings(this.settings);
   }
 
@@ -177,6 +181,54 @@ export class WorldRenderer {
     this.highlight.visible = true;
   }
 
+  private updateOcean(ocean: OceanSystem, time: number, camPos: THREE.Vector3, w: { waves: number; windDir: number; cloud: number; rain: number }, heightCenter: THREE.Vector2) {
+    const u = ocean.material.uniforms;
+    u.time!.value = time;
+    u.amp!.value = w.waves;
+    u.windDir!.value = w.windDir;
+    u.camPos!.value.copy(camPos);
+    u.heightCenter!.value.copy(heightCenter);
+    u.sunDir!.value.copy(this.sky.lightDir);
+    u.sunColor!.value.copy(this.sky.sunColor);
+    u.sunIntensity!.value = this.sky.daylight * (1 - w.cloud * 0.7) + 0.05;
+    u.skyColor!.value.copy(this.sky.zenithColor);
+    u.horizonColor!.value.copy(this.sky.horizonColor);
+    u.daylight!.value = 0.08 + this.sky.daylight * 0.92;
+    u.rain!.value = w.rain;
+    if (this.sky.envMap && u.envMap!.value !== this.sky.envMap) ocean.setEnv(this.sky.envMap);
+  }
+
+  /** Main-menu backdrop: open ocean at golden hour with a slowly drifting camera. */
+  renderMenu(dt: number) {
+    this.resize();
+    if (!this.menuOcean) {
+      const tex = new THREE.DataTexture(new Uint16Array([THREE.DataUtils.toHalfFloat(-40)]), 1, 1, THREE.RedFormat, THREE.HalfFloatType);
+      tex.needsUpdate = true;
+      this.menuOcean = new OceanSystem(tex, this.settings.waterQuality);
+      this.scene.add(this.menuOcean.mesh);
+    }
+    this.menuOcean.mesh.visible = !this.terrain;
+    this.menuT += dt;
+    const t = this.menuT;
+    const cam = this.camera;
+    cam.position.set(Math.sin(t * 0.02) * 30, 3.2 + Math.sin(t * 0.4) * 0.15, Math.cos(t * 0.02) * 30);
+    cam.rotation.set(0.02 + Math.sin(t * 0.3) * 0.01, -2.2 + t * 0.012, Math.sin(t * 0.5) * 0.01, 'YXZ');
+    if (Math.abs(cam.fov - this.settings.fov) > 0.01) { cam.fov = this.settings.fov; cam.updateProjectionMatrix(); }
+    const w = { cloud: 0.38, rain: 0, fog: 0.05, wind: 0.45, windDir: 0.6, waves: 1.0 };
+    this.sky.update({ hour: 17.7, cloud: w.cloud, rain: w.rain, fog: w.fog, wind: w.wind, windDir: w.windDir, underwater: false, lightning: 0, time: t }, cam);
+    this.sky.updateProbe(t);
+    this.updateOcean(this.menuOcean, t, cam.position, w, new THREE.Vector2(1e6, 1e6));
+    const g = this.post.grade.uniforms;
+    g.underwater!.value = 0; g.damage!.value = 0; g.lowHealth!.value = 0; g.flash!.value = 0; g.cold!.value = 0; g.sleep!.value = 0;
+    const sunW = this.sky.sunDir.clone().multiplyScalar(5000).add(cam.position).project(cam);
+    g.sunScreen!.value.set(sunW.x * 0.5 + 0.5, sunW.y * 0.5 + 0.5);
+    g.sunVisible!.value = sunW.z < 1 && Math.abs(sunW.x) < 1.6 ? 0.6 : 0;
+    g.sunColor!.value.copy(this.sky.sunColor);
+    this.particles.update(dt, cam.position, 0, w.wind, w.windDir, false);
+    this.renderer.info.reset();
+    this.post.render(dt);
+  }
+
   render(session: ClientSession, v: FrameView) {
     this.resize();
     const cam = this.camera;
@@ -192,7 +244,6 @@ export class WorldRenderer {
     const flash = this.lightning > 0 ? this.lightning * (0.6 + Math.random() * 0.4) : 0;
     this.sky.update({ hour, cloud: w.cloud, rain: w.rain, fog: w.fog, wind: w.wind, windDir: w.windDir, underwater: v.underwater, lightning: flash, time: v.time }, cam);
     this.sky.updateProbe(v.time);
-    if (this.ocean && this.sky.envMap && this.ocean.material.uniforms.envMap!.value !== this.sky.envMap) this.ocean.setEnv(this.sky.envMap);
 
     if (this.terrain) {
       this.terrain.update(v.camPos);
@@ -201,21 +252,7 @@ export class WorldRenderer {
       tu.sunDir.value.copy(this.sky.lightDir);
       tu.sunIntensity.value = this.sky.daylight * (1 - w.cloud * 0.6);
     }
-    if (this.ocean) {
-      const u = this.ocean.material.uniforms;
-      u.time!.value = v.time;
-      u.amp!.value = w.waves;
-      u.windDir!.value = w.windDir;
-      u.camPos!.value.copy(v.camPos);
-      u.heightCenter!.value.copy(this.terrain!.heightCenter);
-      u.sunDir!.value.copy(this.sky.lightDir);
-      u.sunColor!.value.copy(this.sky.sunColor);
-      u.sunIntensity!.value = this.sky.daylight * (1 - w.cloud * 0.7) + 0.05;
-      u.skyColor!.value.copy(this.sky.zenithColor);
-      u.horizonColor!.value.copy(this.sky.horizonColor);
-      u.daylight!.value = 0.08 + this.sky.daylight * 0.92;
-      u.rain!.value = w.rain;
-    }
+    if (this.ocean) this.updateOcean(this.ocean, v.time, v.camPos, w, this.terrain!.heightCenter);
     this.vegetation?.update(v.camPos, v.time, w.wind, w.windDir);
     if (this.entities) {
       this.entities.syncStructures(session);
@@ -254,6 +291,7 @@ export class WorldRenderer {
     g.sunColor!.value.copy(this.sky.sunColor);
 
     const t0 = performance.now();
+    this.renderer.info.reset();
     this.post.render(v.dt);
     const info = this.renderer.info.render;
     this.stats.drawCalls = info.calls;

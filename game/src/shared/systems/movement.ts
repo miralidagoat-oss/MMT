@@ -95,21 +95,22 @@ export function stepMovement(s: MoveState, inp: InputFrame, env: MoveEnv, dt: nu
     s.sprinting = sprint;
     const speed = (sprint ? PLAYER.swimSprintSpeed : PLAYER.swimSpeed) * env.swimMul * env.speedMul;
     // vertical intent: jump = ascend, crouch = dive; looking down while moving forward also dives when submerged
-    let vyTarget = 0;
-    if (inp.jump) vyTarget = PLAYER.diveSpeed;
+    const floatY = surface - FLOAT_OFFSET;
+    const diving = inp.crouch || (s.underwater && inp.mz > 0.2 && inp.pitch < -0.25);
+    // near the surface and not diving: ride the waves (track the surface tightly so
+    // passing crests don't dunk the swimmer's head)
+    const floating = !diving && s.y > floatY - 0.9;
+    let vyTarget: number;
+    if (floating) vyTarget = clamp((floatY - s.y) * 6, -3, 3);
+    else if (inp.jump) vyTarget = PLAYER.diveSpeed;
     else if (inp.crouch) vyTarget = -PLAYER.diveSpeed;
     else if (s.underwater && inp.mz > 0.2) vyTarget = Math.sin(inp.pitch) * PLAYER.diveSpeed * inp.mz;
-    const floatY = surface - FLOAT_OFFSET;
-    const atSurface = s.y >= floatY - 0.15;
-    if (vyTarget === 0) {
-      // buoyancy: gently drift to the floating height
-      vyTarget = clamp((floatY - s.y) * 2.2, -1.2, 1.2);
-    }
-    if (atSurface && vyTarget > 0 && s.y > floatY) vyTarget = 0; // can't fly out of the water
+    else vyTarget = clamp((floatY - s.y) * 2.2, -1.2, 1.2); // slow buoyant rise
+    if (vyTarget > 0 && s.y > floatY + 0.05) vyTarget = 0; // can't fly out of the water
     const a = PLAYER.waterAccel * dt;
     s.vx += clamp(wx * speed - s.vx, -a * speed, a * speed);
     s.vz += clamp(wz * speed - s.vz, -a * speed, a * speed);
-    s.vy += clamp(vyTarget - s.vy, -a * 2, a * 2);
+    s.vy += clamp(vyTarget - s.vy, -a * (floating ? 6 : 2), a * (floating ? 6 : 2));
     s.onGround = false;
   } else {
     const wantCrouch = inp.crouch;

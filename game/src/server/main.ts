@@ -46,7 +46,7 @@ async function main() {
   try { world = await store.load(WORLD); } catch (e) { log(`FATAL: ${(e as Error).message}`); process.exit(2); }
   const sim = world
     ? new Simulation({ world, log })
-    : new Simulation({ seed: args.seed !== undefined ? String(args.seed) : undefined, name: WORLD, log, settings: args.difficulty ? { difficulty: args.difficulty as 'normal' } : undefined });
+    : new Simulation({ seed: args.seed !== undefined ? String(args.seed) : undefined, name: WORLD, log, settings: { ...(args.difficulty ? { difficulty: args.difficulty as 'normal' } : {}), cheats: !!args.cheats } });
   log(`${world ? 'Loaded' : 'Created'} world '${WORLD}' seed=${sim.world.seed} day=${dayNumber(sim.world)} islands=${sim.gen.islands.length}`);
 
   let saving = false;

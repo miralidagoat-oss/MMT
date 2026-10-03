@@ -73,14 +73,14 @@ export function tickSurvival(sim: Simulation, dt: number): void {
     }
 
     const sheltered = slow ? sim.isSheltered(p.pos.x, p.pos.y, p.pos.z) : (p.effects.sheltered ?? 0) > 0;
-    if (slow) { if (sheltered) p.effects.sheltered = 1; else delete p.effects.sheltered; }
+    if (slow) { if (sheltered) p.effects.sheltered = 1e9; else delete p.effects.sheltered; }
 
     // ---- wetness
     if (p.swimming || p.underwater) p.wetness = 1;
     else {
       if (w.rain > 0.1 && !sheltered) p.wetness = Math.min(1, p.wetness + w.rain * 0.03 * dt);
       const fire = slow ? nearFire(sim, p) : (p.effects.warm ?? 0) > 0;
-      if (slow) { if (fire) p.effects.warm = 1; else delete p.effects.warm; }
+      if (slow) { if (fire) p.effects.warm = 1e9; else delete p.effects.warm; }
       const dry = fire ? 1 / SURVIVAL.wetDrySecondsAtFire : (daylight(hour) * (1 - w.rain)) / SURVIVAL.wetDrySecondsInSun;
       p.wetness = Math.max(0, p.wetness - dry * dt);
     }

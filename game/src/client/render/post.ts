@@ -57,8 +57,8 @@ const GradeShader = {
         }
         acc /= 18.0;
         vec2 dd = (uv - sunScreen); dd.x *= aspect;
-        float fall = exp(-length(dd) * 2.4);
-        col += sunColor * acc * fall * sunVisible * godRays * 0.55 * (underwater > 0.5 ? 1.8 : 1.0);
+        float fall = exp(-length(dd) * 3.5);
+        col += sunColor * acc * fall * sunVisible * godRays * 0.2 * (underwater > 0.5 ? 2.5 : 1.0);
       }
       if (underwater > 0.5) {
         col *= vec3(0.55, 0.85, 0.92);
@@ -120,7 +120,7 @@ export class PostFX {
     this.bloom?.dispose();
     this.bloom = null;
     if (g.bloom) {
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.55, 0.88);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.22, 0.5, 1.0);
       this.composer.addPass(this.bloom);
     }
     this.grade.uniforms.godRays!.value = g.godRays ? 1 : 0;

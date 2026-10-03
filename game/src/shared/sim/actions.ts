@@ -14,7 +14,9 @@ import type { EquipSlot } from '../defs/types';
 import { addStack, hasItems, moveBetween, removeItem, wear, makeStack, countItem, type SlotRef } from '../systems/inventory';
 import { validateGeometry, findUnsupported } from '../systems/building';
 import type { Action } from '../net/protocol';
-import type { ContainerState, ItemStack, PlayerState, Slots, StructureState } from '../state';
+import type { ContainerState, ItemStack, PlayerState, Slots, StructureState, WeatherKind, WorldEvent } from '../state';
+import { forceWeather } from '../systems/weather';
+import { startEvent } from './events';
 import type { Simulation } from './simulation';
 import { startCraft, cancelCraft } from './crafting';
 import { damageCreature, butcher } from './wildlife';
@@ -133,8 +135,59 @@ function inRange(p: PlayerState, t: { x: number; y?: number; z: number }, r: num
 function chat(sim: Simulation, p: PlayerState, text: unknown): R {
   const t = String(text ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 200);
   if (!t) return fail('Empty');
+  if (t.startsWith('/')) return command(sim, p, t.slice(1).split(/\s+/));
   sim.out.chat.push({ from: p.id, name: p.name, text: t });
   return OK;
+}
+
+/** Debug / admin commands, only when the world was created with cheats enabled. */
+function command(sim: Simulation, p: PlayerState, args: string[]): R {
+  const [cmd, a1, a2] = args;
+  if (cmd === 'help') { sim.notify(p.id, 'Commands: /time <hour> · /weather <clear|cloudy|rain|storm|fog> · /give <item> [qty] · /tp <x> <z> · /heal · /event <kind> · /kill', 'info'); return OK; }
+  if (!sim.world.settings.cheats) return fail('Cheats are disabled in this world');
+  switch (cmd) {
+    case 'time': {
+      const hr = Number(a1);
+      if (!Number.isFinite(hr)) return fail('Usage: /time <hour>');
+      const day = TIME.dayLengthSeconds;
+      const cur = ((sim.world.time + sim.world.dayOffset) % day + day) % day;
+      sim.world.dayOffset += (((hr % 24) / 24) * day - cur + day) % day;
+      return OK;
+    }
+    case 'weather': {
+      const k = a1 as WeatherKind;
+      if (!['clear', 'cloudy', 'rain', 'storm', 'fog'].includes(k)) return fail('Unknown weather');
+      forceWeather(sim.world.weather, k, sim.now, sim.rng);
+      sim.world.weather.blend = 1; sim.world.weather.kind = k; sim.world.weather.next = k;
+      return OK;
+    }
+    case 'give': {
+      if (!a1 || !ITEMS[a1]) return fail('Unknown item');
+      sim.give(p, a1, Math.max(1, Math.min(500, Math.floor(Number(a2) || 1))));
+      return OK;
+    }
+    case 'tp': {
+      const x = Number(a1), z = Number(a2);
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return fail('Usage: /tp <x> <z>');
+      if (p.vehicleId) sim.leaveVehicle(p);
+      p.pos = { x, y: Math.max(sim.gen.heightAt(x, z), sim.waterLevel(x, z) - 1.4) + 0.1, z };
+      p.vel = { x: 0, y: 0, z: 0 };
+      sim.markPlayer(p.id);
+      return OK;
+    }
+    case 'heal':
+      p.health = 100; p.hunger = 100; p.thirst = 100; p.stamina = 100; p.oxygen = 100; p.bodyTemp = 37; p.effects = {};
+      sim.markPlayer(p.id);
+      return OK;
+    case 'kill': sim.kill(p, 'command'); return OK;
+    case 'event': {
+      const k = a1 as WorldEvent['kind'];
+      if (!['supply_drop', 'storm_front', 'shark_frenzy', 'fish_run'].includes(k)) return fail('Unknown event');
+      startEvent(sim, k);
+      return OK;
+    }
+  }
+  return fail('Unknown command (try /help)');
 }
 
 /** Resolve a slot reference to (array, index) with authority checks. */
