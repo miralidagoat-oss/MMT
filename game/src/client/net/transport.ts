@@ -9,7 +9,11 @@ export interface Transport {
   onOpen: () => void;
   close(): void;
   readonly kind: string;
+  /** Per-transport netcode tuning (slower relays send input less often and buffer more). */
+  readonly tuning?: TransportTuning;
 }
+
+export interface TransportTuning { inputHz: number; inputRedundancy: number; interpDelayMs: number }
 
 /** WebSocket transport (works with browser WebSocket or the `ws` package in Node). */
 export class WsTransport implements Transport {
@@ -65,6 +69,7 @@ export class ConditionedTransport implements Transport {
   onClose: (reason: string) => void = () => {};
   onOpen: () => void = () => {};
   readonly kind: string;
+  get tuning() { return this.inner.tuning; }
   private lastDeliverUp = 0;
   private lastDeliverDown = 0;
 

@@ -10,6 +10,10 @@ export class LocalHost {
   worker: Worker;
   transport: PortTransport;
   onLog: (t: string) => void = (t) => console.log('[sp]', t);
+  /** every save the worker makes (for cloud copies) */
+  onSaved: (slot: string, text: string, stored: boolean) => void = () => {};
+  /** messages for relayed co-op players */
+  onPeer: (m: { type: string; id: number; data?: Uint8Array; snap?: boolean }) => void = () => {};
 
   constructor() {
     this.worker = new Worker(new URL('./local-worker.ts', import.meta.url), { type: 'module' });
@@ -17,11 +21,13 @@ export class LocalHost {
     this.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'frame') this.transport.receive(m.data);
+      else if (m.type === 'peer-out' || m.type === 'peer-kick') this.onPeer(m);
+      else if (m.type === 'saved-text') this.onSaved(m.slot, m.text, m.stored);
       else if (m.type === 'log') this.onLog(m.text);
     };
   }
 
-  start(opts: { mode: 'new' | 'load'; slot: string; name?: string; seed?: string; settings?: Partial<GameSettings> }): Promise<void> {
+  start(opts: { mode: 'new' | 'load'; slot: string; name?: string; seed?: string; settings?: Partial<GameSettings>; coop?: boolean }): Promise<void> {
     return new Promise((resolve, reject) => {
       const prev = this.worker.onmessage;
       this.worker.onmessage = (ev) => {
@@ -34,6 +40,12 @@ export class LocalHost {
   }
 
   setPaused(paused: boolean) { this.worker.postMessage({ type: 'pause', paused }); }
+  /** Allow (or stop allowing) relayed friends to join this world. */
+  setOpen(open: boolean) { this.worker.postMessage({ type: 'open', open }); }
+  peerOpen(id: number) { this.worker.postMessage({ type: 'peer-open', id }); }
+  peerFrame(id: number, data: Uint8Array) { this.worker.postMessage({ type: 'peer-frame', id, data }, [data.buffer as ArrayBuffer]); }
+  peerReady(id: number) { this.worker.postMessage({ type: 'peer-ready', id }); }
+  peerClose(id: number) { this.worker.postMessage({ type: 'peer-close', id }); }
 
   save(): Promise<boolean> {
     return new Promise((resolve) => {
@@ -46,7 +58,8 @@ export class LocalHost {
   async quit(): Promise<void> {
     await new Promise<void>((resolve) => {
       const t = setTimeout(resolve, 3000);
-      this.worker.onmessage = (ev) => { if (ev.data.type === 'quit-done') { clearTimeout(t); resolve(); } };
+      const prev = this.worker.onmessage;
+      this.worker.onmessage = (ev) => { if (ev.data.type === 'quit-done') { clearTimeout(t); resolve(); } else prev?.call(this.worker, ev); };
       this.worker.postMessage({ type: 'quit' });
     });
     this.worker.terminate();

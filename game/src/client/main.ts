@@ -10,6 +10,12 @@ import { Menus } from './ui/menus';
 import { Game } from './game/game';
 import { LocalHost } from './net/local';
 import { WsTransport, type Transport } from './net/transport';
+import { RelayTransport, RelayPeerLink } from './net/relay';
+import { getLobby, isHostedPage, randomId, claudeHost, type CoopLobby } from './net/room';
+import { listAllWorlds, ensureLocal, onWorldSaved, flushCloud, deleteWorldEverywhere, exportWorld, importWorld } from './net/worlds';
+import { PROTOCOL_VERSION } from '../shared/config';
+import { dayNumber } from '../shared/systems/weather';
+import type { PauseCoop } from './ui/menus';
 import { computePlacement } from '../shared/systems/building';
 
 class App {
@@ -28,17 +34,34 @@ class App {
   private fpsWindow: number[] = [];
   private dynTimer = 0;
   private reconnect: { address: string; tries: number } | null = null;
+  /** joined a friend's game through the hosted page */
+  private relayJoin: { code: string; tries: number } | null = null;
+  /** hosting: this world is open to friends */
+  private coop: { lobby: CoopLobby; code: string; links: Map<number, RelayPeerLink>; nextId: number; adTimer: ReturnType<typeof setInterval> } | null = null;
+  private slot = '';
+  private userToken: string | null = null;
   private padPrev: boolean[] = [];
 
   constructor() {
     this.audio = new AudioEngine(this.settings.audio);
     this.input = new Input(this.canvas, this.settings.controls);
     this.menus = new Menus(this.ui, this.settings, {
-      newWorld: (o) => void this.startLocal({ mode: 'new', slot: `w${Date.now().toString(36)}`, name: o.name, seed: o.seed || undefined, settings: o.settings }),
-      loadWorld: (slot) => void this.startLocal({ mode: 'load', slot }),
-      deleteWorld: (slot) => LocalHost.deleteWorld(slot),
-      listWorlds: () => LocalHost.listWorlds(),
+      newWorld: (o) => void this.startLocal({ mode: 'new', slot: `w${Date.now().toString(36)}`, name: o.name, seed: o.seed || undefined, settings: o.settings, coop: o.coop }),
+      loadWorld: (slot, coop) => void this.startLocal({ mode: 'load', slot, coop }),
+      deleteWorld: (slot) => deleteWorldEverywhere(slot),
+      listWorlds: () => listAllWorlds(),
+      exportWorld: (slot) => exportWorld(slot),
+      importWorld: (file) => importWorld(file),
       join: (addr) => this.join(addr),
+      coop: async () => {
+        const lobby = await getLobby();
+        if (!lobby) return null;
+        return {
+          watch: (cb) => { lobby.onGames((list) => cb(list.map((g) => ({ ...g, compatible: g.v === PROTOCOL_VERSION })))); return () => lobby.onGames(null); },
+          join: (code) => { this.relayJoin = { code, tries: 0 }; void this.joinCoop(code); },
+        };
+      },
+      hosted: isHostedPage(),
       settingsChanged: (s, what) => this.applySettings(s, what),
       click: () => { this.audio.unlock(); this.audio.play('ui_click', {}, undefined, 'ui'); },
       hover: () => this.audio.play('ui_hover', {}, undefined, 'ui'),
@@ -50,7 +73,9 @@ class App {
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: false });
     window.addEventListener('beforeunload', () => { if (this.local) void this.local.save(); });
     // tab hidden (switching away, closing on mobile): save while we still reliably can
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && this.local && this.mode === 'playing') void this.local.save(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && this.local && this.mode === 'playing') void this.local.save().then(() => flushCloud(this.slot));
+    });
   }
 
   async boot() {
@@ -59,6 +84,7 @@ class App {
       return;
     }
     this.renderer = new WorldRenderer(this.canvas, this.settings.graphics);
+    this.userToken = await accountToken();
     this.applySettings(this.settings, 'gameplay');
     await this.menus.main();
     this.schedule();
@@ -87,22 +113,113 @@ class App {
   // ------------------------------------------------------------------ sessions
   private identity() {
     const g = this.settings.gameplay;
-    return { name: g.name || 'Castaway', token: identityToken(), color: g.color };
+    // signed in on the hosted page: the same survivor on every device
+    return { name: g.name || 'Castaway', token: this.userToken ?? identityToken(), color: g.color };
   }
 
-  async startLocal(opts: { mode: 'new' | 'load'; slot: string; name?: string; seed?: string; settings?: object }) {
+  async startLocal(opts: { mode: 'new' | 'load'; slot: string; name?: string; seed?: string; settings?: object; coop?: boolean }) {
     this.audio.unlock();
     this.mode = 'loading';
     this.menus.loading(opts.mode === 'new' ? 'Generating islands…' : 'Loading world…', 0.05);
     try {
+      if (opts.mode === 'load') await ensureLocal(opts.slot).catch((e) => console.warn('cloud copy unavailable', e));
+      this.slot = opts.slot;
       this.local = new LocalHost();
+      this.local.onSaved = (slot, text, stored) => void onWorldSaved(slot, text, stored).catch(() => {});
       await this.local.start({ mode: opts.mode, slot: opts.slot, name: opts.name, seed: opts.seed, settings: opts.settings });
       this.startGame(this.local.transport, null, true);
+      if (opts.coop) {
+        const g = this.game;
+        const wait = setInterval(() => {
+          if (this.game !== g || !g) { clearInterval(wait); return; }
+          if (!g.isReady) return;
+          clearInterval(wait);
+          this.openToFriends().then((code) => g.hud.notify(`Open to friends. Your game code is ${code}.`, 'good'))
+            .catch((e) => g.hud.notify((e as Error).message, 'bad'));
+        }, 250);
+      }
     } catch (e) {
       this.local?.worker.terminate();
       this.local = null;
       this.mode = 'menu';
       this.menus.error('Could not start world', (e as Error).message, () => void this.menus.main());
+    }
+  }
+
+  // ------------------------------------------------------------------ online co-op (hosted page)
+  private adInfo() {
+    const s = this.game?.session;
+    const players = s ? s.roster.filter((r) => r.connected).length : 1;
+    const day = s ? dayNumber({ time: s.serverTime(), dayOffset: s.dayOffset }) : 1;
+    return { host: this.settings.gameplay.name || 'Castaway', world: s?.worldName || 'Island', players, day };
+  }
+
+  /** Let friends join the world this browser is hosting. Returns the game code. */
+  async openToFriends(): Promise<string> {
+    if (this.coop) return this.coop.code;
+    const local = this.local;
+    if (!local) throw new Error('Only the host of a world can invite friends.');
+    const lobby = await getLobby();
+    if (!lobby) throw new Error('Online play needs the game opened from its claude.ai link while signed in.');
+    const code = randomId(6);
+    const coop = { lobby, code, links: new Map<number, RelayPeerLink>(), nextId: 1, adTimer: setInterval(() => lobby.advertise(code, this.adInfo()), 4000) };
+    this.coop = coop;
+    local.setOpen(true);
+    local.setPaused(false);
+    local.onPeer = (m) => {
+      const link = coop.links.get(m.id);
+      if (!link) return;
+      if (m.type === 'peer-out' && m.data) link.send(m.data, !!m.snap);
+      else if (m.type === 'peer-kick') link.end('kicked');
+    };
+    lobby.host(code, this.adInfo(), (pipe) => {
+      const id = coop.nextId++;
+      const link = new RelayPeerLink(pipe, (frame) => this.local?.peerFrame(id, frame), () => { coop.links.delete(id); this.local?.peerClose(id); });
+      link.onSnapshotIdle = () => this.local?.peerReady(id);
+      coop.links.set(id, link);
+      local.peerOpen(id);
+    });
+    return code;
+  }
+
+  closeToFriends() {
+    const c = this.coop;
+    if (!c) return;
+    this.coop = null;
+    clearInterval(c.adTimer);
+    // the worker tells each friend the world closed; give that a moment to go out
+    this.local?.setOpen(false);
+    c.lobby.stopHosting(false);
+    setTimeout(() => { for (const l of c.links.values()) l.end('closed'); c.lobby.closeRooms(); }, 1200);
+  }
+
+  private pauseCoop(): PauseCoop | null {
+    if (!this.local || !isHostedPage()) return null;
+    return {
+      code: this.coop?.code ?? null,
+      players: this.adInfo().players,
+      open: () => this.openToFriends(),
+      close: () => this.closeToFriends(),
+    };
+  }
+
+  async joinCoop(code: string) {
+    this.audio.unlock();
+    this.mode = 'loading';
+    this.menus.loading('Finding the host…', 0.1);
+    const lobby = await getLobby();
+    if (!lobby) { this.mode = 'menu'; this.menus.error('Online play unavailable', 'Open the game from its claude.ai link while signed in to play with friends.', () => void this.menus.main()); return; }
+    try {
+      const pipe = await lobby.connect(code);
+      if (this.mode !== 'loading') { pipe.close(); return; }
+      const t = new RelayTransport(pipe);
+      this.startGame(t, null, false);
+      const g = this.game;
+      setTimeout(() => {
+        if (this.game === g && g && !g.session.connected && this.mode === 'loading') { t.close(); this.onDisconnect(`No answer from game ${code}. The host may have closed the game or left the page.`); }
+      }, 25000);
+    } catch (e) {
+      this.onDisconnect((e as { message?: string }).message || 'Could not open the game room');
     }
   }
 
@@ -124,13 +241,21 @@ class App {
       onPause: (p) => {
         if (p) this.menus.pause({
           resume: () => this.game?.setPaused(false),
-          save: async () => { if (this.local) { const ok = await this.local.save(); this.game?.hud.notify(ok ? 'Game saved.' : 'Save failed', ok ? 'good' : 'bad'); } else this.game?.session.requestSave(); },
+          save: async () => {
+            if (this.local) {
+              const ok = await this.local.save();
+              await flushCloud(this.slot).catch(() => {});
+              this.game?.hud.notify(ok ? 'Game saved.' : 'Save failed', ok ? 'good' : 'bad');
+            } else this.game?.session.requestSave();
+          },
           settings: () => this.menus.settingsScreen(() => this.game?.setPaused(true), true),
           quit: () => void this.quitToMenu(),
           invite: address,
+          coop: this.pauseCoop(),
         });
         else this.menus.hide();
-        this.local?.setPaused(p);
+        // a world open to friends keeps running while the host is in the menu
+        this.local?.setPaused(p && !this.coop);
       },
       requestSave: () => (this.local ? this.local.save() : Promise.resolve(false)),
       inviteAddress: address,
@@ -141,7 +266,17 @@ class App {
   private onDisconnect(reason: string) {
     if (this.mode === 'menu') return;
     const rc = this.reconnect;
-    const fatal = /full|Version|mismatch|token/i.test(reason);
+    const fatal = /full|Version|mismatch|token|closed the world|No answer/i.test(reason);
+    const rj = this.relayJoin;
+    if (rj && !fatal && rj.tries < 5 && this.game?.isReady) {
+      rj.tries++;
+      this.game?.dispose();
+      this.game = null;
+      this.mode = 'loading';
+      this.menus.loading(`Connection lost (${reason}). Reconnecting… attempt ${rj.tries}/5`, 0.1);
+      setTimeout(() => { if (this.mode === 'loading' && this.relayJoin === rj) void this.joinCoop(rj.code); }, 1500 * rj.tries);
+      return;
+    }
     if (rc && !this.local && !fatal && rc.tries < 5) {
       rc.tries++;
       this.mode = 'loading';
@@ -158,6 +293,7 @@ class App {
     this.game?.dispose();
     this.game = null;
     this.mode = 'menu';
+    this.relayJoin = null;
     this.input.releaseLock();
     this.menus.resetBackdrop();
     this.menus.error('Disconnected', reason || 'The connection to the server was lost.', () => void this.menus.main());
@@ -166,10 +302,12 @@ class App {
   async quitToMenu() {
     this.mode = 'menu';
     this.reconnect = null;
+    this.relayJoin = null;
+    this.closeToFriends();
     this.input.releaseLock();
     this.game?.dispose();
     this.game = null;
-    if (this.local) { this.menus.loading('Saving…', 0.9); await this.local.quit(); this.local = null; }
+    if (this.local) { this.menus.loading('Saving…', 0.9); await this.local.quit(); this.local = null; await flushCloud(this.slot).catch(() => {}); }
     this.menus.resetBackdrop();
     await this.menus.main();
   }
@@ -209,6 +347,7 @@ class App {
         if (this.game.isReady) {
           this.mode = 'playing';
           if (this.reconnect) this.reconnect.tries = 0;
+          if (this.relayJoin) this.relayJoin.tries = 0;
           this.menus.hide();
         } else {
           this.menus.loading(this.game.session.connected ? 'Building the islands…' : 'Waiting for server…', this.game.progress);
@@ -269,6 +408,19 @@ class App {
     else if (fps > target * 1.08 && before < 1) this.renderer.dynScale = Math.min(1, before + 0.05);
     if (before !== this.renderer.dynScale) this.renderer.resize();
   }
+}
+
+/** On the hosted page, a signed-in player's account gives a stable identity across devices. */
+async function accountToken(): Promise<string | null> {
+  const c = claudeHost();
+  if (!c) return null;
+  try {
+    const user = await Promise.race([c.use('user'), new Promise<null>((r) => setTimeout(() => r(null), 4000))]) as { id(): Promise<string | null> } | null;
+    const id = user ? await user.id() : null;
+    if (!id) return null;
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`tidewake:${id}`));
+    return 'acct' + Array.from(new Uint8Array(digest).slice(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
+  } catch { return null; }
 }
 
 const app = new App();

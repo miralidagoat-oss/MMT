@@ -17,8 +17,10 @@ pass their acceptance criteria (see PROJECT_STATUS.md).
 ## Multiplayer
 - [ ] Host migration (out of scope for the dedicated/listen-server architecture; the
       portable save lets any player re-host instead).
-- [ ] Player-hosted games straight from the browser via WebRTC (currently hosting
-      requires running the Node server, which also serves the client).
+- [ ] Hand the host role to another player when the host leaves (today the world
+      closes for everyone and stays in the host's saves).
+- [ ] Bit-packed snapshots so the web relay can carry 20 Hz updates (it runs at
+      about 10–12 Hz to stay inside the room channel's message budget).
 - [ ] Optional server password and kick/ban commands.
 - [ ] Lag-compensated melee hit validation (current validation is range/angle
       tolerant rather than rewound).

@@ -2,21 +2,31 @@
 import { h, clear } from './dom';
 import { RESOLUTIONS, FPS_LIMITS, applyPreset, DEFAULT_BINDS, saveSettings, type Settings, type QualityPreset } from '../settings';
 import { keyLabel } from '../input/input';
-import type { LocalWorld } from '../net/local';
+import type { WorldEntry } from '../net/worlds';
 import { GAME_NAME, PROTOCOL_VERSION } from '../../shared/config';
 import type { GameSettings } from '../../shared/state';
 
+export interface OpenGameInfo { code: string; host: string; world: string; players: number; max: number; day: number; mine: boolean; compatible: boolean }
+
 export interface MenuActions {
-  newWorld(opts: { name: string; seed: string; settings: Partial<GameSettings> }): void;
-  loadWorld(slot: string): void;
+  newWorld(opts: { name: string; seed: string; settings: Partial<GameSettings>; coop: boolean }): void;
+  loadWorld(slot: string, coop: boolean): void;
   deleteWorld(slot: string): Promise<void>;
-  listWorlds(): Promise<LocalWorld[]>;
+  listWorlds(): Promise<WorldEntry[]>;
+  exportWorld(slot: string): Promise<string>;
+  importWorld(file: File): Promise<string>;
+  /** dedicated-server join (self-hosted build only) */
   join(address: string): void;
+  /** online co-op through the hosted page; null when unavailable in this view */
+  coop(): Promise<{ watch(cb: (games: OpenGameInfo[]) => void): () => void; join(code: string): void } | null>;
+  hosted: boolean;
   settingsChanged(s: Settings, what: 'graphics' | 'audio' | 'controls' | 'gameplay'): void;
   click(): void;
   hover(): void;
   captureKey(cb: (code: string) => void): void;
 }
+
+export interface PauseCoop { code: string | null; players: number; open(): Promise<string>; close(): void }
 
 const TIPS = [
   'Coconuts are safe to drink. Sea water only makes thirst worse.',
@@ -63,10 +73,10 @@ export class Menus {
     const worlds = await this.actions.listWorlds().catch(() => []);
     const latest = worlds.find((w) => !w.corrupted);
     const col = h('div', { class: 'menu-col' },
-      latest ? this.btn(`Continue — ${latest.name} (Day ${latest.day})`, () => this.actions.loadWorld(latest.slot), 'primary') : null,
+      latest ? this.btn(`Continue — ${latest.name} (Day ${latest.day})`, () => this.actions.loadWorld(latest.slot, false), 'primary') : null,
       this.btn('New Game', () => this.newGame(), latest ? '' : 'primary'),
       this.btn('Load Game', () => void this.load()),
-      this.btn('Multiplayer', () => this.multiplayer()),
+      this.btn('Play with Friends', () => this.multiplayer()),
       this.btn('Settings', () => this.settingsScreen(() => void this.main())),
       this.btn('How to Play', () => this.howTo()),
     );
@@ -78,7 +88,7 @@ export class Menus {
     ));
   }
 
-  newGame() {
+  newGame(coop = false) {
     const name = h('input', { type: 'text', value: 'My Island' }) as HTMLInputElement;
     const seed = h('input', { type: 'text', placeholder: 'random' }) as HTMLInputElement;
     const diff = h('select', {}, h('option', { value: 'relaxed', text: 'Relaxed — slower needs, gentler wildlife' }), h('option', { value: 'normal', text: 'Normal', selected: true }), h('option', { value: 'hard', text: 'Hard — the sea is merciless' })) as HTMLSelectElement;
@@ -91,28 +101,104 @@ export class Menus {
       row('Keep inventory on death', keep), row('Friendly fire', ff), row('Allow cheats', cheats, 'Host commands: /time /weather /give /tp /heal'),
     );
     this.show(h('div', { class: 'panel dialog' },
-      h('div', { class: 'dialog-head' }, h('h2', { text: 'New World' })), body,
-      h('div', { class: 'dialog-foot' }, this.btn('Back', () => void this.main()), this.btn('Start', () => {
-        this.actions.newWorld({ name: name.value.trim() || 'My Island', seed: seed.value.trim(), settings: { difficulty: diff.value as GameSettings['difficulty'], keepInventoryOnDeath: keep.checked, friendlyFire: ff.checked, cheats: cheats.checked } });
+      h('div', { class: 'dialog-head' }, h('h2', { text: coop ? 'Host a New World' : 'New World' })), body,
+      h('div', { class: 'dialog-foot' }, this.btn('Back', () => (coop ? this.multiplayer() : void this.main())), this.btn(coop ? 'Start & Invite' : 'Start', () => {
+        this.actions.newWorld({ name: name.value.trim() || 'My Island', seed: seed.value.trim(), coop, settings: { difficulty: diff.value as GameSettings['difficulty'], keepInventoryOnDeath: keep.checked, friendlyFire: ff.checked, cheats: cheats.checked } });
       }, 'primary')),
     ));
   }
 
-  async load() {
-    const worlds = await this.actions.listWorlds();
-    const list = h('div', { class: 'list' });
-    if (!worlds.length) list.append(h('div', { style: 'color:var(--muted)', text: 'No saved worlds yet.' }));
-    for (const w of worlds) {
-      list.append(h('div', { class: 'list-item' },
-        h('div', {}, h('div', { text: w.name }), h('div', { class: 'meta', text: w.corrupted ? 'Corrupted save' : `Day ${w.day} · seed ${w.seed} · ${new Date(w.savedAt).toLocaleString()}` })),
-        h('div', { style: 'display:flex;gap:6px' },
-          this.btn('Play', () => this.actions.loadWorld(w.slot), 'small primary'),
-          this.btn('Delete', async () => { if (confirm(`Delete "${w.name}" forever?`)) { await this.actions.deleteWorld(w.slot); void this.load(); } }, 'small danger'))));
-    }
-    this.show(h('div', { class: 'panel dialog' }, h('div', { class: 'dialog-head' }, h('h2', { text: 'Load World' })), h('div', { class: 'dialog-body' }, list), h('div', { class: 'dialog-foot' }, this.btn('Back', () => void this.main()))));
+  async load(coop = false) {
+    const status = h('div', { class: 'meta', style: 'color:var(--muted);min-height:18px;font-size:13px' });
+    const list = h('div', { class: 'list' }, h('div', { style: 'color:var(--muted)', text: 'Loading saves…' }));
+    const file = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none' }) as HTMLInputElement;
+    file.addEventListener('change', async () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) return;
+      status.textContent = 'Importing…';
+      try { await this.actions.importWorld(f); status.textContent = `Imported "${f.name}".`; await render(); }
+      catch (e) { status.textContent = `Could not import: ${(e as Error).message}`; }
+    });
+    const where = { device: 'On this device', cloud: 'In your cloud saves', both: 'On this device + cloud' } as const;
+    const render = async () => {
+      const worlds = await this.actions.listWorlds().catch(() => []);
+      clear(list);
+      if (!worlds.length) list.append(h('div', { style: 'color:var(--muted)', text: 'No saved worlds yet. Start a new game, or import a save file.' }));
+      for (const w of worlds) {
+        let armed = false;
+        const del = this.btn('Delete', async () => {
+          if (!armed) { armed = true; del.textContent = 'Confirm delete'; setTimeout(() => { armed = false; del.textContent = 'Delete'; }, 4000); return; }
+          await this.actions.deleteWorld(w.slot);
+          status.textContent = `Deleted "${w.name}".`;
+          await render();
+        }, 'small danger');
+        list.append(h('div', { class: 'list-item' },
+          h('div', { style: 'min-width:0' }, h('div', { text: w.name }), h('div', { class: 'meta', text: w.corrupted ? 'Corrupted save' : `Day ${w.day} · seed ${w.seed} · ${new Date(w.savedAt).toLocaleString()} · ${where[w.where]}` })),
+          h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end' },
+            this.btn(coop ? 'Host' : 'Play', () => this.actions.loadWorld(w.slot, coop), 'small primary'),
+            w.corrupted ? null : this.btn('Export', async () => { status.textContent = 'Preparing save file…'; status.textContent = await this.actions.exportWorld(w.slot).catch((e) => `Export failed: ${(e as Error).message}`); }, 'small'),
+            del)));
+      }
+    };
+    this.show(h('div', { class: 'panel dialog' },
+      h('div', { class: 'dialog-head' }, h('h2', { text: coop ? 'Host a Saved World' : 'Load World' })),
+      h('div', { class: 'dialog-body' }, list, status, file,
+        h('p', { style: 'color:var(--muted);font-size:12px;line-height:1.6;margin-top:10px', text: this.actions.hosted
+          ? 'Worlds save automatically to this browser and, when you are signed in with edit access, to your private cloud saves so they follow you to other devices. Export a world to keep a file copy; import it here on any device.'
+          : 'Worlds save automatically in this browser. Export a world to keep a file copy; import it on any device.' })),
+      h('div', { class: 'dialog-foot' }, this.btn('Back', () => (coop ? this.multiplayer() : void this.main())), this.btn('Import Save File', () => file.click()))));
+    await render();
   }
 
   multiplayer() {
+    if (!this.actions.hosted) { this.dedicated(); return; }
+    const g = this.settings.gameplay;
+    const nameIn = h('input', { type: 'text', value: g.name, maxlength: 24 }) as HTMLInputElement;
+    const color = h('input', { type: 'color', value: g.color, style: 'width:60px;height:34px;border:0;background:none' }) as HTMLInputElement;
+    const code = h('input', { type: 'text', placeholder: 'e.g. k7m2qa', maxlength: 6, style: 'text-transform:lowercase' }) as HTMLInputElement;
+    const games = h('div', { class: 'list' }, h('div', { style: 'color:var(--muted)', text: 'Looking for open games…' }));
+    const status = h('div', { class: 'meta', style: 'color:var(--muted);font-size:13px;min-height:18px' });
+    const remember = () => { g.name = nameIn.value.trim().slice(0, 24) || 'Castaway'; g.color = color.value; saveSettings(this.settings); };
+    let stop: (() => void) | null = null;
+    const leave = (fn: () => void) => { stop?.(); stop = null; remember(); fn(); };
+    const body = h('div', { class: 'dialog-body' },
+      row('Your name', nameIn), row('Shirt colour', color),
+      h('h3', { style: 'margin:18px 0 8px;font-size:14px;color:var(--muted)', text: 'OPEN GAMES' }), games,
+      h('div', { style: 'display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap' }, h('span', { style: 'color:var(--muted);font-size:13px', text: 'Join with a code' }), code,
+        this.btn('Join', () => { const c = code.value.trim().toLowerCase(); if (!/^[a-z0-9]{6}$/.test(c)) { status.textContent = 'Codes are 6 letters or digits.'; return; } leave(() => void this.actions.coop().then((n) => n?.join(c))); }, 'small')),
+      status,
+      h('h3', { style: 'margin:18px 0 8px;font-size:14px;color:var(--muted)', text: 'HOST A GAME' }),
+      h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' },
+        this.btn('Host a New World', () => leave(() => this.newGame(true)), 'primary'),
+        this.btn('Host a Saved World', () => leave(() => void this.load(true)))),
+      h('p', { style: 'color:var(--muted);font-size:13px;line-height:1.6;margin-top:12px', html: 'Up to <b>4 players</b>. The host runs the world in their browser and keeps the game tab open; it saves to the host\'s worlds. To invite friends, share <b>this page\'s link</b> with them from the page\'s Share menu. They open it signed in, choose <b>Play with Friends</b>, and pick your game or type your code. You can also invite friends from the pause menu during any game.' }));
+    this.show(h('div', { class: 'panel dialog' },
+      h('div', { class: 'dialog-head' }, h('h2', { text: 'Play with Friends' })), body,
+      h('div', { class: 'dialog-foot' }, this.btn('Back', () => leave(() => void this.main())))));
+    void this.actions.coop().then((net) => {
+      if (!this.root.contains(games)) return;
+      if (!net) {
+        clear(games);
+        games.append(h('div', { style: 'color:var(--muted);line-height:1.6', text: 'Online play is not available in this view. Open the game from its claude.ai link while signed in. Single-player works everywhere.' }));
+        return;
+      }
+      stop = net.watch((list) => {
+        clear(games);
+        const others = list.filter((x) => !x.mine);
+        if (!others.length) games.append(h('div', { style: 'color:var(--muted)', text: 'No open games right now. Host one, or ask a friend to host and share their code.' }));
+        for (const x of others) {
+          const full = x.players >= x.max;
+          games.append(h('div', { class: 'list-item' },
+            h('div', { style: 'min-width:0' }, h('div', { text: `${x.host}'s game · ${x.world}` }), h('div', { class: 'meta', text: `${x.players}/${x.max} players · day ${x.day} · code ${x.code}${x.compatible ? '' : ' · different game version'}` })),
+            full || !x.compatible ? h('span', { class: 'meta', text: full ? 'Full' : 'Update needed' }) : this.btn('Join', () => leave(() => net.join(x.code)), 'small primary')));
+        }
+      });
+    });
+  }
+
+  /** Self-hosted build: join a dedicated server by address. */
+  private dedicated() {
     const g = this.settings.gameplay;
     const addr = h('input', { type: 'text', value: g.lastServer || `${location.hostname || 'localhost'}:7777`, placeholder: 'host:port' }) as HTMLInputElement;
     const nameIn = h('input', { type: 'text', value: g.name, maxlength: 24 }) as HTMLInputElement;
@@ -276,12 +362,31 @@ export class Menus {
   }
 
   // ------------------------------------------------------------------ in-game overlays
-  pause(actions: { resume(): void; save(): void; settings(): void; quit(): void; invite: string | null }) {
-    this.show(h('div', { class: 'panel dialog', style: 'width:360px' },
-      h('div', { class: 'dialog-head' }, h('h2', { text: 'Paused' })),
+  pause(actions: { resume(): void; save(): void; settings(): void; quit(): void; invite: string | null; coop: PauseCoop | null }) {
+    const coop = actions.coop;
+    const coopBox = h('div', { class: 'coop-box' });
+    const renderCoop = () => {
+      clear(coopBox);
+      if (!coop) return;
+      if (coop.code) {
+        coopBox.append(
+          h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;line-height:1.5;padding:4px 2px' }, 'Open to friends · code ', h('b', { class: 'code', text: coop.code }), ` · ${coop.players}/4 players. Friends open this page, choose Play with Friends and pick your game.`),
+          this.btn('Close to Friends', () => { coop.close(); coop.code = null; renderCoop(); }, 'small'));
+      } else {
+        const note = h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;min-height:0' });
+        coopBox.append(this.btn('Invite Friends (online co-op)', async () => {
+          note.textContent = 'Opening your world…';
+          try { coop.code = await coop.open(); renderCoop(); } catch (e) { note.textContent = (e as Error).message; }
+        }), note);
+      }
+    };
+    renderCoop();
+    this.show(h('div', { class: 'panel dialog', style: 'width:min(380px,92vw)' },
+      h('div', { class: 'dialog-head' }, h('h2', { text: coop?.code ? 'Menu (game keeps running)' : 'Paused' })),
       h('div', { class: 'dialog-body menu-col' },
         this.btn('Resume', actions.resume, 'primary'),
         this.btn('Save Game', actions.save),
+        coopBox,
         this.btn('Settings', actions.settings),
         actions.invite ? h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;padding:6px 2px', text: `Friends can join at ${actions.invite}` }) : null,
         this.btn('Save & Quit to Menu', actions.quit, 'danger'))));

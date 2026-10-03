@@ -97,6 +97,51 @@ runs in the Node server. Everything below the transport is identical.
 * **Network conditioner:** `ConditionedTransport` (client) and `--lag/--jitter/--loss`
   (server) inject latency, jitter and loss of unreliable traffic for testing.
 
+### Web co-op relay (hosted page)
+
+The hosted web page cannot open sockets or WebRTC, so online co-op rides the
+page's live **room** channel. The host still runs the authoritative `GameHost`
+(in its Web Worker); only the transport changes.
+
+* **Lobby** (`client/net/room.ts`): a hosting page advertises its game in its lobby
+  presence (`tw.ad`: code, host name, world, players, day, protocol). Other pages
+  list these as "Open games". To join, a page announces `tw.join = code` plus a random
+  request id, and both sides join the private named room `tw-<code>-<rid>`.
+* **Link** (`shared/net/presence-link.ts`): presence is latest-value-wins (up to
+  4 KiB, about 30 updates/s per page across all rooms), so each side publishes its
+  whole link state. Reliable frames are split into numbered base64 chunks, and every
+  state carries the unacknowledged window, so skipped intermediate states lose
+  nothing. Cumulative acks free the window. One "latest" unreliable frame (snapshot
+  or input batch) rides alongside it and is deduplicated by a counter. Epochs detect a
+  restarted peer. States are bounded by `maxBytes` (3800) and parsed defensively.
+* **Pacing:** the host builds a snapshot for a relayed peer only once the previous
+  one has gone out (`Peer.wantsSnapshot`), so delta snapshots stay consistent.
+  Clients use `RELAY_TUNING`: 12 Hz input batches with 10 redundant frames and a
+  280 ms interpolation delay.
+* **Routing** (`client/main.ts`, `net/local-worker.ts`): the main thread owns the
+  room links. The worker exposes `peer-open`, `peer-frame`, `peer-ready` and
+  `peer-close`, and emits `peer-out` and `peer-kick`. The world is opened to
+  friends with `open` (cap 4). While it is open, the host's pause menu does not stop
+  the simulation.
+* **Trust:** ads are clamped and stripped of control characters. A private room binds
+  to the first peer that published link state, and everyone else is ignored. Frames
+  go through the same validation, rate limits and dedupe as any client.
+* **Tests:** `tests/relay.test.ts` covers the link over a simulated latest-wins
+  relay, and 4 players plus a refused 5th through a 4 KiB, 30 Hz presence model.
+  `tools/e2e-coop.ts` runs 4 or 5 real browsers against `tools/mock` (a local
+  stand-in for the platform).
+
+### Saves on the web
+
+The worker saves to IndexedDB with a rotating backup and posts each save to the
+main thread. There, `client/net/cloud.ts` uploads it to the signed-in player's
+private document area (`data/users/<id>/saves/...`), throttled to one upload every
+2 minutes per world plus forced uploads on manual save, quit and tab hide. A save is
+split into 200 KB parts written under a new generation, and the index document is
+switched last, so an interrupted upload never replaces a good copy. Loading pulls
+the newer of the device and cloud copies. `client/net/worlds.ts` adds file
+export/import (the CRC-checked envelope is the file format).
+
 ## 3. Save architecture (`shared/save.ts`)
 
 * Envelope: `{format, version, game, savedAt, name, seed, day, players, checksum, payload}`.

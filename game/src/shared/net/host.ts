@@ -16,6 +16,8 @@ export interface Peer {
   lastSeen: number;
   bytesOut: number;
   snapCache: SnapshotCache;
+  /** slow links: only build a snapshot when the previous one has gone out */
+  wantsSnapshot?: () => boolean;
 }
 
 export interface HostOptions {
@@ -131,7 +133,7 @@ export class GameHost {
     // snapshots
     const every = Math.max(1, Math.round(SIM.tickRate / SIM.snapshotRate));
     if (this.sim.world.tick % every === 0) {
-      for (const peer of this.peers.values()) if (peer.playerId) peer.send(buildSnapshot(this.sim, peer.playerId, peer.snapCache));
+      for (const peer of this.peers.values()) if (peer.playerId && (!peer.wantsSnapshot || peer.wantsSnapshot())) peer.send(buildSnapshot(this.sim, peer.playerId, peer.snapCache));
     }
     // timeouts
     const now = this.now();

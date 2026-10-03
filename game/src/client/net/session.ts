@@ -138,7 +138,7 @@ export class ClientSession {
   }
 
   /** Time at which remote entities are rendered (behind for interpolation). */
-  renderTime(): number { return this.serverTime() - NET.interpolationDelayMs / 1000; }
+  renderTime(): number { return this.serverTime() - (this.transport.tuning?.interpDelayMs ?? NET.interpolationDelayMs) / 1000; }
 
   waterLevel = (x: number, z: number): number => {
     if (!this.gen) return 0;
@@ -312,10 +312,11 @@ export class ClientSession {
       this.unsent.push(f);
     }
     this.sendAcc += dt;
-    if (this.sendAcc >= 1 / 30 && this.unsent.length) {
+    const tune = this.transport.tuning;
+    if (this.sendAcc >= 1 / (tune?.inputHz ?? 30) && this.unsent.length) {
       this.sendAcc = 0;
-      // redundancy: resend the last 3 already-sent frames to survive input packet loss
-      const redundant = this.pending.filter((f) => f.seq < this.unsent[0]!.seq).slice(-3);
+      // redundancy: resend the last few already-sent frames to survive input packet loss
+      const redundant = this.pending.filter((f) => f.seq < this.unsent[0]!.seq).slice(-(tune?.inputRedundancy ?? 3));
       this.transport.send({ t: 'input', frames: [...redundant, ...this.unsent].slice(-SIM.maxBufferedInputs) });
       this.unsent = [];
     }

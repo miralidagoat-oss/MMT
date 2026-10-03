@@ -13,6 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "tsx tools/e2e-smoke.ts",
+    "build:web": "tsc --noEmit -p tsconfig.json && tsx tools/build-web.ts",
+    "test:e2e:web": "tsx tools/e2e-coop.ts",
     "profile": "tsx tools/profile-sim.ts"
   },
   "license": "UNLICENSED",

@@ -4,10 +4,29 @@ An original 1–4 player co-op ocean-island survival game. You wash up on a scat
 of procedurally generated islands. Find water, make fire, build a home, hunt and farm,
 then sail out to salvage deep wrecks for the parts to call a ship home.
 
-Runs in any modern desktop browser with WebGL2. Multiplayer uses a small Node.js
-server that also serves the game, so friends just open a URL.
+Runs in any modern desktop browser with WebGL2.
 
-## Quick start
+## Play on the web
+
+The game is published as a web page (built with `npm run build:web`, output in
+`dist/web`). Open the link and play: no install and no server.
+
+* **Single-player:** the world runs in your browser. It autosaves to the browser,
+  and to your private cloud saves when you are signed in with edit access, so it
+  follows you to other devices. Use **Load Game → Export** for a save file and
+  **Import Save File** to bring it back anywhere.
+* **Online co-op (up to 4 players):** choose **Play with Friends → Host a New World**
+  (or **Host a Saved World**), or press Esc in any game and choose **Invite
+  Friends**. Share the page link with your friends. They open it signed in, choose
+  **Play with Friends**, and pick your game from **Open games** or type your
+  6-character code. The host's browser runs the world (keep the tab open), and the
+  world is saved in the host's worlds. Players who drop out can rejoin as the same
+  survivor.
+
+Online play travels over the page's live room channel (see ARCHITECTURE.md,
+"Web co-op relay"). The Node server below remains available for self-hosting.
+
+## Self-hosting with the Node server
 
 ```bash
 cd game
@@ -49,6 +68,8 @@ The server autosaves every 5 minutes and when stopped with Ctrl+C.
 npm run dev          # Vite dev server for the client (single-player works standalone)
 npm run server       # dedicated server (no client serving)
 npm test             # unit + integration + full acceptance scenario
+npm run build:web    # the hosted web page (dist/web)
+npm run test:e2e:web # 4 browsers: hosted page, co-op relay, cloud saves, export (needs build:web)
 npm run typecheck
 npx tsx tools/e2e-smoke.ts   # headless Chromium end-to-end test (needs npm run build)
 npx tsx tools/shot.ts day dusk night storm underwater fire base   # visual QA screenshots
