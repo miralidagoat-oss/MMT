@@ -4,3 +4,5 @@ saves/
 *.log
 test-results/
 screenshots/
+.e2e-saves/
+.shot-saves/
