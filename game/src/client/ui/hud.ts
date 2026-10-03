@@ -38,6 +38,13 @@ export class Hud {
   private boat = h('div', { class: 'boat-hud hidden' });
   private players = h('div', { class: 'panel players hidden' });
   private hotbarSig = '';
+  private effectsSig = '';
+  private clockHtml = '';
+  private compassSig = '';
+  private markerPool: HTMLElement[] = [];
+  private objectiveSig = '';
+  private fishSig = '';
+  private boatHtml = '';
   chatOpen = false;
   onChat: ((text: string) => void) | null = null;
 
@@ -134,11 +141,15 @@ export class Hud {
     set('temp', tempPct, Math.abs(s.bodyTemp - 37) > 0.4);
     this.bars.temp!.fill.style.background = s.bodyTemp < 36.5 ? '#7fc4ff' : s.bodyTemp > 37.8 ? '#ff8a4a' : '#7be38a';
     // effects
-    clear(this.effects);
-    for (const [k, v] of Object.entries(s.effects)) {
-      const info = EFFECT_INFO[k];
-      if (!info) continue;
-      this.effects.append(h('div', { class: `effect ${info.kind}`, text: info.label + (v > 0 && v < 1e6 ? ` ${v}s` : '') }));
+    const effSig = JSON.stringify(s.effects);
+    if (effSig !== this.effectsSig) {
+      this.effectsSig = effSig;
+      clear(this.effects);
+      for (const [k, v] of Object.entries(s.effects)) {
+        const info = EFFECT_INFO[k];
+        if (!info) continue;
+        this.effects.append(h('div', { class: `effect ${info.kind}`, text: info.label + (v > 0 && v < 1e6 ? ` ${v}s` : '') }));
+      }
     }
     // hotbar
     const sig = JSON.stringify([me.hotbar, me.inventory.slots.slice(0, PLAYER.hotbarSlots)]);
@@ -153,31 +164,45 @@ export class Hud {
     this.compass.classList.toggle('hidden', !view.hasCompass);
     if (view.hasCompass) this.renderCompass(session, view.yaw);
     const icon = view.weather === 'storm' ? '⛈' : view.weather === 'rain' ? '🌧' : view.weather === 'cloudy' ? '☁' : view.weather === 'fog' ? '🌫' : view.hour > 6 && view.hour < 19 ? '☀' : '🌙';
-    this.clock.innerHTML = `<b>${fmtTime(view.hour)}</b> ${icon}<br>Day ${view.day} · ${view.temp.toFixed(0)}°C${this.settings.gameplay.showCoords || view.hasCompass ? `<br>${view.coords.x.toFixed(0)}, ${view.coords.z.toFixed(0)}` : ''}${this.settings.graphics.showFps ? `<br>${view.fps} FPS` : ''}`;
+    const clockHtml = `<b>${fmtTime(view.hour)}</b> ${icon}<br>Day ${view.day} · ${view.temp.toFixed(0)}°C${this.settings.gameplay.showCoords || view.hasCompass ? `<br>${view.coords.x.toFixed(0)}, ${view.coords.z.toFixed(0)}` : ''}${this.settings.graphics.showFps ? `<br>${view.fps} FPS` : ''}`;
+    if (clockHtml !== this.clockHtml) { this.clockHtml = clockHtml; this.clock.innerHTML = clockHtml; }
     this.crosshair.classList.toggle('hidden', !this.settings.gameplay.crosshair);
     // objective
     if (this.settings.gameplay.showTutorial) {
       const o = currentObjective(session);
-      this.objective.classList.toggle('hidden', !o);
-      if (o) this.objective.innerHTML = `<div class="t">Objective ${OBJECTIVES.indexOf(o) + 1}/${OBJECTIVES.length}</div>${o.title}<div style="color:var(--muted);font-size:12px">${o.hint}</div>`;
-    } else this.objective.classList.add('hidden');
+      const sig = o?.id ?? '';
+      if (sig !== this.objectiveSig) {
+        this.objectiveSig = sig;
+        this.objective.classList.toggle('hidden', !o);
+        if (o) this.objective.innerHTML = `<div class="t">Objective ${OBJECTIVES.indexOf(o) + 1}/${OBJECTIVES.length}</div>${o.title}<div style="color:var(--muted);font-size:12px">${o.hint}</div>`;
+      }
+    } else { this.objective.classList.add('hidden'); this.objectiveSig = '#off'; }
     this.netstat.textContent = view.showNet ? view.netText : '';
     // fishing
     const f = s.fishing;
-    this.fish.classList.toggle('hidden', !f);
-    if (f) { this.fish.textContent = f.phase === 'bite' ? 'BITE! Click to reel in!' : 'Waiting for a bite… (click to reel in)'; this.fish.classList.toggle('bite', f.phase === 'bite'); }
+    const fsig = f ? f.phase : '';
+    if (fsig !== this.fishSig) {
+      this.fishSig = fsig;
+      this.fish.classList.toggle('hidden', !f);
+      if (f) { this.fish.textContent = f.phase === 'bite' ? 'BITE! Click to reel in!' : 'Waiting for a bite… (click to reel in)'; this.fish.classList.toggle('bite', f.phase === 'bite'); }
+    }
     // boat
     if (s.vehicleId) {
       const v = session.vehicleAt(s.vehicleId);
       this.boat.classList.remove('hidden');
       if (v) {
         const spd = Math.hypot(v.vx, v.vz);
-        this.boat.innerHTML = `<b>${v.k === 'outrigger' ? 'Outrigger' : 'Log Raft'}</b> · ${s.seat === 0 ? 'Helm' : 'Passenger'}<br>Speed ${(spd * 1.94).toFixed(1)} kn · Hull ${v.h}<br>${v.an ? '⚓ Anchored' : 'Drifting'}${v.k === 'outrigger' ? ` · Sail ${v.sl ? 'up' : 'down'}` : ''}<br><span style="color:var(--muted);font-size:12px">${s.seat === 0 ? 'W/S paddle · A/D steer · ' : ''}F anchor · R sail · E cargo · Space leave</span>`;
+        const boatHtml = `<b>${v.k === 'outrigger' ? 'Outrigger' : 'Log Raft'}</b> · ${s.seat === 0 ? 'Helm' : 'Passenger'}<br>Speed ${(spd * 1.94).toFixed(1)} kn · Hull ${v.h}<br>${v.an ? '⚓ Anchored' : 'Drifting'}${v.k === 'outrigger' ? ` · Sail ${v.sl ? 'up' : 'down'}` : ''}<br><span style="color:var(--muted);font-size:12px">${s.seat === 0 ? 'W/S paddle · A/D steer · ' : ''}F anchor · R sail · E cargo · Space leave</span>`;
+        if (boatHtml !== this.boatHtml) { this.boatHtml = boatHtml; this.boat.innerHTML = boatHtml; }
       }
     } else this.boat.classList.add('hidden');
   }
 
   private renderCompass(session: ClientSession, yaw: number) {
+    const me0 = session.viewPosition();
+    const sig = `${Math.round(yaw * 400)}|${Math.round(me0.x / 4)}|${Math.round(me0.z / 4)}|${session.waypoints.length}|${session.remotePlayers().map((p) => `${Math.round(p.x / 4)},${Math.round(p.z / 4)}`).join(';')}`;
+    if (sig === this.compassSig) return;
+    this.compassSig = sig;
     clear(this.strip);
     const width = this.compass.clientWidth || 500;
     const pxPerRad = width / (Math.PI * 0.75);
@@ -207,10 +232,22 @@ export class Hud {
 
   /** Screen-space markers for teammates/waypoints. */
   updateMarkers(items: { x: number; y: number; label: string; color: string; dist: number }[]) {
-    clear(this.markers);
-    for (const m of items) {
-      this.markers.append(h('div', { class: 'marker', style: `left:${m.x}px;top:${m.y}px` }, h('div', { text: `${m.label} · ${Math.round(m.dist)} m` }), h('div', { class: 'dot', style: `background:${m.color}` })));
+    // pooled elements: no per-frame DOM creation
+    while (this.markerPool.length < items.length) {
+      const el = h('div', { class: 'marker' }, h('div', {}), h('div', { class: 'dot' }));
+      this.markers.append(el);
+      this.markerPool.push(el);
     }
+    this.markerPool.forEach((el, i) => {
+      const m = items[i];
+      if (!m) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
+      el.style.display = '';
+      el.style.transform = `translate(${m.x.toFixed(0)}px, ${m.y.toFixed(0)}px) translate(-50%, -100%)`;
+      const text = `${m.label} · ${Math.round(m.dist)} m`;
+      const label = el.firstElementChild as HTMLElement, dot = el.lastElementChild as HTMLElement;
+      if (label.textContent !== text) label.textContent = text;
+      if (dot.style.background !== m.color) dot.style.background = m.color;
+    });
   }
 }
 

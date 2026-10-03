@@ -49,6 +49,8 @@ class App {
     window.addEventListener('blur', () => this.audio.setFocused(false));
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: false });
     window.addEventListener('beforeunload', () => { if (this.local) void this.local.save(); });
+    // tab hidden (switching away, closing on mobile): save while we still reliably can
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && this.local && this.mode === 'playing') void this.local.save(); });
   }
 
   async boot() {

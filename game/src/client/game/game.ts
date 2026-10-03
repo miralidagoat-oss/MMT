@@ -122,6 +122,7 @@ export class Game {
 
   dispose() {
     this.disposed = true;
+    this.input.autoLock = false;
     this.session.close();
     this.renderer.disposeWorld();
     this.renderer.setGhost(null);
@@ -306,7 +307,7 @@ export class Game {
     this.updateTarget(camPos);
     if (active) this.handleActions(dt, camPos);
     else { this.renderer.setGhost(null); }
-    this.setPrompt(); // after placement so prompt and ghost always agree
+    this.setPrompt(active); // after placement so prompt and ghost always agree
 
     // ---------------- audio
     this.updateAudio(dt, vp, camPos, underwater, moveSpeed);
@@ -384,8 +385,8 @@ export class Game {
     if (i.pressed('chat') && !this.uiOpen) { this.hud.openChat(); this.input.releaseLock(); }
     if (i.keyPressed('KeyP') || i.padButtonPressed(8)) this.hud.togglePlayers(true, this.session);
     if (i.released('players')) this.hud.togglePlayers(false, this.session);
-    // re-lock pointer when clicking back into the world
-    if (!this.uiOpen && !this.input.locked && i.keyPressed('Mouse0') && !this.session.self?.dead) this.input.requestLock();
+    // clicking back into the world recaptures the mouse (handled in the input's click handler)
+    this.input.autoLock = !this.uiOpen && !this.hud.chatOpen && !this.session.self?.dead;
   }
 
   setPaused(p: boolean) {
@@ -462,7 +463,8 @@ export class Game {
     return null;
   }
 
-  private setPrompt() {
+  private setPrompt(active: boolean) {
+    if (!active) { this.hud.setPrompt(null); return; } // paused, dead, downed, asleep or in a menu
     const t = this.target;
     const s = this.session;
     const key = (a: string) => keyLabel(this.settings.controls.binds[a]?.[0] ?? '?');
@@ -542,7 +544,7 @@ export class Game {
         const water = held && ITEMS[held.id]?.water;
         if (held?.id === 'fishing_rod') this.hud.setPrompt([{ key: 'LMB', text: s.self?.fishing ? 'Reel in' : 'Cast line' }]);
         else if (water) this.hud.setPrompt([{ key: key('interact'), text: `Fill ${ITEMS[held!.id]!.name} with sea water`, sub: 'salty — needs distilling' }]);
-        else this.hud.setPrompt(null);
+        else this.hud.setPrompt([{ key: key('interact'), text: 'Drink sea water', sub: 'makes thirst worse!' }]);
         break;
       }
     }
@@ -673,11 +675,7 @@ export class Game {
     const s = this.session;
     const t = this.target;
     const held = s.hotbarItem;
-    if (!t) {
-      // sea water drinking when standing in water
-      if (s.self?.sw) void this.act({ a: 'drink_source', source: 'sea' });
-      return;
-    }
+    if (!t) return;
     switch (t.kind) {
       case 'node': {
         const def = NODES[t.type]!;

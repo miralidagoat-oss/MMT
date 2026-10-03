@@ -120,7 +120,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 .objective { position: absolute; right: 22px; top: 60px; font-size: 13px; background: rgba(0,0,0,0.38); padding: 7px 12px; border-radius: 10px; border-left: 3px solid var(--accent); max-width: 340px; }
 .objective .t { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
 .netstat { position: absolute; left: 10px; top: 8px; font: 12px ui-monospace, monospace; color: #bfe; text-shadow: 0 1px 2px #000; white-space: pre; }
-.marker { position: absolute; transform: translate(-50%, -100%); text-align: center; font-size: 12px; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+.marker { position: absolute; left: 0; top: 0; will-change: transform; text-align: center; font-size: 12px; text-shadow: 0 1px 3px #000; white-space: nowrap; }
 .marker .dot { width: 10px; height: 10px; border-radius: 50%; margin: 2px auto 0; border: 2px solid #fff; }
 .fishmeter { position: absolute; left: 50%; top: calc(50% + 70px); transform: translateX(-50%); padding: 6px 14px; border-radius: 10px; background: rgba(0,0,0,0.55); font-weight: 700; }
 .fishmeter.bite { background: var(--accent); color: #111; animation: pulse .3s infinite; }

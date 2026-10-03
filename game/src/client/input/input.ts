@@ -19,6 +19,8 @@ export class Input {
   padLook = { x: 0, y: 0 };
   usingGamepad = false;
   onAnyKey: ((code: string) => void) | null = null;
+  /** when true, clicking the game canvas captures the mouse (and that click is swallowed) */
+  autoLock = false;
 
   constructor(private canvas: HTMLElement, public controls: ControlSettings) {
     window.addEventListener('keydown', (e) => {
@@ -35,6 +37,7 @@ export class Input {
     canvas.addEventListener('mousedown', (e) => {
       const c = `Mouse${e.button}`;
       if (this.onAnyKey) { this.onAnyKey(c); return; }
+      if (this.autoLock && !this.locked) { this.requestLock(); return; } // user gesture: lock, don't act
       if (!this.down.has(c)) this.justDown.add(c);
       this.down.add(c);
       this.usingGamepad = false;
