@@ -106,10 +106,14 @@ export function handleAction(sim: Simulation, p: PlayerState, act: Action): R {
     case 'ignite': {
       const s = sim.world.structures[String(act.id)];
       if (!s || !inRange(p, s, 4)) return fail('Too far');
-      const held = sim.heldItem(p);
+      // prefer the held tool, otherwise use any fire starter in the pack
+      let slot = p.hotbar;
+      const canIgnite = (i: number) => !!p.inventory.slots[i] && !!ITEMS[p.inventory.slots[i]!.id]?.tool?.actions.includes('ignite');
+      if (!canIgnite(slot)) slot = p.inventory.slots.findIndex((_, i) => canIgnite(i));
+      const held = slot >= 0 ? p.inventory.slots[slot]! : null;
       const r = ignite(sim, s, held?.id);
-      if (held && ITEMS[held.id]?.tool?.actions.includes('ignite') && held.id !== 'lantern') {
-        if (wear(p.inventory.slots, p.hotbar, held.id === 'torch' ? 20 : 1)) sim.notify(p.id, 'Your fire starter wore out.', 'warn');
+      if (held && held.id !== 'lantern' && r.reason !== 'Already burning') {
+        if (wear(p.inventory.slots, slot, held.id === 'torch' ? 20 : 1)) sim.notify(p.id, 'Your fire starter wore out.', 'warn');
         sim.markPlayer(p.id);
       }
       if (r.ok) sim.milestone(p, 'first_fire', 'Fire! Cook food and boil water in a clay pot over it.');
