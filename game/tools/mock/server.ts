@@ -22,7 +22,8 @@ export function startMockPlatform(port: number, opts: { latencyMs?: number; root
     if (p === '/' || p === '/index.html') { res.writeHead(200, { 'content-type': 'text/html' }); res.end(skeleton(readFileSync(path.join(root, 'index.html'), 'utf8'))); return; }
     if (p === '/mock-client.js') { res.writeHead(200, { 'content-type': 'text/javascript' }); res.end(readFileSync(path.resolve('tools/mock/client.js'))); return; }
     p = path.join(root, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
-    if (!p.startsWith(root) || !existsSync(p)) { res.writeHead(404); res.end(); return; }
+    if (url.pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+    if (!p.startsWith(root) || !existsSync(p)) { console.warn('mock 404', url.pathname); res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'content-type': types[path.extname(p)] ?? 'application/octet-stream' });
     res.end(readFileSync(p));
   });

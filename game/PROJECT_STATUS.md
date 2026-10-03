@@ -1,6 +1,6 @@
 # Tidewake — Project Status
 
-_Last updated: 2026-10-03 (40/40 tests passing on 3 consecutive full runs; browser E2E passing)_
+_Last updated: 2026-10-03 (44/44 tests passing; browser E2E passing for the self-hosted server and for the hosted web page with 4-player co-op)_
 
 ## Build status
 | Check | Command | Result |
@@ -9,6 +9,8 @@ _Last updated: 2026-10-03 (40/40 tests passing on 3 consecutive full runs; brows
 | Production client build | `npx vite build` | ✅ (≈1 MB JS, 300 KB gzip + 180 KB worker) |
 | Unit + integration + acceptance tests | `npm test` | ✅ 40 / 40 passing |
 | Browser end-to-end (Chromium, SwiftShader WebGL) | `npx tsx tools/e2e-smoke.ts` | ✅ menu, single-player, all UI screens, mouse drag & drop, death screen, 2 browsers in multiplayer; no page or console errors |
+| Hosted web page build | `npm run build:web` | ✅ dist/web: page + 2 scripts, about 1.2 MB |
+| Hosted page E2E, 5 Chromium instances against the local platform stand-in | `npm run test:e2e:web` | ✅ host + 3 friends (list and code), movement sync, chat, 5th refused, leave and rejoin as the same survivor, world runs while the host is in the menu, cloud save, friends told when the host closes, export, cloud restore on a fresh browser; largest presence state 3.8 KB, none over the limit |
 | Server profile | `npx tsx tools/profile-sim.ts` | ✅ see Performance |
 
 ## Completed systems (implemented **and** tested)
@@ -35,6 +37,7 @@ _Last updated: 2026-10-03 (40/40 tests passing on 3 consecutive full runs; brows
 | World events | supply drops that drift ashore, storm fronts, shark frenzies, fish runs, rescue | `systems.test.ts` |
 | Progression | 19-step objective chain → distress beacon (must be on high ground) → rescue ship | `systems.test.ts` (beacon → rescue) |
 | Death & respawn | graves hold your gear, respawn at bed or beach, co-op downed/revive state | gameplay, acceptance |
+| Web co-op (hosted page) | host runs the world in the browser; friends join over the page's room channel; open-games list, join codes, 4-player cap, reconnect, cloud + file saves | `relay.test.ts`, `tools/e2e-coop.ts` |
 | Multiplayer | server-authoritative, prediction/reconciliation, interpolation, delta snapshots, late join, reconnect, duplicate-action rejection, input-flood protection, 4-player cap, lag/loss conditioner | `multiplayer.test.ts`, acceptance, e2e |
 | Save/load | versioned, CRC-checked, migrations, atomic writes, rotating backups, corruption fallback, IndexedDB single-player saves | acceptance (save → relaunch → rejoin), `systems.test.ts` (corruption, backups, migration) |
 | UI | main/new/load/multiplayer/settings/pause/death/loading screens, HUD, inventory, crafting, stations, build menu, map, journal, chat, player list, controller navigation | e2e screenshots |
@@ -82,9 +85,13 @@ Multiplayer consistency is additionally tested at 80 ms / 5% loss and
 * Water-quality changes apply on the next world load.
 
 ## Multiplayer issues
-* No host migration (by design: dedicated or listen server; the save is portable).
-* Browser-hosted multiplayer (WebRTC) is not implemented; hosting runs the Node
-  server, which also serves the game.
+* No host migration: when the host leaves, the world closes for everyone and stays in
+  the host's saves.
+* Web co-op needs every player signed in, with access to the page link. The relay
+  runs snapshots at about 10–12 Hz instead of 20 Hz, so remote players and animals
+  are shown with a 280 ms interpolation delay.
+* The hosted-page relay is tested against a local stand-in for the platform. On the
+  real platform it has been published but not exercised by automated tests.
 
 ## In progress / remaining
 See `TODO.md`.
