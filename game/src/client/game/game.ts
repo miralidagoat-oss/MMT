@@ -255,6 +255,7 @@ export class Game {
     input.pollGamepad();
     const ui = this.uiOpen;
     input.uiCapture = ui || this.hud.chatOpen;
+    this.hud.root.classList.toggle('ui-open', ui);
 
     this.handleMenus();
     if (this.disposed) return;

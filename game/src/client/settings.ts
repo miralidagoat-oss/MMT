@@ -110,13 +110,15 @@ export function defaultSettings(): Settings {
     audio: { master: 0.8, music: 0.35, sfx: 0.9, ambient: 0.8, ui: 0.6, muteUnfocused: true },
     controls: { sensitivity: 1, invertY: false, gamepadSensitivity: 1, toggleCrouch: false, toggleSprint: false, binds: structuredClone(DEFAULT_BINDS) },
     gameplay: {
-      name: 'Castaway', color: '#ff8a4a', hudScale: 1, showTutorial: true, headBob: true, crosshair: true, showCoords: false,
+      name: 'Castaway', color: SHIRTS[Math.floor(Math.random() * SHIRTS.length)]!, hudScale: 1, showTutorial: true, headBob: true, crosshair: true, showCoords: false,
       lastServer: '', recentServers: [],
     },
   };
 }
 
 const KEY = 'tidewake.settings.v1';
+/** a random shirt for new players so friends are easy to tell apart */
+const SHIRTS = ['#ff8a4a', '#4a9dff', '#e9d34a', '#5fcf73', '#c95fd6', '#ff5f6d', '#f2f2ea', '#3fc7c0'];
 
 export function loadSettings(): Settings {
   const d = defaultSettings();

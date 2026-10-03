@@ -120,22 +120,11 @@ export class VegetationSystem {
       }
     }
 
-    // grass: two crossed quads per clump
-    const g = new THREE.PlaneGeometry(1.1, 0.75);
-    g.translate(0, 0.37, 0);
-    const g2 = g.clone().rotateY(Math.PI / 2);
-    const merged = new THREE.BufferGeometry();
-    const p1 = g.toNonIndexed(), p2 = g2.toNonIndexed();
-    const pos = new Float32Array([...p1.getAttribute('position').array, ...p2.getAttribute('position').array]);
-    const uv = new Float32Array([...p1.getAttribute('uv').array, ...p2.getAttribute('uv').array]);
-    const nor = new Float32Array(pos.length);
-    for (let i = 0; i < nor.length; i += 3) nor[i + 1] = 1; // up-facing normals: soft, uniform grass lighting
-    merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    merged.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-    const gm = new THREE.MeshStandardMaterial({ map: t.grassBlade, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9 });
-    windify(gm, this.wind, 0.5, 'grass', false, true);
-    this.grass = new THREE.InstancedMesh(merged, gm, 9000);
+    // grass: clumps of real tapered, curved blades (no alpha cut-outs: no shimmer, soft gradients)
+    const gm = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.82 });
+    windify(gm, this.wind, 1.1, 'grass-blades', false, true);
+    this.grass = new THREE.InstancedMesh(grassClump(), gm, 16000);
+    this.grass.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(16000 * 3), 3);
     this.grass.count = 0;
     this.grass.frustumCulled = false;
     this.grass.receiveShadow = true;
@@ -196,6 +185,8 @@ export class VegetationSystem {
         const n = arr[i]!;
         q.setFromAxisAngle(up, n.rot);
         s.setScalar(n.scale);
+        // kelp stays under the surface: in shallow water its fronds are shorter
+        if (n.type === 'kelp') s.y = Math.max(0.15, Math.min(n.scale, (-n.y - 0.7) / 4.6));
         p.set(n.x, n.y - 0.05, n.z);
         m.compose(p, q, s);
         b.solid.setMatrixAt(i, m);
@@ -226,8 +217,8 @@ export class VegetationSystem {
 
   private rebuildGrass(cam: THREE.Vector3) {
     this.grassCenter.copy(cam);
-    const R = 34 + 18 * this.grassDensity;
-    const step = 1.25 / Math.sqrt(Math.max(0.25, this.grassDensity));
+    const R = 30 + 16 * this.grassDensity;
+    const step = 0.82 / Math.sqrt(Math.max(0.25, this.grassDensity));
     const n = Math.ceil((R * 2) / step);
     const x0 = Math.floor((cam.x - R) / step) * step, z0 = Math.floor((cam.z - R) / step) * step;
     // coarse height grid for slope
@@ -244,6 +235,7 @@ export class VegetationSystem {
       return { h: a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz, slope: Math.hypot(b - a, c - a) / cs };
     };
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    const tint = new THREE.Color();
     let count = 0;
     const max = this.grass.instanceMatrix.count;
     for (let j = 0; j < n && count < max; j++) for (let i = 0; i < n && count < max; i++) {
@@ -255,17 +247,90 @@ export class VegetationSystem {
       const { h, slope } = H(x, z);
       if (h < 2.0 + r1 * 0.8 || slope > 0.5) continue;
       // patchiness
-      if (hashN(Math.floor(x / 9) * 31.7 + Math.floor(z / 9) * 17.3) < 0.18) continue;
+      const patch = hashN(Math.floor(x / 7) * 31.7 + Math.floor(z / 7) * 17.3);
+      if (patch < 0.14) continue;
+      // thinner near beaches, lusher inland
+      const lush = Math.min(1, (h - 2) / 4);
+      if (r2 > 0.35 + lush * 0.65) continue;
       q.setFromAxisAngle(up, r1 * 6.28);
-      const sc = 0.7 + r2 * 0.7;
-      s.set(sc, sc * (0.8 + r1 * 0.6), sc);
-      p.set(x, h - 0.05, z);
+      // shrink towards the edge of the grass radius so it grows in instead of popping
+      const d = Math.sqrt(dx * dx + dz * dz) / R;
+      const fade = d > 0.75 ? Math.max(0, 1 - (d - 0.75) / 0.25) : 1;
+      const sc = (0.75 + r2 * 0.6) * (0.55 + lush * 0.45) * fade;
+      if (sc < 0.05) continue;
+      s.set(sc * (0.9 + r1 * 0.3), sc * (0.75 + r1 * 0.6), sc * (0.9 + r2 * 0.3));
+      p.set(x, h - 0.03, z);
       m.compose(p, q, s);
+      // per-clump tint: greener in lush patches, sun-dried near the shore and in dry patches
+      const dry = Math.max(0, 1 - lush) * 0.6 + (patch > 0.85 ? 0.45 : 0) + r1 * 0.15;
+      tint.setRGB(1 - dry * 0.1 + (r2 - 0.5) * 0.12, 1 - dry * 0.18 + (r1 - 0.5) * 0.08, 1 - dry * 0.5);
+      this.grass.setColorAt(count, tint);
       this.grass.setMatrixAt(count++, m);
     }
     this.grass.count = count;
     this.grass.instanceMatrix.needsUpdate = true;
+    if (this.grass.instanceColor) this.grass.instanceColor.needsUpdate = true;
   }
+}
+
+/**
+ * One grass clump: ~11 tapered blades, each a curved 4-segment strip that leans
+ * outward. Vertex colours run from a dark, cool base to a sunlit yellow-green tip;
+ * normals are bent towards up so clumps light softly like a lawn, not like cards.
+ */
+function grassClump(): THREE.BufferGeometry {
+  const pos: number[] = [], nor: number[] = [], col: number[] = [];
+  const base = new THREE.Color().setRGB(0.10, 0.19, 0.05, THREE.SRGBColorSpace);
+  const mid = new THREE.Color().setRGB(0.27, 0.42, 0.12, THREE.SRGBColorSpace);
+  const tip = new THREE.Color().setRGB(0.62, 0.70, 0.30, THREE.SRGBColorSpace);
+  const c = new THREE.Color();
+  const SEG = 4;
+  const blades = 11;
+  for (let b = 0; b < blades; b++) {
+    const rnd = (k: number) => hashN(b * 17.13 + k * 3.71);
+    const ang = rnd(1) * Math.PI * 2;
+    const r0 = Math.sqrt(rnd(2)) * 0.16;
+    const ox = Math.cos(ang) * r0, oz = Math.sin(ang) * r0;
+    const height = 0.32 + rnd(3) * 0.38;
+    const width = 0.022 + rnd(4) * 0.018;
+    const lean = 0.12 + rnd(5) * 0.28; // how far the tip travels outward
+    const leanDir = ang + (rnd(6) - 0.5) * 1.2;
+    const lx = Math.cos(leanDir), lz = Math.sin(leanDir);
+    // blade faces sideways to its lean direction
+    const fx = -lz, fz = lx;
+    const pts: [number, number, number, number][] = [];
+    for (let i = 0; i <= SEG; i++) {
+      const t = i / SEG;
+      const out = lean * t * t * height;
+      const w = width * (1 - t * 0.92) * (i === SEG ? 0 : 1);
+      pts.push([ox + lx * out, height * (t - 0.08 * t * t), oz + lz * out, w]);
+    }
+    const shade = 0.85 + rnd(7) * 0.3;
+    for (let i = 0; i < SEG; i++) {
+      const [x0, y0, z0, w0] = pts[i]!, [x1, y1, z1, w1] = pts[i + 1]!;
+      const t0 = i / SEG, t1 = (i + 1) / SEG;
+      const quad = [
+        [x0 - fx * w0, y0, z0 - fz * w0, t0], [x0 + fx * w0, y0, z0 + fz * w0, t0], [x1 + fx * w1, y1, z1 + fz * w1, t1],
+        [x0 - fx * w0, y0, z0 - fz * w0, t0], [x1 + fx * w1, y1, z1 + fz * w1, t1], [x1 - fx * w1, y1, z1 - fz * w1, t1],
+      ];
+      // the last segment ends in a point: its second triangle would be degenerate
+      for (const [x, y, z, t] of i === SEG - 1 ? quad.slice(0, 3) : quad) {
+        pos.push(x!, y!, z!);
+        // normal: blade face normal blended mostly towards up (soft, lawn-like shading)
+        const nx = lx * 0.35, nz = lz * 0.35, ny = 0.94;
+        nor.push(nx, ny, nz);
+        if (t! < 0.5) c.copy(base).lerp(mid, t! * 2); else c.copy(mid).lerp(tip, (t! - 0.5) * 2);
+        c.multiplyScalar(shade);
+        col.push(c.r, c.g, c.b);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeBoundingSphere();
+  return g;
 }
 
 /** Object-space triplanar rock texturing (procedural rock meshes have no UVs). */
@@ -281,7 +346,12 @@ function triplanarRock(tex: THREE.Texture): THREE.MeshStandardMaterial {
       .replace('#include <map_fragment>', `
         vec3 bw = pow(abs(normalize(vObjN)), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
         vec3 tx = texture2D(tRock, vObjPos.zy * 0.7).rgb * bw.x + texture2D(tRock, vObjPos.xz * 0.7).rgb * bw.y + texture2D(tRock, vObjPos.xy * 0.7).rgb * bw.z;
-        diffuseColor.rgb *= tx * 3.6;`);
+        diffuseColor.rgb *= mix(vec3(1.0), tx * 3.6, 0.7);
+        // moss/lichen on upward faces, damp darkening at the base
+        vec3 on = normalize(vObjN);
+        float moss = smoothstep(0.55, 0.92, on.y) * smoothstep(0.35, 0.65, texture2D(tRock, vObjPos.xz * 0.23).g * 2.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.27, 0.11), moss * 0.55);
+        diffuseColor.rgb *= mix(0.62, 1.0, smoothstep(-0.1, 0.45, vObjPos.y));`);
   };
   m.customProgramCacheKey = () => 'rock-triplanar';
   return m;

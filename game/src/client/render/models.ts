@@ -48,6 +48,46 @@ function rand(s: number): number {
 }
 
 /** Displace a sphere-ish geometry with noise for rocks/coral. */
+function vnoise3(x: number, y: number, z: number, seed: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+  const h = (a: number, b: number, c: number) => { const t = Math.sin(a * 127.1 + b * 311.7 + c * 74.7 + seed * 19.19) * 43758.5453; return t - Math.floor(t); };
+  const l = (a: number, b: number, t: number) => a + (b - a) * t;
+  return l(
+    l(l(h(xi, yi, zi), h(xi + 1, yi, zi), u), l(h(xi, yi + 1, zi), h(xi + 1, yi + 1, zi), u), v),
+    l(l(h(xi, yi, zi + 1), h(xi + 1, yi, zi + 1), u), l(h(xi, yi + 1, zi + 1), h(xi + 1, yi + 1, zi + 1), u), v), w) * 2 - 1;
+}
+
+/**
+ * Weathered stone: fractal noise displacement plus a few planar fracture faces
+ * (flattened where a random plane cuts through), so boulders read as rock.
+ */
+function rockShape(g: THREE.BufferGeometry, seed: number, amount = 0.28, cuts = 4): THREE.BufferGeometry {
+  const geo = mergeVertices(g.deleteAttribute('normal').deleteAttribute('uv') && g);
+  const p = geo.getAttribute('position') as THREE.BufferAttribute;
+  const planes: { n: THREE.Vector3; d: number }[] = [];
+  for (let i = 0; i < cuts; i++) {
+    const n = new THREE.Vector3(rand(seed * 7 + i) - 0.5, (rand(seed * 7 + i + 50) - 0.3) * 0.8, rand(seed * 7 + i + 99) - 0.5).normalize();
+    planes.push({ n, d: 0.72 + rand(seed + i * 3) * 0.2 });
+  }
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.set(p.getX(i), p.getY(i), p.getZ(i));
+    const len = v.length() || 1;
+    const dir = v.clone().divideScalar(len);
+    let n = 0, amp = 1, f = 1.3;
+    for (let o = 0; o < 4; o++) { n += vnoise3(dir.x * f, dir.y * f, dir.z * f, seed + o * 13) * amp; amp *= 0.5; f *= 2.1; }
+    let r = len * (1 + n * amount);
+    for (const pl of planes) { const k = dir.dot(pl.n); if (k > 0.05) r = Math.min(r, (pl.d * len) / k); }
+    v.copy(dir).multiplyScalar(r);
+    if (v.y < 0) v.y *= 0.35;
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  return geo.toNonIndexed();
+}
+
 function lumpy(g: THREE.BufferGeometry, amount: number, seed: number, flatBottom = true): THREE.BufferGeometry {
   const geo = mergeVertices(g.deleteAttribute('normal').deleteAttribute('uv') && g);
   const p = geo.getAttribute('position') as THREE.BufferAttribute;
@@ -188,9 +228,14 @@ export function plantModel(type: string, seed: number): PlantModel {
       return { solid: merge(p) };
     }
     case 'wild_flax': return { solid: merge([part(new THREE.CylinderGeometry(0.02, 0.02, 0.1, 3), '#555', [0, 0.05, 0])]), leaves: cardBush(seed, 0.4, 0.9, 3, '#e6f0b0'), leafTex: 'grass' };
-    case 'rock': return { solid: merge([part(lumpy(new THREE.IcosahedronGeometry(1.1, 2), 0.25, seed), '#8a8780', [0, 0.5, 0], [rand(seed) * 3, rand(seed + 1) * 3, 0], [1.1, 0.75, 1], 0.1, seed)]) };
+    case 'rock': {
+      // a main boulder with a smaller one leaning against it
+      const p: Part[] = [part(rockShape(new THREE.IcosahedronGeometry(1.1, 4), seed), '#8f8b82', [0, 0.45, 0], [0, rand(seed + 1) * 6.28, 0], [1.15, 0.78, 1], 0.08, seed)];
+      if (rand(seed + 9) > 0.35) p.push(part(rockShape(new THREE.IcosahedronGeometry(0.45, 3), seed + 5, 0.3, 3), '#85827a', [0.95, 0.15, 0.35], [0, rand(seed + 2) * 6.28, 0], [1, 0.8, 1], 0.08, seed + 5));
+      return { solid: merge(p) };
+    }
     case 'iron_vein': {
-      const p = [part(lumpy(new THREE.IcosahedronGeometry(1.2, 2), 0.3, seed), '#6e5a50', [0, 0.6, 0], [0, rand(seed) * 3, 0], [1, 0.8, 1], 0.1, seed)];
+      const p = [part(rockShape(new THREE.IcosahedronGeometry(1.2, 4), seed, 0.32), '#6e5a50', [0, 0.55, 0], [0, rand(seed) * 3, 0], [1, 0.8, 1], 0.1, seed)];
       for (let i = 0; i < 6; i++) p.push(part(new THREE.IcosahedronGeometry(0.22, 0), '#a8502c', [(rand(seed + i) - 0.5) * 1.6, 0.6 + rand(seed + i + 2) * 0.6, (rand(seed + i + 4) - 0.5) * 1.6]));
       return { solid: merge(p) };
     }
@@ -200,7 +245,7 @@ export function plantModel(type: string, seed: number): PlantModel {
       return { solid: merge(p) };
     }
     case 'clay_bank': return { solid: merge([part(lumpy(new THREE.SphereGeometry(1.1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0.15, seed, false), '#a35f3e', [0, -0.2, 0], [0, 0, 0], [1.3, 0.45, 1.1], 0.12, seed)]) };
-    case 'loose_stone': return { solid: merge([part(lumpy(new THREE.IcosahedronGeometry(0.18, 1), 0.3, seed), '#7d7b74', [0, 0.08, 0])]) };
+    case 'loose_stone': return { solid: merge([part(rockShape(new THREE.IcosahedronGeometry(0.18, 2), seed, 0.25, 3), '#85827a', [0, 0.07, 0], [0, 0, 0], [1.2, 0.7, 1])]) };
     case 'loose_stick': return { solid: merge([part(new THREE.CylinderGeometry(0.03, 0.04, 1.1, 5), '#7a5a38', [0, 0.04, 0], [0, 0, Math.PI / 2]), part(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 4), '#7a5a38', [0.2, 0.06, 0.1], [0.6, 0, Math.PI / 2])]) };
     case 'driftwood': return { solid: merge([part(new THREE.CylinderGeometry(0.12, 0.18, 2.2, 7), '#b8a88e', [0, 0.12, 0], [0, 0, Math.PI / 2], [1, 1, 1], 0.1, seed), part(new THREE.CylinderGeometry(0.05, 0.08, 0.9, 5), '#b0a086', [0.4, 0.2, 0.3], [0.8, 0.4, Math.PI / 2])]) };
     case 'beach_shell': return { solid: merge([part(new THREE.ConeGeometry(0.1, 0.18, 7), '#f1e1c8', [0, 0.05, 0], [Math.PI / 2, 0, 0], [1, 1, 0.5])]) };
@@ -257,12 +302,15 @@ export function creatureModel(kind: string): THREE.BufferGeometry {
       p.push(part(new THREE.BoxGeometry(0.06, 0.25, 0.9), '#2a201a', [0, 1.0, -0.05])); // mane
       break;
     case 'snake': {
-      const n = 12;
+      // a smooth S-curved body (overlapping segments), banded, tapering to the tail
+      const n = 30;
       for (let i = 0; i < n; i++) {
-        const t = i / n;
-        p.push(part(new THREE.SphereGeometry(0.07 * (1 - t * 0.5), 6, 4), i % 3 === 0 ? '#e0c341' : '#2b3a1e', [Math.sin(t * Math.PI * 2) * 0.25, 0.06, 0.45 - t * 1.0], [0, 0, 0], [1, 0.8, 1.6]));
+        const t = i / (n - 1);
+        const band = Math.floor(t * 14) % 3 === 0;
+        p.push(part(new THREE.SphereGeometry(0.062 * (1 - t * 0.75), 8, 6), band ? '#d9b93a' : '#2f4220', [Math.sin(t * Math.PI * 2.2) * 0.22, 0.055, 0.45 - t * 1.25], [0, 0, 0], [1, 0.75, 1.5]));
       }
-      p.push(part(new THREE.SphereGeometry(0.09, 7, 5), '#2b3a1e', [0, 0.08, 0.55], [0, 0, 0], [1, 0.7, 1.4]));
+      p.push(part(new THREE.SphereGeometry(0.08, 10, 8), '#2f4220', [0, 0.07, 0.52], [0, 0, 0], [1, 0.62, 1.45]));
+      for (const sx of [-1, 1]) p.push(part(new THREE.SphereGeometry(0.014, 6, 4), '#e8c84a', [sx * 0.045, 0.1, 0.6]));
       break;
     }
     case 'fish':
@@ -307,34 +355,104 @@ export interface Humanoid {
   hand: THREE.Group;
 }
 
-export function humanoid(shirt: string): Humanoid {
-  const skin = new THREE.MeshStandardMaterial({ color: '#c99a76', roughness: 0.8 });
-  const cloth = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.9 });
-  const pants = new THREE.MeshStandardMaterial({ color: '#3b4a5a', roughness: 0.9 });
+const SKIN_TONES = ['#f1c7a5', '#e0ac85', '#c99a76', '#a8754f', '#8d5a3b', '#5e3b26'];
+const HAIR_TONES = ['#1f1611', '#3a2416', '#5a3a1e', '#8a5a2b', '#c49a5a', '#2b2b2b', '#6b2f1a'];
+
+/** A castaway: shirt, shorts, bare forearms and shins, sandals, a face. Varies by `seed`. */
+export function humanoid(shirt: string, seed = 0): Humanoid {
+  const rnd = (k: number) => { const x = Math.sin((seed + 1) * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
+  const skinCol = SKIN_TONES[Math.floor(rnd(1) * SKIN_TONES.length)]!;
+  const hairCol = HAIR_TONES[Math.floor(rnd(2) * HAIR_TONES.length)]!;
+  const pantsCol = ['#3b4a5a', '#5b5240', '#2f4038', '#6a5a48', '#40384a'][Math.floor(rnd(3) * 5)]!;
+  const skin = new THREE.MeshStandardMaterial({ color: skinCol, roughness: 0.7 });
+  const cloth = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.92 });
+  const pants = new THREE.MeshStandardMaterial({ color: pantsCol, roughness: 0.95 });
+  const dark = new THREE.MeshStandardMaterial({ color: '#2a1d14', roughness: 0.9 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: hairCol, roughness: 0.85 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: '#16110d', roughness: 0.3 });
+  const shadow = (m: THREE.Mesh) => { m.castShadow = true; return m; };
   const root = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.45, 4, 10), cloth);
-  body.position.y = 1.15;
-  body.castShadow = true;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), skin);
-  head.position.y = 1.62;
-  head.castShadow = true;
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.155, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#2b2016' }));
-  hair.position.y = 0.02;
-  head.add(hair);
-  const limb = (mat: THREE.Material, len: number, r: number) => {
+
+  // torso: tapered shirt with rounded shoulders, belt and shorts
+  const body = shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.165, 0.5, 14), cloth));
+  body.position.y = 1.2;
+  const shoulders = shadow(new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.24, 4, 10), cloth));
+  shoulders.rotation.z = Math.PI / 2;
+  shoulders.position.y = 0.2;
+  body.add(shoulders);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.018, 6, 14), cloth);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 0.27;
+  body.add(collar);
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.168, 0.05, 14), dark);
+  belt.position.y = -0.26;
+  body.add(belt);
+  const hips = shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.16, 0.2, 14), pants));
+  hips.position.y = -0.37;
+  body.add(hips);
+
+  // head: slightly oval with neck, ears, eyes, nose and one of three hair styles
+  const head = shadow(new THREE.Mesh(new THREE.SphereGeometry(0.125, 16, 12), skin));
+  head.scale.set(1, 1.12, 1.02);
+  head.position.y = 1.67;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.1, 10), skin);
+  neck.position.y = -0.13;
+  head.add(neck);
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 6), eyeMat);
+    eye.position.set(sx * 0.042, 0.015, 0.112);
+    head.add(eye);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.01, 0.01), hairMat);
+    brow.position.set(sx * 0.043, 0.045, 0.116);
+    head.add(brow);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), skin);
+    ear.scale.set(0.5, 1, 0.8);
+    ear.position.set(sx * 0.125, 0, -0.005);
+    head.add(ear);
+  }
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.045, 6), skin);
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(0, -0.012, 0.13);
+  head.add(nose);
+  const style = Math.floor(rnd(4) * 3);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.132, 16, 10, 0, Math.PI * 2, 0, style === 1 ? Math.PI * 0.42 : Math.PI * 0.55), hairMat);
+  cap.position.set(0, 0.012, -0.008);
+  cap.rotation.x = -0.18;
+  head.add(cap);
+  if (style === 2) {
+    // longer hair down the back
+    const back = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.12, 4, 10), hairMat);
+    back.position.set(0, -0.06, -0.06);
+    back.scale.set(1.15, 1, 0.6);
+    head.add(back);
+  }
+  if (rnd(5) > 0.6) {
+    // stubble beard
+    const beard = new THREE.Mesh(new THREE.SphereGeometry(0.118, 14, 8, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.35), hairMat);
+    beard.position.set(0, -0.005, 0.012);
+    head.add(beard);
+  }
+
+  // limbs: pivot groups at shoulder / hip; sleeve or shorts above, skin below
+  const limb = (upper: THREE.Material, lower: THREE.Material, len: number, r: number, end: THREE.Mesh) => {
     const g = new THREE.Group();
-    const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 3, 8), mat);
-    m.position.y = -len / 2 - r * 0.5;
-    m.castShadow = true;
-    g.add(m);
+    const half = len / 2;
+    const top = shadow(new THREE.Mesh(new THREE.CapsuleGeometry(r * 1.12, half * 0.75, 4, 10), upper));
+    top.position.y = -half * 0.45;
+    const bot = shadow(new THREE.Mesh(new THREE.CapsuleGeometry(r * 0.88, half * 0.85, 4, 10), lower));
+    bot.position.y = -half * 1.35;
+    end.position.y = -len - r * 0.2;
+    g.add(top, bot, end);
     return g;
   };
-  const armL = limb(cloth, 0.45, 0.065), armR = limb(cloth, 0.45, 0.065);
-  armL.position.set(-0.3, 1.38, 0); armR.position.set(0.3, 1.38, 0);
-  const legL = limb(pants, 0.55, 0.085), legR = limb(pants, 0.55, 0.085);
-  legL.position.set(-0.12, 0.82, 0); legR.position.set(0.12, 0.82, 0);
+  const handMesh = () => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.048, 10, 8), skin); m.scale.set(0.85, 1.1, 0.7); return m; };
+  const footMesh = () => { const m = shadow(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.24), dark)); m.position.z = 0.05; return m; };
+  const armL = limb(cloth, skin, 0.58, 0.058, handMesh()), armR = limb(cloth, skin, 0.58, 0.058, handMesh());
+  armL.position.set(-0.27, 1.44, 0); armR.position.set(0.27, 1.44, 0);
+  const legL = limb(pants, skin, 0.74, 0.075, footMesh()), legR = limb(pants, skin, 0.74, 0.075, footMesh());
+  legL.position.set(-0.1, 0.79, 0); legR.position.set(0.1, 0.79, 0);
   const hand = new THREE.Group();
-  hand.position.set(0, -0.6, 0.08);
+  hand.position.set(0, -0.6, 0.06);
   armR.add(hand);
   root.add(body, head, armL, armR, legL, legR);
   return { root, body, head, armL, armR, legL, legR, hand };
@@ -358,7 +476,14 @@ export function itemModel(id: string, iconColor: string): THREE.BufferGeometry {
     case 'bone_knife': case 'sharp_stone':
       return merge([part(new THREE.CylinderGeometry(0.018, 0.02, 0.1, 6), '#d1b277', [0, 0.05, 0]), part(new THREE.ConeGeometry(0.03, 0.2, 3), id === 'sharp_stone' ? stone : '#e8e1cf', [0, 0.2, 0], [0, 0, 0], [1, 1, 0.3])]);
     case 'torch':
-      return merge([part(new THREE.CylinderGeometry(0.02, 0.025, 0.5, 6), wood, [0, 0.25, 0]), part(new THREE.CylinderGeometry(0.045, 0.035, 0.12, 6), '#3a2a1a', [0, 0.52, 0])]);
+      // a stick with a fibre-wrapped, resin-soaked head (charred at the top)
+      return merge([
+        part(new THREE.CylinderGeometry(0.019, 0.024, 0.52, 7), wood, [0, 0.26, 0]),
+        part(new THREE.CylinderGeometry(0.042, 0.032, 0.13, 8), '#6e5434', [0, 0.53, 0]),
+        part(new THREE.TorusGeometry(0.037, 0.008, 4, 10), '#a88a55', [0, 0.49, 0], [Math.PI / 2, 0, 0]),
+        part(new THREE.TorusGeometry(0.041, 0.008, 4, 10), '#a88a55', [0, 0.55, 0], [Math.PI / 2, 0, 0]),
+        part(new THREE.CylinderGeometry(0.03, 0.043, 0.04, 8), '#1d140c', [0, 0.61, 0]),
+      ]);
     case 'lantern':
       return merge([part(new THREE.CylinderGeometry(0.06, 0.07, 0.16, 8), '#ffe9a8', [0, 0.1, 0]), part(new THREE.ConeGeometry(0.07, 0.06, 8), metal, [0, 0.21, 0]), part(new THREE.TorusGeometry(0.04, 0.006, 4, 8), metal, [0, 0.27, 0])]);
     case 'fishing_rod':

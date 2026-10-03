@@ -75,7 +75,9 @@ const GradeShader = {
       float v = smoothstep(0.85, 0.2, length(vc));
       col *= mix(1.0 - vignette, 1.0, v);
       float pulse = lowHealth * (0.55 + 0.45 * sin(time * 4.0));
-      col = mix(col, vec3(0.5, 0.02, 0.0), (1.0 - v) * (damage * 0.8 + pulse * 0.6));
+      // hits flash the screen edges; the centre stays readable
+      float edge = smoothstep(0.35, 1.0, 1.0 - v);
+      col = mix(col, vec3(0.45, 0.02, 0.0), edge * (damage * 0.55 + pulse * 0.45));
       col *= 1.0 - sleep;
       gl_FragColor = vec4(col, 1.0);
     }`,

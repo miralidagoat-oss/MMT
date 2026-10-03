@@ -27,8 +27,8 @@ const PALETTE: { e: number; zenith: [number, number, number]; horizon: [number, 
   { e: -0.16, zenith: [0.012, 0.02, 0.06], horizon: [0.06, 0.05, 0.1], sun: [0.6, 0.55, 0.8] },
   { e: -0.05, zenith: [0.04, 0.07, 0.2], horizon: [0.55, 0.22, 0.14], sun: [1.0, 0.35, 0.15] },
   { e: 0.04, zenith: [0.1, 0.18, 0.42], horizon: [0.95, 0.5, 0.26], sun: [1.0, 0.52, 0.25] },
-  { e: 0.14, zenith: [0.13, 0.28, 0.62], horizon: [0.92, 0.66, 0.42], sun: [1.0, 0.7, 0.42] },
-  { e: 0.27, zenith: [0.13, 0.32, 0.72], horizon: [0.72, 0.68, 0.62], sun: [1.0, 0.84, 0.64] },
+  { e: 0.14, zenith: [0.12, 0.26, 0.6], horizon: [1.0, 0.6, 0.34], sun: [1.0, 0.66, 0.38] },
+  { e: 0.27, zenith: [0.12, 0.31, 0.72], horizon: [0.78, 0.68, 0.58], sun: [1.0, 0.82, 0.6] },
   { e: 0.45, zenith: [0.12, 0.33, 0.78], horizon: [0.5, 0.66, 0.84], sun: [1.0, 0.94, 0.85] },
   { e: 1.0, zenith: [0.1, 0.3, 0.75], horizon: [0.46, 0.63, 0.82], sun: [1.0, 0.97, 0.92] },
 ];
@@ -48,7 +48,7 @@ function samplePalette(e: number, out: { zenith: THREE.Color; horizon: THREE.Col
 
 const SKY_VERT = `varying vec3 vDir; void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`;
 const SKY_FRAG = `
-  uniform vec3 zenith, horizon, sunDir, sunColor, moonDir; uniform float overcast, sunSize, moonGlow, night;
+  uniform vec3 zenith, horizon, sunDir, sunColor, moonDir, uwColor; uniform float overcast, sunSize, moonGlow, night, uw;
   varying vec3 vDir;
   void main(){
     vec3 d = normalize(vDir);
@@ -60,7 +60,10 @@ const SKY_FRAG = `
     float sd = max(dot(d, sunDir), 0.0);
     // warm forward scattering, strongest near the horizon at low sun
     float band = exp(-abs(h) * 5.0);
-    col += sunColor * (pow(sd, 5.0) * 0.35 * band + pow(sd, 32.0) * 0.4) * (1.0 - overcast * 0.7);
+    float low = 1.0 - smoothstep(0.0, 0.45, sunDir.y);
+    col += sunColor * (pow(sd, 4.0) * (0.3 + low * 0.55) * band + pow(sd, 32.0) * 0.4) * (1.0 - overcast * 0.7);
+    // the whole horizon ring warms at golden hour, not only the sun side
+    col += sunColor * horizon * band * low * 0.18 * (1.0 - overcast);
     // sun disk + tight halo (controlled HDR so bloom picks it up, not the whole sky)
     float disk = sunSize > 0.0 ? smoothstep(1.0 - sunSize * 1.15, 1.0 - sunSize, sd) : 0.0;
     col += sunColor * (disk * 14.0 + pow(sd, 900.0) * 3.0 * step(0.0, sunSize)) * (1.0 - overcast * 0.92) * step(-0.04, sunDir.y);
@@ -70,6 +73,8 @@ const SKY_FRAG = `
     // overcast flattens everything toward grey
     float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
     col = mix(col, vec3(lum) * vec3(0.95, 0.97, 1.0), overcast * 0.75);
+    // under water, rays that never hit the surface or the seabed end in the murk
+    col = mix(col, uwColor * (0.75 + 0.35 * clamp(h * 2.0 + 0.5, 0.0, 1.0)), uw);
     gl_FragColor = vec4(col, 1.0);
   }`;
 
@@ -107,7 +112,7 @@ export class SkySystem {
     const skyUniforms = () => ({
       zenith: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) },
       sunColor: { value: new THREE.Color() }, moonDir: { value: new THREE.Vector3(0, 1, 0) }, overcast: { value: 0 }, sunSize: { value: 0.00012 },
-      moonGlow: { value: 1 }, night: { value: 0 },
+      moonGlow: { value: 1 }, night: { value: 0 }, uw: { value: 0 }, uwColor: { value: new THREE.Color() },
     });
     this.skyMat = new THREE.ShaderMaterial({ uniforms: skyUniforms(), vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false, fog: false });
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(9500, 48, 24), this.skyMat);
@@ -156,25 +161,44 @@ export class SkySystem {
       uniforms: {
         tNoise: { value: textures().cloudNoise }, time: { value: 0 }, coverage: { value: 0.3 }, sunDir: { value: new THREE.Vector3() },
         sunColor: { value: new THREE.Color() }, skyColor: { value: new THREE.Color() }, darkness: { value: 0 }, windOff: { value: new THREE.Vector2() },
-        brightness: { value: 1 },
+        brightness: { value: 1 }, hazeColor: { value: new THREE.Color() },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix*modelViewMatrix*vec4(position,1.); gl_Position = p.xyww; }`,
-      fragmentShader: `uniform sampler2D tNoise; uniform float time, coverage, darkness, brightness; uniform vec3 sunDir, sunColor, skyColor; uniform vec2 windOff; varying vec3 vDir;
-        float layer(vec2 uv){ vec4 a = texture2D(tNoise, uv); vec4 b = texture2D(tNoise, uv*2.7+0.31); return a.r*0.55+a.g*0.25+b.b*0.2+b.r*0.12; }
+      fragmentShader: `uniform sampler2D tNoise; uniform float time, coverage, darkness, brightness; uniform vec3 sunDir, sunColor, skyColor, hazeColor; uniform vec2 windOff; varying vec3 vDir;
+        // contrast-expanded fbm from the tileable noise channels: billowy cumulus shapes
+        float shape(vec2 uv){
+          vec4 a = texture2D(tNoise, uv);
+          vec4 b = texture2D(tNoise, uv * 2.9 + vec2(0.31, 0.17));
+          vec4 big = texture2D(tNoise, uv * 0.23 + vec2(0.7, 0.2));
+          float n = a.r * 0.52 + a.g * 0.26 + b.r * 0.14 + b.g * 0.08;
+          n = clamp((n - 0.36) / 0.26, 0.0, 1.0);
+          // large-scale clustering: clouds gather in fields with clear gaps between
+          n *= mix(0.55, 1.25, smoothstep(0.3, 0.7, big.b));
+          return n;
+        }
+        float dens(vec2 uv){ return smoothstep(1.0 - coverage, 1.0 - coverage + 0.32, shape(uv)); }
         void main(){
           if (vDir.y < 0.0) discard;
-          vec2 uv = vDir.xz/(vDir.y+0.12)*0.11 + windOff;
-          float n = layer(uv);
-          float c = smoothstep(1.0-coverage, 1.0-coverage+0.28, n);
-          float thick = smoothstep(1.0-coverage, 1.15-coverage*0.5, layer(uv+sunDir.xz*0.025));
-          float lit = clamp(1.0 - thick*0.85, 0.0, 1.0);
-          vec3 base = skyColor * 1.05 + vec3(0.18) * brightness;
-          vec3 col = base*mix(0.5,1.0,lit) + sunColor*lit*0.45*brightness;
-          float silver = pow(max(dot(normalize(vDir), sunDir),0.0), 12.0)*(1.0-thick);
-          col += sunColor*silver*0.9*brightness;
-          col = mix(col, col*0.3, darkness);
-          float horizonFade = smoothstep(0.0, 0.18, vDir.y);
-          gl_FragColor = vec4(col, c*horizonFade*0.96);
+          vec2 uv = vDir.xz / (vDir.y + 0.09) * 0.075 + windOff;
+          float d = dens(uv);
+          if (d < 0.003) discard;
+          // light marches a short way towards the sun: thick parts self-shadow, edges glow
+          vec2 toSun = normalize(sunDir.xz + 1e-4) * 0.018;
+          float occ = dens(uv + toSun) * 0.55 + dens(uv + toSun * 2.2) * 0.45;
+          float lit = exp(-occ * 2.2);
+          float bottom = smoothstep(0.0, 0.9, d);
+          vec3 shadowCol = skyColor * 0.78 + vec3(0.05, 0.055, 0.07) * brightness;
+          vec3 litCol = sunColor * 1.25 * brightness + skyColor * 0.35;
+          vec3 col = mix(shadowCol, litCol, lit * (1.0 - bottom * 0.35));
+          // silver lining around the sun, strongest on thin edges
+          float mu = max(dot(normalize(vDir), sunDir), 0.0);
+          col += sunColor * pow(mu, 10.0) * (1.0 - d) * 1.6 * brightness;
+          col = mix(col, col * 0.32, darkness);
+          // distant clouds melt into the horizon haze
+          float far = 1.0 - smoothstep(0.02, 0.32, vDir.y);
+          col = mix(col, hazeColor, far * 0.75);
+          float alpha = smoothstep(0.0, 0.55, d) * smoothstep(0.0, 0.1, vDir.y);
+          gl_FragColor = vec4(col, alpha * 0.97);
         }`,
       transparent: true, depthWrite: false, side: THREE.BackSide, fog: false,
     });
@@ -281,7 +305,9 @@ export class SkySystem {
     // clouds
     const cu = this.cloudMat.uniforms;
     cu.time!.value = e.time;
-    cu.coverage!.value = 0.16 + e.cloud * 0.74;
+    // fair-weather cumulus even on clear days; overcast fills the sky
+    cu.coverage!.value = Math.min(0.97, 0.36 + e.cloud * 0.62 + e.rain * 0.2);
+    cu.hazeColor!.value.copy(this.horizonColor);
     cu.sunDir!.value.copy(this.lightDir);
     cu.sunColor!.value.copy(sunUp ? this.sunColor : moonCol).multiplyScalar(sunUp ? 1 : 0.12);
     cu.skyColor!.value.copy(this.horizonColor).lerp(this.zenithColor, 0.3);
@@ -291,10 +317,16 @@ export class SkySystem {
     wv.x += Math.cos(e.windDir) * (0.002 + e.wind * 0.01) * 0.016;
     wv.y += Math.sin(e.windDir) * (0.002 + e.wind * 0.01) * 0.016;
 
+    const uwK = e.underwater ? 1 : 0;
+    this.skyMat.uniforms.uw!.value = uwK;
+    this.clouds.visible = !e.underwater;
+    this.stars.visible = !e.underwater;
+    if (e.underwater) this.moon.visible = false;
     // fog
     if (e.underwater) {
       this.fog.color.setRGB(0.02, 0.14, 0.17).multiplyScalar(0.25 + day * 0.75);
       this.fog.density = 0.045;
+      this.skyMat.uniforms.uwColor!.value.copy(this.fog.color);
     } else {
       this.fog.color.copy(this.horizonColor).lerp(this.zenithColor, 0.25);
       this.fog.density = 0.0004 + e.fog * 0.008 + e.rain * 0.003;

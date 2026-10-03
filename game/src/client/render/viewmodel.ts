@@ -5,8 +5,11 @@
 import * as THREE from 'three';
 import { itemModel } from './models';
 import { ITEMS } from '../../shared/defs/items';
+import { makeFlameMaterial, flameGeometry } from './flame';
 
 const SCALE = 0.22;
+
+const FLAME_MAT = makeFlameMaterial();
 
 export class ViewModel {
   root = new THREE.Group();
@@ -37,8 +40,8 @@ export class ViewModel {
     this.arm.rotation.x = Math.PI / 2.3;
     this.arm.position.set(0.05, -0.12, 0.28);
     this.pivot.add(this.arm);
-    // emissive flame shown on torches / lanterns
-    this.flame = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 1.8, 0.5), transparent: true, opacity: 0.9, depthWrite: false }));
+    // procedural flame on two crossed cards (additive, animated in the shader)
+    this.flame = new THREE.Mesh(flameGeometry(), FLAME_MAT);
     this.flame.visible = false;
     this.root.traverse((o) => { o.frustumCulled = false; });
   }
@@ -64,9 +67,8 @@ export class ViewModel {
     this.flameLit = lit;
     this.flame.visible = lit;
     if (lit) {
-      (this.flame.material as THREE.MeshBasicMaterial).color.set(id === 'torch' ? new THREE.Color(4, 1.7, 0.45) : new THREE.Color(3, 2.4, 1.2));
-      this.flame.position.set(0, id === 'torch' ? 0.64 : 0.12, 0);
-      this.flame.scale.setScalar(id === 'torch' ? 1 : 0.5);
+      this.flame.position.set(0, id === 'torch' ? 0.62 : 0.06, 0);
+      this.flame.scale.setScalar(id === 'torch' ? 1 : 0.38);
       this.item.add(this.flame);
     }
   }
@@ -81,8 +83,9 @@ export class ViewModel {
     this.time += dt;
     this.flame.visible = this.flameLit && !swimming;
     if (this.flame.visible) {
-      const f = 0.85 + Math.sin(this.time * 23) * 0.08 + Math.sin(this.time * 9.7) * 0.07;
-      this.flame.scale.set(f, f * (1.1 + Math.sin(this.time * 14) * 0.15), f);
+      FLAME_MAT.uniforms.time!.value = this.time;
+      // flames lean back against motion
+      FLAME_MAT.uniforms.lean!.value = THREE.MathUtils.clamp(-lookDX * 0.004 + speed * 0.03, -0.35, 0.35);
     }
     this.bobT += dt * (speed > 0.5 ? 2 + speed * 1.4 : 1);
     const bobAmp = headBob ? Math.min(1, speed / 4) : 0;

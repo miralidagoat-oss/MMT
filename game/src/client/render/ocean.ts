@@ -161,12 +161,19 @@ export class OceanSystem {
             alpha = max(alpha, foam);
             gl_FragColor = vec4(col, alpha);
           } else {
-            // looking up from below: Snell's window + total internal reflection
-            float window = smoothstep(0.62, 0.75, NdV);
-            vec3 above = mix(horizonColor, skyColor, 0.5) * (0.4 + 0.6*daylight);
-            vec3 tir = deepColor * (0.4 + 0.6*daylight) * 1.4;
-            col = mix(tir, above, window);
-            gl_FragColor = vec4(col, 0.92);
+            // looking up from below: Snell's window (the refracted sky, ~97 deg cone),
+            // total internal reflection of the deep water everywhere else
+            float window = smoothstep(0.64, 0.74, NdV);
+            vec3 Tr = refract(-V, -N, 1.33);
+            vec3 above = mix(horizonColor, skyColor, clamp(Tr.y, 0.0, 1.0)) * (0.35 + 0.75*daylight);
+            // the sun seen through the rippling surface
+            float sunSpot = pow(max(dot(normalize(Tr + vec3(0.0, 1e-3, 0.0)), sunDir), 0.0), 60.0);
+            above += sunColor * sunSpot * 4.0 * sunIntensity * step(0.0, sunDir.y);
+            // bright rim at the edge of the window
+            float rim = smoothstep(0.6, 0.66, NdV) * (1.0 - smoothstep(0.66, 0.76, NdV));
+            vec3 tir = deepColor * (0.3 + 0.7*daylight) * 1.3 + shallowColor * 0.08 * daylight;
+            col = mix(tir, above, window) + shallowColor * rim * 0.35 * daylight;
+            gl_FragColor = vec4(col, 1.0);
           }
           #include <tonemapping_fragment>
           #include <colorspace_fragment>

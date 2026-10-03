@@ -55,7 +55,7 @@ Server options:
 | `--world name` | save slot name (files in `./saves/name.tws` + 3 backups) |
 | `--seed text` | world seed for a new world |
 | `--difficulty relaxed\|normal\|hard` | difficulty for a new world |
-| `--cheats` | enable host commands (`/time`, `/weather`, `/give`, `/tp`, `/heal`, `/event`) |
+| `--cheats` | enable host commands (`/time`, `/weather`, `/give`, `/tp`, `/heal`, `/spawn`, `/event`) |
 | `--serve-client` | also serve the built browser client |
 | `--lag ms --jitter ms --loss 0.05` | network conditioner for testing |
 

@@ -107,7 +107,8 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 .compass::after { content: ''; position: absolute; left: 50%; top: 0; width: 2px; height: 8px; background: #fff; transform: translateX(-50%); }
 .clock { position: absolute; right: 22px; top: 16px; text-align: right; font-size: 13px; color: var(--muted); text-shadow: 0 1px 3px #000; line-height: 1.5; }
 .clock b { color: var(--text); font-size: 16px; }
-.notes { position: absolute; right: 22px; top: 96px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; width: 380px; }
+.right-col { position: absolute; right: 22px; top: 60px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.notes { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; width: 380px; }
 .note { padding: 8px 12px; border-radius: 10px; background: rgba(0,0,0,0.6); border-left: 3px solid var(--accent2); font-size: 13px; animation: slidein .25s ease-out; max-width: 380px; }
 .note.good { border-color: var(--good); } .note.warn { border-color: var(--warn); } .note.bad { border-color: var(--bad); }
 @keyframes slidein { from { transform: translateX(30px); opacity: 0; } }
@@ -118,7 +119,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 .chat .line { background: rgba(0,0,0,0.35); padding: 3px 8px; border-radius: 6px; text-shadow: 0 1px 2px #000; }
 .chat input { pointer-events: auto; margin-top: 4px; width: 100%; }
 .center-msg { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); font-size: 18px; text-align: center; text-shadow: 0 2px 8px #000; }
-.objective { position: absolute; right: 22px; top: 60px; font-size: 13px; background: rgba(0,0,0,0.38); padding: 7px 12px; border-radius: 10px; border-left: 3px solid var(--accent); max-width: 340px; }
+.objective { font-size: 13px; background: rgba(0,0,0,0.38); padding: 7px 12px; border-radius: 10px; border-left: 3px solid var(--accent); max-width: 340px; }
 .objective .t { color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
 .netstat { position: absolute; left: 10px; top: 8px; font: 12px ui-monospace, monospace; color: #bfe; text-shadow: 0 1px 2px #000; white-space: pre; }
 .marker { position: absolute; left: 0; top: 0; will-change: transform; text-align: center; font-size: 12px; text-shadow: 0 1px 3px #000; white-space: nowrap; }
@@ -189,3 +190,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 .players { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); min-width: 340px; padding: 14px 18px; }
 .players .list-item { padding: 8px 10px; }
 @media (max-width: 900px) { .menu-wrap { flex-direction: column; gap: 18px; } .inv-root { flex-direction: column; overflow: auto; padding: 20px; } }
+
+/* panels open: tuck the objective and toasts away so they never sit under a panel */
+.ui-open .right-col { opacity: 0; transition: opacity 0.15s; }
+.right-col { transition: opacity 0.25s; }

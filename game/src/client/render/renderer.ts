@@ -259,7 +259,8 @@ export class WorldRenderer {
       this.entities.syncStructures(session);
       this.entities.syncItems(session);
       this.entities.syncContainers(session);
-      const torchPos = v.camPos.clone().add(new THREE.Vector3(0.3, -0.2, -0.5).applyEuler(cam.rotation));
+      // a little ahead of and above the hand: lights the scene without blowing out the held torch itself
+      const torchPos = v.camPos.clone().add(new THREE.Vector3(0.2, 0.3, -0.9).applyEuler(cam.rotation));
       this.entities.update(v.dt, session, cam, { on: v.torch, pos: torchPos, radius: 11 });
     }
     this.particles.update(v.dt, v.camPos, w.rain, w.wind, w.windDir, v.underwater);

@@ -10,7 +10,7 @@ import { CROPS } from '../defs/crops';
 import { CREATURES } from '../defs/creatures';
 import { VEHICLES } from '../defs/vehicles';
 import { LOOT_TABLES } from '../defs/loot';
-import type { EquipSlot } from '../defs/types';
+import type { EquipSlot, CreatureKind } from '../defs/types';
 import { addStack, hasItems, moveBetween, removeItem, wear, makeStack, countItem, type SlotRef } from '../systems/inventory';
 import { validateGeometry, findUnsupported } from '../systems/building';
 import type { Action } from '../net/protocol';
@@ -19,7 +19,7 @@ import { forceWeather } from '../systems/weather';
 import { startEvent } from './events';
 import type { Simulation } from './simulation';
 import { startCraft, cancelCraft } from './crafting';
-import { damageCreature, butcher } from './wildlife';
+import { damageCreature, butcher, spawnNear } from './wildlife';
 import { boardVehicle, createVehicle } from './vehicles';
 import { ignite, stationSlots } from './stations';
 import { startFishing, reel } from './fishing';
@@ -143,7 +143,7 @@ function chat(sim: Simulation, p: PlayerState, text: unknown): R {
 /** Debug / admin commands, only when the world was created with cheats enabled. */
 function command(sim: Simulation, p: PlayerState, args: string[]): R {
   const [cmd, a1, a2] = args;
-  if (cmd === 'help') { sim.notify(p.id, 'Commands: /time <hour> · /weather <clear|cloudy|rain|storm|fog> · /give <item> [qty] · /tp <x> <z> · /heal · /event <kind> · /kill', 'info'); return OK; }
+  if (cmd === 'help') { sim.notify(p.id, 'Commands: /time <hour> · /weather <clear|cloudy|rain|storm|fog> · /give <item> [qty] · /tp <x> <z> · /heal · /spawn <animal> [n] · /event <kind> · /kill', 'info'); return OK; }
   if (!sim.world.settings.cheats) return fail('Cheats are disabled in this world');
   switch (cmd) {
     case 'time': {
@@ -180,6 +180,15 @@ function command(sim: Simulation, p: PlayerState, args: string[]): R {
       sim.markPlayer(p.id);
       return OK;
     case 'kill': sim.kill(p, 'command'); return OK;
+    case 'spawn': {
+      if (!a1 || !(a1 in CREATURES)) return fail(`Unknown creature (${Object.keys(CREATURES).join(', ')})`);
+      const n = Math.max(1, Math.min(10, Math.floor(Number(a2) || 1)));
+      for (let i = 0; i < n; i++) {
+        const d = 7 + i * 1.5, a = p.yaw + (i - (n - 1) / 2) * 0.35;
+        spawnNear(sim, a1 as CreatureKind, p.pos.x - Math.sin(a) * d, p.pos.z - Math.cos(a) * d, p.yaw);
+      }
+      return OK;
+    }
     case 'event': {
       const k = a1 as WorldEvent['kind'];
       if (!['supply_drop', 'storm_front', 'shark_frenzy', 'fish_run'].includes(k)) return fail('Unknown event');

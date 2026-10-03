@@ -165,7 +165,7 @@ export function textures(): TextureSet {
       const w = 0.035 * (1 - v / h);
       if (v < h && Math.abs(u - cx) < w) a = 1;
     }
-    const c = mix([0.12, 0.26, 0.06], [0.5, 0.62, 0.24], v);
+    const c = mix([0.16, 0.32, 0.08], [0.62, 0.72, 0.3], v);
     return [c[0], c[1], c[2], a];
   }, true, false);
   const bark = fromPixels(S, (x, y) => {

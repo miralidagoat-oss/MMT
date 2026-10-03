@@ -45,6 +45,25 @@ function spawnCreature(sim: Simulation, z: SpawnZone, salt: number): CreatureSta
   return null;
 }
 
+/** Cheat/QA: spawn a creature of `kind` near (x, z), bound to the nearest spawn zone of that kind. */
+export function spawnNear(sim: Simulation, kind: CreatureKind, x: number, z: number, yaw: number): CreatureState | null {
+  const def = CREATURES[kind];
+  if (!def) return null;
+  const zones = sim.gen.spawnZones.filter((zz) => zz.kind === kind);
+  const pool = zones.length ? zones : sim.gen.spawnZones;
+  let zone = pool[0];
+  for (const zz of pool) if ((zz.x - x) ** 2 + (zz.z - z) ** 2 < (zone!.x - x) ** 2 + (zone!.z - z) ** 2) zone = zz;
+  if (!zone) return null;
+  const ground = sim.gen.heightAt(x, z);
+  const id = sim.newId('a');
+  const c: CreatureState = {
+    id, kind, zone: zone.id, x, y: initialY(def, ground), z, yaw, speed: 0, hp: def.maxHp, mode: 'idle', target: null,
+    tx: x, tz: z, ty: 0, modeUntil: sim.now + 4, nextAttackAt: sim.now + 4, rng: hashInts(sim.world.seed, sim.world.nextId, 7), diedAt: 0, butchered: false, lastHitBy: null, bleed: 0,
+  };
+  sim.world.creatures[id] = c;
+  return c;
+}
+
 function habitatOk(def: CreatureDef, ground: number): boolean {
   switch (def.habitat) {
     case 'beach': return ground > 0.15 && ground < 3.5;

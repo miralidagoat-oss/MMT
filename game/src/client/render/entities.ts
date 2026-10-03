@@ -4,6 +4,7 @@
  * small pool of dynamic point lights for fires and torches.
  */
 import * as THREE from 'three';
+import { makeFlameMaterial, flameGeometry } from './flame';
 import type { ClientSession } from '../net/session';
 import type { WorldGen } from '../../shared/world/worldgen';
 import { STRUCTURES } from '../../shared/defs/structures';
@@ -36,6 +37,25 @@ export class EntityRenderer {
   private creatureGeo = new Map<string, THREE.BufferGeometry>();
   private itemGeo = new Map<string, THREE.BufferGeometry>();
   private lights: THREE.PointLight[] = [];
+  private flameMat = makeFlameMaterial();
+  private flameGeo = flameGeometry();
+  private flames: THREE.Mesh[] = [];
+  private flameCount = 0;
+  /** place one flame this frame (pooled meshes) */
+  private flame(pos: THREE.Vector3, size: number) {
+    let m = this.flames[this.flameCount];
+    if (!m) {
+      m = new THREE.Mesh(this.flameGeo, this.flameMat);
+      m.frustumCulled = false;
+      m.renderOrder = 5;
+      this.flames.push(m);
+      this.group.add(m);
+    }
+    this.flameCount++;
+    m.visible = true;
+    m.position.copy(pos);
+    m.scale.setScalar(size);
+  }
   private fireSpots: { pos: THREE.Vector3; strength: number; color: number; kind: 'fire' | 'torch' | 'lamp' | 'beacon' }[] = [];
   private time = 0;
   lightBudget = 6;
@@ -193,7 +213,9 @@ export class EntityRenderer {
   private playerView(p: NetPlayer): PlayerView {
     let v = this.players.get(p.id);
     if (v) return v;
-    const h = humanoid(p.c);
+    let seed = 0;
+    for (let i = 0; i < p.id.length; i++) seed = (seed * 31 + p.id.charCodeAt(i)) % 100003;
+    const h = humanoid(p.c, seed);
     const tag = makeTag(p.n, p.c);
     tag.position.y = 2.05;
     h.root.add(tag);
@@ -208,19 +230,29 @@ export class EntityRenderer {
   update(dt: number, session: ClientSession, cam: THREE.Camera, localTorch: { on: boolean; pos: THREE.Vector3; radius: number }) {
     this.time += dt;
     this.fireSpots.length = 0;
+    this.flameCount = 0;
+    this.flameMat.uniforms.time!.value = this.time;
     // structures with fire/light
     for (const s of Object.values(session.structures)) {
       const def = STRUCTURES[s.type];
       if (!def || !s.on) continue;
       if (def.fire) {
         vtx.set(s.x, s.y + (s.type === 'campfire' ? 0.25 : s.type === 'kiln' ? 0.5 : 1.05), s.z);
-        if (s.type === 'campfire') this.particles.fire(vtx.clone(), 1.2);
-        else if (Math.random() < 0.3) this.particles.fire(vtx.clone(), 0.4);
+        if (s.type === 'campfire') {
+          this.particles.fire(vtx.clone(), 0.7);
+          // a cluster of tongues reads as a real fire from every side
+          this.flame(vtx.clone().setY(vtx.y - 0.12), 3.4);
+          this.flame(vtx.clone().add(new THREE.Vector3(0.14, -0.15, 0.05)), 2.3);
+          this.flame(vtx.clone().add(new THREE.Vector3(-0.12, -0.15, -0.08)), 2.5);
+        } else {
+          if (Math.random() < 0.3) this.particles.fire(vtx.clone(), 0.4);
+          this.flame(vtx.clone().setY(vtx.y - 0.1), 1.8);
+        }
         this.fireSpots.push({ pos: vtx.clone().setY(vtx.y + 0.4), strength: 1, color: 0xff8a3a, kind: 'fire' });
       } else if (def.light) {
         const lantern = s.type === 'lantern_post';
         const h = lantern ? new THREE.Vector3(0.5, 1.9, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), s.yaw).add(new THREE.Vector3(s.x, s.y, s.z)) : new THREE.Vector3(s.x, s.y + 1.75, s.z);
-        if (!lantern) this.particles.fire(h.clone(), 0.5);
+        if (!lantern) { this.particles.fire(h.clone(), 0.3); this.flame(h.clone().setY(h.y - 0.06), 1.5); }
         this.fireSpots.push({ pos: h, strength: lantern ? 1.1 : 0.8, color: lantern ? 0xffd28a : 0xff9a40, kind: lantern ? 'lamp' : 'torch' });
       } else if (def.beacon) {
         const blink = Math.sin(this.time * 4) > 0.2 ? 1 : 0;
@@ -251,7 +283,7 @@ export class EntityRenderer {
       if (torch && r.visible) {
         v.h.hand.getWorldPosition(vtx);
         vtx.y += 0.5;
-        if (p.it === 'torch' && !(p.f & FLAG.underwater)) this.particles.fire(vtx.clone(), 0.4);
+        if (p.it === 'torch' && !(p.f & FLAG.underwater)) { this.particles.fire(vtx.clone(), 0.25); this.flame(vtx.clone().setY(vtx.y - 0.1), 1.2); }
         this.fireSpots.push({ pos: vtx.clone(), strength: 0.9, color: p.it === 'torch' ? 0xff9a40 : 0xffd28a, kind: 'torch' });
       }
       if ((p.f & FLAG.underwater) && Math.random() < dt * 2) this.particles.bubbles(v.h.head.getWorldPosition(vtx), 2);
@@ -357,6 +389,7 @@ export class EntityRenderer {
       if (m.userData.floating) { m.position.y = t.y + Math.sin(this.time * 1.5 + m.id) * 0.06; m.rotation.y += dt * 0.2; }
     }
 
+    for (let i = this.flameCount; i < this.flames.length; i++) this.flames[i]!.visible = false;
     // assign point lights to nearest light sources
     if (localTorch.on) this.fireSpots.push({ pos: localTorch.pos, strength: 1, color: 0xffa050, kind: 'torch' });
     const camPos = (cam as THREE.PerspectiveCamera).position;
@@ -381,7 +414,9 @@ export class EntityRenderer {
     v.phase += dt * (2 + sp * 1.6);
     const s = Math.sin(v.phase), c = Math.cos(v.phase);
     h.root.rotation.x = 0; h.root.rotation.z = 0;
-    h.body.position.y = 1.15; h.head.position.y = 1.62;
+    h.body.position.y = 1.2; h.head.position.y = 1.67;
+    h.body.rotation.y = 0;
+    h.armL.rotation.z = 0.07; h.armR.rotation.z = -0.07;
     if (downed || sleeping) {
       h.root.rotation.z = Math.PI / 2;
       h.root.position.y += 0.25;
@@ -403,6 +438,10 @@ export class EntityRenderer {
     }
     const amp = Math.min(1, sp / 3) * 0.8;
     h.legL.rotation.x = s * amp; h.legR.rotation.x = -s * amp;
+    // a little bounce and counter-twist in the stride; a slow breathing idle
+    const bob = Math.abs(c) * 0.035 * amp + Math.sin(this.time * 1.7 + v.phase * 0.01) * 0.006;
+    h.body.position.y += bob; h.head.position.y += bob;
+    h.body.rotation.y = s * amp * 0.12;
     h.armL.rotation.x = -s * amp * 0.8;
     h.armR.rotation.x = p.f & FLAG.using ? -1.6 + Math.sin(this.time * 18) * 0.6 : s * amp * 0.8 - (p.it ? 0.5 : 0);
     if (crouch) { h.root.position.y -= 0.35; h.legL.rotation.x -= 0.6; h.legR.rotation.x -= 0.6; }

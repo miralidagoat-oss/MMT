@@ -43,7 +43,7 @@ _Last updated: 2026-10-03 (44/44 tests passing; browser E2E passing for the self
 | UI | main/new/load/multiplayer/settings/pause/death/loading screens, HUD, inventory, crafting, stations, build menu, map, journal, chat, player list, controller navigation | e2e screenshots |
 | Settings | resolution presets, render scale, dynamic resolution, FPS cap, V-Sync, fullscreen, 5 quality presets and per-feature graphics options, audio buses, rebindable keys, gameplay options | e2e screenshot |
 | Audio | procedural SFX, ambience, music, spatial audio, underwater filter | manual (headless browser has no audio output) |
-| Graphics | custom sky, PBR + PMREM, terrain splatting, caustics, ocean shader, instanced vegetation with wind, grass, shadows, GTAO, bloom, god rays, grading, SMAA/FXAA/MSAA | visual QA screenshots |
+| Graphics | custom sky with golden-hour horizon glow, self-shadowed cumulus clouds, PBR + PMREM, terrain splatting, caustics, ocean shader with Snell's window from below, instanced vegetation with wind, geometric blade grass with per-clump tint and edge fade, fractured mossy boulders, shader flames on torches and fires, varied castaway avatars, shadows, GTAO, bloom, god rays, grading, SMAA/FXAA/MSAA | visual QA screenshots (`tools/shot.ts`, including `animals` and a real dive for `underwater`) |
 
 ## Acceptance scenario (`tests/acceptance.test.ts`) — ✅ passing
 Four clients connect through the real protocol over a link with 60 ms lag, 30 ms

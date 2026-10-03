@@ -62,7 +62,7 @@ export class Hud {
       if (e.key === 'Enter') { const t = this.chatInput.value.trim(); if (t) this.onChat?.(t); this.closeChat(); }
       if (e.key === 'Escape') this.closeChat();
     });
-    this.root.append(this.markers, this.crosshair, this.prompt, this.vitals, this.effects, this.hotbar, this.heldName, this.compass, this.clock, this.objective, this.notes, this.pickups, this.chat, this.center, this.netstat, this.fish, this.boat, this.players);
+    this.root.append(this.markers, this.crosshair, this.prompt, this.vitals, this.effects, this.hotbar, this.heldName, this.compass, this.clock, h('div', { class: 'right-col' }, this.objective, this.notes), this.pickups, this.chat, this.center, this.netstat, this.fish, this.boat, this.players);
     parent.append(this.root);
   }
 

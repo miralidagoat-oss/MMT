@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { newSim, give, act, seconds, flatLand, place } from './helpers';
+import { newSim, give, act, seconds, flatLand, place, ticks } from './helpers';
 import { startEvent } from '../src/shared/sim/events';
 import { FsSaveStore } from '../src/server/savestore';
 import { serializeWorld, deserializeWorld, SaveError } from '../src/shared/save';
@@ -126,5 +126,23 @@ describe('save robustness', () => {
     const migrated = deserializeWorld(JSON.stringify(old));
     expect(migrated.waypoints).toEqual([]);
     expect(migrated.progression.discoveredIslands).toEqual([0]);
+  });
+});
+
+describe('host commands', () => {
+  it('/spawn places animals near the player only when cheats are on', () => {
+    const sim = newSim();
+    const p = sim.addPlayer('spawn-token-1', 'Spawner');
+    const boars = () => Object.values(sim.world.creatures).filter((c) => c.kind === 'boar').length;
+    const before = boars();
+    expect(act(sim, p, { a: 'chat', text: '/spawn boar 2' }).ok).toBe(false);
+    expect(boars()).toBe(before);
+    sim.world.settings.cheats = true;
+    expect(act(sim, p, { a: 'chat', text: '/spawn boar 2' }).ok).toBe(true);
+    expect(boars()).toBe(before + 2);
+    const near = Object.values(sim.world.creatures).filter((c) => c.kind === 'boar' && Math.hypot(c.x - p.pos.x, c.z - p.pos.z) < 12);
+    expect(near.length).toBeGreaterThanOrEqual(2);
+    expect(act(sim, p, { a: 'chat', text: '/spawn dragon' }).ok).toBe(false);
+    ticks(sim, 40); // spawned animals run their AI without errors
   });
 });
