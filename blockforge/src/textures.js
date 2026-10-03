@@ -1152,6 +1152,52 @@ function wispLantern(t, r) {
   t.each((x, y) => { const c = t.get(x, y); if (c[3] && c[0] > 200) t.set(x, y, c[1] > 170 ? [150, 250, 255] : [60, 200, 220], c[3]); });
 }
 
+// --- caves ---------------------------------------------------------------------------
+// Dripstone: banded tan and umber stone laid down by dripping water.
+function dripstoneTex(t, r) {
+  const n = valueNoise(Math.floor(r() * 1e9), 8);
+  t.each((x, y, fx, fy) => {
+    const band = Math.sin(fy * 1.25 + Math.sin(fx * 0.45) * 1.4);
+    let c = mix([120, 88, 66], [168, 132, 100], 0.5 + band * 0.35);
+    c = mul(c, 0.86 + n(x, y) * 0.22 + (r() - 0.5) * 0.06);
+    t.set(x, y, c);
+  });
+}
+// A tapering spike, point up (standing) or down (hanging).
+function dripSpike(t, r, down) {
+  t.fill([0, 0, 0], 0);
+  t.each((x, y, fx, fy) => {
+    const tip = down ? 1 - (fy + 0.5) / 16 : (fy + 0.5) / 16; // 0 at the point, 1 at the base
+    const half = 0.5 + tip * 4.2 + Math.sin(fy * 2.1) * 0.25 * tip;
+    const d = Math.abs(fx + 0.5 - 8);
+    if (d > half) return;
+    const shade = 0.75 + (1 - d / half) * 0.35 + Math.sin(fy * 1.7) * 0.06;
+    t.set(x, y, mul(mix([128, 94, 70], [190, 154, 120], tip * 0.6 + r() * 0.15), shade));
+  });
+}
+// Moss: a soft green carpet of tiny leaves.
+function mossTex(t, r) {
+  const n = valueNoise(Math.floor(r() * 1e9), 6);
+  t.each((x, y) => {
+    const v = n(x, y), sp = r();
+    let c = mix([70, 104, 34], [120, 160, 56], v);
+    if (sp > 0.9) c = mix(c, [160, 196, 84], 0.6);
+    else if (sp < 0.08) c = mul(c, 0.7);
+    t.set(x, y, c);
+  });
+}
+// Glowroot: pale stems ending in softly glowing teal bulbs.
+function glowroot(t, r) {
+  t.fill([0, 0, 0], 0);
+  const stem = [96, 140, 110];
+  for (const [sx, top, lean] of [[4, 6, -0.25], [8, 3, 0.05], [12, 7, 0.3]]) {
+    let x = sx;
+    for (let y = 15; y >= top; y--) { t.put(Math.round(x), y, mul(stem, 0.85 + r() * 0.3)); x += lean; }
+    const bx = Math.round(x);
+    for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 0], [0, -2]]) t.put(bx + dx, top + dy, mix([80, 220, 200], [200, 255, 240], r() * 0.6));
+  }
+}
+
 // --- round five ------------------------------------------------------------------
 function strawSide(t, r, base) {
   const n = valueNoise(Math.floor(r() * 1e9), 8);
@@ -2355,6 +2401,11 @@ function paintBlock(name, frame) {
     case 'deep_bricks': deepStone(t, r, 'bricks'); break;
     case 'deep_tiles': deepStone(t, r, 'tiles'); break;
     case 'wisp_lantern': wispLantern(t, r); break;
+    case 'dripstone': dripstoneTex(t, r); break;
+    case 'drip_spike_up': dripSpike(t, r, false); break;
+    case 'drip_spike_down': dripSpike(t, r, true); break;
+    case 'moss_block': mossTex(t, r); break;
+    case 'glowroot': glowroot(t, r); break;
     default:
       if (name.startsWith('crack')) crack(t, +name.slice(5));
       else if (/^wheat\d$/.test(name)) wheat(t, r, +name.slice(5));

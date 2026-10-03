@@ -33,7 +33,7 @@ import { DIM_NAMES } from './dims.js';
 
 const REACH_SURVIVAL = 4.5, REACH_CREATIVE = 5;
 const DIR6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
-const GRASS_OK = new Set([2, 3, 34, 74]);
+const GRASS_OK = new Set([2, 3, 34, 74, 217]);
 // experience from mining ores: [min, max]
 const ORE_XP = { 14: [0, 2], 18: [3, 7], 19: [3, 7], 93: [2, 5], 94: [0, 1] };
 // sculk keeps the experience of what fed it (no fortune bonus)
@@ -926,7 +926,9 @@ export class Game {
     }
     if (this.placeSpecial(held, hit, tx, ty, tz)) return;
     if (!isBlockItem(held.id)) return;
-    const id = held.id;
+    let id = held.id;
+    // a drip spike set against a ceiling hangs from it
+    if (id === B.drip_spike && (hit.face === 1 || !this.canSurvive(id, 0, tx, ty, tz)) && this.canSurvive(B.hanging_drip_spike, 0, tx, ty, tz)) id = B.hanging_drip_spike;
     if (id === B.oak_door || id === B.bed) { if (this.placeDouble(id, tx, ty, tz)) { if (!p.creative) p.inventory.useHeld(); this.startSwing(); } return; }
     const meta = this.placementMeta(id, hit, tx, ty, tz);
     if (meta < 0) return;
@@ -1130,6 +1132,9 @@ export class Game {
         if (id === B.brown_mushroom || id === B.red_mushroom) return OPAQUE[below] === 1;
         return GRASS_OK.has(below);
       case 'farmland': return below === B.farmland;
+      case 'drip_up': return below === B.drip_spike || OPAQUE[below] === 1;
+      case 'drip_down': { const above = w.getBlock(x, y + 1, z); return above === B.hanging_drip_spike || OPAQUE[above] === 1; }
+      case 'cave': return OPAQUE[below] === 1;
       case 'underworld': return below === B.scorchstone || below === B.cinder_sand || below === B.magma_rock || below === B.ember_bricks || GRASS_OK.has(below);
       case 'sand': return below === B.sand || GRASS_OK.has(below);
       case 'cane': {

@@ -71,6 +71,8 @@ const TEX_NAMES = [
   'sculk_sensor_side', 'sculk_sensor_tendril', 'sculk_sensor_tendril_on', 'sculk_shrieker_top', 'sculk_shrieker_side',
   'sculk_catalyst_top', 'sculk_catalyst_side', 'deep_stone', 'deep_bricks', 'deep_tiles', 'wisp_lantern', 'p_wax',
   'p_vibration', 'p_sonic', 'p_sculk_soul',
+  // caves: dripstone, moss and glowroot
+  'dripstone', 'drip_spike_up', 'drip_spike_down', 'moss_block', 'glowroot',
 ];
 const ANIM_NAMES = ['water', 'lava', 'rift', 'fire', 'void_gate'];
 
@@ -103,7 +105,7 @@ export const ALPHA_TEXTURES = new Set([
   'beacon_core', 'cauldron_inner',
   'berry_bush0', 'berry_bush1', 'berry_bush2', 'berry_bush3', 'blossom_leaves', 'blossom_sapling', 'petals',
   'p_petal', 'p_honey', 'lectern_book', 'grindstone_wheel', 'lightning_rod', 'wisp_lantern', 'p_wax', 'p_vibration',
-  'p_sonic', 'p_sculk_soul',
+  'p_sonic', 'p_sculk_soul', 'drip_spike_up', 'drip_spike_down', 'glowroot',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -499,6 +501,13 @@ def(209, 'sculk_catalyst', { hardness: 3, tool: 'hoe', sound: 'cloth', light: 6,
 def(210, 'deep_stone', stoneLike({ hardness: 3, display: 'Gloomstone' }));
 def(211, 'deep_bricks', stoneLike({ hardness: 3.5, display: 'Gloomstone Bricks' }));
 def(212, 'deep_tiles', stoneLike({ hardness: 3.5, display: 'Gloomstone Tiles' }));
+// --- caves -------------------------------------------------------------------------
+def(214, 'dripstone', stoneLike({ hardness: 1.5, display: 'Dripstone Block' }));
+// spikes of dripstone grow up from cave floors and hang from ceilings
+def(215, 'drip_spike', plant({ wave: 0, hardness: 1.2, tool: 'pickaxe', sound: 'stone', support: 'drip_up', faces: 'drip_spike_up', display: 'Drip Spike' }));
+def(216, 'hanging_drip_spike', plant({ wave: 0, hardness: 1.2, tool: 'pickaxe', sound: 'stone', support: 'drip_down', faces: 'drip_spike_down', item: false, creative: false, drops: () => [[B.drip_spike, 1]], display: 'Drip Spike' }));
+def(217, 'moss_block', { hardness: 0.3, tool: 'hoe', sound: 'grass', display: 'Moss Block' });
+def(218, 'glowroot', plant({ light: 9, support: 'cave', replaceable: true, display: 'Glowroot' }));
 def(213, 'wisp_lantern', shaped0(23, { pass: PASS.CUTOUT, ...stoneLike({ hardness: 3.5, sound: 'metal' }), light: 10, faces: 'wisp_lantern', icon: 'cube', support: 'lantern' }));
 
 export const BLOCK_COUNT = BLOCKS.length;

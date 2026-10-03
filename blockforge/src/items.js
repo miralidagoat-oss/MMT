@@ -466,6 +466,8 @@ shaped(['SS', 'SS'], { S: 'deep_stone' }, 'deep_bricks', 4);
 shaped(['SS', 'SS'], { S: 'deep_bricks' }, 'deep_tiles', 4);
 shaped(['NNN', 'NTN', 'NSN'], { N: 'iron_nugget', T: 'torch', S: 'sculk' }, 'wisp_lantern');
 shaped(['EEE', 'ESE', 'EEE'], { E: 'echo_shard', S: 'sculk' }, 'sculk_catalyst');
+// caves
+shaped(['DD', 'DD'], { D: 'drip_spike' }, 'dripstone');
 // wool takes any colour: one with a dye, or eight around one
 for (const c of BANNER_COLORS) {
   const others = BANNER_COLORS.filter((o) => o !== c).map((o) => `${o}_wool`);

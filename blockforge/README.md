@@ -323,6 +323,14 @@ in the host's browser.
 - The living landscape: petals drift down from blossom trees, fireflies glow
   over swamps, meadows, plains and forests on warm nights, and full hives
   drip honey.
+- **Caves**: winding tunnels that wander for a hundred blocks and more
+  (some break out on hillsides as cave mouths), rare ravines that split the
+  ground, huge caverns tens of blocks tall around y 30, and underground lakes
+  in wet regions, with lava pooling at the bottom. Damp regions grow
+  dripstone caves, hung with drip spikes and studded with stalagmites (a
+  drip spike placed under a ceiling hangs from it, and falls if that goes);
+  lush caves are carpeted with moss, ferns and grass and lit by glowing
+  glowroot, which also turns up now and then in ordinary caves.
 - **The Deep Dark**: far below the hills lie ancient cities, vast dark
   caverns floored with gloomstone and sculk, with a plaza before a great
   arch, pillars lit by teal wisp lanterns and broken rooms whose chests hold
@@ -439,6 +447,7 @@ NODE_PATH=$(npm root -g) node tools/round4.cjs file://$PWD/dist/blockforge.html 
 NODE_PATH=$(npm root -g) node tools/round5.cjs file://$PWD/dist/blockforge.html /tmp/shots
 NODE_PATH=$(npm root -g) node tools/round6.cjs file://$PWD/dist/blockforge.html /tmp/shots
 NODE_PATH=$(npm root -g) node tools/round7.cjs file://$PWD/dist/blockforge.html /tmp/shots
+NODE_PATH=$(npm root -g) node tools/caves.cjs file://$PWD/dist/blockforge.html /tmp/shots
 node tools/relay.mjs 8799 &   # serves the game and relays messages
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots tabs
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots relay

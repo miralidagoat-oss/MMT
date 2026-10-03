@@ -99,6 +99,9 @@ export class WorldGen {
     this.nCaveB = new Simplex(s ^ 0xa00a);
     this.nCaveC = new Simplex(s ^ 0xb00b);
     this.nSurf = new Simplex(s ^ 0xc00c);
+    this.nWet = new Simplex(s ^ 0xd00d);   // underground lakes
+    this.nDrip = new Simplex(s ^ 0xe00e);  // dripstone caves
+    this.nLush = new Simplex(s ^ 0xf00f);  // mossy, glowing caves
     this.col = { h: 0, biome: 0, temp: 0, humid: 0, river: 0, mount: 0, cont: 0 };
     this.villages = new Villages(this);
     this.observatories = new Observatories(this);
@@ -197,11 +200,138 @@ export class WorldGen {
     if (depth < 0) return false;
     if (h < SEA && depth < 7) return false;
     if (nearWater && y > SEA - 8 && depth < 10) return false;
+    // winding "spaghetti" tunnels where two noise fields both cross zero,
+    // roomier the deeper they run
     let w = 0.0042;
     if (depth < 5) w *= 0.55;
+    else if (depth > 18) w *= 1.7;
     if (n1 * n1 + n2 * n2 < w) return true;
-    if (n3 > 0.62 && y < 54 && depth > 8) return true;
+    // great caverns: big open chambers centred around y 30, with floors that
+    // rise and fall and pillars where the noise dips
+    if (depth > 10 && y >= 5) {
+      const dy = (y - 30) / 22;
+      if (n3 > 0.4 + 0.32 * dy * dy) return true;
+    }
     return false;
+  }
+
+  // Underground water: low cavern floors in wet regions hold lakes.
+  wetAt(x, z) { return this.nWet.noise2(x / 160, z / 160); }
+
+  // Long tunnels and ravines: each starts in some chunk and wanders up to a
+  // hundred-odd blocks, so a chunk carves every tunnel that started within
+  // six chunks of it. Every choice comes from the tunnel's own seed, so
+  // neighbouring chunks carve the same tunnel.
+  carveWorms(cx, cz, blocks, colH) {
+    const X0 = cx * CHUNK, Z0 = cz * CHUNK, R = 6;
+    const idx = (x, y, z) => x | (z << 4) | (y << 8);
+    const carveAt = (px, py, pz, hr, vr) => {
+      const x0 = Math.max(0, Math.floor(px - hr) - X0), x1 = Math.min(15, Math.floor(px + hr) - X0);
+      const z0 = Math.max(0, Math.floor(pz - hr) - Z0), z1 = Math.min(15, Math.floor(pz + hr) - Z0);
+      if (x0 > x1 || z0 > z1) return;
+      const y0 = Math.max(1, Math.floor(py - vr)), y1 = Math.min(HEIGHT - 2, Math.floor(py + vr));
+      for (let lz = z0; lz <= z1; lz++) for (let lx = x0; lx <= x1; lx++) {
+        const h = colH(lx, lz);
+        const ddx = (lx + X0 + 0.5 - px) / hr, ddz = (lz + Z0 + 0.5 - pz) / hr;
+        const flat = ddx * ddx + ddz * ddz;
+        if (flat >= 1) continue;
+        const wet = this.wetAt(lx + X0, lz + Z0) > 0.35;
+        for (let y = y0; y <= Math.min(y1, h); y++) {
+          const ddy = (y + 0.5 - py) / vr;
+          if (flat + ddy * ddy >= 1) continue;
+          const i = idx(lx, y, lz), id = blocks[i];
+          if (!id || id === B.bedrock || id === B.water || id === B.ice || id === B.lava) continue;
+          // never open a hole under the sea or a river
+          if (blocks[i + 256] === B.water || (h < SEA && y > h - 6)) continue;
+          blocks[i] = y <= 10 ? B.lava : y <= 15 && wet ? B.water : 0;
+        }
+      }
+    };
+    for (let sz = cz - R; sz <= cz + R; sz++) for (let sx = cx - R; sx <= cx + R; sx++) {
+      const start = rng(hash2(this.seed ^ 0xc4e5, sx, sz));
+      if (start() > 0.16) continue;
+      const count = 1 + Math.floor(start() * 2);
+      for (let k = 0; k < count; k++) {
+        const r = rng(hash2(this.seed ^ (0x7a11 + k * 7919), sx, sz));
+        let x = sx * CHUNK + r() * 16, z = sz * CHUNK + r() * 16;
+        // some tunnels start high enough to break out onto the surface
+        let y = r() < 0.3 ? 40 + r() * 40 : 12 + r() * 36;
+        const ravine = r() < 0.07;
+        const len = Math.floor(ravine ? 60 + r() * 50 : 60 + r() * 90);
+        // skip tunnels that can never reach this chunk (cheap and safe: own rng)
+        const cxm = X0 + 8, czm = Z0 + 8;
+        if (Math.hypot(x - cxm, z - czm) > len + 24) continue;
+        const base = ravine ? 1.6 + r() * 1.4 : 1.3 + r() * 1.6;
+        let yaw = r() * Math.PI * 2, pitch = (r() - 0.5) * (ravine ? 0.2 : 0.6);
+        let dyaw = 0, dpitch = 0;
+        const branchAt = !ravine && r() < 0.5 ? Math.floor(len * (0.3 + r() * 0.4)) : -1;
+        const walk = (x, y, z, yaw, pitch, len, base, rr, branch) => {
+          for (let i = 0; i < len; i++) {
+            const t = i / len;
+            const rad = base * (0.45 + Math.sin(t * Math.PI) * 0.85) * (0.85 + rr() * 0.3);
+            const hr = rad, vr = ravine ? rad * 3.2 + 3 : rad * 0.8;
+            if (Math.abs(x - cxm) < 8 + hr + 1 && Math.abs(z - czm) < 8 + hr + 1) carveAt(x, y, z, hr, vr);
+            const cp = Math.cos(pitch);
+            x += Math.cos(yaw) * cp; z += Math.sin(yaw) * cp; y += Math.sin(pitch);
+            pitch *= ravine ? 0.6 : 0.9;
+            pitch += dpitch * 0.08; yaw += dyaw * 0.08;
+            dpitch = dpitch * 0.9 + (rr() - rr()) * 1.6;
+            dyaw = dyaw * 0.75 + (rr() - rr()) * 3.2;
+            if (y < 8) pitch = Math.abs(pitch);
+            if (branch && i === branchAt) {
+              const br = rng(hash2(this.seed ^ 0xb7a4 ^ k, sx, sz));
+              walk(x, y, z, yaw + (br() < 0.5 ? 1.4 : -1.4), pitch, Math.floor(len * 0.6), base * 0.8, br, false);
+            }
+          }
+        };
+        walk(x, y, z, yaw, pitch, len, base, r, true);
+      }
+    }
+  }
+
+  // Cave floors and ceilings take on character: dripstone where the rock is
+  // damp, moss, ferns and glowroot where it is lush, and a little glowroot
+  // anywhere so the deep is not entirely black.
+  decorateCaves(cx, cz, blocks, colH) {
+    const X0 = cx * CHUNK, Z0 = cz * CHUNK;
+    const idx = (x, y, z) => x | (z << 4) | (y << 8);
+    const rock = (id) => id === B.stone || id === B.dripstone || id === B.dirt || id === B.gravel;
+    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const wx = X0 + lx, wz = Z0 + lz, h = colH(lx, lz);
+      const drip = this.nDrip.noise2(wx / 110, wz / 110) > 0.32;
+      const lush = !drip && this.nLush.noise2(wx / 120, wz / 120) > 0.38;
+      for (let y = 6; y < h - 5; y++) {
+        const i = idx(lx, y, lz);
+        if (blocks[i] !== 0) continue;
+        const below = blocks[i - 256], above = blocks[i + 256];
+        const q = rand3(this.seed ^ 0xca7e, wx, y, wz);
+        if (rock(below)) {
+          if (drip) {
+            blocks[i - 256] = B.dripstone;
+            if (q < 0.09) {
+              // a stalagmite one to three spikes tall
+              const tall = 1 + Math.floor(q * 33) % 3;
+              for (let k = 0; k < tall && blocks[i + k * 256] === 0; k++) blocks[i + k * 256] = B.drip_spike;
+            }
+          } else if (lush) {
+            blocks[i - 256] = B.moss_block;
+            if (q < 0.22) blocks[i] = B.tall_grass;
+            else if (q < 0.3) blocks[i] = B.fern;
+            else if (q < 0.36) blocks[i] = B.glowroot;
+          } else if (q < 0.006) blocks[i] = B.glowroot;
+        }
+        if (rock(above) && blocks[i] === 0) {
+          const q2 = rand3(this.seed ^ 0x5e11, wx, y, wz);
+          if (drip) {
+            blocks[i + 256] = B.dripstone;
+            if (q2 < 0.12) {
+              const long = 1 + Math.floor(q2 * 30) % 3;
+              for (let k = 0; k < long && blocks[i - k * 256] === 0; k++) blocks[i - k * 256] = B.hanging_drip_spike;
+            }
+          } else if (lush) blocks[i + 256] = B.moss_block;
+        }
+      }
+    }
   }
 
   // Direct (grid-consistent) cave test for arbitrary positions.
@@ -572,7 +702,7 @@ export class WorldGen {
     }
     const cube = new Float32Array(24);
     for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) {
-      const h = colH(x, z), nw = nearWaterCol(x, z);
+      const h = colH(x, z), nw = nearWaterCol(x, z), wet = this.wetAt(X0 + x, Z0 + z) > 0.35;
       const gx = x >> 2, gz = z >> 2, fx = (x & 3) / 4, fz = (z & 3) / 4;
       for (let y = 1; y <= h; y++) {
         const gy = y >> 2, fy = (y & 3) / 4;
@@ -585,7 +715,7 @@ export class WorldGen {
         if (WorldGen.carve(n1, n2, n3, y, h, nw)) {
           const i = idx(x, y, z);
           if (blocks[i] === B.bedrock || blocks[i] === B.water || blocks[i] === B.ice) continue;
-          blocks[i] = y <= 10 ? B.lava : 0;
+          blocks[i] = y <= 10 ? B.lava : y <= 15 && wet ? B.water : 0;
         }
       }
       // exposed dirt at the top of a carved column becomes grass again
@@ -596,6 +726,19 @@ export class WorldGen {
           if (blocks[j] === B.dirt) { blocks[j] = BIOMES[colB(x, z)].cold ? B.snowy_grass : B.grass; break; }
           if (blocks[j] !== 0) break;
         }
+      }
+    }
+
+    // Long tunnels and ravines, some breaking out on the surface.
+    this.carveWorms(cx, cz, blocks, colH);
+    for (let z = 0; z < CHUNK; z++) for (let x = 0; x < CHUNK; x++) {
+      // dirt left open to the sky by a cave mouth grows grass again
+      const h = colH(x, z);
+      if (h <= SEA || blocks[idx(x, h, z)] !== 0) continue;
+      for (let y = h - 1; y > h - 8 && y > 0; y--) {
+        const j = idx(x, y, z);
+        if (blocks[j] === B.dirt) { blocks[j] = BIOMES[colB(x, z)].cold ? B.snowy_grass : B.grass; break; }
+        if (blocks[j] !== 0) break;
       }
     }
 
@@ -738,6 +881,8 @@ export class WorldGen {
     // Mineshafts, temples, shrines, huts, citadels and manors.
     for (const s of this.landmarks.near(X0, Z0, X0 + 15, Z0 + 15)) this.landmarks.write(s, ctx, X0, Z0, extra);
 
+    // dripstone, moss and glowroot
+    this.decorateCaves(cx, cz, blocks, colH);
     // cave mushrooms
     const mr = rng(hash2(seed ^ 0x3a1, cx, cz));
     for (let i = 0; i < 6; i++) {
