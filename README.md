@@ -7,6 +7,13 @@ the results in an on-chart dashboard.
 
 - **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
 - **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
+- **Also here:** `indicators/nq_liquidity_heatmap.pine` — a multi-timeframe
+  liquidity heatmap for Nasdaq-100 futures (NQ/MNQ) on Extended Trading
+  Hours, built only from real OHLCV data
+  ([section below](#nq-liquidity-heatmap--nasdaq-100-futures-eth))
+- **Combined:** `indicators/nq_liquidity_heatmap_terminus.pine` — the heatmap
+  and the TERMINUS reversal engine as one script
+  ([section below](#combined-script-heatmap--terminus))
 
 ## Audit findings (why v1's "backtest" was fiction)
 
@@ -231,3 +238,275 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+## NQ Liquidity Heatmap — Nasdaq-100 futures, ETH
+
+`indicators/nq_liquidity_heatmap.pine` (Pine Script v6, overlay; shows as
+**NQ ETH Liq**) shows where resting liquidity sits on Nasdaq-100 futures (CME
+NQ and MNQ: continuous NQ1!/MNQ1! or a specific contract) on every timeframe
+at once, from 1m to 1M plus the chart's own, plus RTH and overnight
+sessions. It also shows how heavy each pool is. Everything runs on
+**Extended Trading Hours (ETH)**: the full CME Globex session, 18:00 ET to
+17:00 ET. The trading day that opens Sunday 18:00 ET is Monday's.
+
+![NQ Liquidity Heatmap](docs/nq_liquidity_heatmap_preview.png)
+
+*Rendered from the script's own output (lines, profile, labels, table).
+The data is real EURUSD 1H history used by the verification harness: no
+Nasdaq-100 futures history is reachable offline here. The table flags it
+as not NQ/MNQ.*
+
+### What is real, and what Pine cannot see
+
+Pine Script has **no access to the order book**: no Level 2, no DOM, no
+resting limit orders. Any Pine "order-book heatmap" is fabricated, and
+"liquidation heatmaps" are built on assumed leverage tiers. This indicator
+uses neither. It maps the liquidity that price structure itself proves is
+there:
+
+- **BSL (buy-side liquidity):** buy stops resting above every high that
+  price has **not** traded through since it printed.
+- **SSL (sell-side liquidity):** sell stops resting below every unswept low.
+
+Every number comes from the symbol's own OHLCV feed:
+
+| element | source |
+|---|---|
+| swing levels | the swing bar's actual high/low (`ta.pivothigh`/`ta.pivotlow`) on each timeframe |
+| PDH/PDL, PWH/PWL, PMH/PML | every prior day/week/month high and low (the futures day is the CME trading day, 18:00–17:00 ET) |
+| session levels | every RTH (cash session, 09:30–16:00 ET) and Globex overnight (18:00–09:30 ET) high and low |
+| resting / swept | a level is swept the moment a bar trades through it (high > BSL, low < SSL) |
+| heat | the **actual volume traded** on the swing bar or in the session, on the largest bar or session containing the level |
+| no volume feed | heat = number of sources confirming the level (the table says which mode is active) |
+
+The same high or low seen by several sources is merged into **one** pool:
+a daily high is usually also the RTH or overnight high and a 1H and 5m high.
+Members must match on side and price and have overlapping time spans. A
+pool's heat is the volume of the largest bar or session containing it, so it
+is never double counted. Equal highs/lows from different swings stay separate
+pools and add up in the profile.
+
+### Nasdaq-100 futures specifics
+
+- **ETH.** Every request uses the extended (full Globex) session via
+  `ticker.modify(syminfo.tickerid, session = session.extended)`, whatever the
+  chart's session is set to. Overnight swings, the overnight session and the
+  18:00–17:00 ET trading day (the "day" behind PDH/PDL) are therefore always
+  in the book. Keep the chart itself on ETH. On an RTH chart the overnight
+  bars are missing, so a sweep that happens overnight is only caught when
+  the next higher-timeframe bar closes; the table warns when this applies.
+- **Contract rolls.** A raw continuous chart (NQ1!/MNQ1!) jumps by the
+  calendar spread at every quarterly roll. Levels inside that jump would
+  register fake sweeps, and older levels would sit at the expired contract's
+  prices. The indicator therefore computes everything on TradingView's
+  **back-adjusted** series via
+  `ticker.modify(syminfo.tickerid, backadjustment = backadjustment.on)`.
+  That series shifts older contracts by the close-to-close gap at each roll,
+  so every level is in the current contract's prices. Also turn on **B-ADJ**
+  ("Adjust for contract changes") on the chart so older candles line up with
+  the levels. The table warns when the chart's candles are not
+  back-adjusted. Toggle: *Roll-safe*.
+- **Sessions.** CME Globex for NQ runs Sunday 18:00 to Friday 17:00 ET, with
+  a daily 17:00–18:00 halt. RTH is the 09:30–16:00 ET cash session. Both
+  session windows and the time zone are editable. Session levels are built
+  from 30-minute bars, so they need a chart of 30 minutes or less. On higher
+  charts they are skipped, and the table says so.
+- **Heat.** Heat is the chart symbol's own volume: MNQ contracts on MNQ, NQ
+  contracts on NQ.
+- **Symbol check.** The table flags symbols that are not NQ/MNQ (by
+  `syminfo.root`). The indicator still runs on them, using the CME session
+  hours.
+
+### Reading it
+
+- **Lines** run from the swing to the current bar while the pool is
+  resting. Brighter and thicker means more heat: color and width are the
+  pool's percentile among all resting pools, on a single-hue ramp that adapts
+  to light and dark chart backgrounds.
+- **Faded short lines** are swept liquidity, ending on the bar that took
+  them.
+- **Profile right of price:** resting heat summed into price rows across the
+  recent range (last N bars plus a margin). The heaviest pools on each side
+  are labeled with price, source and volume. Real labels from the
+  verification run look like `BSL 1.25374 · 1M · 1.43M` and
+  `SSL 1.22706 · RTH · 15.07K`. Labels that would overlap are skipped.
+  Scroll right or widen the right margin to see it.
+- **Table:** biggest and nearest BSL/SSL (price, source, heat, distance),
+  resting-pool counts, active timeframes and sessions, contract/roll status,
+  and the session-data status (ETH, or a warning if the chart is on RTH).
+- **Data Window:** nearest/biggest BSL and SSL plus counts, on every bar.
+- **Alerts:** "Any alert() function call" sends one message per bar close
+  listing each pool taken, from the alert timeframe (default 1H) up. Session
+  pools always qualify, since a session is longer than 1H. A plain
+  `alertcondition` is also provided.
+
+### No repaint, no lookahead
+
+Each source hands the chart its book of unswept levels **as of its previous
+closed bar**: the snapshot is taken before the forming bar is applied and is
+requested with `lookahead_on`, the documented non-repainting pattern. A
+session's high/low becomes a level only after the session has ended. Sweeps
+are detected on every chart bar as they happen.
+
+Requested timeframes have history from before the chart's first bar, so the
+chart inherits levels formed long before it, such as monthly highs on a 1m
+chart. A level that was already traded through earlier in the current
+higher-timeframe bar, before the chart's first bar, is caught by checking
+the running high/low of a finer requested timeframe. Without that check, a
+weekly or monthly level taken before the chart begins would show as resting
+until that week or month closed.
+
+### Settings
+
+| group | setting | default |
+|---|---|---|
+| Nasdaq-100 futures | ETH: full Globex session data (18:00–17:00 ET) | on |
+| | roll-safe (back-adjusted prices) | on |
+| | every prior day / week / month high & low | on |
+| | RTH session / overnight session / time zone | 0930-1600 / 1800-0930 / America/New_York |
+| Timeframes | chart TF + nine slots: 1m, 5m, 15m, 30m, 1H, 4H, D, W, M (each toggle/editable) | all on; slots below the chart TF are skipped |
+| Swing detection | bars left / right of a swing | 5 / 3 |
+| | unswept levels tracked per side, per source | 10 (the N nearest — unswept highs are always stacked oldest = farthest) |
+| Heatmap | show swept history, max swept lines, custom colors | on, 200, off |
+| Profile | window = range of last N bars + margin %, rows, width, labels per side | 300, 25 %, 30, 30 bars, 3 |
+| Table | position | bottom left |
+| Alerts | minimum timeframe of a pool to alert on | 1H |
+
+### Verification
+
+The script was executed, unmodified, in
+[PineTS](https://github.com/LuxAlgo/PineTS) 0.11 (an open-source Pine v6
+runtime) on real market data. Every bar of its output was checked against
+an independent model (`backtest/nq_liquidity_heatmap/truth.py`). That model
+recomputes, from raw OHLCV and with no carried state, which pools are
+resting on each bar.
+
+No Nasdaq-100 futures history ships with any package reachable from this
+environment. The fixtures are the real EURUSD 1H and GOOG daily history
+bundled with the `backtesting` package, with higher timeframes aggregated
+from it. What is verified is the script's logic, which is symbol-agnostic:
+books, PDH/PDL mode, session books, merging, sweeps, alerts and the profile.
+Session runs use sessions on the hour, because 1H is the finest real data
+available.
+
+- 29 configurations: 1H/3H/4H/D charts; swing settings 2/1 to 10/5; caps 1
+  to 20; every-bar mode on and off; RTH/overnight sessions; different chart
+  start points, including five (seven runs) where a higher-timeframe level was
+  taken before the chart's first bar; a 3H chart with a 4H source, so source
+  boundaries fall inside chart bars (sweeps judged on the real 1H bars); an
+  RTH-only symbol whose sessions follow each other with no bar in between;
+  and a no-volume feed.
+- Checked on every bar (64,765 chart bars): all 8 Data Window series.
+  Checked on every sweep (16,273): the alert. Checked on the last bar: the
+  drawn profile.
+- **Result: 0 mismatches after warm-up in all 29.** "Warm-up" means only the
+  first, partial bar of the finest requested source above the chart (for
+  example the first 4H bar of a 1H chart), which has no finer data to check
+  it against. It resolves when that bar closes.
+
+Reproduce with `backtest/nq_liquidity_heatmap/verify.sh`. It installs PineTS
+and the data package into a temp dir; needs python3 and node ≥ 20.
+
+An adversarial audit then went over the whole script for things TradingView
+would reject or mis-run that PineTS cannot show. Five independent lenses
+looked for them: types and qualifiers, runtime limits, ETH/session
+semantics, repaint and realtime, and the API surface. Two skeptics each
+tried to refute every finding. 8 were confirmed and fixed:
+
+- **Inverted RTH check.** On CME futures TradingView names the full ETH
+  session "regular" (RTH is "us_regular"), so the RTH warning was inverted.
+- **Table merge on live updates.** Re-merging the table header on every
+  realtime update is a documented error.
+- **Misaligned timeframes (two fixes).** On misaligned timeframes, the bar
+  straddling a new snapshot was not checked for sweeps, and realtime
+  processed new snapshots one bar earlier than history.
+- **Non-standard charts.** Heikin Ashi/Renko charts would have fed synthetic
+  prices into the books.
+- **RTH chart series.** On an RTH chart, the chart-side series did not line
+  up with the chart's bars.
+- **Back-to-back sessions.** Session instances that follow each other with
+  no out-of-session bar never closed.
+- **TradingView rules from this repo's earlier MNQ scripts.** The shorttitle
+  must be at most 10 characters, and a timeframe set to "Chart" ("") must
+  never be sliced with `str.substring`.
+
+The two new fixtures above reproduce two of these on real data. The
+pre-audit commit fails them (2 and 888 series mismatches after warm-up), and
+the current script passes.
+
+Two PineTS 0.11 bugs turned up and were kept out of the indicator:
+
+- **Arrays from `request.security` get the wrong timing.** PineTS mistakes an
+  array result for a named-argument object, so `lookahead` is dropped and the
+  array arrives with `lookahead_off` timing. The harness runs a test-only
+  patched copy to reproduce TradingView's timing (`--tv-timing`). The
+  indicator is also correct under the buggy timing: a snapshot that arrives
+  late is checked against the chart bars it missed.
+- **`a == (b == c)` evaluates wrong.** The script avoids the construct.
+
+What PineTS cannot exercise:
+
+- **Back-adjusted versus raw data, ETH versus RTH.** PineTS serves one series
+  per symbol, so the roll-safe and ETH paths are checked by code review
+  only. All prices, sweeps and
+  levels come from the back-adjusted series; on a chart without
+  back-adjustment, the only difference is the drawing frame.
+- **TradingView's own compiler.** PineTS is not TradingView. Compiling in the
+  Pine Editor is the final check, and this environment has no access to
+  TradingView.
+
+### Limits
+
+- This maps **stop liquidity implied by structure and sessions**, not posted
+  limit orders; no OHLCV-based tool can see the latter.
+- Timeframes below the chart's are skipped (a chart bar cannot reveal what
+  happened inside a smaller bar without lookahead). Session levels need a
+  chart of 30 minutes or less.
+- On a continuous chart without B-ADJ, candles from before the last roll sit
+  at the old contract's prices, while the levels are in current-contract
+  prices. Turn on B-ADJ to line them up.
+- On an RTH chart, overnight sweeps are caught late (see ETH above). Use an
+  ETH chart.
+
+## Combined script: heatmap + TERMINUS
+
+`indicators/nq_liquidity_heatmap_terminus.pine` (shows as **NQ Liq+TRM**) puts
+two indicators in one script: the NQ Liquidity Heatmap above and TERMINUS ·
+Price-Axis Survival Reversal Engine (`indicators/terminus_survival_reversal.pine`
+on `claude/friendly-mendel-0escsv`, latest version). Each part keeps its own
+inputs, math, drawings, table/dashboard, plots and alerts, and neither reads
+the other's values. "Indicators in this script" at the top of the settings
+turns either part off; a part that is off skips its work and draws nothing.
+
+What changed to make them share one script, and nothing else:
+
+- One `indicator()` declaration with both scripts' drawing limits. TERMINUS's
+  `max_bars_back = 500` is left out: it sizes the history buffer of every
+  series in the script, which here would keep 500 bars of the heatmap's
+  snapshot arrays from 11 `request.security` calls (the usual cause of
+  "Memory limits exceeded", per the Pine docs). Every history reference in
+  TERMINUS has a fixed, capped length that TradingView sizes automatically.
+- Settings groups are prefixed ① (heatmap) and ② (TERMINUS); both had an
+  "Alerts" group.
+- Names declared by both scripts are renamed in TERMINUS: `showTable` →
+  `showDash`, `ph`/`pl` → `stopPh`/`stopPl`, `tz` → `sessTzT`.
+- The 500-line limit is per script. TERMINUS draws at most 20 lines, so while
+  it is on the heatmap keeps 20 fewer swept-history lines (460 instead of 480,
+  minus its resting pools).
+
+Built by `backtest/combine_heatmap_terminus.py` from the two standalone files,
+with every edit an exact, asserted replacement.
+
+**Verification** (`backtest/nq_liquidity_heatmap/verify_combined.sh`): the
+combined script and each standalone script are run in PineTS on the same real
+data (EURUSD 1H and 4H, and the zero-volume variant). Results: 141 checks, 0
+mismatches. They cover:
+
+- With both parts on, every heatmap and TERMINUS plot, alert, label and box is
+  identical to its standalone script.
+- With one part switched off, the other's output is identical to running it
+  alone, and the part that is off produces nothing.
+
+A separate run with the swept-line cap raised checks that the line budget is
+kept. Not checked here: compiling on TradingView itself and real NQ data,
+neither of which is reachable from this environment.

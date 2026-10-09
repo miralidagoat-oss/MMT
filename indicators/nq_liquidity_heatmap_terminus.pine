@@ -1,0 +1,1819 @@
+//@version=6
+indicator("NQ Liquidity Heatmap + TERMINUS", shorttitle = "NQ Liq+TRM", overlay = true,
+     max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// TWO INDICATORS IN ONE SCRIPT
+//   ① NQ/MNQ Liquidity Heatmap — ETH, all timeframes   (PART 1)
+//   ② TERMINUS · Price-Axis Survival Reversal Engine   (PART 2)
+//
+// Each part is its standalone script, unchanged: its own inputs (settings
+// groups prefixed ① / ②), math, drawings, table/dashboard, plots and alerts.
+// Neither part reads the other's values. Either one can be switched off below;
+// a switched-off part skips its work and draws nothing.
+//
+// The only things the two share are TradingView's per-script drawing limits
+// (500 lines / boxes / labels). TERMINUS draws at most 20 lines (2 projections,
+// 2 expectation lines, up to 8 ladder rows per side), so while it is on the
+// heatmap keeps 20 fewer swept-history lines. Boxes and labels stay well under
+// 500 combined. Renamed in TERMINUS only, so no name is declared twice:
+// showTable → showDash, ph/pl → stopPh/stopPl, tz → sessTzT.
+//
+// TERMINUS's own declaration also set max_bars_back = 500. That argument sets
+// the history buffer of EVERY series in the script, and here it would make
+// TradingView keep 500 bars of the heatmap's per-timeframe level snapshots
+// (arrays returned by 11 request.security calls), which is what the Pine docs
+// name as the usual cause of "Memory limits exceeded". It is left out: every
+// history reference in TERMINUS has a fixed length (inputs capped at 400 or
+// less), which TradingView sizes automatically, and the heatmap sets its
+// deep buffers explicitly with max_bars_back().
+// ============================================================================
+
+var string G_MOD = "Indicators in this script"
+bool hmOn = input.bool(true, "① NQ Liquidity Heatmap (ETH, all timeframes)", group = G_MOD)
+bool tmOn = input.bool(true, "② TERMINUS reversal engine", group = G_MOD)
+int  TM_LINES = tmOn ? 20 : 0
+
+// ############################################################################
+// PART 1 — NQ/MNQ LIQUIDITY HEATMAP
+// ############################################################################
+
+// ============================================================================
+// WHERE RESTING LIQUIDITY SITS ON NASDAQ-100 FUTURES, ETH — EVERY
+// TIMEFRAME, REAL DATA ONLY. Built for CME NQ / MNQ (continuous NQ1! /
+// MNQ1! or a specific contract) on Extended Trading Hours: the full CME
+// Globex session, 18:00 ET to 17:00 ET (the trading day that opens Sunday
+// 18:00 ET is Monday's). Runs on any symbol, but the session hours and the
+// contract-roll handling are the CME index-futures ones.
+//
+// Pine Script cannot read an order book (no Level 2 / DOM data exists in
+// Pine), so this indicator does not pretend to. It maps the liquidity that
+// price structure itself proves is there:
+//   - BSL (buy-side liquidity): buy-stop orders resting above every swing
+//     high that price has NOT traded through since it printed.
+//   - SSL (sell-side liquidity): sell-stop orders resting below every
+//     unswept swing low.
+//
+// Everything is computed from the symbol's own OHLCV feed:
+//   - Swing highs/lows are detected on each enabled timeframe (1m → 1M plus
+//     the chart's own) with ta.pivothigh / ta.pivotlow.
+//   - A level stays "resting" until a bar trades through it (high > level
+//     for BSL, low < level for SSL). Then it is swept and stops extending.
+//   - Heat = the actual volume traded on the bar that printed the swing, on
+//     the highest timeframe that confirms that swing. Nothing is estimated:
+//     no assumed leverage, no synthetic order sizes, no random seeds. On
+//     symbols with no volume feed, heat = number of timeframes that confirm
+//     the level (and the table says so).
+//   - The same swing seen on several timeframes (a daily high is also a 1H
+//     and 5m high) is ONE pool, never double counted; its heat is the volume
+//     of the largest bar that contains it.
+//
+// Nasdaq-100 futures specifics:
+//   - ETH: every request uses the extended (full Globex) session, whatever
+//     the chart is set to, so overnight swings, the overnight session and
+//     the 18:00–17:00 ET trading day are always part of the book. Use an ETH
+//     chart: on an RTH chart the overnight bars are missing, so sweeps that
+//     happen overnight are only caught when the next higher-timeframe bar
+//     closes (the table warns). Levels are always built from standard bars,
+//     also on Heikin Ashi / Renko charts.
+//   - Contract rolls: a raw continuous chart (NQ1!/MNQ1!) jumps by the
+//     calendar spread at every quarterly roll, which would fake sweeps of
+//     levels inside the jump and leave older levels at the expired
+//     contract's prices. Everything is therefore computed on TradingView's
+//     back-adjusted series (older contracts shifted by the close-to-close
+//     gap at each roll), i.e. in the current contract's prices.
+//   - Session liquidity: every unswept RTH (cash session, 09:30–16:00 ET)
+//     and Globex overnight (18:00–09:30 ET) high/low, heat = the volume
+//     traded in that session. CME Globex for NQ runs Sun 18:00 – Fri 17:00
+//     ET with a daily 17:00–18:00 ET halt.
+//   - Every prior day / week / month high and low (PDH/PDL, PWH/PWL,
+//     PMH/PML) counts, not only swing points. The day is the ETH trading
+//     day (18:00–17:00 ET).
+//
+// No repaint, no lookahead: each timeframe hands the chart its book of
+// levels AS OF ITS PREVIOUS CLOSED BAR (snapshot taken before the forming
+// bar is applied, requested with lookahead_on — the documented non-repaint
+// pattern). Sweeps are then detected on every chart bar as they happen.
+// Levels inherited from before the chart's first bar are cross-checked
+// against finer timeframes' pre-chart bars, so a level that was already
+// taken before the chart begins is not shown as resting.
+// ============================================================================
+
+// history depth for the late-snapshot guard (f_sweptSince)
+max_bars_back(time, 5000)
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_NQ  = "① Heatmap · Nasdaq-100 futures"
+var string G_TF  = "① Heatmap · Timeframes (all are scanned together)"
+var string G_SW  = "① Heatmap · Swing detection"
+var string G_VIS = "① Heatmap · Lines & colors"
+var string G_PRO = "① Heatmap · Resting-liquidity profile"
+var string G_TAB = "① Heatmap · Summary table"
+var string G_ALR = "① Heatmap · Alerts"
+
+bool   useEth   = input.bool(true, "ETH: full Globex session data (18:00-17:00 ET)", group = G_NQ,
+     tooltip = "Every level is built from extended-trading-hours data, whatever the chart session is set to. Keep the chart on ETH too, so overnight sweeps are seen as they happen.")
+bool   useBadj  = input.bool(true, "Roll-safe: use back-adjusted continuous prices", group = G_NQ,
+     tooltip = "Computes on TradingView's back-adjusted series so quarterly contract rolls do not fake sweeps or leave levels at the expired contract's prices. Turn on B-ADJ (Adjust for contract changes) on the chart too, so older candles line up with the levels.")
+bool   everyHTF = input.bool(true, "Every prior day / week / month high & low", group = G_NQ,
+     tooltip = "PDH/PDL, PWH/PWL, PMH/PML: on daily and higher timeframes every bar's high and low is liquidity until traded through, not only swing points.")
+bool   useRTH   = input.bool(true, "RTH session highs/lows", inline = "rth", group = G_NQ)
+string rthSess  = input.session("0930-1600", "", inline = "rth", group = G_NQ)
+bool   useON    = input.bool(true, "Overnight (Globex) highs/lows", inline = "on", group = G_NQ)
+string onSess   = input.session("1800-0930", "", inline = "on", group = G_NQ)
+string sessTz   = input.string("America/New_York", "Session time zone", group = G_NQ,
+     tooltip = "Session levels need a chart of 30 minutes or less (sessions are built from 30-minute bars, which align with the 09:30 and 18:00 ET boundaries).")
+
+bool   useChartTf = input.bool(true, "Chart timeframe", group = G_TF,
+     tooltip = "Timeframes below the chart's are skipped automatically (a chart bar cannot show what happened inside a smaller bar without lookahead).")
+bool   en1 = input.bool(true, "", inline = "a", group = G_TF)
+string tf1 = input.timeframe("1",   "", inline = "a", group = G_TF)
+bool   en2 = input.bool(true, "", inline = "a", group = G_TF)
+string tf2 = input.timeframe("5",   "", inline = "a", group = G_TF)
+bool   en3 = input.bool(true, "", inline = "a", group = G_TF)
+string tf3 = input.timeframe("15",  "", inline = "a", group = G_TF)
+bool   en4 = input.bool(true, "", inline = "b", group = G_TF)
+string tf4 = input.timeframe("30",  "", inline = "b", group = G_TF)
+bool   en5 = input.bool(true, "", inline = "b", group = G_TF)
+string tf5 = input.timeframe("60",  "", inline = "b", group = G_TF)
+bool   en6 = input.bool(true, "", inline = "b", group = G_TF)
+string tf6 = input.timeframe("240", "", inline = "b", group = G_TF)
+bool   en7 = input.bool(true, "", inline = "c", group = G_TF)
+string tf7 = input.timeframe("D",   "", inline = "c", group = G_TF)
+bool   en8 = input.bool(true, "", inline = "c", group = G_TF)
+string tf8 = input.timeframe("W",   "", inline = "c", group = G_TF)
+bool   en9 = input.bool(true, "", inline = "c", group = G_TF)
+string tf9 = input.timeframe("M",   "", inline = "c", group = G_TF)
+
+int pivL = input.int(5,  "Swing strength: bars on the left",  minval = 1, maxval = 50, group = G_SW,
+     tooltip = "A swing high must be higher than this many bars before it (on its own timeframe).")
+int pivR = input.int(3,  "Swing strength: bars on the right", minval = 1, maxval = 50, group = G_SW,
+     tooltip = "Bars after the swing that must stay below it before the level is confirmed. Larger = fewer, more significant levels, confirmed later.")
+int capN = input.int(10, "Unswept levels tracked per side, per timeframe", minval = 1, maxval = 20, group = G_SW,
+     tooltip = "Unswept highs are always stacked oldest = farthest from price, so this keeps the N nearest pools on each side of each timeframe.")
+
+bool  showHistory = input.bool(true, "Show swept liquidity (history)", group = G_VIS)
+int   histMax     = input.int(200, "Max swept lines kept", minval = 0, maxval = 400, group = G_VIS)
+bool  customHeat  = input.bool(false, "Custom heat colors", group = G_VIS,
+     tooltip = "Off = a single-hue blue ramp that adapts to light and dark chart backgrounds.")
+color heatLoIn    = input.color(#184f95, "Low", inline = "hc", group = G_VIS)
+color heatHiIn    = input.color(#cde2fb, "High", inline = "hc", group = G_VIS)
+
+bool showProfile = input.bool(true, "Show profile right of price", group = G_PRO)
+int  profBars    = input.int(300, "Profile window: price range of the last N bars", minval = 10, maxval = 5000, group = G_PRO,
+     tooltip = "Roughly what is on screen. Resting pools inside this price range (plus the margin) are summed into the profile and are the ones labeled.")
+int  profExtPct  = input.int(25,  "Margin beyond that range (%)", minval = 0, maxval = 200, group = G_PRO)
+int  profRows    = input.int(30,  "Profile rows", minval = 5, maxval = 100, group = G_PRO)
+int  profWidth   = input.int(30,  "Profile width (bars)", minval = 5, maxval = 200, group = G_PRO)
+int  labelN      = input.int(3,   "Label the biggest N pools each side", minval = 0, maxval = 10, group = G_PRO)
+
+bool   showTable = input.bool(true, "Show summary table", group = G_TAB)
+string tablePos  = input.string("Bottom left", "Position", options = ["Top right", "Bottom right", "Top left", "Bottom left"], group = G_TAB)
+
+string alertTf = input.timeframe("60", "Alert on sweeps of pools from this timeframe or higher", group = G_ALR)
+
+// ─────────────────────────────────────────────────────────────
+// CONSTANTS & TIMEFRAME SLOTS
+// ─────────────────────────────────────────────────────────────
+int    NSLOTS  = 12    // 0 chart, 1–9 timeframe slots, 10 RTH, 11 overnight
+string SESS_TF = "30"  // session books are built from 30-minute bars
+int R_SWEPT   = 0  // the timeframe's own data shows the level traded through
+int R_CAPPED  = 1  // fell outside the N nearest levels of its timeframe
+int R_INVALID = 2  // seeded mid-bar, then shown to be swept before the chart's first bar
+
+int chartSec = timeframe.in_seconds()
+int alertSec = timeframe.in_seconds(alertTf)
+
+// a slot runs only on timeframes >= the chart's; one equal to the chart's is
+// skipped while the dedicated chart slot is on (it would be the same data)
+f_slotOn(bool enabled, string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    hmOn and enabled and sec >= chartSec and not (useChartTf and sec == chartSec)
+
+f_tfLabel(string tfIn) =>
+    // input.timeframe returns "" for "Chart"; never slice an empty string
+    string tf   = tfIn == "" ? timeframe.period : tfIn
+    int    sec  = timeframe.in_seconds(tf)
+    string unit = str.substring(tf, math.max(str.length(tf) - 1, 0))
+    string res  = ""
+    if unit == "M"
+        res := str.tostring(math.round(sec / 2628003.0)) + "M"
+    else if unit == "W"
+        res := str.tostring(math.round(sec / 604800.0)) + "W"
+    else if unit == "D"
+        res := str.tostring(math.round(sec / 86400.0)) + "D"
+    else if unit == "S"
+        res := str.tostring(sec) + "s"
+    else if sec % 3600 == 0
+        res := str.tostring(math.round(sec / 3600.0)) + "H"
+    else
+        res := str.tostring(math.round(sec / 60.0)) + "m"
+    res
+
+// minutes in a "HHMM-HHMM" session (handles sessions that cross midnight)
+f_sessSec(string sess) =>
+    int a   = int(str.tonumber(str.substring(sess, 0, 2))) * 60 + int(str.tonumber(str.substring(sess, 2, 4)))
+    int b   = int(str.tonumber(str.substring(sess, 5, 7))) * 60 + int(str.tonumber(str.substring(sess, 7, 9)))
+    int dur = (b - a + 1440) % 1440
+    (dur == 0 ? 1440 : dur) * 60
+
+bool on0 = hmOn and useChartTf
+bool on1 = f_slotOn(en1, tf1)
+bool on2 = f_slotOn(en2, tf2)
+bool on3 = f_slotOn(en3, tf3)
+bool on4 = f_slotOn(en4, tf4)
+bool on5 = f_slotOn(en5, tf5)
+bool on6 = f_slotOn(en6, tf6)
+bool on7 = f_slotOn(en7, tf7)
+bool on8 = f_slotOn(en8, tf8)
+bool on9 = f_slotOn(en9, tf9)
+bool sessOk = chartSec <= timeframe.in_seconds(SESS_TF)
+bool on10   = hmOn and useRTH and sessOk
+bool on11   = hmOn and useON and sessOk
+
+// every-bar mode (PDH/PDL…) applies to daily and higher timeframes
+f_every(string tf) =>
+    everyHTF and timeframe.in_seconds(tf) >= 86400
+bool ev0 = everyHTF and chartSec >= 86400
+
+// Is the chart itself on RTH? On CME futures TradingView names the full ETH
+// session "regular" (ETH is their default) and the RTH session "us_regular",
+// so a futures chart is on RTH when its session is neither regular nor
+// extended; on stocks RTH is session.regular. Daily+ charts have no split.
+bool chartRth = useEth and timeframe.isintraday and (syminfo.type == "futures" ?
+     syminfo.session != session.regular and syminfo.session != session.extended :
+     syminfo.type == "stock" and syminfo.session == session.regular)
+
+// All levels come from real OHLCV (standard bars even on Heikin Ashi/Renko
+// charts) on the extended (ETH) session of the back-adjusted continuous
+// series (back-adjustment has no effect on non-continuous symbols).
+string baseTicker = chart.is_standard ? syminfo.tickerid : ticker.standard(syminfo.tickerid)
+string ethTicker  = useEth ? ticker.modify(baseTicker, session = session.extended) : baseTicker
+string dataTicker = useBadj ? ticker.modify(ethTicker, backadjustment = backadjustment.on) : ethTicker
+// The chart-side series (sweep checks, profile window, distances) must line
+// up one-to-one with the chart's own bars: on an RTH chart it keeps the
+// chart's session, otherwise it is the same ETH series as the books.
+string chartTicker = chartRth ? (useBadj ? ticker.modify(syminfo.tickerid, backadjustment = backadjustment.on) : syminfo.tickerid) : dataTicker
+[adjH, adjL, adjC] = request.security(chartTicker, timeframe.period, [high, low, close])
+max_bars_back(adjH, 5000)
+max_bars_back(adjL, 5000)
+
+// ─────────────────────────────────────────────────────────────
+// PER-TIMEFRAME LEVEL BOOK  (runs inside each requested timeframe)
+// ─────────────────────────────────────────────────────────────
+// Running high/low of this timeframe's bars since the current `tfX` bar
+// opened, as of this bar's open. A finer timeframe uses it to check a
+// coarser timeframe's levels against bars from before the chart's first
+// bar. The anchor stays na until a real tfX roll-over has been observed, so
+// a partial window is never passed off as complete.
+f_runExt(string tfX, float srcH, float srcL) =>
+    var float rh    = na
+    var float rl    = na
+    var bool  whole = false
+    float anchor = time(tfX)
+    bool  fresh  = anchor != anchor[1]
+    if fresh
+        whole := not na(anchor[1])
+    float sh = fresh ? na : rh
+    float sl = fresh ? na : rl
+    rh := fresh or na(rh) ? srcH : math.max(rh, srcH)
+    rl := fresh or na(rl) ? srcL : math.min(rl, srcL)
+    [whole ? anchor : na, sh, sl]
+
+// Returns the timeframe's unswept swing levels as of its PREVIOUS closed
+// bar: the snapshot is taken before the current bar's high/low/pivots are
+// applied, so with lookahead_on the chart can never see an unclosed bar.
+// Layout: [bar open time, 4·H, 4·L, H highs × (price, volume, t0, t1),
+//          L lows × (…), then (anchor, high, low) per slot timeframe 1–9]
+// where t0/t1 are the open/close time of the bar that printed the swing.
+// `every` makes every closed bar's high/low a level (PDH/PDL on daily).
+// Levels are kept oldest → newest. Unswept highs are always stacked so the
+// oldest is the farthest from price (a newer, higher high would have swept
+// it), so dropping the oldest when over the cap keeps the N nearest.
+f_book(float srcH, float srcL, int lb, int rb, int cap, bool every, string x1, string x2, string x3, string x4, string x5, string x6, string x7, string x8, string x9) =>
+    var array<float> hi = array.new<float>()
+    var array<float> lo = array.new<float>()
+    float pvH  = ta.pivothigh(srcH, lb, rb)
+    float pvL  = ta.pivotlow(srcL, lb, rb)
+    float ph   = every ? srcH : pvH
+    float pl   = every ? srcL : pvL
+    float pVol = every ? volume : volume[rb]
+    float pT0  = every ? time : time[rb]
+    float pT1  = every ? (na(time_close) ? na : time_close) : na(time_close[rb]) ? time[rb - 1] : time_close[rb]
+    [a1, h1, l1] = f_runExt(x1, srcH, srcL)
+    [a2, h2, l2] = f_runExt(x2, srcH, srcL)
+    [a3, h3, l3] = f_runExt(x3, srcH, srcL)
+    [a4, h4, l4] = f_runExt(x4, srcH, srcL)
+    [a5, h5, l5] = f_runExt(x5, srcH, srcL)
+    [a6, h6, l6] = f_runExt(x6, srcH, srcL)
+    [a7, h7, l7] = f_runExt(x7, srcH, srcL)
+    [a8, h8, l8] = f_runExt(x8, srcH, srcL)
+    [a9, h9, l9] = f_runExt(x9, srcH, srcL)
+
+    array<float> snap = array.new<float>()
+    array.push(snap, float(time))
+    array.push(snap, float(array.size(hi)))
+    array.push(snap, float(array.size(lo)))
+    array.concat(snap, hi)
+    array.concat(snap, lo)
+    array.concat(snap, array.from(a1, h1, l1, a2, h2, l2, a3, h3, l3, a4, h4, l4, a5, h5, l5, a6, h6, l6, a7, h7, l7, a8, h8, l8, a9, h9, l9))
+
+    // levels this bar trades through are swept
+    int nH = int(array.size(hi) / 4)
+    if nH > 0
+        for k = nH - 1 to 0
+            int b = k * 4
+            if srcH > array.get(hi, b)
+                for j = 1 to 4
+                    array.remove(hi, b)
+    int nL = int(array.size(lo) / 4)
+    if nL > 0
+        for k = nL - 1 to 0
+            int b = k * 4
+            if srcL < array.get(lo, b)
+                for j = 1 to 4
+                    array.remove(lo, b)
+
+    // newly confirmed swings join the book
+    if not na(ph) and not na(pT1)
+        array.push(hi, ph)
+        array.push(hi, pVol)
+        array.push(hi, pT0)
+        array.push(hi, pT1)
+        if array.size(hi) > cap * 4
+            for j = 1 to 4
+                array.shift(hi)
+    if not na(pl) and not na(pT1)
+        array.push(lo, pl)
+        array.push(lo, pVol)
+        array.push(lo, pT0)
+        array.push(lo, pT1)
+        if array.size(lo) > cap * 4
+            for j = 1 to 4
+                array.shift(lo)
+    snap
+
+// Session book (runs inside the 30-minute timeframe): when a session ends
+// its high and low become levels — t0 = the bar that printed the extreme,
+// t1 = the session's end, volume = everything traded in the session. Same
+// snapshot rule and layout as f_book (no anchor block).
+f_sessBook(string tfS, string sess, string tz, int cap) =>
+    var array<float> hi   = array.new<float>()
+    var array<float> lo   = array.new<float>()
+    var float        sHi  = na
+    var float        sLo  = na
+    var float        sHiT = na
+    var float        sLoT = na
+    var float        sVol = 0.0
+    var float        sEnd = na
+    var float        sStart = na
+    bool inS    = not na(time(tfS, sess, tz))
+    bool prevIn = inS[1]
+    // a new instance can start with no out-of-session bar in between (RTH-only
+    // symbols, holiday halts): an in-session bar that opens a full session
+    // length (+1 h for DST) after the instance began starts a new one
+    bool newInst = inS and prevIn and not na(sStart) and time - sStart >= f_sessSec(sess) * 1000 + 3600000
+    // the session that ended at the previous bar's close is complete
+    if prevIn and (not inS or newInst) and not na(sHi) and not na(sEnd)
+        array.push(hi, sHi)
+        array.push(hi, sVol)
+        array.push(hi, sHiT)
+        array.push(hi, sEnd)
+        if array.size(hi) > cap * 4
+            for j = 1 to 4
+                array.shift(hi)
+        array.push(lo, sLo)
+        array.push(lo, sVol)
+        array.push(lo, sLoT)
+        array.push(lo, sEnd)
+        if array.size(lo) > cap * 4
+            for j = 1 to 4
+                array.shift(lo)
+
+    array<float> snap = array.new<float>()
+    array.push(snap, float(time))
+    array.push(snap, float(array.size(hi)))
+    array.push(snap, float(array.size(lo)))
+    array.concat(snap, hi)
+    array.concat(snap, lo)
+
+    int nH = int(array.size(hi) / 4)
+    if nH > 0
+        for k = nH - 1 to 0
+            int b = k * 4
+            if high > array.get(hi, b)
+                for j = 1 to 4
+                    array.remove(hi, b)
+    int nL = int(array.size(lo) / 4)
+    if nL > 0
+        for k = nL - 1 to 0
+            int b = k * 4
+            if low < array.get(lo, b)
+                for j = 1 to 4
+                    array.remove(lo, b)
+
+    if inS
+        if not prevIn or newInst
+            sHi    := high
+            sLo    := low
+            sHiT   := time
+            sLoT   := time
+            sVol   := nz(volume)
+            sStart := time
+        else
+            if high > sHi
+                sHi  := high
+                sHiT := time
+            if low < sLo
+                sLo  := low
+                sLoT := time
+            sVol += nz(volume)
+        sEnd := na(time_close) ? na : time_close
+    snap
+
+// the chart's own timeframe needs no request: evaluated in place on the
+// back-adjusted highs/lows, the snapshot is the book as of this bar's open
+array<float> book0 = f_book(adjH, adjL, pivL, pivR, capN, ev0, tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9)
+array<float> book1 = request.security(dataTicker, on1 ? tf1 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf1), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book2 = request.security(dataTicker, on2 ? tf2 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf2), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book3 = request.security(dataTicker, on3 ? tf3 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf3), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book4 = request.security(dataTicker, on4 ? tf4 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf4), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book5 = request.security(dataTicker, on5 ? tf5 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf5), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book6 = request.security(dataTicker, on6 ? tf6 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf6), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book7 = request.security(dataTicker, on7 ? tf7 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf7), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book8 = request.security(dataTicker, on8 ? tf8 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf8), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book9 = request.security(dataTicker, on9 ? tf9 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf9), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book10 = request.security(dataTicker, on10 ? SESS_TF : timeframe.period, f_sessBook(SESS_TF, rthSess, sessTz, capN), lookahead = barmerge.lookahead_on)
+array<float> book11 = request.security(dataTicker, on11 ? SESS_TF : timeframe.period, f_sessBook(SESS_TF, onSess, sessTz, capN), lookahead = barmerge.lookahead_on)
+
+// ─────────────────────────────────────────────────────────────
+// TYPES & STATE
+// ─────────────────────────────────────────────────────────────
+// One liquidity pool = one swing extreme, however many timeframes see it.
+type Pool
+    int          id
+    bool         isHigh
+    float        price
+    float        spanStart   // union of the member swing bars' time spans
+    float        spanEnd
+    int          finestSec   // line starts at the finest member's swing bar
+    array<int>   slotCnt     // member levels per timeframe slot
+    array<float> slotVol     // swing-bar volume per timeframe slot
+    line         ln
+    bool         active = true
+    float        maxVol = 0.0  // cached: largest swing-bar volume among members
+    int          tfCount = 0   // cached: timeframes currently confirming the pool
+
+// One timeframe's view of a swing level.
+type Level
+    int   slot
+    bool  isHigh
+    float price
+    float vol
+    float t0
+    float t1
+    bool  provisional  // came from a snapshot taken mid-bar before the chart's first bar
+    Pool  pool
+
+type Slot
+    string       tf
+    string       name
+    int          sec
+    bool         enabled
+    bool         synced = false
+    float        lastBarTime
+    float        lastSeenHi
+    float        lastSeenLo
+    array<Level> his
+    array<Level> los
+    array<float> snap          // latest snapshot from this timeframe
+    bool         anyProv = false
+
+type Engine
+    int          nextId = 0
+    array<Pool>  active
+    array<Pool>  history
+    array<Slot>  slots
+    string       sweepMsg = ""
+    int          majorSweeps = 0
+
+var Engine eng = Engine.new(0, array.new<Pool>(), array.new<Pool>(), array.new<Slot>(), "", 0)
+
+f_newSlot(string tf, bool isOn) =>
+    Slot.new(tf, f_tfLabel(tf), timeframe.in_seconds(tf), isOn, false, na, na, na, array.new<Level>(), array.new<Level>(), na, false)
+
+// session slots rank by session length (RTH 6.5 h, overnight 15.5 h)
+f_newSessSlot(string name, string sess, bool isOn) =>
+    Slot.new(SESS_TF, name, f_sessSec(sess), isOn, false, na, na, na, array.new<Level>(), array.new<Level>(), na, false)
+
+if barstate.isfirst
+    array.push(eng.slots, f_newSlot(timeframe.period, on0))
+    array.push(eng.slots, f_newSlot(tf1, on1))
+    array.push(eng.slots, f_newSlot(tf2, on2))
+    array.push(eng.slots, f_newSlot(tf3, on3))
+    array.push(eng.slots, f_newSlot(tf4, on4))
+    array.push(eng.slots, f_newSlot(tf5, on5))
+    array.push(eng.slots, f_newSlot(tf6, on6))
+    array.push(eng.slots, f_newSlot(tf7, on7))
+    array.push(eng.slots, f_newSlot(tf8, on8))
+    array.push(eng.slots, f_newSlot(tf9, on9))
+    array.push(eng.slots, f_newSessSlot("RTH", rthSess, on10))
+    array.push(eng.slots, f_newSessSlot("ON", onSess, on11))
+
+// volume-weighted when the feed has volume; timeframe-count otherwise
+var bool sawVol = false
+if not sawVol and nz(volume) > 0
+    sawVol := true
+
+// heat ramp: one hue, light→dark, anchored to the chart background so low
+// liquidity recedes toward the surface and high liquidity stands out
+float bgLuma = 0.299 * color.r(chart.bg_color) + 0.587 * color.g(chart.bg_color) + 0.114 * color.b(chart.bg_color)
+bool  darkBg = bgLuma < 128
+color heatLo = customHeat ? heatLoIn : darkBg ? #184f95 : #9ec5f4
+color heatHi = customHeat ? heatHiIn : darkBg ? #cde2fb : #0d366b
+color inkPri = chart.fg_color
+color inkSec = color.new(chart.fg_color, 35)
+
+eng.sweepMsg    := ""
+eng.majorSweeps := 0
+
+// ─────────────────────────────────────────────────────────────
+// POOL HELPERS
+// ─────────────────────────────────────────────────────────────
+f_weight(Pool p) =>
+    sawVol ? p.maxVol : float(p.tfCount)
+
+// refresh the cached heat after membership changes
+f_reweigh(Pool p) =>
+    float mv = 0.0
+    int   tc = 0
+    for s = 0 to NSLOTS - 1
+        if array.get(p.slotCnt, s) > 0
+            tc += 1
+            mv := math.max(mv, array.get(p.slotVol, s))
+    p.maxVol  := mv
+    p.tfCount := tc
+    true
+
+f_heat(float r, bool faded) =>
+    color c = color.from_gradient(r, 0.0, 1.0, heatLo, heatHi)
+    color.new(c, faded ? 80 : math.round(60 * (1.0 - r)))
+
+// percentile of weight w among the given pools (mid-rank for ties)
+f_rankAmong(array<Pool> pools, float w) =>
+    int   n = array.size(pools)
+    float r = 1.0
+    if n > 1
+        float below = 0.0
+        float equal = 0.0
+        for q in pools
+            float wq = f_weight(q)
+            if wq < w
+                below += 1.0
+            else if wq == w
+                equal += 1.0
+        r := math.max(0.0, math.min(1.0, (below + math.max(equal - 1.0, 0.0) * 0.5) / (n - 1)))
+    r
+
+// highest timeframe that currently confirms the pool
+f_topSlot(Engine e, Pool p) =>
+    int best = -1
+    for s = 0 to NSLOTS - 1
+        if array.get(p.slotCnt, s) > 0
+            if best < 0 or array.get(e.slots, s).sec > array.get(e.slots, best).sec
+                best := s
+    best
+
+f_topLabel(Engine e, Pool p) =>
+    int s = f_topSlot(e, p)
+    s >= 0 ? array.get(e.slots, s).name : "—"
+
+f_fmtW(float w) =>
+    string s = ""
+    if not sawVol
+        s := str.tostring(w, "#") + (w == 1.0 ? " TF" : " TFs")
+    else if w >= 1e9
+        s := str.tostring(w / 1e9, "#.##") + "B"
+    else if w >= 1e6
+        s := str.tostring(w / 1e6, "#.##") + "M"
+    else if w >= 1e3
+        s := str.tostring(w / 1e3, "#.##") + "K"
+    else
+        s := str.tostring(w, "#.##")
+    s
+
+f_indexOf(array<Pool> pools, int id) =>
+    int idx = -1
+    int n   = array.size(pools)
+    if n > 0
+        for i = 0 to n - 1
+            if array.get(pools, i).id == id
+                idx := i
+                break
+    idx
+
+// a pool stops resting: freeze its line at this bar and keep it as history
+f_retire(Engine e, Pool p, float w, bool fromChart) =>
+    if fromChart and f_topSlot(e, p) >= 0 and array.get(e.slots, f_topSlot(e, p)).sec >= alertSec
+        e.majorSweeps += 1
+        e.sweepMsg := e.sweepMsg + (p.isHigh ? "BSL" : "SSL") + " swept @ " + str.tostring(p.price, format.mintick) +
+             " (" + f_topLabel(e, p) + " swing, " + f_fmtW(w) + ")\n"
+    float r = f_rankAmong(e.active, w)
+    p.active := false
+    line.set_x2(p.ln, time)
+    if showHistory
+        line.set_color(p.ln, f_heat(r, true))
+        line.set_width(p.ln, 1)
+        array.push(e.history, p)
+    else
+        line.delete(p.ln)
+    true
+
+f_purge(array<Level> book) =>
+    int n = array.size(book)
+    if n > 0
+        for i = n - 1 to 0
+            Level lv = array.get(book, i)
+            if not lv.pool.active
+                array.remove(book, i)
+    true
+
+// move every level that points at pool `other` over to pool `into`
+f_repoint(array<Level> book, Pool other, Pool into) =>
+    for lv in book
+        if lv.pool.id == other.id
+            lv.pool := into
+    true
+
+f_absorb(Engine e, Pool into, Pool other) =>
+    for s = 0 to NSLOTS - 1
+        array.set(into.slotCnt, s, array.get(into.slotCnt, s) + array.get(other.slotCnt, s))
+        array.set(into.slotVol, s, math.max(array.get(into.slotVol, s), array.get(other.slotVol, s)))
+    into.spanStart := math.min(into.spanStart, other.spanStart)
+    into.spanEnd   := math.max(into.spanEnd, other.spanEnd)
+    if other.finestSec < into.finestSec
+        into.finestSec := other.finestSec
+        line.set_x1(into.ln, line.get_x1(other.ln))
+    line.delete(other.ln)
+    f_reweigh(into)
+    for st in e.slots
+        f_repoint(st.his, other, into)
+        f_repoint(st.los, other, into)
+    true
+
+// attach a timeframe's level to the pool for the same swing, or open one.
+// Same swing = same side, same price, and overlapping swing-bar time spans
+// (a 5m swing high inside the day whose daily high is that same price).
+f_attach(Engine e, Level lv) =>
+    int   sec    = array.get(e.slots, lv.slot).sec
+    float tol    = syminfo.mintick * 0.5
+    Pool  target = na
+    int   n      = array.size(e.active)
+    if n > 0
+        for i = n - 1 to 0
+            Pool p = array.get(e.active, i)
+            if p.isHigh == lv.isHigh and math.abs(p.price - lv.price) <= tol and p.spanStart < lv.t1 and lv.t0 < p.spanEnd
+                if na(target)
+                    target := p
+                else
+                    f_absorb(e, target, p)
+                    array.remove(e.active, i)
+    if na(target)
+        e.nextId += 1
+        array<int>   cnt = array.new<int>(NSLOTS, 0)
+        array<float> vol = array.new<float>(NSLOTS, 0.0)
+        array.set(cnt, lv.slot, 1)
+        array.set(vol, lv.slot, nz(lv.vol))
+        line ln = line.new(int(lv.t0), lv.price, time, lv.price, xloc = xloc.bar_time, color = f_heat(0.5, false), width = 1)
+        target := Pool.new(e.nextId, lv.isHigh, lv.price, lv.t0, lv.t1, sec, cnt, vol, ln, true)
+        f_reweigh(target)
+        array.push(e.active, target)
+    else
+        array.set(target.slotCnt, lv.slot, array.get(target.slotCnt, lv.slot) + 1)
+        array.set(target.slotVol, lv.slot, math.max(array.get(target.slotVol, lv.slot), nz(lv.vol)))
+        target.spanStart := math.min(target.spanStart, lv.t0)
+        target.spanEnd   := math.max(target.spanEnd, lv.t1)
+        if sec < target.finestSec
+            target.finestSec := sec
+            line.set_x1(target.ln, int(lv.t0))
+        f_reweigh(target)
+    lv.pool := target
+    true
+
+// a timeframe no longer lists this level
+f_detach(Engine e, Level lv, int reason) =>
+    Pool p = lv.pool
+    if not na(p) and p.active
+        float w = f_weight(p)
+        int   c = array.get(p.slotCnt, lv.slot) - 1
+        array.set(p.slotCnt, lv.slot, math.max(c, 0))
+        if c <= 0
+            array.set(p.slotVol, lv.slot, 0.0)
+        f_reweigh(p)
+        if p.tfCount == 0
+            if reason == R_SWEPT
+                f_retire(e, p, w, false)
+            else
+                p.active := false
+                line.delete(p.ln)
+            int idx = f_indexOf(e.active, p.id)
+            if idx >= 0
+                array.remove(e.active, idx)
+    true
+
+// was px traded through by an earlier chart bar that ended after asOf? When
+// the chart and the source timeframe line up, a snapshot arrives on the
+// first chart bar at/after asOf and this scans nothing. When they do not
+// (e.g. 10m chart, 15m slot; 20m chart, 30m session data) the snapshot
+// lands one chart bar late and the bar straddling asOf is scanned — its part
+// before asOf cannot have traded beyond a level that was valid at asOf, so
+// the test stays exact. It also covers a snapshot delivered late for any
+// other reason.
+f_sweptSince(float asOf, float px, bool isHigh) =>
+    bool hit = false
+    int  i   = 1
+    while i <= math.min(bar_index, 4999) and time[i - 1] > asOf
+        if isHigh ? adjH[i] > px : adjL[i] < px
+            hit := true
+            break
+        i += 1
+    hit
+
+// reconcile one side of a slot with its timeframe's fresh snapshot
+f_syncSide(Engine e, int s, Slot st, array<Level> book, array<float> snap, int start, int n, bool isHigh, bool boundary) =>
+    // 1) levels the timeframe dropped: swept on data the chart never saw, or capped
+    int m = array.size(book)
+    if m > 0
+        float oldest = n > 0 ? array.get(snap, start + 2) : na
+        for i = m - 1 to 0
+            Level lv    = array.get(book, i)
+            bool  found = false
+            if n > 0
+                for j = 0 to n - 1
+                    if array.get(snap, start + j * 4 + 2) == lv.t0
+                        found := true
+                        break
+            if not found
+                int reason = lv.provisional ? R_INVALID : n >= capN and lv.t0 < oldest ? R_CAPPED : R_SWEPT
+                f_detach(e, lv, reason)
+                array.remove(book, i)
+    // 2) newly confirmed levels (strictly newer than anything seen, so a level
+    //    the chart already saw swept can never be resurrected)
+    float seen = isHigh ? st.lastSeenHi : st.lastSeenLo
+    float maxT = seen
+    float asOf = array.get(snap, 0)
+    if n > 0
+        for j = 0 to n - 1
+            int   b  = start + j * 4
+            float t0 = array.get(snap, b + 2)
+            if na(seen) or t0 > seen
+                maxT := na(maxT) ? t0 : math.max(maxT, t0)
+                if not f_sweptSince(asOf, array.get(snap, b), isHigh)
+                    Level lv = Level.new(s, isHigh, array.get(snap, b), array.get(snap, b + 1), t0, array.get(snap, b + 3), not boundary, na)
+                    f_attach(e, lv)
+                    array.push(book, lv)
+                    if not boundary
+                        st.anyProv := true
+    if isHigh
+        st.lastSeenHi := maxT
+    else
+        st.lastSeenLo := maxT
+    // 3) a boundary snapshot covers every bar up to now → nothing is provisional
+    if boundary
+        for lv in book
+            lv.provisional := false
+    true
+
+// feed one timeframe's snapshot into the chart state; runs on the first
+// chart bar of every new bar of that timeframe
+f_process(Engine e, int s, array<float> snap) =>
+    Slot st = array.get(e.slots, s)
+    if st.enabled and not na(snap) and array.size(snap) >= 3
+        float barT = array.get(snap, 0)
+        // accept a snapshot only on a chart bar that opens at/after its
+        // timeframe bar, as history does (live, request.security already
+        // returns the new bar on the chart bar that straddles its open)
+        if (na(st.lastBarTime) or barT != st.lastBarTime) and float(time) >= barT
+            // the snapshot is complete for the chart if the chart has watched
+            // this timeframe roll over, or its first bar opens with that bar
+            bool boundary = st.synced or float(time) == barT
+            int  nh       = int(array.get(snap, 1) / 4)
+            int  nl       = int(array.get(snap, 2) / 4)
+            f_syncSide(e, s, st, st.his, snap, 3, nh, true, boundary)
+            f_syncSide(e, s, st, st.los, snap, 3 + nh * 4, nl, false, boundary)
+            st.synced      := true
+            st.lastBarTime := barT
+            st.snap        := snap
+            if boundary
+                st.anyProv := false
+    true
+
+// provisional levels of one side vs. a finer timeframe's running extreme
+// since this timeframe's bar opened: traded through → it was taken before
+// the chart's first bar (drop it); window reaches the chart's start → it
+// is confirmed resting
+f_checkProv(Engine e, array<Level> book, float ext, bool isHigh, bool complete) =>
+    int m = array.size(book)
+    if m > 0
+        for i = m - 1 to 0
+            Level lv = array.get(book, i)
+            if lv.provisional
+                if not na(ext) and (isHigh ? ext > lv.price : ext < lv.price)
+                    f_detach(e, lv, R_INVALID)
+                    array.remove(book, i)
+                else if complete
+                    lv.provisional := false
+    true
+
+// resolve levels seeded mid-bar (before the chart's first bar) as soon as
+// any finer requested timeframe can vouch for the bars the chart never saw
+f_verify(Engine e, float chartStart) =>
+    for x = 1 to 9
+        Slot sx = array.get(e.slots, x)
+        if sx.enabled and sx.anyProv
+            for f = 1 to 9
+                Slot sf = array.get(e.slots, f)
+                if f != x and sx.anyProv and sf.enabled and sf.sec < sx.sec and not na(sf.snap)
+                    int base = 3 + int(array.get(sf.snap, 1)) + int(array.get(sf.snap, 2)) + (x - 1) * 3
+                    if array.size(sf.snap) >= base + 3 and array.get(sf.snap, base) == sx.lastBarTime
+                        bool complete = array.get(sf.snap, 0) >= chartStart
+                        f_checkProv(e, sx.his, array.get(sf.snap, base + 1), true, complete)
+                        f_checkProv(e, sx.los, array.get(sf.snap, base + 2), false, complete)
+                        if complete
+                            sx.anyProv := false
+    true
+
+// ─────────────────────────────────────────────────────────────
+// ENGINE: ingest every timeframe, then detect sweeps on this chart bar
+// ─────────────────────────────────────────────────────────────
+f_process(eng, 0, book0)
+f_process(eng, 1, book1)
+f_process(eng, 2, book2)
+f_process(eng, 3, book3)
+f_process(eng, 4, book4)
+f_process(eng, 5, book5)
+f_process(eng, 6, book6)
+f_process(eng, 7, book7)
+f_process(eng, 8, book8)
+f_process(eng, 9, book9)
+f_process(eng, 10, book10)
+f_process(eng, 11, book11)
+var float chartStart = time
+f_verify(eng, chartStart)
+
+// BSL is taken when a bar trades above it, SSL when a bar trades below it
+bool anySwept = false
+int  nAct     = array.size(eng.active)
+if nAct > 0
+    for i = nAct - 1 to 0
+        Pool p = array.get(eng.active, i)
+        if p.isHigh ? adjH > p.price : adjL < p.price
+            f_retire(eng, p, f_weight(p), true)
+            array.remove(eng.active, i)
+            anySwept := true
+if anySwept
+    for st in eng.slots
+        f_purge(st.his)
+        f_purge(st.los)
+
+// TM_LINES: lines kept free for TERMINUS (the 500-line limit is per script)
+int histCap = showHistory ? math.max(0, math.min(histMax, 480 - TM_LINES - array.size(eng.active))) : 0
+while array.size(eng.history) > histCap
+    Pool old = array.shift(eng.history)
+    line.delete(old.ln)
+
+// ─────────────────────────────────────────────────────────────
+// SUMMARY (every bar — also exposed in the Data Window)
+// ─────────────────────────────────────────────────────────────
+int   nBsl      = 0
+int   nSsl      = 0
+float nearBslPx = na
+float nearSslPx = na
+float bigBslPx  = na
+float bigSslPx  = na
+float bigBslW   = na
+float bigSslW   = na
+int   nearBslI  = -1
+int   nearSslI  = -1
+int   bigBslI   = -1
+int   bigSslI   = -1
+int   nPools    = array.size(eng.active)
+if nPools > 0
+    for i = 0 to nPools - 1
+        Pool  p = array.get(eng.active, i)
+        float w = f_weight(p)
+        if p.isHigh
+            nBsl += 1
+            if na(nearBslPx) or p.price < nearBslPx
+                nearBslPx := p.price
+                nearBslI  := i
+            if na(bigBslW) or w > bigBslW
+                bigBslW  := w
+                bigBslPx := p.price
+                bigBslI  := i
+        else
+            nSsl += 1
+            if na(nearSslPx) or p.price > nearSslPx
+                nearSslPx := p.price
+                nearSslI  := i
+            if na(bigSslW) or w > bigSslW
+                bigSslW  := w
+                bigSslPx := p.price
+                bigSslI  := i
+
+plot(nearBslPx, "Nearest BSL",           color = heatHi, display = display.data_window)
+plot(nearSslPx, "Nearest SSL",           color = heatHi, display = display.data_window)
+plot(bigBslPx,  "Biggest BSL",           color = heatHi, display = display.data_window)
+plot(bigSslPx,  "Biggest SSL",           color = heatHi, display = display.data_window)
+plot(bigBslW,   "Biggest BSL weight",    color = heatHi, display = display.data_window)
+plot(bigSslW,   "Biggest SSL weight",    color = heatHi, display = display.data_window)
+plot(nBsl,      "Resting BSL pools",     color = heatHi, display = display.data_window)
+plot(nSsl,      "Resting SSL pools",     color = heatHi, display = display.data_window)
+
+// ─────────────────────────────────────────────────────────────
+// RENDER (last bar): heat colors, profile, labels, table
+// ─────────────────────────────────────────────────────────────
+var array<box>   profBoxes  = array.new<box>()
+var array<label> profLabels = array.new<label>()
+
+// profile price window: the recent range (≈ what is on screen) plus a margin
+int   winLen = math.min(profBars, bar_index + 1)
+float winHi  = ta.highest(adjH, winLen)
+float winLo  = ta.lowest(adjL, winLen)
+
+f_distPct(float px) =>
+    float d = (px - adjC) / adjC * 100.0
+    (d >= 0 ? "+" : "") + str.tostring(d, "#.##") + "%"
+
+f_poolText(Engine e, int i) =>
+    string s = "—"
+    if i >= 0
+        Pool p = array.get(e.active, i)
+        s := str.tostring(p.price, format.mintick) + "  " + f_topLabel(e, p) + "  " + f_fmtW(f_weight(p)) + "  " + f_distPct(p.price)
+    s
+
+// is this the Nasdaq-100 futures family, and are the chart's own candles
+// back-adjusted (they differ from the adjusted series before the last roll)?
+bool isNQ = syminfo.root == "NQ" or syminfo.root == "MNQ"
+var bool chartRaw = false
+// adjC is the chart-aligned back-adjusted close; on a non-standard chart
+// `close` is synthetic, so the comparison only means something on standard bars
+if useBadj and chart.is_standard and not chartRaw and math.abs(close - adjC) > syminfo.mintick * 0.5
+    chartRaw := true
+
+if barstate.islast
+    // active pools: color + width by percentile of heat among resting pools
+    if nPools > 0
+        array<float> ws = array.new<float>()
+        for p in eng.active
+            array.push(ws, f_weight(p))
+        array<float> sorted = array.copy(ws)
+        array.sort(sorted)
+        for i = 0 to nPools - 1
+            Pool  p = array.get(eng.active, i)
+            float w = array.get(ws, i)
+            float pr = nPools > 1 ? (array.binary_search_leftmost(sorted, w) + array.binary_search_rightmost(sorted, w)) / 2.0 / (nPools - 1) : 1.0
+            line.set_x2(p.ln, time)
+            line.set_color(p.ln, f_heat(pr, false))
+            line.set_width(p.ln, 1 + math.round(pr * 3))
+
+    // resting-liquidity profile: pool heat summed into price rows
+    for b in profBoxes
+        box.delete(b)
+    array.clear(profBoxes)
+    for l in profLabels
+        label.delete(l)
+    array.clear(profLabels)
+    if showProfile and nPools > 0
+        float ext = (winHi - winLo) * profExtPct / 100.0
+        float top = winHi + ext
+        float bot = winLo - ext
+        if top - bot > syminfo.mintick
+            float        rowH = (top - bot) / profRows
+            array<float> rows = array.new<float>(profRows, 0.0)
+            for p in eng.active
+                if p.price >= bot and p.price <= top
+                    int row = math.min(profRows - 1, int(math.floor((p.price - bot) / rowH)))
+                    array.set(rows, row, array.get(rows, row) + f_weight(p))
+            float maxRow = array.max(rows)
+            int   x0     = bar_index + 2
+            if maxRow > 0
+                for row = 0 to profRows - 1
+                    float v = array.get(rows, row)
+                    if v > 0
+                        float ratio = v / maxRow
+                        int   len   = math.max(1, math.round(ratio * profWidth))
+                        array.push(profBoxes, box.new(x0, bot + (row + 1) * rowH, x0 + len, bot + row * rowH,
+                             border_color = chart.bg_color, border_width = 1, bgcolor = f_heat(ratio, false)))
+            // label the heaviest pools on each side inside the window, skipping
+            // any that would sit on top of a label already placed
+            if labelN > 0
+                array<float> placed = array.new<float>()
+                for side = 0 to 1
+                    array<int>   idx = array.new<int>()
+                    array<float> wts = array.new<float>()
+                    bool wantHigh = side == 0
+                    for i = 0 to nPools - 1
+                        Pool p = array.get(eng.active, i)
+                        if p.isHigh == wantHigh and p.price >= bot and p.price <= top
+                            array.push(idx, i)
+                            array.push(wts, f_weight(p))
+                    if array.size(idx) > 0
+                        array<int> order_ = array.sort_indices(wts, order.descending)
+                        int        made   = 0
+                        for k = 0 to array.size(idx) - 1
+                            if made >= labelN
+                                break
+                            Pool p     = array.get(eng.active, array.get(idx, array.get(order_, k)))
+                            bool clash = false
+                            for q in placed
+                                if math.abs(q - p.price) < rowH * 1.5
+                                    clash := true
+                            if clash
+                                continue
+                            array.push(placed, p.price)
+                            made += 1
+                            string tfName = f_topLabel(eng, p)
+                            array.push(profLabels, label.new(x0 + profWidth + 2, p.price,
+                                 (p.isHigh ? "BSL " : "SSL ") + str.tostring(p.price, format.mintick) + " · " + tfName + " · " + f_fmtW(f_weight(p)),
+                                 style = label.style_label_left, color = color.new(chart.bg_color, 15), textcolor = inkPri, size = size.small,
+                                 tooltip = (p.isHigh ? "Buy-side liquidity: buy stops resting above an unswept " : "Sell-side liquidity: sell stops resting below an unswept ") +
+                                      tfName + " swing. Heat = " + (sawVol ? "volume traded on the swing bar." : "timeframes confirming the level (no volume feed).")))
+
+    // summary table
+    if showTable and hmOn
+        string tp = tablePos
+        // created and merged once: merging an already-merged range is an
+        // error, and this block runs on every realtime update
+        var table tb = na
+        if na(tb)
+            tb := table.new(tp == "Top right" ? position.top_right : tp == "Bottom right" ? position.bottom_right : tp == "Top left" ? position.top_left : position.bottom_left,
+                 2, 11, bgcolor = color.new(chart.bg_color, 5), border_color = color.new(chart.fg_color, 85), border_width = 1,
+                 frame_color = color.new(chart.fg_color, 70), frame_width = 1)
+            table.merge_cells(tb, 0, 0, 1, 0)
+        string tfsOn  = ""
+        string tfsOff = ""
+        for st in eng.slots
+            if st.enabled
+                tfsOn := tfsOn + (str.length(tfsOn) > 0 ? " " : "") + st.name
+            else if st.sec < chartSec
+                tfsOff := tfsOff + (str.length(tfsOff) > 0 ? " " : "") + st.name
+        table.cell(tb, 0, 0, "NQ LIQUIDITY HEATMAP · ETH · ALL TIMEFRAMES", text_color = inkPri, text_size = size.small)
+        table.cell(tb, 0, 1, "Heat",          text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 1, sawVol ? "volume traded on the swing bar" : "timeframes confirming (no volume feed)", text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 2, "Biggest BSL ▲", text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 2, f_poolText(eng, bigBslI), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 3, "Biggest SSL ▼", text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 3, f_poolText(eng, bigSslI), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 4, "Nearest BSL",   text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 4, f_poolText(eng, nearBslI), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 5, "Nearest SSL",   text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 5, f_poolText(eng, nearSslI), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 6, "Resting pools", text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 6, str.tostring(nBsl) + " BSL / " + str.tostring(nSsl) + " SSL", text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 7, "Timeframes",    text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 7, tfsOn + (str.length(tfsOff) > 0 ? "  (below chart: " + tfsOff + ")" : ""), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        string sessTxt = not (useRTH or useON) ? "off" : not sessOk ? "need a chart ≤ 30m" :
+             (useRTH ? "RTH " + rthSess : "") + (useRTH and useON ? " · " : "") + (useON ? "ON " + onSess : "") + " " + sessTz
+        table.cell(tb, 0, 8, "Sessions",      text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 8, sessTxt, text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        string rollTxt = (isNQ ? syminfo.ticker : "⚠ " + syminfo.ticker + " is not NQ/MNQ") + " · " +
+             (not useBadj ? "as charted (rolls not adjusted)" : chartRaw ? "back-adjusted — turn on B-ADJ so older candles line up" : "back-adjusted")
+        table.cell(tb, 0, 9, "Contract",      text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 9, rollTxt, text_color = chartRaw or not isNQ ? color.orange : inkPri, text_halign = text.align_right, text_size = size.small)
+        string ethTxt = not useEth ? "as charted" : chartRth ? "⚠ chart is on RTH — switch it to ETH" : "ETH · full Globex 18:00–17:00 ET"
+        table.cell(tb, 0, 10, "Session data",  text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 10, ethTxt, text_color = chartRth ? color.orange : inkPri, text_halign = text.align_right, text_size = size.small)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+if str.length(eng.sweepMsg) > 0
+    alert("NQ ETH Liquidity Heatmap " + syminfo.ticker + ": " + eng.sweepMsg, alert.freq_once_per_bar_close)
+alertcondition(eng.majorSweeps > 0, "NQ liquidity pool swept", "{{ticker}}: a liquidity pool from the alert timeframe or higher was swept")
+
+// ############################################################################
+// PART 2 — TERMINUS · PRICE-AXIS SURVIVAL REVERSAL ENGINE
+// ############################################################################
+
+// ============================================================================
+// Render layer only — the model below (memory field, hold model, reach model,
+// regime HMM, exhaustion readout, survival scan) is unchanged.
+//
+// Visual grammar: three tiers, one accent per side, nothing saturated except
+// the two levels that actually matter right now.
+//   tier 1  active terminus  — tinted zone + border + projection + readout
+//   tier 2  ladder nodes     — faint zone + level tick + aligned readout
+//   tier 3  dormant nodes    — neutral slate wash, no border, no text
+// Per-bar terminus dots are gone (they painted the whole chart); the trail is
+// opt-in and otherwise lives in the data window. Everything on the chart is
+// keyed to probability, so weak structure fades instead of shouting.
+//
+// ── corrections ─────────────────────────────────────────────────────────────
+// 1. Node merge now decays existing mass to the present before adding fresh
+//    mass, then re-bases the decay clock. Previously today's absorption was
+//    added against the birth timestamp and immediately discounted by the
+//    node's full age, so the merge path was near-inert past one half-life.
+// 2. Node eviction ranks by decayed mass (f_mass), not raw birth mass, so the
+//    stalest wall is dropped rather than the smallest-at-birth one.
+// 3. Session clock handles windows that cross midnight. `sE > sS` previously
+//    made inSess permanently false for an overnight session, silently pinning
+//    tauRem at 1.0 and overstating remaining volatility all session.
+// 4. The survival scan skips walls price has already closed through. Distance
+//    clamps at zero, so an intrabar-breached node scored reach = 1.0 until the
+//    lifecycle pruned it at bar close, flickering the terminus onto a dead level.
+// 5. f_pct keeps one decimal below ~10%, so sub-percent probabilities and
+//    near-certain complements stop collapsing to the same string. Written so
+//    every str.tostring gets a literal const format, avoiding any dependence
+//    on whether `format` is const-qualified.
+// 6. alertcondition hooks for threshold crossings and terminus touches.
+// 7. tauRem priced from time_close, not time. The bar-open stamp overstated
+//    the remaining session by one bar, inflating sigRem and every reach
+//    probability with it, worst in the final bars of the session. Measured
+//    with backtest/calibrate_terminus.py: reach reliability 0.0029 -> 0.0016.
+// 8. The five inputs that drive a series lookback (adrLen, hmmLen, divLen,
+//    erLen, pivLen) now carry maxval caps. close[erLen] is a direct historical
+//    offset, so an erLen above max_bars_back was a runtime error waiting to
+//    happen; the ta.* lengths overrun the same series buffer.
+// ============================================================================
+
+// ════════════════════════════ INPUTS ════════════════════════════
+string G1 = "② TERMINUS · Memory field (absorption nodes)"
+string epochTF   = input.timeframe("1D", "Epoch (node birth cadence)", group = G1)
+int    nBins     = input.int(48, "Profile bins per epoch", minval = 12, maxval = 200, group = G1)
+float  peakMult  = input.float(1.35, "Peak threshold (x mean density)", minval = 1.0, step = 0.05, group = G1)
+int    topK      = input.int(3, "Nodes born per epoch", minval = 1, maxval = 10, group = G1)
+float  wCalmPct  = input.float(0.068, "Node height % of price (calm)", minval = 0.005, step = 0.001, group = G1)
+float  wVolPct   = input.float(0.102, "Node height % of price (volatile)", minval = 0.005, step = 0.001, group = G1)
+int    maxNodes  = input.int(60, "Max live nodes", minval = 5, maxval = 150, group = G1)
+float  maxAgeD   = input.float(20.0, "Max node age (days)", minval = 1.0, group = G1)
+float  halfLifeD = input.float(5.0, "Mass half-life (days)", minval = 0.5, group = G1)
+float  bandPct   = input.float(10.0, "Distance band (% of price)", minval = 1.0, group = G1)
+float  rollPct   = input.float(12.0, "Contract-roll gap wipe (%)", minval = 2.0, group = G1)
+
+string G2 = "② TERMINUS · Hold model"
+float kM       = input.float(0.35, "Km  absorbed-mass weight", minval = 0.0, step = 0.05, group = G2)
+float kS       = input.float(0.40, "Ks  stop-fuel weight", minval = 0.0, step = 0.05, group = G2)
+float fuelZone = input.float(3.0, "Fuel reach (x node half-height)", minval = 0.5, step = 0.5, group = G2)
+int   pivLen   = input.int(5, "Stop-pool pivot length", minval = 2, maxval = 50, group = G2)
+
+string G3 = "② TERMINUS · Reach model"
+string sessTzT = input.string("America/New_York", "Session timezone", group = G3)
+int    sStartH = input.int(9, "Session start hour", minval = 0, maxval = 23, group = G3)
+int    sStartM = input.int(30, "Session start minute", minval = 0, maxval = 59, group = G3)
+int    sEndH   = input.int(16, "Session end hour", minval = 0, maxval = 23, group = G3)
+int    sEndM   = input.int(0, "Session end minute", minval = 0, maxval = 59, group = G3)
+int    adrLen  = input.int(14, "ADR length (days)", minval = 2, maxval = 100, group = G3)
+
+string G4 = "② TERMINUS · Regime HMM"
+int   hmmLen = input.int(100, "Range baseline length", minval = 20, maxval = 400, group = G4)
+float muC    = input.float(-0.25, "Calm state mean (log range ratio)", step = 0.05, group = G4)
+float sdC    = input.float(0.45, "Calm state sd", minval = 0.05, step = 0.05, group = G4)
+float muV    = input.float(0.45, "Volatile state mean", step = 0.05, group = G4)
+float sdV    = input.float(0.60, "Volatile state sd", minval = 0.05, step = 0.05, group = G4)
+float pStay  = input.float(0.98, "State persistence", minval = 0.5, maxval = 0.999, step = 0.005, group = G4)
+
+string G5 = "② TERMINUS · Exhaustion readout"
+int    divLen = input.int(20, "Extreme / divergence lookback", minval = 5, maxval = 200, group = G5)
+int    erLen  = input.int(10, "Efficiency length", minval = 3, maxval = 200, group = G5)
+bool   useSMT = input.bool(true, "Use intermarket SMT", group = G5)
+string smtSym = input.symbol("CME_MINI:ES1!", "SMT symbol (ES on NQ charts, NQ on ES charts)", group = G5)
+
+string G6 = "② TERMINUS · Display · structure"
+bool  showNodes  = input.bool(true, "Memory zones", group = G6)
+bool  showLadder = input.bool(true, "Probability ladder", group = G6)
+bool  showProj   = input.bool(true, "Terminus projection", group = G6)
+bool  showExp    = input.bool(true, "Expected reversal price (dotted)", group = G6)
+bool  showTrail  = input.bool(false, "Terminus trail (historical levels)", group = G6)
+int   ladderMax  = input.int(3, "Ladder rows per side", minval = 1, maxval = 8, group = G6)
+float minProb    = input.float(4.0, "Ladder threshold (% probability)", minval = 0.5, maxval = 50.0, step = 0.5, group = G6)
+int   rightPad   = input.int(6, "Zone extension (bars past price)", minval = 0, maxval = 60, group = G6)
+
+string G7 = "② TERMINUS · Display · dashboard & palette"
+bool   showDash  = input.bool(true, "Dashboard", group = G7)
+bool   tblFull   = input.bool(true, "Full detail (off = compact)", group = G7)
+string tblPos    = input.string(position.top_right, "Dashboard position", options = [position.top_right, position.middle_right, position.bottom_right, position.top_left, position.bottom_left], group = G7)
+string tblSize   = input.string(size.small, "Dashboard text size", options = [size.tiny, size.small, size.normal], group = G7)
+color  colRes    = input.color(color.rgb(199, 106, 114), "Upside (resistance)", group = G7)
+color  colSup    = input.color(color.rgb(86, 166, 154), "Downside (support)", group = G7)
+color  colNeut   = input.color(color.rgb(120, 132, 148), "Dormant structure", group = G7)
+color  colPanel  = input.color(color.rgb(14, 17, 22), "Panel background", group = G7)
+
+string G8 = "② TERMINUS · Alerts"
+float alertThr = input.float(50.0, "Alert threshold (% probability)", minval = 1.0, maxval = 99.0, step = 1.0, group = G8) / 100.0
+
+// Typography and chrome, derived once so every drawing agrees
+color colTxt  = color.rgb(226, 232, 240)
+color colDim  = color.rgb(126, 137, 153)
+color colSect = color.rgb(24, 29, 37)
+string MONO   = font.family_monospace
+
+// ════════════════════════════ TYPES ════════════════════════════
+type Node
+    float p
+    float m
+    float w
+    int   t
+    int   side
+    int   id
+    float prob = 0.0
+    float hold = 0.0
+    box   bx
+
+// ════════════════════════════ FUNCTIONS ════════════════════════════
+f_phi(float x) =>
+    float t = 1.0 / (1.0 + 0.2316419 * math.abs(x))
+    float d = 0.3989422804 * math.exp(-x * x / 2.0)
+    float q = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))))
+    x >= 0 ? 1.0 - q : q
+
+f_reach(float d, float s) =>
+    s > 0 ? math.min(1.0, 2.0 * (1.0 - f_phi(d / s))) : 0.0
+
+f_gauss(float x, float mu, float sd) =>
+    math.exp(-0.5 * math.pow((x - mu) / sd, 2)) / sd
+
+f_eta(float d, float sb) =>
+    sb > 0 ? math.pow(d / (0.6745 * sb), 2) : na
+
+f_fmtMin(float bars) =>
+    float m = bars * timeframe.in_seconds() / 60.0
+    na(bars) ? "-" : m < 1.0 ? "AT ZONE" : m < 60.0 ? str.tostring(m, "#") + "m" : str.tostring(m / 60.0, "#.#") + "h"
+
+// One decimal below ~10% so sub-percent probabilities and near-certain
+// complements stay distinguishable; whole numbers above that to keep it terse.
+// The ternary picks between two finished strings rather than between two format
+// arguments, so each str.tostring call gets a literal const format. This
+// compiles whether or not `format` carries a const-only type qualifier.
+f_pct(float x) =>
+    na(x) ? "-" : math.abs(x) < 0.095 ? str.tostring(x * 100.0, "0.#") + "%" : str.tostring(x * 100.0, "#") + "%"
+
+f_px(float x) =>
+    na(x) ? "-" : str.tostring(x, format.mintick)
+
+// Distance in units of the volatility still available — scale-free, so the
+// same number means the same thing on any symbol or timeframe
+f_sig(float d, float s) =>
+    na(d) or s <= 0 ? "-" : str.tostring(d / s, "#.##") + "σ"
+
+// Five-segment meter — reads as a shape, not a number, so the eye can skim it
+f_gauge(float v) =>
+    int n = na(v) ? 0 : int(math.round(math.max(0.0, math.min(1.0, v)) * 5.0))
+    string s = ""
+    for i = 1 to 5
+        s += i <= n ? "▰" : "▱"
+    s
+
+f_kill(array<Node> arr, int i) =>
+    Node n = arr.remove(i)
+    if not na(n.bx)
+        box.delete(n.bx)
+    true
+
+f_hold(Node n, array<float> res) =>
+    float ageD = (time - n.t) / 86400000.0
+    float mEff = n.m * math.pow(0.5, ageD / halfLifeD)
+    float fuelR = fuelZone * n.w
+    int s = 0
+    if res.size() > 0
+        for k = 0 to res.size() - 1
+            float r = res.get(k)
+            if n.side == 1 and r >= n.p - n.w - fuelR and r <= n.p + n.w
+                s += 1
+            if n.side == -1 and r <= n.p + n.w + fuelR and r >= n.p - n.w
+                s += 1
+    1.0 - math.exp(-(kM * mEff + kS * math.sqrt(s)))
+
+f_side(array<Node> arr, int sd, float px, float sRem, array<float> res) =>
+    array<float> dist = array.new<float>()
+    array<int> idx = array.new<int>()
+    if arr.size() > 0
+        for i = 0 to arr.size() - 1
+            Node n = arr.get(i)
+            if n.side == sd
+                n.prob := 0.0
+                // Walls price has already closed through are spent. Distance
+                // clamps at zero, so without this they score reach = 1.0 for
+                // the rest of the developing bar, before the lifecycle prunes
+                // them — the terminus would flicker onto a dead level.
+                bool spent = sd == 1 ? px > n.p + n.w : px < n.p - n.w
+                if not spent
+                    float edge = sd == 1 ? n.p - n.w : n.p + n.w
+                    float d = sd == 1 ? math.max(0.0, edge - px) : math.max(0.0, px - edge)
+                    dist.push(d)
+                    idx.push(i)
+    float surv = 1.0
+    float bestP = 0.0
+    int bestI = -1
+    float sumP = 0.0
+    float sumPX = 0.0
+    if dist.size() > 0
+        array<int> ord = dist.sort_indices(order.ascending)
+        for j = 0 to ord.size() - 1
+            int k = ord.get(j)
+            Node n = arr.get(idx.get(k))
+            float h = f_hold(n, res)
+            float pr = f_reach(dist.get(k), sRem) * h * surv
+            n.hold := h
+            n.prob := pr
+            surv *= (1.0 - h)
+            sumP += pr
+            sumPX += pr * n.p
+            if pr > bestP
+                bestP := pr
+                bestI := idx.get(k)
+    [bestI, bestP, sumP > 0 ? sumPX / sumP : na, 1.0 - sumP]
+
+// Decayed mass, for readout and eviction ranking — same decay the hold model applies
+f_mass(Node n) =>
+    n.m * math.pow(0.5, ((time - n.t) / 86400000.0) / halfLifeD)
+
+// ── dashboard cells ──────────────────────────────────────────
+f_sec(table tb, int r, string s) =>
+    table.cell(tb, 0, r, s, text_color = colTxt, text_size = tblSize, text_halign = text.align_left, bgcolor = colSect, text_font_family = MONO)
+    table.cell(tb, 1, r, "", bgcolor = colSect)
+    table.cell(tb, 2, r, "", bgcolor = colSect)
+
+f_row(table tb, int r, string k, string v, color c) =>
+    table.cell(tb, 0, r, k, text_color = colDim, text_size = tblSize, text_halign = text.align_left, text_font_family = MONO)
+    table.cell(tb, 1, r, v, text_color = c, text_size = tblSize, text_halign = text.align_right, text_font_family = MONO)
+    table.cell(tb, 2, r, "", text_size = tblSize)
+
+f_rowG(table tb, int r, string k, string v, color c, float g) =>
+    table.cell(tb, 0, r, k, text_color = colDim, text_size = tblSize, text_halign = text.align_left, text_font_family = MONO)
+    table.cell(tb, 1, r, v, text_color = c, text_size = tblSize, text_halign = text.align_right, text_font_family = MONO)
+    table.cell(tb, 2, r, f_gauge(g), text_color = color.new(c, 35), text_size = tblSize, text_halign = text.align_right, text_font_family = MONO)
+
+// ════════════════════════════ STATE ════════════════════════════
+var array<Node>  nodes = array.new<Node>()
+var array<float> epP   = array.new<float>()
+var array<float> epW   = array.new<float>()
+var array<float> resH  = array.new<float>()
+var array<float> resL  = array.new<float>()
+var int nodeId = 0
+
+// ════════════════════════════ CORE SERIES ════════════════════════════
+float atrS = ta.atr(14)
+float atrL = ta.atr(200)
+float volScale = na(atrL) or na(atrS) or atrL <= 0 ? 1.0 : math.max(0.6, math.min(1.8, atrS / atrL))
+
+float adr = request.security(syminfo.tickerid, "D", ta.sma(high - low, adrLen)[1], lookahead = barmerge.lookahead_on)
+[pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+// Session clock — handles windows that cross midnight (overnight futures RTH).
+// Without the wrap, sE <= sS made inSess permanently false and silently pinned
+// tauRem at 1.0, overstating remaining volatility for the whole session.
+int yy = year(time, sessTzT)
+int mo = month(time, sessTzT)
+int dd = dayofmonth(time, sessTzT)
+int sS = timestamp(sessTzT, yy, mo, dd, sStartH, sStartM)
+int sE = timestamp(sessTzT, yy, mo, dd, sEndH, sEndM)
+if sE <= sS
+    if time < sE
+        sS -= 86400000      // we are in the tail of yesterday's session
+    else
+        sE += 86400000      // session runs on into tomorrow
+bool inSess = time >= sS and time < sE
+// Horizon runs from this bar's CLOSE: the scan prices off `close`, so the
+// outcome it describes can only begin on the next bar. Using `time` (the bar
+// OPEN) overstates the remaining session by one bar, worst near the bell.
+float tauRem = inSess ? math.max(0.0, float(sE - time_close)) / float(sE - sS) : 1.0
+float sigDay = nz(adr) / 1.596
+float sigRem = sigDay * math.sqrt(math.max(tauRem, 0.02)) * volScale
+float sigBar = nz(atrL, nz(atrS)) / 1.596 * volScale
+
+// Regime HMM (2-state forward filter on log range ratio)
+float rngNow = high - low
+float rngBase = ta.sma(rngNow, hmmLen)
+float xr = na
+if not na(rngBase)
+    xr := math.log(math.max(rngNow, syminfo.mintick) / math.max(rngBase, syminfo.mintick))
+var float pV = 0.5
+if not na(xr)
+    float priC = (1.0 - pV) * pStay + pV * (1.0 - pStay)
+    float priV = pV * pStay + (1.0 - pV) * (1.0 - pStay)
+    float aC = priC * f_gauss(xr, muC, sdC)
+    float aV = priV * f_gauss(xr, muV, sdV)
+    if aC + aV > 0
+        pV := aV / (aC + aV)
+bool hmmReady = bar_index > hmmLen
+bool isVolatile = hmmReady and pV > 0.5
+
+// Effort vs result
+float bodyAbs = math.abs(close - open)
+float effR = nz(volume) / (bodyAbs + 0.1 * nz(atrS, rngNow) + syminfo.mintick)
+float effMu = ta.sma(effR, 50)
+float effSd = ta.stdev(effR, 50)
+float effZ = nz(effSd) > 0 ? (effR - nz(effMu)) / effSd : 0.0
+float cA = 1.0 / (1.0 + math.exp(-(effZ - 1.0)))
+float cAr = ta.highest(cA, 5)
+
+// Synthetic CVD divergence
+float clv = rngNow > 0 ? (2.0 * close - high - low) / rngNow : 0.0
+var float cvd = 0.0
+cvd += nz(volume) * clv
+bool newHi = high >= ta.highest(high, divLen)
+bool newLo = low <= ta.lowest(low, divLen)
+float cvdHi = ta.highest(cvd, divLen)
+float cvdLo = ta.lowest(cvd, divLen)
+bool bearDiv = newHi and cvd < nz(cvdHi, cvd)
+bool bullDiv = newLo and cvd > nz(cvdLo, cvd)
+
+// Intermarket SMT
+[smtHiGap, smtLoGap] = request.security(smtSym, timeframe.period, [ta.highest(high, divLen) - high, low - ta.lowest(low, divLen)], ignore_invalid_symbol = true)
+bool bearSmt = useSMT and newHi and not na(smtHiGap) and smtHiGap > 0
+bool bullSmt = useSMT and newLo and not na(smtLoGap) and smtLoGap > 0
+
+bool bearDivR = nz(ta.barssince(bearDiv), 999) <= 5
+bool bullDivR = nz(ta.barssince(bullDiv), 999) <= 5
+bool bearSmtR = nz(ta.barssince(bearSmt), 999) <= 5
+bool bullSmtR = nz(ta.barssince(bullSmt), 999) <= 5
+
+// Efficiency collapse
+float erDen = math.sum(math.abs(close - close[1]), erLen)
+float er = nz(erDen) > 0 ? math.abs(close - close[erLen]) / erDen : 0.5
+float erMA = ta.sma(er, erLen)
+bool erLow = er < nz(erMA, er)
+
+float wSum = 3.0 + (useSMT ? 1.0 : 0.0)
+float eUp = (nz(cAr) + (bearDivR ? 1.0 : 0.0) + (bearSmtR ? 1.0 : 0.0) + (erLow ? 1.0 : 0.0)) / wSum
+float eDn = (nz(cAr) + (bullDivR ? 1.0 : 0.0) + (bullSmtR ? 1.0 : 0.0) + (erLow ? 1.0 : 0.0)) / wSum
+
+// Pivots (global scope, every bar)
+float stopPh = ta.pivothigh(high, pivLen, pivLen)
+float stopPl = ta.pivotlow(low, pivLen, pivLen)
+bool dayChange = timeframe.change("1D")
+bool newEpoch = timeframe.change(epochTF)
+
+// ════════════════════════════ CONTRACT-ROLL WIPE ════════════════════════════
+bool rollGap = not na(close[1]) and close[1] > 0 and math.abs(open - close[1]) / close[1] * 100.0 > rollPct
+if rollGap
+    if nodes.size() > 0
+        for i = nodes.size() - 1 to 0
+            f_kill(nodes, i)
+    resH.clear()
+    resL.clear()
+    epP.clear()
+    epW.clear()
+
+// ════════════════════════════ STOP RESERVOIRS ════════════════════════════
+if resH.size() > 0
+    for i = resH.size() - 1 to 0
+        if high > resH.get(i)
+            resH.remove(i)
+if resL.size() > 0
+    for i = resL.size() - 1 to 0
+        if low < resL.get(i)
+            resL.remove(i)
+if not na(stopPh)
+    resH.push(stopPh)
+if not na(stopPl)
+    resL.push(stopPl)
+if dayChange and not na(pdh) and pdh > high
+    resH.push(pdh)
+if dayChange and not na(pdl) and pdl < low
+    resL.push(pdl)
+while resH.size() > 80
+    resH.shift()
+while resL.size() > 80
+    resL.shift()
+
+// ════════════════════════════ NODE BIRTH (epoch close) ════════════════════════════
+if tmOn and newEpoch and epP.size() > 20
+    float lo = epP.min()
+    float hi = epP.max()
+    float bs = (hi - lo) / nBins
+    if bs > 0
+        array<float> prof = array.new<float>(nBins, 0.0)
+        float tot = 0.0
+        for i = 0 to epP.size() - 1
+            int b = math.max(0, math.min(nBins - 1, math.floor((epP.get(i) - lo) / bs)))
+            prof.set(b, prof.get(b) + epW.get(i))
+            tot += epW.get(i)
+        if tot > 0
+            array<float> smo = array.new<float>(nBins, 0.0)
+            for b = 0 to nBins - 1
+                float lv = b > 0 ? prof.get(b - 1) : prof.get(b)
+                float rv = b < nBins - 1 ? prof.get(b + 1) : prof.get(b)
+                smo.set(b, 0.25 * lv + 0.5 * prof.get(b) + 0.25 * rv)
+            float meanSm = smo.avg()
+            array<float> pkP = array.new<float>()
+            array<float> pkM = array.new<float>()
+            for b = 1 to nBins - 2
+                float v = smo.get(b)
+                if v >= smo.get(b - 1) and v > smo.get(b + 1) and v > meanSm * peakMult
+                    float w0 = prof.get(b - 1)
+                    float w1 = prof.get(b)
+                    float w2 = prof.get(b + 1)
+                    float ws = w0 + w1 + w2
+                    if ws > 0
+                        float c0 = lo + (b - 0.5) * bs
+                        float c1 = lo + (b + 0.5) * bs
+                        float c2 = lo + (b + 1.5) * bs
+                        pkP.push((w0 * c0 + w1 * c1 + w2 * c2) / ws)
+                        pkM.push(ws / tot * nBins / 3.0)
+            if pkM.size() > 0
+                array<int> ordPk = pkM.sort_indices(order.descending)
+                int take = math.min(topK, ordPk.size())
+                float hgt = close * (isVolatile ? wVolPct : wCalmPct) / 100.0
+                for j = 0 to take - 1
+                    int q = ordPk.get(j)
+                    float np = pkP.get(q)
+                    float nm = pkM.get(q)
+                    bool inBand = math.abs(np - close) / close * 100.0 <= bandPct
+                    bool merged = false
+                    if inBand and nodes.size() > 0
+                        for k = 0 to nodes.size() - 1
+                            Node e = nodes.get(k)
+                            if math.abs(e.p - np) <= e.w
+                                // Decay the standing mass to the present BEFORE
+                                // adding fresh mass, then re-base the clock.
+                                // Adding against the birth stamp discounted
+                                // today's absorption by the node's whole age.
+                                float dec = math.pow(0.5, ((time - e.t) / 86400000.0) / halfLifeD)
+                                e.m := math.min(e.m * dec + 0.5 * nm, 12.0)
+                                e.t := time
+                                merged := true
+                                break
+                    if inBand and not merged and math.abs(np - close) > hgt / 2.0
+                        if nodes.size() >= maxNodes
+                            int lowI = 0
+                            float lowM = 1e10
+                            for k = 0 to nodes.size() - 1
+                                // Rank by decayed mass so the stalest wall goes,
+                                // not merely the smallest-at-birth one
+                                float mk = f_mass(nodes.get(k))
+                                if mk < lowM
+                                    lowM := mk
+                                    lowI := k
+                            f_kill(nodes, lowI)
+                        int sd = np > close ? 1 : -1
+                        nodeId += 1
+                        box bx = na
+                        if showNodes
+                            // Born neutral and near-invisible; the last-bar pass
+                            // re-weights every zone by live probability.
+                            bx := box.new(bar_index, np + hgt / 2.0, bar_index + 1, np - hgt / 2.0, border_color = color.new(colNeut, 100), border_width = 0, bgcolor = color.new(colNeut, 94), extend = extend.none)
+                        nodes.push(Node.new(p = np, m = nm, w = hgt / 2.0, t = time, side = sd, id = nodeId, bx = bx))
+
+if newEpoch
+    epP.clear()
+    epW.clear()
+
+// Absorbed-volume accumulation for the running epoch
+float uw = high - math.max(open, close)
+float lw = math.min(open, close) - low
+float absorb = rngNow > 0 ? nz(volume) * (1.0 - bodyAbs / rngNow) : 0.0
+if tmOn and absorb > 0 and uw + lw > 0
+    if uw > 0
+        epP.push(math.max(open, close) + uw / 2.0)
+        epW.push(absorb * uw / (uw + lw))
+    if lw > 0
+        epP.push(math.min(open, close) - lw / 2.0)
+        epW.push(absorb * lw / (uw + lw))
+while epP.size() > 20000
+    epP.shift()
+    epW.shift()
+
+// ════════════════════════════ NODE LIFECYCLE (every confirmed bar) ════════════════════════════
+if barstate.isconfirmed and nodes.size() > 0
+    for i = nodes.size() - 1 to 0
+        Node n = nodes.get(i)
+        bool closedThrough = (n.side == 1 and close > n.p + n.w) or (n.side == -1 and close < n.p - n.w)
+        bool tooOld = (time - n.t) > maxAgeD * 86400000.0
+        bool tooFar = math.abs(n.p - close) / close * 100.0 > bandPct
+        if closedThrough or tooOld or tooFar
+            f_kill(nodes, i)
+
+// ════════════════════════════ PRICE-AXIS SURVIVAL SCAN ════════════════════════════
+[upI, upP, upE, upNone] = f_side(nodes, 1, close, sigRem, resH)
+[dnI, dnP, dnE, dnNone] = f_side(nodes, -1, close, sigRem, resL)
+Node tU = na
+Node tD = na
+if upI >= 0
+    tU := nodes.get(upI)
+if dnI >= 0
+    tD := nodes.get(dnI)
+
+// ════════════════════════════ PLOTS ════════════════════════════
+// Historical terminus track: off by default, and always available in the data
+// window / for alerts even when it is not painted.
+float tUpPrice = na
+float tDnPrice = na
+float tUpW = na
+float tDnW = na
+if not na(tU)
+    tUpPrice := tU.p
+    tUpW := tU.w
+if not na(tD)
+    tDnPrice := tD.p
+    tDnW := tD.w
+plot(tUpPrice, "Terminus high", color = showTrail ? color.new(colRes, 74) : na, style = plot.style_linebr, linewidth = 1)
+plot(tDnPrice, "Terminus low", color = showTrail ? color.new(colSup, 74) : na, style = plot.style_linebr, linewidth = 1)
+
+// ════════════════════════════ ALERTS ════════════════════════════
+bool armUp   = ta.crossover(upP, alertThr)
+bool armDn   = ta.crossover(dnP, alertThr)
+bool touchUp = not na(tUpPrice) and high >= tUpPrice - tUpW and upP >= alertThr
+bool touchDn = not na(tDnPrice) and low <= tDnPrice + tDnW and dnP >= alertThr
+alertcondition(armUp, "Upside terminus armed", "TERMINUS: upside wall probability crossed the alert threshold")
+alertcondition(armDn, "Downside terminus armed", "TERMINUS: downside wall probability crossed the alert threshold")
+alertcondition(touchUp, "Upside terminus touched", "TERMINUS: price reached a high-probability upside wall")
+alertcondition(touchDn, "Downside terminus touched", "TERMINUS: price reached a high-probability downside wall")
+
+// ════════════════════════════ LAST-BAR RENDER ════════════════════════════
+var line  pjU = na
+var line  pjD = na
+var line  exU = na
+var line  exD = na
+var label lbU = na
+var label lbD = na
+var array<label> ladder = array.new<label>()
+var array<line>  ladLn  = array.new<line>()
+var table dash = table.new(tblPos, 3, 32, bgcolor = color.new(colPanel, 12), border_width = 1, border_color = color.new(color.gray, 82), frame_width = 1, frame_color = color.new(color.gray, 68))
+
+if barstate.islast and tmOn
+    line.delete(pjU)
+    line.delete(pjD)
+    line.delete(exU)
+    line.delete(exD)
+    label.delete(lbU)
+    label.delete(lbD)
+    if ladder.size() > 0
+        for i = ladder.size() - 1 to 0
+            label.delete(ladder.get(i))
+        ladder.clear()
+    if ladLn.size() > 0
+        for i = ladLn.size() - 1 to 0
+            line.delete(ladLn.get(i))
+        ladLn.clear()
+
+    float pMin = minProb / 100.0
+    int xEdge = bar_index + rightPad
+
+    // Terminus readouts resolved once, so nothing below touches a na node
+    int   idU  = -1
+    int   idD  = -1
+    float pxU  = na
+    float pxD  = na
+    float hdU  = na
+    float hdD  = na
+    float gapU = na
+    float gapD = na
+    float etaU = na
+    float etaD = na
+    if not na(tU)
+        idU  := tU.id
+        pxU  := tU.p
+        hdU  := tU.hold
+        gapU := math.max(0.0, tU.p - tU.w - close)
+        etaU := f_eta(gapU, sigBar)
+    if not na(tD)
+        idD  := tD.id
+        pxD  := tD.p
+        hdD  := tD.hold
+        gapD := math.max(0.0, close - tD.p - tD.w)
+        etaD := f_eta(gapD, sigBar)
+
+    // ── every zone re-weighted by live probability ──
+    if showNodes and nodes.size() > 0
+        for i = 0 to nodes.size() - 1
+            Node n = nodes.get(i)
+            if not na(n.bx)
+                bool isTop = n.id == idU or n.id == idD
+                color sc = n.side == 1 ? colRes : colSup
+                box.set_right(n.bx, xEdge)
+                if isTop
+                    box.set_bgcolor(n.bx, color.new(sc, 80))
+                    box.set_border_color(n.bx, color.new(sc, 30))
+                    box.set_border_width(n.bx, 1)
+                else if n.prob >= pMin
+                    int tr = int(math.round(93.0 - 11.0 * math.min(1.0, n.prob / 0.5)))
+                    box.set_bgcolor(n.bx, color.new(sc, tr))
+                    box.set_border_color(n.bx, color.new(sc, 84))
+                    box.set_border_width(n.bx, 1)
+                else
+                    box.set_bgcolor(n.bx, color.new(colNeut, 95))
+                    box.set_border_color(n.bx, color.new(colNeut, 100))
+                    box.set_border_width(n.bx, 0)
+
+    // ── tier 1: the two levels that actually matter ──
+    if showProj and not na(pxU)
+        int xU = bar_index + int(math.max(5.0, math.min(nz(etaU, 20.0), 400.0)))
+        pjU := line.new(bar_index, pxU, xU, pxU, color = color.new(colRes, 15), width = 2)
+        lbU := label.new(xU, pxU, "▲ TERMINUS  " + f_px(pxU) + "\n  reach·hold  " + f_pct(upP) + "\n  wall hold   " + f_pct(hdU) + "\n  eta " + f_fmtMin(etaU) + "  ·  gap " + f_sig(gapU, sigRem), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = colRes, size = size.small, textalign = text.align_left, text_font_family = MONO)
+    if showProj and not na(pxD)
+        int xD = bar_index + int(math.max(5.0, math.min(nz(etaD, 20.0), 400.0)))
+        pjD := line.new(bar_index, pxD, xD, pxD, color = color.new(colSup, 15), width = 2)
+        lbD := label.new(xD, pxD, "▼ TERMINUS  " + f_px(pxD) + "\n  reach·hold  " + f_pct(dnP) + "\n  wall hold   " + f_pct(hdD) + "\n  eta " + f_fmtMin(etaD) + "  ·  gap " + f_sig(gapD, sigRem), style = label.style_label_left, color = color.new(colPanel, 12), textcolor = colSup, size = size.small, textalign = text.align_left, text_font_family = MONO)
+
+    // ── probability-weighted expectation: a hairline, numbers live in the panel ──
+    if showExp and not na(upE)
+        exU := line.new(bar_index, upE, xEdge + 2, upE, color = color.new(colRes, 55), style = line.style_dotted, width = 1)
+    if showExp and not na(dnE)
+        exD := line.new(bar_index, dnE, xEdge + 2, dnE, color = color.new(colSup, 55), style = line.style_dotted, width = 1)
+
+    // ── tier 2: the walls queued behind the terminus ──
+    if showLadder and nodes.size() > 0
+        array<float> lpr = array.new<float>()
+        array<int>   lix = array.new<int>()
+        for i = 0 to nodes.size() - 1
+            Node n = nodes.get(i)
+            bool drawn = showProj and (n.id == idU or n.id == idD)
+            if n.prob >= pMin and not drawn
+                lpr.push(n.prob)
+                lix.push(i)
+        if lpr.size() > 0
+            array<int> ord = lpr.sort_indices(order.descending)
+            int shownU = 0
+            int shownD = 0
+            for j = 0 to ord.size() - 1
+                Node n = nodes.get(lix.get(ord.get(j)))
+                bool room = n.side == 1 ? shownU < ladderMax : shownD < ladderMax
+                if room
+                    if n.side == 1
+                        shownU += 1
+                    else
+                        shownD += 1
+                    bool isTop = n.id == idU or n.id == idD
+                    color sc = n.side == 1 ? colRes : colSup
+                    ladLn.push(line.new(bar_index, n.p, xEdge + 3, n.p, color = color.new(sc, isTop ? 30 : 74), width = 1, style = isTop ? line.style_solid : line.style_dotted))
+                    ladder.push(label.new(xEdge + 4, n.p, (n.side == 1 ? "▲ " : "▼ ") + f_px(n.p) + "  " + f_gauge(n.prob) + " " + f_pct(n.prob) + "   hold " + f_pct(n.hold) + "   mass " + str.tostring(f_mass(n), "#.#"), style = label.style_label_left, color = color.new(colPanel, 100), textcolor = color.new(sc, isTop ? 0 : 25), size = size.tiny, text_font_family = MONO))
+
+    // ── dashboard ──
+    if showDash
+        table.clear(dash, 0, 0, 2, 31)
+        int cntU = 0
+        int cntD = 0
+        if nodes.size() > 0
+            for i = 0 to nodes.size() - 1
+                if nodes.get(i).side == 1
+                    cntU += 1
+                else
+                    cntD += 1
+
+        table.cell(dash, 0, 0, "TERMINUS", text_color = colTxt, text_size = tblSize, text_halign = text.align_left, text_font_family = MONO)
+        table.cell(dash, 1, 0, "", text_size = tblSize)
+        table.cell(dash, 2, 0, "survival field", text_color = colDim, text_size = tblSize, text_halign = text.align_right, text_font_family = MONO)
+
+        int r = 1
+        f_sec(dash, r, "REGIME")
+        r += 1
+        f_rowG(dash, r, "state", (isVolatile ? "volatile " : "calm ") + f_pct(isVolatile ? pV : 1.0 - pV), isVolatile ? color.rgb(214, 158, 92) : colTxt, isVolatile ? pV : 1.0 - pV)
+        r += 1
+        f_rowG(dash, r, "session left", f_pct(tauRem), colTxt, tauRem)
+        r += 1
+        f_row(dash, r, "σ left", f_px(sigRem), colTxt)
+        r += 1
+
+        f_sec(dash, r, "UPSIDE")
+        r += 1
+        f_row(dash, r, "terminus", f_px(pxU), colRes)
+        r += 1
+        f_rowG(dash, r, "probability", f_pct(upP), colRes, upP)
+        r += 1
+        if tblFull
+            f_rowG(dash, r, "wall hold", f_pct(hdU), colRes, hdU)
+            r += 1
+            f_row(dash, r, "distance", na(gapU) ? "-" : f_px(gapU) + "  " + f_sig(gapU, sigRem), colRes)
+            r += 1
+            f_row(dash, r, "E[top]", f_px(upE), colRes)
+            r += 1
+            f_rowG(dash, r, "no wall holds", f_pct(upNone), colRes, upNone)
+            r += 1
+        f_row(dash, r, "eta", f_fmtMin(etaU), colRes)
+        r += 1
+
+        f_sec(dash, r, "DOWNSIDE")
+        r += 1
+        f_row(dash, r, "terminus", f_px(pxD), colSup)
+        r += 1
+        f_rowG(dash, r, "probability", f_pct(dnP), colSup, dnP)
+        r += 1
+        if tblFull
+            f_rowG(dash, r, "wall hold", f_pct(hdD), colSup, hdD)
+            r += 1
+            f_row(dash, r, "distance", na(gapD) ? "-" : f_px(gapD) + "  " + f_sig(gapD, sigRem), colSup)
+            r += 1
+            f_row(dash, r, "E[bot]", f_px(dnE), colSup)
+            r += 1
+            f_rowG(dash, r, "no wall holds", f_pct(dnNone), colSup, dnNone)
+            r += 1
+        f_row(dash, r, "eta", f_fmtMin(etaD), colSup)
+        r += 1
+
+        f_sec(dash, r, "EXHAUSTION")
+        r += 1
+        f_rowG(dash, r, "upside", f_pct(eUp), colRes, eUp)
+        r += 1
+        f_rowG(dash, r, "downside", f_pct(eDn), colSup, eDn)
+        r += 1
+        if tblFull
+            f_sec(dash, r, "FIELD")
+            r += 1
+            f_row(dash, r, "live nodes", str.tostring(cntU) + " up  " + str.tostring(cntD) + " dn", colDim)
+            r += 1
+            f_row(dash, r, "stop pools", str.tostring(resH.size()) + " up  " + str.tostring(resL.size()) + " dn", colDim)
+            r += 1

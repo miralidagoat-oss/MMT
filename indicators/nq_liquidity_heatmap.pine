@@ -1,0 +1,1058 @@
+//@version=6
+indicator("NQ/MNQ Liquidity Heatmap - ETH, all timeframes", shorttitle = "NQ ETH Liq", overlay = true,
+     max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// WHERE RESTING LIQUIDITY SITS ON NASDAQ-100 FUTURES, ETH — EVERY
+// TIMEFRAME, REAL DATA ONLY. Built for CME NQ / MNQ (continuous NQ1! /
+// MNQ1! or a specific contract) on Extended Trading Hours: the full CME
+// Globex session, 18:00 ET to 17:00 ET (the trading day that opens Sunday
+// 18:00 ET is Monday's). Runs on any symbol, but the session hours and the
+// contract-roll handling are the CME index-futures ones.
+//
+// Pine Script cannot read an order book (no Level 2 / DOM data exists in
+// Pine), so this indicator does not pretend to. It maps the liquidity that
+// price structure itself proves is there:
+//   - BSL (buy-side liquidity): buy-stop orders resting above every swing
+//     high that price has NOT traded through since it printed.
+//   - SSL (sell-side liquidity): sell-stop orders resting below every
+//     unswept swing low.
+//
+// Everything is computed from the symbol's own OHLCV feed:
+//   - Swing highs/lows are detected on each enabled timeframe (1m → 1M plus
+//     the chart's own) with ta.pivothigh / ta.pivotlow.
+//   - A level stays "resting" until a bar trades through it (high > level
+//     for BSL, low < level for SSL). Then it is swept and stops extending.
+//   - Heat = the actual volume traded on the bar that printed the swing, on
+//     the highest timeframe that confirms that swing. Nothing is estimated:
+//     no assumed leverage, no synthetic order sizes, no random seeds. On
+//     symbols with no volume feed, heat = number of timeframes that confirm
+//     the level (and the table says so).
+//   - The same swing seen on several timeframes (a daily high is also a 1H
+//     and 5m high) is ONE pool, never double counted; its heat is the volume
+//     of the largest bar that contains it.
+//
+// Nasdaq-100 futures specifics:
+//   - ETH: every request uses the extended (full Globex) session, whatever
+//     the chart is set to, so overnight swings, the overnight session and
+//     the 18:00–17:00 ET trading day are always part of the book. Use an ETH
+//     chart: on an RTH chart the overnight bars are missing, so sweeps that
+//     happen overnight are only caught when the next higher-timeframe bar
+//     closes (the table warns). Levels are always built from standard bars,
+//     also on Heikin Ashi / Renko charts.
+//   - Contract rolls: a raw continuous chart (NQ1!/MNQ1!) jumps by the
+//     calendar spread at every quarterly roll, which would fake sweeps of
+//     levels inside the jump and leave older levels at the expired
+//     contract's prices. Everything is therefore computed on TradingView's
+//     back-adjusted series (older contracts shifted by the close-to-close
+//     gap at each roll), i.e. in the current contract's prices.
+//   - Session liquidity: every unswept RTH (cash session, 09:30–16:00 ET)
+//     and Globex overnight (18:00–09:30 ET) high/low, heat = the volume
+//     traded in that session. CME Globex for NQ runs Sun 18:00 – Fri 17:00
+//     ET with a daily 17:00–18:00 ET halt.
+//   - Every prior day / week / month high and low (PDH/PDL, PWH/PWL,
+//     PMH/PML) counts, not only swing points. The day is the ETH trading
+//     day (18:00–17:00 ET).
+//
+// No repaint, no lookahead: each timeframe hands the chart its book of
+// levels AS OF ITS PREVIOUS CLOSED BAR (snapshot taken before the forming
+// bar is applied, requested with lookahead_on — the documented non-repaint
+// pattern). Sweeps are then detected on every chart bar as they happen.
+// Levels inherited from before the chart's first bar are cross-checked
+// against finer timeframes' pre-chart bars, so a level that was already
+// taken before the chart begins is not shown as resting.
+// ============================================================================
+
+// history depth for the late-snapshot guard (f_sweptSince)
+max_bars_back(time, 5000)
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_NQ  = "Nasdaq-100 futures"
+var string G_TF  = "Timeframes (all are scanned together)"
+var string G_SW  = "Swing detection"
+var string G_VIS = "Heatmap"
+var string G_PRO = "Resting-liquidity profile"
+var string G_TAB = "Summary table"
+var string G_ALR = "Alerts"
+
+bool   useEth   = input.bool(true, "ETH: full Globex session data (18:00-17:00 ET)", group = G_NQ,
+     tooltip = "Every level is built from extended-trading-hours data, whatever the chart session is set to. Keep the chart on ETH too, so overnight sweeps are seen as they happen.")
+bool   useBadj  = input.bool(true, "Roll-safe: use back-adjusted continuous prices", group = G_NQ,
+     tooltip = "Computes on TradingView's back-adjusted series so quarterly contract rolls do not fake sweeps or leave levels at the expired contract's prices. Turn on B-ADJ (Adjust for contract changes) on the chart too, so older candles line up with the levels.")
+bool   everyHTF = input.bool(true, "Every prior day / week / month high & low", group = G_NQ,
+     tooltip = "PDH/PDL, PWH/PWL, PMH/PML: on daily and higher timeframes every bar's high and low is liquidity until traded through, not only swing points.")
+bool   useRTH   = input.bool(true, "RTH session highs/lows", inline = "rth", group = G_NQ)
+string rthSess  = input.session("0930-1600", "", inline = "rth", group = G_NQ)
+bool   useON    = input.bool(true, "Overnight (Globex) highs/lows", inline = "on", group = G_NQ)
+string onSess   = input.session("1800-0930", "", inline = "on", group = G_NQ)
+string sessTz   = input.string("America/New_York", "Session time zone", group = G_NQ,
+     tooltip = "Session levels need a chart of 30 minutes or less (sessions are built from 30-minute bars, which align with the 09:30 and 18:00 ET boundaries).")
+
+bool   useChartTf = input.bool(true, "Chart timeframe", group = G_TF,
+     tooltip = "Timeframes below the chart's are skipped automatically (a chart bar cannot show what happened inside a smaller bar without lookahead).")
+bool   en1 = input.bool(true, "", inline = "a", group = G_TF)
+string tf1 = input.timeframe("1",   "", inline = "a", group = G_TF)
+bool   en2 = input.bool(true, "", inline = "a", group = G_TF)
+string tf2 = input.timeframe("5",   "", inline = "a", group = G_TF)
+bool   en3 = input.bool(true, "", inline = "a", group = G_TF)
+string tf3 = input.timeframe("15",  "", inline = "a", group = G_TF)
+bool   en4 = input.bool(true, "", inline = "b", group = G_TF)
+string tf4 = input.timeframe("30",  "", inline = "b", group = G_TF)
+bool   en5 = input.bool(true, "", inline = "b", group = G_TF)
+string tf5 = input.timeframe("60",  "", inline = "b", group = G_TF)
+bool   en6 = input.bool(true, "", inline = "b", group = G_TF)
+string tf6 = input.timeframe("240", "", inline = "b", group = G_TF)
+bool   en7 = input.bool(true, "", inline = "c", group = G_TF)
+string tf7 = input.timeframe("D",   "", inline = "c", group = G_TF)
+bool   en8 = input.bool(true, "", inline = "c", group = G_TF)
+string tf8 = input.timeframe("W",   "", inline = "c", group = G_TF)
+bool   en9 = input.bool(true, "", inline = "c", group = G_TF)
+string tf9 = input.timeframe("M",   "", inline = "c", group = G_TF)
+
+int pivL = input.int(5,  "Swing strength: bars on the left",  minval = 1, maxval = 50, group = G_SW,
+     tooltip = "A swing high must be higher than this many bars before it (on its own timeframe).")
+int pivR = input.int(3,  "Swing strength: bars on the right", minval = 1, maxval = 50, group = G_SW,
+     tooltip = "Bars after the swing that must stay below it before the level is confirmed. Larger = fewer, more significant levels, confirmed later.")
+int capN = input.int(10, "Unswept levels tracked per side, per timeframe", minval = 1, maxval = 20, group = G_SW,
+     tooltip = "Unswept highs are always stacked oldest = farthest from price, so this keeps the N nearest pools on each side of each timeframe.")
+
+bool  showHistory = input.bool(true, "Show swept liquidity (history)", group = G_VIS)
+int   histMax     = input.int(200, "Max swept lines kept", minval = 0, maxval = 400, group = G_VIS)
+bool  customHeat  = input.bool(false, "Custom heat colors", group = G_VIS,
+     tooltip = "Off = a single-hue blue ramp that adapts to light and dark chart backgrounds.")
+color heatLoIn    = input.color(#184f95, "Low", inline = "hc", group = G_VIS)
+color heatHiIn    = input.color(#cde2fb, "High", inline = "hc", group = G_VIS)
+
+bool showProfile = input.bool(true, "Show profile right of price", group = G_PRO)
+int  profBars    = input.int(300, "Profile window: price range of the last N bars", minval = 10, maxval = 5000, group = G_PRO,
+     tooltip = "Roughly what is on screen. Resting pools inside this price range (plus the margin) are summed into the profile and are the ones labeled.")
+int  profExtPct  = input.int(25,  "Margin beyond that range (%)", minval = 0, maxval = 200, group = G_PRO)
+int  profRows    = input.int(30,  "Profile rows", minval = 5, maxval = 100, group = G_PRO)
+int  profWidth   = input.int(30,  "Profile width (bars)", minval = 5, maxval = 200, group = G_PRO)
+int  labelN      = input.int(3,   "Label the biggest N pools each side", minval = 0, maxval = 10, group = G_PRO)
+
+bool   showTable = input.bool(true, "Show summary table", group = G_TAB)
+string tablePos  = input.string("Bottom left", "Position", options = ["Top right", "Bottom right", "Top left", "Bottom left"], group = G_TAB)
+
+string alertTf = input.timeframe("60", "Alert on sweeps of pools from this timeframe or higher", group = G_ALR)
+
+// ─────────────────────────────────────────────────────────────
+// CONSTANTS & TIMEFRAME SLOTS
+// ─────────────────────────────────────────────────────────────
+int    NSLOTS  = 12    // 0 chart, 1–9 timeframe slots, 10 RTH, 11 overnight
+string SESS_TF = "30"  // session books are built from 30-minute bars
+int R_SWEPT   = 0  // the timeframe's own data shows the level traded through
+int R_CAPPED  = 1  // fell outside the N nearest levels of its timeframe
+int R_INVALID = 2  // seeded mid-bar, then shown to be swept before the chart's first bar
+
+int chartSec = timeframe.in_seconds()
+int alertSec = timeframe.in_seconds(alertTf)
+
+// a slot runs only on timeframes >= the chart's; one equal to the chart's is
+// skipped while the dedicated chart slot is on (it would be the same data)
+f_slotOn(bool enabled, string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    enabled and sec >= chartSec and not (useChartTf and sec == chartSec)
+
+f_tfLabel(string tfIn) =>
+    // input.timeframe returns "" for "Chart"; never slice an empty string
+    string tf   = tfIn == "" ? timeframe.period : tfIn
+    int    sec  = timeframe.in_seconds(tf)
+    string unit = str.substring(tf, math.max(str.length(tf) - 1, 0))
+    string res  = ""
+    if unit == "M"
+        res := str.tostring(math.round(sec / 2628003.0)) + "M"
+    else if unit == "W"
+        res := str.tostring(math.round(sec / 604800.0)) + "W"
+    else if unit == "D"
+        res := str.tostring(math.round(sec / 86400.0)) + "D"
+    else if unit == "S"
+        res := str.tostring(sec) + "s"
+    else if sec % 3600 == 0
+        res := str.tostring(math.round(sec / 3600.0)) + "H"
+    else
+        res := str.tostring(math.round(sec / 60.0)) + "m"
+    res
+
+// minutes in a "HHMM-HHMM" session (handles sessions that cross midnight)
+f_sessSec(string sess) =>
+    int a   = int(str.tonumber(str.substring(sess, 0, 2))) * 60 + int(str.tonumber(str.substring(sess, 2, 4)))
+    int b   = int(str.tonumber(str.substring(sess, 5, 7))) * 60 + int(str.tonumber(str.substring(sess, 7, 9)))
+    int dur = (b - a + 1440) % 1440
+    (dur == 0 ? 1440 : dur) * 60
+
+bool on0 = useChartTf
+bool on1 = f_slotOn(en1, tf1)
+bool on2 = f_slotOn(en2, tf2)
+bool on3 = f_slotOn(en3, tf3)
+bool on4 = f_slotOn(en4, tf4)
+bool on5 = f_slotOn(en5, tf5)
+bool on6 = f_slotOn(en6, tf6)
+bool on7 = f_slotOn(en7, tf7)
+bool on8 = f_slotOn(en8, tf8)
+bool on9 = f_slotOn(en9, tf9)
+bool sessOk = chartSec <= timeframe.in_seconds(SESS_TF)
+bool on10   = useRTH and sessOk
+bool on11   = useON and sessOk
+
+// every-bar mode (PDH/PDL…) applies to daily and higher timeframes
+f_every(string tf) =>
+    everyHTF and timeframe.in_seconds(tf) >= 86400
+bool ev0 = everyHTF and chartSec >= 86400
+
+// Is the chart itself on RTH? On CME futures TradingView names the full ETH
+// session "regular" (ETH is their default) and the RTH session "us_regular",
+// so a futures chart is on RTH when its session is neither regular nor
+// extended; on stocks RTH is session.regular. Daily+ charts have no split.
+bool chartRth = useEth and timeframe.isintraday and (syminfo.type == "futures" ?
+     syminfo.session != session.regular and syminfo.session != session.extended :
+     syminfo.type == "stock" and syminfo.session == session.regular)
+
+// All levels come from real OHLCV (standard bars even on Heikin Ashi/Renko
+// charts) on the extended (ETH) session of the back-adjusted continuous
+// series (back-adjustment has no effect on non-continuous symbols).
+string baseTicker = chart.is_standard ? syminfo.tickerid : ticker.standard(syminfo.tickerid)
+string ethTicker  = useEth ? ticker.modify(baseTicker, session = session.extended) : baseTicker
+string dataTicker = useBadj ? ticker.modify(ethTicker, backadjustment = backadjustment.on) : ethTicker
+// The chart-side series (sweep checks, profile window, distances) must line
+// up one-to-one with the chart's own bars: on an RTH chart it keeps the
+// chart's session, otherwise it is the same ETH series as the books.
+string chartTicker = chartRth ? (useBadj ? ticker.modify(syminfo.tickerid, backadjustment = backadjustment.on) : syminfo.tickerid) : dataTicker
+[adjH, adjL, adjC] = request.security(chartTicker, timeframe.period, [high, low, close])
+max_bars_back(adjH, 5000)
+max_bars_back(adjL, 5000)
+
+// ─────────────────────────────────────────────────────────────
+// PER-TIMEFRAME LEVEL BOOK  (runs inside each requested timeframe)
+// ─────────────────────────────────────────────────────────────
+// Running high/low of this timeframe's bars since the current `tfX` bar
+// opened, as of this bar's open. A finer timeframe uses it to check a
+// coarser timeframe's levels against bars from before the chart's first
+// bar. The anchor stays na until a real tfX roll-over has been observed, so
+// a partial window is never passed off as complete.
+f_runExt(string tfX, float srcH, float srcL) =>
+    var float rh    = na
+    var float rl    = na
+    var bool  whole = false
+    float anchor = time(tfX)
+    bool  fresh  = anchor != anchor[1]
+    if fresh
+        whole := not na(anchor[1])
+    float sh = fresh ? na : rh
+    float sl = fresh ? na : rl
+    rh := fresh or na(rh) ? srcH : math.max(rh, srcH)
+    rl := fresh or na(rl) ? srcL : math.min(rl, srcL)
+    [whole ? anchor : na, sh, sl]
+
+// Returns the timeframe's unswept swing levels as of its PREVIOUS closed
+// bar: the snapshot is taken before the current bar's high/low/pivots are
+// applied, so with lookahead_on the chart can never see an unclosed bar.
+// Layout: [bar open time, 4·H, 4·L, H highs × (price, volume, t0, t1),
+//          L lows × (…), then (anchor, high, low) per slot timeframe 1–9]
+// where t0/t1 are the open/close time of the bar that printed the swing.
+// `every` makes every closed bar's high/low a level (PDH/PDL on daily).
+// Levels are kept oldest → newest. Unswept highs are always stacked so the
+// oldest is the farthest from price (a newer, higher high would have swept
+// it), so dropping the oldest when over the cap keeps the N nearest.
+f_book(float srcH, float srcL, int lb, int rb, int cap, bool every, string x1, string x2, string x3, string x4, string x5, string x6, string x7, string x8, string x9) =>
+    var array<float> hi = array.new<float>()
+    var array<float> lo = array.new<float>()
+    float pvH  = ta.pivothigh(srcH, lb, rb)
+    float pvL  = ta.pivotlow(srcL, lb, rb)
+    float ph   = every ? srcH : pvH
+    float pl   = every ? srcL : pvL
+    float pVol = every ? volume : volume[rb]
+    float pT0  = every ? time : time[rb]
+    float pT1  = every ? (na(time_close) ? na : time_close) : na(time_close[rb]) ? time[rb - 1] : time_close[rb]
+    [a1, h1, l1] = f_runExt(x1, srcH, srcL)
+    [a2, h2, l2] = f_runExt(x2, srcH, srcL)
+    [a3, h3, l3] = f_runExt(x3, srcH, srcL)
+    [a4, h4, l4] = f_runExt(x4, srcH, srcL)
+    [a5, h5, l5] = f_runExt(x5, srcH, srcL)
+    [a6, h6, l6] = f_runExt(x6, srcH, srcL)
+    [a7, h7, l7] = f_runExt(x7, srcH, srcL)
+    [a8, h8, l8] = f_runExt(x8, srcH, srcL)
+    [a9, h9, l9] = f_runExt(x9, srcH, srcL)
+
+    array<float> snap = array.new<float>()
+    array.push(snap, float(time))
+    array.push(snap, float(array.size(hi)))
+    array.push(snap, float(array.size(lo)))
+    array.concat(snap, hi)
+    array.concat(snap, lo)
+    array.concat(snap, array.from(a1, h1, l1, a2, h2, l2, a3, h3, l3, a4, h4, l4, a5, h5, l5, a6, h6, l6, a7, h7, l7, a8, h8, l8, a9, h9, l9))
+
+    // levels this bar trades through are swept
+    int nH = int(array.size(hi) / 4)
+    if nH > 0
+        for k = nH - 1 to 0
+            int b = k * 4
+            if srcH > array.get(hi, b)
+                for j = 1 to 4
+                    array.remove(hi, b)
+    int nL = int(array.size(lo) / 4)
+    if nL > 0
+        for k = nL - 1 to 0
+            int b = k * 4
+            if srcL < array.get(lo, b)
+                for j = 1 to 4
+                    array.remove(lo, b)
+
+    // newly confirmed swings join the book
+    if not na(ph) and not na(pT1)
+        array.push(hi, ph)
+        array.push(hi, pVol)
+        array.push(hi, pT0)
+        array.push(hi, pT1)
+        if array.size(hi) > cap * 4
+            for j = 1 to 4
+                array.shift(hi)
+    if not na(pl) and not na(pT1)
+        array.push(lo, pl)
+        array.push(lo, pVol)
+        array.push(lo, pT0)
+        array.push(lo, pT1)
+        if array.size(lo) > cap * 4
+            for j = 1 to 4
+                array.shift(lo)
+    snap
+
+// Session book (runs inside the 30-minute timeframe): when a session ends
+// its high and low become levels — t0 = the bar that printed the extreme,
+// t1 = the session's end, volume = everything traded in the session. Same
+// snapshot rule and layout as f_book (no anchor block).
+f_sessBook(string tfS, string sess, string tz, int cap) =>
+    var array<float> hi   = array.new<float>()
+    var array<float> lo   = array.new<float>()
+    var float        sHi  = na
+    var float        sLo  = na
+    var float        sHiT = na
+    var float        sLoT = na
+    var float        sVol = 0.0
+    var float        sEnd = na
+    var float        sStart = na
+    bool inS    = not na(time(tfS, sess, tz))
+    bool prevIn = inS[1]
+    // a new instance can start with no out-of-session bar in between (RTH-only
+    // symbols, holiday halts): an in-session bar that opens a full session
+    // length (+1 h for DST) after the instance began starts a new one
+    bool newInst = inS and prevIn and not na(sStart) and time - sStart >= f_sessSec(sess) * 1000 + 3600000
+    // the session that ended at the previous bar's close is complete
+    if prevIn and (not inS or newInst) and not na(sHi) and not na(sEnd)
+        array.push(hi, sHi)
+        array.push(hi, sVol)
+        array.push(hi, sHiT)
+        array.push(hi, sEnd)
+        if array.size(hi) > cap * 4
+            for j = 1 to 4
+                array.shift(hi)
+        array.push(lo, sLo)
+        array.push(lo, sVol)
+        array.push(lo, sLoT)
+        array.push(lo, sEnd)
+        if array.size(lo) > cap * 4
+            for j = 1 to 4
+                array.shift(lo)
+
+    array<float> snap = array.new<float>()
+    array.push(snap, float(time))
+    array.push(snap, float(array.size(hi)))
+    array.push(snap, float(array.size(lo)))
+    array.concat(snap, hi)
+    array.concat(snap, lo)
+
+    int nH = int(array.size(hi) / 4)
+    if nH > 0
+        for k = nH - 1 to 0
+            int b = k * 4
+            if high > array.get(hi, b)
+                for j = 1 to 4
+                    array.remove(hi, b)
+    int nL = int(array.size(lo) / 4)
+    if nL > 0
+        for k = nL - 1 to 0
+            int b = k * 4
+            if low < array.get(lo, b)
+                for j = 1 to 4
+                    array.remove(lo, b)
+
+    if inS
+        if not prevIn or newInst
+            sHi    := high
+            sLo    := low
+            sHiT   := time
+            sLoT   := time
+            sVol   := nz(volume)
+            sStart := time
+        else
+            if high > sHi
+                sHi  := high
+                sHiT := time
+            if low < sLo
+                sLo  := low
+                sLoT := time
+            sVol += nz(volume)
+        sEnd := na(time_close) ? na : time_close
+    snap
+
+// the chart's own timeframe needs no request: evaluated in place on the
+// back-adjusted highs/lows, the snapshot is the book as of this bar's open
+array<float> book0 = f_book(adjH, adjL, pivL, pivR, capN, ev0, tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9)
+array<float> book1 = request.security(dataTicker, on1 ? tf1 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf1), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book2 = request.security(dataTicker, on2 ? tf2 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf2), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book3 = request.security(dataTicker, on3 ? tf3 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf3), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book4 = request.security(dataTicker, on4 ? tf4 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf4), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book5 = request.security(dataTicker, on5 ? tf5 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf5), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book6 = request.security(dataTicker, on6 ? tf6 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf6), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book7 = request.security(dataTicker, on7 ? tf7 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf7), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book8 = request.security(dataTicker, on8 ? tf8 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf8), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book9 = request.security(dataTicker, on9 ? tf9 : timeframe.period, f_book(high, low, pivL, pivR, capN, f_every(tf9), tf1, tf2, tf3, tf4, tf5, tf6, tf7, tf8, tf9), lookahead = barmerge.lookahead_on)
+array<float> book10 = request.security(dataTicker, on10 ? SESS_TF : timeframe.period, f_sessBook(SESS_TF, rthSess, sessTz, capN), lookahead = barmerge.lookahead_on)
+array<float> book11 = request.security(dataTicker, on11 ? SESS_TF : timeframe.period, f_sessBook(SESS_TF, onSess, sessTz, capN), lookahead = barmerge.lookahead_on)
+
+// ─────────────────────────────────────────────────────────────
+// TYPES & STATE
+// ─────────────────────────────────────────────────────────────
+// One liquidity pool = one swing extreme, however many timeframes see it.
+type Pool
+    int          id
+    bool         isHigh
+    float        price
+    float        spanStart   // union of the member swing bars' time spans
+    float        spanEnd
+    int          finestSec   // line starts at the finest member's swing bar
+    array<int>   slotCnt     // member levels per timeframe slot
+    array<float> slotVol     // swing-bar volume per timeframe slot
+    line         ln
+    bool         active = true
+    float        maxVol = 0.0  // cached: largest swing-bar volume among members
+    int          tfCount = 0   // cached: timeframes currently confirming the pool
+
+// One timeframe's view of a swing level.
+type Level
+    int   slot
+    bool  isHigh
+    float price
+    float vol
+    float t0
+    float t1
+    bool  provisional  // came from a snapshot taken mid-bar before the chart's first bar
+    Pool  pool
+
+type Slot
+    string       tf
+    string       name
+    int          sec
+    bool         enabled
+    bool         synced = false
+    float        lastBarTime
+    float        lastSeenHi
+    float        lastSeenLo
+    array<Level> his
+    array<Level> los
+    array<float> snap          // latest snapshot from this timeframe
+    bool         anyProv = false
+
+type Engine
+    int          nextId = 0
+    array<Pool>  active
+    array<Pool>  history
+    array<Slot>  slots
+    string       sweepMsg = ""
+    int          majorSweeps = 0
+
+var Engine eng = Engine.new(0, array.new<Pool>(), array.new<Pool>(), array.new<Slot>(), "", 0)
+
+f_newSlot(string tf, bool isOn) =>
+    Slot.new(tf, f_tfLabel(tf), timeframe.in_seconds(tf), isOn, false, na, na, na, array.new<Level>(), array.new<Level>(), na, false)
+
+// session slots rank by session length (RTH 6.5 h, overnight 15.5 h)
+f_newSessSlot(string name, string sess, bool isOn) =>
+    Slot.new(SESS_TF, name, f_sessSec(sess), isOn, false, na, na, na, array.new<Level>(), array.new<Level>(), na, false)
+
+if barstate.isfirst
+    array.push(eng.slots, f_newSlot(timeframe.period, on0))
+    array.push(eng.slots, f_newSlot(tf1, on1))
+    array.push(eng.slots, f_newSlot(tf2, on2))
+    array.push(eng.slots, f_newSlot(tf3, on3))
+    array.push(eng.slots, f_newSlot(tf4, on4))
+    array.push(eng.slots, f_newSlot(tf5, on5))
+    array.push(eng.slots, f_newSlot(tf6, on6))
+    array.push(eng.slots, f_newSlot(tf7, on7))
+    array.push(eng.slots, f_newSlot(tf8, on8))
+    array.push(eng.slots, f_newSlot(tf9, on9))
+    array.push(eng.slots, f_newSessSlot("RTH", rthSess, on10))
+    array.push(eng.slots, f_newSessSlot("ON", onSess, on11))
+
+// volume-weighted when the feed has volume; timeframe-count otherwise
+var bool sawVol = false
+if not sawVol and nz(volume) > 0
+    sawVol := true
+
+// heat ramp: one hue, light→dark, anchored to the chart background so low
+// liquidity recedes toward the surface and high liquidity stands out
+float bgLuma = 0.299 * color.r(chart.bg_color) + 0.587 * color.g(chart.bg_color) + 0.114 * color.b(chart.bg_color)
+bool  darkBg = bgLuma < 128
+color heatLo = customHeat ? heatLoIn : darkBg ? #184f95 : #9ec5f4
+color heatHi = customHeat ? heatHiIn : darkBg ? #cde2fb : #0d366b
+color inkPri = chart.fg_color
+color inkSec = color.new(chart.fg_color, 35)
+
+eng.sweepMsg    := ""
+eng.majorSweeps := 0
+
+// ─────────────────────────────────────────────────────────────
+// POOL HELPERS
+// ─────────────────────────────────────────────────────────────
+f_weight(Pool p) =>
+    sawVol ? p.maxVol : float(p.tfCount)
+
+// refresh the cached heat after membership changes
+f_reweigh(Pool p) =>
+    float mv = 0.0
+    int   tc = 0
+    for s = 0 to NSLOTS - 1
+        if array.get(p.slotCnt, s) > 0
+            tc += 1
+            mv := math.max(mv, array.get(p.slotVol, s))
+    p.maxVol  := mv
+    p.tfCount := tc
+    true
+
+f_heat(float r, bool faded) =>
+    color c = color.from_gradient(r, 0.0, 1.0, heatLo, heatHi)
+    color.new(c, faded ? 80 : math.round(60 * (1.0 - r)))
+
+// percentile of weight w among the given pools (mid-rank for ties)
+f_rankAmong(array<Pool> pools, float w) =>
+    int   n = array.size(pools)
+    float r = 1.0
+    if n > 1
+        float below = 0.0
+        float equal = 0.0
+        for q in pools
+            float wq = f_weight(q)
+            if wq < w
+                below += 1.0
+            else if wq == w
+                equal += 1.0
+        r := math.max(0.0, math.min(1.0, (below + math.max(equal - 1.0, 0.0) * 0.5) / (n - 1)))
+    r
+
+// highest timeframe that currently confirms the pool
+f_topSlot(Engine e, Pool p) =>
+    int best = -1
+    for s = 0 to NSLOTS - 1
+        if array.get(p.slotCnt, s) > 0
+            if best < 0 or array.get(e.slots, s).sec > array.get(e.slots, best).sec
+                best := s
+    best
+
+f_topLabel(Engine e, Pool p) =>
+    int s = f_topSlot(e, p)
+    s >= 0 ? array.get(e.slots, s).name : "—"
+
+f_fmtW(float w) =>
+    string s = ""
+    if not sawVol
+        s := str.tostring(w, "#") + (w == 1.0 ? " TF" : " TFs")
+    else if w >= 1e9
+        s := str.tostring(w / 1e9, "#.##") + "B"
+    else if w >= 1e6
+        s := str.tostring(w / 1e6, "#.##") + "M"
+    else if w >= 1e3
+        s := str.tostring(w / 1e3, "#.##") + "K"
+    else
+        s := str.tostring(w, "#.##")
+    s
+
+f_indexOf(array<Pool> pools, int id) =>
+    int idx = -1
+    int n   = array.size(pools)
+    if n > 0
+        for i = 0 to n - 1
+            if array.get(pools, i).id == id
+                idx := i
+                break
+    idx
+
+// a pool stops resting: freeze its line at this bar and keep it as history
+f_retire(Engine e, Pool p, float w, bool fromChart) =>
+    if fromChart and f_topSlot(e, p) >= 0 and array.get(e.slots, f_topSlot(e, p)).sec >= alertSec
+        e.majorSweeps += 1
+        e.sweepMsg := e.sweepMsg + (p.isHigh ? "BSL" : "SSL") + " swept @ " + str.tostring(p.price, format.mintick) +
+             " (" + f_topLabel(e, p) + " swing, " + f_fmtW(w) + ")\n"
+    float r = f_rankAmong(e.active, w)
+    p.active := false
+    line.set_x2(p.ln, time)
+    if showHistory
+        line.set_color(p.ln, f_heat(r, true))
+        line.set_width(p.ln, 1)
+        array.push(e.history, p)
+    else
+        line.delete(p.ln)
+    true
+
+f_purge(array<Level> book) =>
+    int n = array.size(book)
+    if n > 0
+        for i = n - 1 to 0
+            Level lv = array.get(book, i)
+            if not lv.pool.active
+                array.remove(book, i)
+    true
+
+// move every level that points at pool `other` over to pool `into`
+f_repoint(array<Level> book, Pool other, Pool into) =>
+    for lv in book
+        if lv.pool.id == other.id
+            lv.pool := into
+    true
+
+f_absorb(Engine e, Pool into, Pool other) =>
+    for s = 0 to NSLOTS - 1
+        array.set(into.slotCnt, s, array.get(into.slotCnt, s) + array.get(other.slotCnt, s))
+        array.set(into.slotVol, s, math.max(array.get(into.slotVol, s), array.get(other.slotVol, s)))
+    into.spanStart := math.min(into.spanStart, other.spanStart)
+    into.spanEnd   := math.max(into.spanEnd, other.spanEnd)
+    if other.finestSec < into.finestSec
+        into.finestSec := other.finestSec
+        line.set_x1(into.ln, line.get_x1(other.ln))
+    line.delete(other.ln)
+    f_reweigh(into)
+    for st in e.slots
+        f_repoint(st.his, other, into)
+        f_repoint(st.los, other, into)
+    true
+
+// attach a timeframe's level to the pool for the same swing, or open one.
+// Same swing = same side, same price, and overlapping swing-bar time spans
+// (a 5m swing high inside the day whose daily high is that same price).
+f_attach(Engine e, Level lv) =>
+    int   sec    = array.get(e.slots, lv.slot).sec
+    float tol    = syminfo.mintick * 0.5
+    Pool  target = na
+    int   n      = array.size(e.active)
+    if n > 0
+        for i = n - 1 to 0
+            Pool p = array.get(e.active, i)
+            if p.isHigh == lv.isHigh and math.abs(p.price - lv.price) <= tol and p.spanStart < lv.t1 and lv.t0 < p.spanEnd
+                if na(target)
+                    target := p
+                else
+                    f_absorb(e, target, p)
+                    array.remove(e.active, i)
+    if na(target)
+        e.nextId += 1
+        array<int>   cnt = array.new<int>(NSLOTS, 0)
+        array<float> vol = array.new<float>(NSLOTS, 0.0)
+        array.set(cnt, lv.slot, 1)
+        array.set(vol, lv.slot, nz(lv.vol))
+        line ln = line.new(int(lv.t0), lv.price, time, lv.price, xloc = xloc.bar_time, color = f_heat(0.5, false), width = 1)
+        target := Pool.new(e.nextId, lv.isHigh, lv.price, lv.t0, lv.t1, sec, cnt, vol, ln, true)
+        f_reweigh(target)
+        array.push(e.active, target)
+    else
+        array.set(target.slotCnt, lv.slot, array.get(target.slotCnt, lv.slot) + 1)
+        array.set(target.slotVol, lv.slot, math.max(array.get(target.slotVol, lv.slot), nz(lv.vol)))
+        target.spanStart := math.min(target.spanStart, lv.t0)
+        target.spanEnd   := math.max(target.spanEnd, lv.t1)
+        if sec < target.finestSec
+            target.finestSec := sec
+            line.set_x1(target.ln, int(lv.t0))
+        f_reweigh(target)
+    lv.pool := target
+    true
+
+// a timeframe no longer lists this level
+f_detach(Engine e, Level lv, int reason) =>
+    Pool p = lv.pool
+    if not na(p) and p.active
+        float w = f_weight(p)
+        int   c = array.get(p.slotCnt, lv.slot) - 1
+        array.set(p.slotCnt, lv.slot, math.max(c, 0))
+        if c <= 0
+            array.set(p.slotVol, lv.slot, 0.0)
+        f_reweigh(p)
+        if p.tfCount == 0
+            if reason == R_SWEPT
+                f_retire(e, p, w, false)
+            else
+                p.active := false
+                line.delete(p.ln)
+            int idx = f_indexOf(e.active, p.id)
+            if idx >= 0
+                array.remove(e.active, idx)
+    true
+
+// was px traded through by an earlier chart bar that ended after asOf? When
+// the chart and the source timeframe line up, a snapshot arrives on the
+// first chart bar at/after asOf and this scans nothing. When they do not
+// (e.g. 10m chart, 15m slot; 20m chart, 30m session data) the snapshot
+// lands one chart bar late and the bar straddling asOf is scanned — its part
+// before asOf cannot have traded beyond a level that was valid at asOf, so
+// the test stays exact. It also covers a snapshot delivered late for any
+// other reason.
+f_sweptSince(float asOf, float px, bool isHigh) =>
+    bool hit = false
+    int  i   = 1
+    while i <= math.min(bar_index, 4999) and time[i - 1] > asOf
+        if isHigh ? adjH[i] > px : adjL[i] < px
+            hit := true
+            break
+        i += 1
+    hit
+
+// reconcile one side of a slot with its timeframe's fresh snapshot
+f_syncSide(Engine e, int s, Slot st, array<Level> book, array<float> snap, int start, int n, bool isHigh, bool boundary) =>
+    // 1) levels the timeframe dropped: swept on data the chart never saw, or capped
+    int m = array.size(book)
+    if m > 0
+        float oldest = n > 0 ? array.get(snap, start + 2) : na
+        for i = m - 1 to 0
+            Level lv    = array.get(book, i)
+            bool  found = false
+            if n > 0
+                for j = 0 to n - 1
+                    if array.get(snap, start + j * 4 + 2) == lv.t0
+                        found := true
+                        break
+            if not found
+                int reason = lv.provisional ? R_INVALID : n >= capN and lv.t0 < oldest ? R_CAPPED : R_SWEPT
+                f_detach(e, lv, reason)
+                array.remove(book, i)
+    // 2) newly confirmed levels (strictly newer than anything seen, so a level
+    //    the chart already saw swept can never be resurrected)
+    float seen = isHigh ? st.lastSeenHi : st.lastSeenLo
+    float maxT = seen
+    float asOf = array.get(snap, 0)
+    if n > 0
+        for j = 0 to n - 1
+            int   b  = start + j * 4
+            float t0 = array.get(snap, b + 2)
+            if na(seen) or t0 > seen
+                maxT := na(maxT) ? t0 : math.max(maxT, t0)
+                if not f_sweptSince(asOf, array.get(snap, b), isHigh)
+                    Level lv = Level.new(s, isHigh, array.get(snap, b), array.get(snap, b + 1), t0, array.get(snap, b + 3), not boundary, na)
+                    f_attach(e, lv)
+                    array.push(book, lv)
+                    if not boundary
+                        st.anyProv := true
+    if isHigh
+        st.lastSeenHi := maxT
+    else
+        st.lastSeenLo := maxT
+    // 3) a boundary snapshot covers every bar up to now → nothing is provisional
+    if boundary
+        for lv in book
+            lv.provisional := false
+    true
+
+// feed one timeframe's snapshot into the chart state; runs on the first
+// chart bar of every new bar of that timeframe
+f_process(Engine e, int s, array<float> snap) =>
+    Slot st = array.get(e.slots, s)
+    if st.enabled and not na(snap) and array.size(snap) >= 3
+        float barT = array.get(snap, 0)
+        // accept a snapshot only on a chart bar that opens at/after its
+        // timeframe bar, as history does (live, request.security already
+        // returns the new bar on the chart bar that straddles its open)
+        if (na(st.lastBarTime) or barT != st.lastBarTime) and float(time) >= barT
+            // the snapshot is complete for the chart if the chart has watched
+            // this timeframe roll over, or its first bar opens with that bar
+            bool boundary = st.synced or float(time) == barT
+            int  nh       = int(array.get(snap, 1) / 4)
+            int  nl       = int(array.get(snap, 2) / 4)
+            f_syncSide(e, s, st, st.his, snap, 3, nh, true, boundary)
+            f_syncSide(e, s, st, st.los, snap, 3 + nh * 4, nl, false, boundary)
+            st.synced      := true
+            st.lastBarTime := barT
+            st.snap        := snap
+            if boundary
+                st.anyProv := false
+    true
+
+// provisional levels of one side vs. a finer timeframe's running extreme
+// since this timeframe's bar opened: traded through → it was taken before
+// the chart's first bar (drop it); window reaches the chart's start → it
+// is confirmed resting
+f_checkProv(Engine e, array<Level> book, float ext, bool isHigh, bool complete) =>
+    int m = array.size(book)
+    if m > 0
+        for i = m - 1 to 0
+            Level lv = array.get(book, i)
+            if lv.provisional
+                if not na(ext) and (isHigh ? ext > lv.price : ext < lv.price)
+                    f_detach(e, lv, R_INVALID)
+                    array.remove(book, i)
+                else if complete
+                    lv.provisional := false
+    true
+
+// resolve levels seeded mid-bar (before the chart's first bar) as soon as
+// any finer requested timeframe can vouch for the bars the chart never saw
+f_verify(Engine e, float chartStart) =>
+    for x = 1 to 9
+        Slot sx = array.get(e.slots, x)
+        if sx.enabled and sx.anyProv
+            for f = 1 to 9
+                Slot sf = array.get(e.slots, f)
+                if f != x and sx.anyProv and sf.enabled and sf.sec < sx.sec and not na(sf.snap)
+                    int base = 3 + int(array.get(sf.snap, 1)) + int(array.get(sf.snap, 2)) + (x - 1) * 3
+                    if array.size(sf.snap) >= base + 3 and array.get(sf.snap, base) == sx.lastBarTime
+                        bool complete = array.get(sf.snap, 0) >= chartStart
+                        f_checkProv(e, sx.his, array.get(sf.snap, base + 1), true, complete)
+                        f_checkProv(e, sx.los, array.get(sf.snap, base + 2), false, complete)
+                        if complete
+                            sx.anyProv := false
+    true
+
+// ─────────────────────────────────────────────────────────────
+// ENGINE: ingest every timeframe, then detect sweeps on this chart bar
+// ─────────────────────────────────────────────────────────────
+f_process(eng, 0, book0)
+f_process(eng, 1, book1)
+f_process(eng, 2, book2)
+f_process(eng, 3, book3)
+f_process(eng, 4, book4)
+f_process(eng, 5, book5)
+f_process(eng, 6, book6)
+f_process(eng, 7, book7)
+f_process(eng, 8, book8)
+f_process(eng, 9, book9)
+f_process(eng, 10, book10)
+f_process(eng, 11, book11)
+var float chartStart = time
+f_verify(eng, chartStart)
+
+// BSL is taken when a bar trades above it, SSL when a bar trades below it
+bool anySwept = false
+int  nAct     = array.size(eng.active)
+if nAct > 0
+    for i = nAct - 1 to 0
+        Pool p = array.get(eng.active, i)
+        if p.isHigh ? adjH > p.price : adjL < p.price
+            f_retire(eng, p, f_weight(p), true)
+            array.remove(eng.active, i)
+            anySwept := true
+if anySwept
+    for st in eng.slots
+        f_purge(st.his)
+        f_purge(st.los)
+
+int histCap = showHistory ? math.max(0, math.min(histMax, 480 - array.size(eng.active))) : 0
+while array.size(eng.history) > histCap
+    Pool old = array.shift(eng.history)
+    line.delete(old.ln)
+
+// ─────────────────────────────────────────────────────────────
+// SUMMARY (every bar — also exposed in the Data Window)
+// ─────────────────────────────────────────────────────────────
+int   nBsl      = 0
+int   nSsl      = 0
+float nearBslPx = na
+float nearSslPx = na
+float bigBslPx  = na
+float bigSslPx  = na
+float bigBslW   = na
+float bigSslW   = na
+int   nearBslI  = -1
+int   nearSslI  = -1
+int   bigBslI   = -1
+int   bigSslI   = -1
+int   nPools    = array.size(eng.active)
+if nPools > 0
+    for i = 0 to nPools - 1
+        Pool  p = array.get(eng.active, i)
+        float w = f_weight(p)
+        if p.isHigh
+            nBsl += 1
+            if na(nearBslPx) or p.price < nearBslPx
+                nearBslPx := p.price
+                nearBslI  := i
+            if na(bigBslW) or w > bigBslW
+                bigBslW  := w
+                bigBslPx := p.price
+                bigBslI  := i
+        else
+            nSsl += 1
+            if na(nearSslPx) or p.price > nearSslPx
+                nearSslPx := p.price
+                nearSslI  := i
+            if na(bigSslW) or w > bigSslW
+                bigSslW  := w
+                bigSslPx := p.price
+                bigSslI  := i
+
+plot(nearBslPx, "Nearest BSL",           color = heatHi, display = display.data_window)
+plot(nearSslPx, "Nearest SSL",           color = heatHi, display = display.data_window)
+plot(bigBslPx,  "Biggest BSL",           color = heatHi, display = display.data_window)
+plot(bigSslPx,  "Biggest SSL",           color = heatHi, display = display.data_window)
+plot(bigBslW,   "Biggest BSL weight",    color = heatHi, display = display.data_window)
+plot(bigSslW,   "Biggest SSL weight",    color = heatHi, display = display.data_window)
+plot(nBsl,      "Resting BSL pools",     color = heatHi, display = display.data_window)
+plot(nSsl,      "Resting SSL pools",     color = heatHi, display = display.data_window)
+
+// ─────────────────────────────────────────────────────────────
+// RENDER (last bar): heat colors, profile, labels, table
+// ─────────────────────────────────────────────────────────────
+var array<box>   profBoxes  = array.new<box>()
+var array<label> profLabels = array.new<label>()
+
+// profile price window: the recent range (≈ what is on screen) plus a margin
+int   winLen = math.min(profBars, bar_index + 1)
+float winHi  = ta.highest(adjH, winLen)
+float winLo  = ta.lowest(adjL, winLen)
+
+f_distPct(float px) =>
+    float d = (px - adjC) / adjC * 100.0
+    (d >= 0 ? "+" : "") + str.tostring(d, "#.##") + "%"
+
+f_poolText(Engine e, int i) =>
+    string s = "—"
+    if i >= 0
+        Pool p = array.get(e.active, i)
+        s := str.tostring(p.price, format.mintick) + "  " + f_topLabel(e, p) + "  " + f_fmtW(f_weight(p)) + "  " + f_distPct(p.price)
+    s
+
+// is this the Nasdaq-100 futures family, and are the chart's own candles
+// back-adjusted (they differ from the adjusted series before the last roll)?
+bool isNQ = syminfo.root == "NQ" or syminfo.root == "MNQ"
+var bool chartRaw = false
+// adjC is the chart-aligned back-adjusted close; on a non-standard chart
+// `close` is synthetic, so the comparison only means something on standard bars
+if useBadj and chart.is_standard and not chartRaw and math.abs(close - adjC) > syminfo.mintick * 0.5
+    chartRaw := true
+
+if barstate.islast
+    // active pools: color + width by percentile of heat among resting pools
+    if nPools > 0
+        array<float> ws = array.new<float>()
+        for p in eng.active
+            array.push(ws, f_weight(p))
+        array<float> sorted = array.copy(ws)
+        array.sort(sorted)
+        for i = 0 to nPools - 1
+            Pool  p = array.get(eng.active, i)
+            float w = array.get(ws, i)
+            float pr = nPools > 1 ? (array.binary_search_leftmost(sorted, w) + array.binary_search_rightmost(sorted, w)) / 2.0 / (nPools - 1) : 1.0
+            line.set_x2(p.ln, time)
+            line.set_color(p.ln, f_heat(pr, false))
+            line.set_width(p.ln, 1 + math.round(pr * 3))
+
+    // resting-liquidity profile: pool heat summed into price rows
+    for b in profBoxes
+        box.delete(b)
+    array.clear(profBoxes)
+    for l in profLabels
+        label.delete(l)
+    array.clear(profLabels)
+    if showProfile and nPools > 0
+        float ext = (winHi - winLo) * profExtPct / 100.0
+        float top = winHi + ext
+        float bot = winLo - ext
+        if top - bot > syminfo.mintick
+            float        rowH = (top - bot) / profRows
+            array<float> rows = array.new<float>(profRows, 0.0)
+            for p in eng.active
+                if p.price >= bot and p.price <= top
+                    int row = math.min(profRows - 1, int(math.floor((p.price - bot) / rowH)))
+                    array.set(rows, row, array.get(rows, row) + f_weight(p))
+            float maxRow = array.max(rows)
+            int   x0     = bar_index + 2
+            if maxRow > 0
+                for row = 0 to profRows - 1
+                    float v = array.get(rows, row)
+                    if v > 0
+                        float ratio = v / maxRow
+                        int   len   = math.max(1, math.round(ratio * profWidth))
+                        array.push(profBoxes, box.new(x0, bot + (row + 1) * rowH, x0 + len, bot + row * rowH,
+                             border_color = chart.bg_color, border_width = 1, bgcolor = f_heat(ratio, false)))
+            // label the heaviest pools on each side inside the window, skipping
+            // any that would sit on top of a label already placed
+            if labelN > 0
+                array<float> placed = array.new<float>()
+                for side = 0 to 1
+                    array<int>   idx = array.new<int>()
+                    array<float> wts = array.new<float>()
+                    bool wantHigh = side == 0
+                    for i = 0 to nPools - 1
+                        Pool p = array.get(eng.active, i)
+                        if p.isHigh == wantHigh and p.price >= bot and p.price <= top
+                            array.push(idx, i)
+                            array.push(wts, f_weight(p))
+                    if array.size(idx) > 0
+                        array<int> order_ = array.sort_indices(wts, order.descending)
+                        int        made   = 0
+                        for k = 0 to array.size(idx) - 1
+                            if made >= labelN
+                                break
+                            Pool p     = array.get(eng.active, array.get(idx, array.get(order_, k)))
+                            bool clash = false
+                            for q in placed
+                                if math.abs(q - p.price) < rowH * 1.5
+                                    clash := true
+                            if clash
+                                continue
+                            array.push(placed, p.price)
+                            made += 1
+                            string tfName = f_topLabel(eng, p)
+                            array.push(profLabels, label.new(x0 + profWidth + 2, p.price,
+                                 (p.isHigh ? "BSL " : "SSL ") + str.tostring(p.price, format.mintick) + " · " + tfName + " · " + f_fmtW(f_weight(p)),
+                                 style = label.style_label_left, color = color.new(chart.bg_color, 15), textcolor = inkPri, size = size.small,
+                                 tooltip = (p.isHigh ? "Buy-side liquidity: buy stops resting above an unswept " : "Sell-side liquidity: sell stops resting below an unswept ") +
+                                      tfName + " swing. Heat = " + (sawVol ? "volume traded on the swing bar." : "timeframes confirming the level (no volume feed).")))
+
+    // summary table
+    if showTable
+        string tp = tablePos
+        // created and merged once: merging an already-merged range is an
+        // error, and this block runs on every realtime update
+        var table tb = na
+        if na(tb)
+            tb := table.new(tp == "Top right" ? position.top_right : tp == "Bottom right" ? position.bottom_right : tp == "Top left" ? position.top_left : position.bottom_left,
+                 2, 11, bgcolor = color.new(chart.bg_color, 5), border_color = color.new(chart.fg_color, 85), border_width = 1,
+                 frame_color = color.new(chart.fg_color, 70), frame_width = 1)
+            table.merge_cells(tb, 0, 0, 1, 0)
+        string tfsOn  = ""
+        string tfsOff = ""
+        for st in eng.slots
+            if st.enabled
+                tfsOn := tfsOn + (str.length(tfsOn) > 0 ? " " : "") + st.name
+            else if st.sec < chartSec
+                tfsOff := tfsOff + (str.length(tfsOff) > 0 ? " " : "") + st.name
+        table.cell(tb, 0, 0, "NQ LIQUIDITY HEATMAP · ETH · ALL TIMEFRAMES", text_color = inkPri, text_size = size.small)
+        table.cell(tb, 0, 1, "Heat",          text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 1, sawVol ? "volume traded on the swing bar" : "timeframes confirming (no volume feed)", text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 2, "Biggest BSL ▲", text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 2, f_poolText(eng, bigBslI), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 3, "Biggest SSL ▼", text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 3, f_poolText(eng, bigSslI), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 4, "Nearest BSL",   text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 4, f_poolText(eng, nearBslI), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 5, "Nearest SSL",   text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 5, f_poolText(eng, nearSslI), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 6, "Resting pools", text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 6, str.tostring(nBsl) + " BSL / " + str.tostring(nSsl) + " SSL", text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        table.cell(tb, 0, 7, "Timeframes",    text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 7, tfsOn + (str.length(tfsOff) > 0 ? "  (below chart: " + tfsOff + ")" : ""), text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        string sessTxt = not (useRTH or useON) ? "off" : not sessOk ? "need a chart ≤ 30m" :
+             (useRTH ? "RTH " + rthSess : "") + (useRTH and useON ? " · " : "") + (useON ? "ON " + onSess : "") + " " + sessTz
+        table.cell(tb, 0, 8, "Sessions",      text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 8, sessTxt, text_color = inkPri, text_halign = text.align_right, text_size = size.small)
+        string rollTxt = (isNQ ? syminfo.ticker : "⚠ " + syminfo.ticker + " is not NQ/MNQ") + " · " +
+             (not useBadj ? "as charted (rolls not adjusted)" : chartRaw ? "back-adjusted — turn on B-ADJ so older candles line up" : "back-adjusted")
+        table.cell(tb, 0, 9, "Contract",      text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 9, rollTxt, text_color = chartRaw or not isNQ ? color.orange : inkPri, text_halign = text.align_right, text_size = size.small)
+        string ethTxt = not useEth ? "as charted" : chartRth ? "⚠ chart is on RTH — switch it to ETH" : "ETH · full Globex 18:00–17:00 ET"
+        table.cell(tb, 0, 10, "Session data",  text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 10, ethTxt, text_color = chartRth ? color.orange : inkPri, text_halign = text.align_right, text_size = size.small)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+if str.length(eng.sweepMsg) > 0
+    alert("NQ ETH Liquidity Heatmap " + syminfo.ticker + ": " + eng.sweepMsg, alert.freq_once_per_bar_close)
+alertcondition(eng.majorSweeps > 0, "NQ liquidity pool swept", "{{ticker}}: a liquidity pool from the alert timeframe or higher was swept")
