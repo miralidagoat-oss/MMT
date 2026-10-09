@@ -8,8 +8,9 @@ the results in an on-chart dashboard.
 - **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
 - **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
 - **Also here:** `indicators/nq_liquidity_heatmap.pine` — a multi-timeframe
-  liquidity heatmap for Nasdaq-100 futures (NQ/MNQ), built only from real
-  OHLCV data ([section below](#nq-liquidity-heatmap--nasdaq-100-futures))
+  liquidity heatmap for Nasdaq-100 futures (NQ/MNQ) on Extended Trading
+  Hours, built only from real OHLCV data
+  ([section below](#nq-liquidity-heatmap--nasdaq-100-futures-eth))
 
 ## Audit findings (why v1's "backtest" was fiction)
 
@@ -235,13 +236,15 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
 
-## NQ Liquidity Heatmap — Nasdaq-100 futures
+## NQ Liquidity Heatmap — Nasdaq-100 futures, ETH
 
-`indicators/nq_liquidity_heatmap.pine` (Pine Script v6, overlay) shows where
-resting liquidity sits on Nasdaq-100 futures (CME NQ and MNQ: continuous
-NQ1!/MNQ1! or a specific contract) on every timeframe at once, from 1m to
-1M plus the chart's own, plus RTH and overnight sessions. It also shows how
-heavy each pool is.
+`indicators/nq_liquidity_heatmap.pine` (Pine Script v6, overlay; shows as
+**NQ ETH Liq**) shows where resting liquidity sits on Nasdaq-100 futures (CME
+NQ and MNQ: continuous NQ1!/MNQ1! or a specific contract) on every timeframe
+at once, from 1m to 1M plus the chart's own, plus RTH and overnight
+sessions. It also shows how heavy each pool is. Everything runs on
+**Extended Trading Hours (ETH)**: the full CME Globex session, 18:00 ET to
+17:00 ET. The trading day that opens Sunday 18:00 ET is Monday's.
 
 ![NQ Liquidity Heatmap](docs/nq_liquidity_heatmap_preview.png)
 
@@ -282,6 +285,13 @@ pools and add up in the profile.
 
 ### Nasdaq-100 futures specifics
 
+- **ETH.** Every request uses the extended (full Globex) session via
+  `ticker.modify(syminfo.tickerid, session = session.extended)`, whatever the
+  chart's session is set to. Overnight swings, the overnight session and the
+  18:00–17:00 ET trading day (the "day" behind PDH/PDL) are therefore always
+  in the book. Keep the chart itself on ETH. On an RTH chart the overnight
+  bars are missing, so a sweep that happens overnight is only caught when
+  the next higher-timeframe bar closes; the table warns when this applies.
 - **Contract rolls.** A raw continuous chart (NQ1!/MNQ1!) jumps by the
   calendar spread at every quarterly roll. Levels inside that jump would
   register fake sweeps, and older levels would sit at the expired contract's
@@ -319,8 +329,8 @@ pools and add up in the profile.
   `SSL 1.22706 · RTH · 15.07K`. Labels that would overlap are skipped.
   Scroll right or widen the right margin to see it.
 - **Table:** biggest and nearest BSL/SSL (price, source, heat, distance),
-  resting-pool counts, active timeframes and sessions, and contract/roll
-  status.
+  resting-pool counts, active timeframes and sessions, contract/roll status,
+  and the session-data status (ETH, or a warning if the chart is on RTH).
 - **Data Window:** nearest/biggest BSL and SSL plus counts, on every bar.
 - **Alerts:** "Any alert() function call" sends one message per bar close
   listing each pool taken, from the alert timeframe (default 1H) up. Session
@@ -347,7 +357,8 @@ until that week or month closed.
 
 | group | setting | default |
 |---|---|---|
-| Nasdaq-100 futures | roll-safe (back-adjusted prices) | on |
+| Nasdaq-100 futures | ETH: full Globex session data (18:00–17:00 ET) | on |
+| | roll-safe (back-adjusted prices) | on |
 | | every prior day / week / month high & low | on |
 | | RTH session / overnight session / time zone | 0930-1600 / 1800-0930 / America/New_York |
 | Timeframes | chart TF + nine slots: 1m, 5m, 15m, 30m, 1H, 4H, D, W, M (each toggle/editable) | all on; slots below the chart TF are skipped |
@@ -402,8 +413,9 @@ Two PineTS 0.11 bugs turned up and were kept out of the indicator:
 
 What PineTS cannot exercise:
 
-- **Back-adjusted versus raw data.** PineTS serves one series per symbol, so
-  the roll-safe path is checked by code review only. All prices, sweeps and
+- **Back-adjusted versus raw data, ETH versus RTH.** PineTS serves one series
+  per symbol, so the roll-safe and ETH paths are checked by code review
+  only. All prices, sweeps and
   levels come from the back-adjusted series; on a chart without
   back-adjustment, the only difference is the drawing frame.
 - **TradingView's own compiler.** PineTS is not TradingView. Compiling in the
@@ -420,3 +432,5 @@ What PineTS cannot exercise:
 - On a continuous chart without B-ADJ, candles from before the last roll sit
   at the old contract's prices, while the levels are in current-contract
   prices. Turn on B-ADJ to line them up.
+- On an RTH chart, overnight sweeps are caught late (see ETH above). Use an
+  ETH chart.

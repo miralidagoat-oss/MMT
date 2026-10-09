@@ -1,11 +1,13 @@
 //@version=6
-indicator("Liquidity Heatmap — Nasdaq-100 Futures (NQ / MNQ)", shorttitle = "NQ Liquidity Heatmap", overlay = true,
+indicator("NQ/MNQ Liquidity Heatmap - ETH, all timeframes", shorttitle = "NQ ETH Liq", overlay = true,
      max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
 
 // ============================================================================
-// WHERE RESTING LIQUIDITY SITS ON NASDAQ-100 FUTURES — EVERY TIMEFRAME,
-// REAL DATA ONLY. Built for CME NQ / MNQ (continuous NQ1! / MNQ1! or a
-// specific contract); runs on any symbol, but the session hours and the
+// WHERE RESTING LIQUIDITY SITS ON NASDAQ-100 FUTURES, ETH — EVERY
+// TIMEFRAME, REAL DATA ONLY. Built for CME NQ / MNQ (continuous NQ1! /
+// MNQ1! or a specific contract) on Extended Trading Hours: the full CME
+// Globex session, 18:00 ET to 17:00 ET (the trading day that opens Sunday
+// 18:00 ET is Monday's). Runs on any symbol, but the session hours and the
 // contract-roll handling are the CME index-futures ones.
 //
 // Pine Script cannot read an order book (no Level 2 / DOM data exists in
@@ -31,6 +33,12 @@ indicator("Liquidity Heatmap — Nasdaq-100 Futures (NQ / MNQ)", shorttitle = "N
 //     of the largest bar that contains it.
 //
 // Nasdaq-100 futures specifics:
+//   - ETH: every request uses the extended (full Globex) session, whatever
+//     the chart is set to, so overnight swings, the overnight session and
+//     the 18:00–17:00 ET trading day are always part of the book. Use an ETH
+//     chart: on an RTH chart the overnight bars are missing, so sweeps that
+//     happen overnight are only caught when the next higher-timeframe bar
+//     closes (the table warns).
 //   - Contract rolls: a raw continuous chart (NQ1!/MNQ1!) jumps by the
 //     calendar spread at every quarterly roll, which would fake sweeps of
 //     levels inside the jump and leave older levels at the expired
@@ -42,8 +50,8 @@ indicator("Liquidity Heatmap — Nasdaq-100 Futures (NQ / MNQ)", shorttitle = "N
 //     traded in that session. CME Globex for NQ runs Sun 18:00 – Fri 17:00
 //     ET with a daily 17:00–18:00 ET halt.
 //   - Every prior day / week / month high and low (PDH/PDL, PWH/PWL,
-//     PMH/PML) counts, not only swing points. The futures day is the CME
-//     trading day (18:00–17:00 ET).
+//     PMH/PML) counts, not only swing points. The day is the ETH trading
+//     day (18:00–17:00 ET).
 //
 // No repaint, no lookahead: each timeframe hands the chart its book of
 // levels AS OF ITS PREVIOUS CLOSED BAR (snapshot taken before the forming
@@ -68,6 +76,8 @@ var string G_PRO = "Resting-liquidity profile"
 var string G_TAB = "Summary table"
 var string G_ALR = "Alerts"
 
+bool   useEth   = input.bool(true, "ETH: full Globex session data (18:00-17:00 ET)", group = G_NQ,
+     tooltip = "Every level is built from extended-trading-hours data, whatever the chart session is set to. Keep the chart on ETH too, so overnight sweeps are seen as they happen.")
 bool   useBadj  = input.bool(true, "Roll-safe: use back-adjusted continuous prices", group = G_NQ,
      tooltip = "Computes on TradingView's back-adjusted series so quarterly contract rolls do not fake sweeps or leave levels at the expired contract's prices. Turn on B-ADJ (Adjust for contract changes) on the chart too, so older candles line up with the levels.")
 bool   everyHTF = input.bool(true, "Every prior day / week / month high & low", group = G_NQ,
@@ -145,9 +155,11 @@ f_slotOn(bool enabled, string tf) =>
     int sec = timeframe.in_seconds(tf)
     enabled and sec >= chartSec and not (useChartTf and sec == chartSec)
 
-f_tfLabel(string tf) =>
+f_tfLabel(string tfIn) =>
+    // input.timeframe returns "" for "Chart"; never slice an empty string
+    string tf   = tfIn == "" ? timeframe.period : tfIn
     int    sec  = timeframe.in_seconds(tf)
-    string unit = str.substring(tf, str.length(tf) - 1)
+    string unit = str.substring(tf, math.max(str.length(tf) - 1, 0))
     string res  = ""
     if unit == "M"
         res := str.tostring(math.round(sec / 2628003.0)) + "M"
@@ -189,9 +201,11 @@ f_every(string tf) =>
     everyHTF and timeframe.in_seconds(tf) >= 86400
 bool ev0 = everyHTF and chartSec >= 86400
 
-// all data comes from the back-adjusted continuous series (no effect on
-// symbols that are not continuous futures)
-string dataTicker = useBadj ? ticker.modify(syminfo.tickerid, backadjustment = backadjustment.on) : syminfo.tickerid
+// all data comes from the extended (ETH) session of the back-adjusted
+// continuous series (back-adjustment has no effect on symbols that are not
+// continuous futures)
+string ethTicker  = useEth ? ticker.modify(syminfo.tickerid, session = session.extended) : syminfo.tickerid
+string dataTicker = useBadj ? ticker.modify(ethTicker, backadjustment = backadjustment.on) : ethTicker
 [adjH, adjL, adjC] = request.security(dataTicker, timeframe.period, [high, low, close])
 max_bars_back(adjH, 5000)
 max_bars_back(adjL, 5000)
@@ -879,9 +893,11 @@ f_poolText(Engine e, int i) =>
 
 // is this the Nasdaq-100 futures family, and are the chart's own candles
 // back-adjusted (they differ from the adjusted series before the last roll)?
-bool isNQ = syminfo.root == "NQ" or syminfo.root == "MNQ"
+bool isNQ     = syminfo.root == "NQ" or syminfo.root == "MNQ"
+bool chartRth = useEth and syminfo.session == session.regular
 var bool chartRaw = false
-if useBadj and not chartRaw and math.abs(close - adjC) > syminfo.mintick * 0.5
+// (on an RTH chart its bars do not line up with ETH bars, so only compare on ETH)
+if useBadj and not chartRth and not chartRaw and math.abs(close - adjC) > syminfo.mintick * 0.5
     chartRaw := true
 
 if barstate.islast
@@ -967,7 +983,7 @@ if barstate.islast
     if showTable
         string tp = tablePos
         var table tb = table.new(tp == "Top right" ? position.top_right : tp == "Bottom right" ? position.bottom_right : tp == "Top left" ? position.top_left : position.bottom_left,
-             2, 10, bgcolor = color.new(chart.bg_color, 5), border_color = color.new(chart.fg_color, 85), border_width = 1,
+             2, 11, bgcolor = color.new(chart.bg_color, 5), border_color = color.new(chart.fg_color, 85), border_width = 1,
              frame_color = color.new(chart.fg_color, 70), frame_width = 1)
         string tfsOn  = ""
         string tfsOff = ""
@@ -976,7 +992,7 @@ if barstate.islast
                 tfsOn := tfsOn + (str.length(tfsOn) > 0 ? " " : "") + st.name
             else if st.sec < chartSec
                 tfsOff := tfsOff + (str.length(tfsOff) > 0 ? " " : "") + st.name
-        table.cell(tb, 0, 0, "NQ LIQUIDITY HEATMAP · ALL TIMEFRAMES", text_color = inkPri, text_size = size.small)
+        table.cell(tb, 0, 0, "NQ LIQUIDITY HEATMAP · ETH · ALL TIMEFRAMES", text_color = inkPri, text_size = size.small)
         table.merge_cells(tb, 0, 0, 1, 0)
         table.cell(tb, 0, 1, "Heat",          text_color = inkSec, text_halign = text.align_left, text_size = size.small)
         table.cell(tb, 1, 1, sawVol ? "volume traded on the swing bar" : "timeframes confirming (no volume feed)", text_color = inkPri, text_halign = text.align_right, text_size = size.small)
@@ -1000,10 +1016,13 @@ if barstate.islast
              (not useBadj ? "as charted (rolls not adjusted)" : chartRaw ? "back-adjusted — turn on B-ADJ so older candles line up" : "back-adjusted")
         table.cell(tb, 0, 9, "Contract",      text_color = inkSec, text_halign = text.align_left, text_size = size.small)
         table.cell(tb, 1, 9, rollTxt, text_color = chartRaw or not isNQ ? color.orange : inkPri, text_halign = text.align_right, text_size = size.small)
+        string ethTxt = not useEth ? "as charted" : chartRth ? "⚠ chart is on RTH — switch it to ETH" : "ETH · full Globex 18:00–17:00 ET"
+        table.cell(tb, 0, 10, "Session data",  text_color = inkSec, text_halign = text.align_left, text_size = size.small)
+        table.cell(tb, 1, 10, ethTxt, text_color = chartRth ? color.orange : inkPri, text_halign = text.align_right, text_size = size.small)
 
 // ─────────────────────────────────────────────────────────────
 // ALERTS
 // ─────────────────────────────────────────────────────────────
 if str.length(eng.sweepMsg) > 0
-    alert("NQ Liquidity Heatmap " + syminfo.ticker + ": " + eng.sweepMsg, alert.freq_once_per_bar_close)
+    alert("NQ ETH Liquidity Heatmap " + syminfo.ticker + ": " + eng.sweepMsg, alert.freq_once_per_bar_close)
 alertcondition(eng.majorSweeps > 0, "NQ liquidity pool swept", "{{ticker}}: a liquidity pool from the alert timeframe or higher was swept")
