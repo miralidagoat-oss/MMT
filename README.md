@@ -386,20 +386,50 @@ books, PDH/PDL mode, session books, merging, sweeps, alerts and the profile.
 Session runs use sessions on the hour, because 1H is the finest real data
 available.
 
-- 25 configurations: 1H/4H/D charts; swing settings 2/1 to 10/5; caps 1 to
-  20; every-bar mode on and off; RTH/overnight sessions; different chart start
-  points, including five (seven runs) where a higher-timeframe level was
-  taken before the chart's first bar; and a no-volume feed.
-- Checked on every bar (60,835 chart bars): all 8 Data Window series.
-  Checked on every sweep (15,136): the alert. Checked on the last bar: the
+- 29 configurations: 1H/3H/4H/D charts; swing settings 2/1 to 10/5; caps 1
+  to 20; every-bar mode on and off; RTH/overnight sessions; different chart
+  start points, including five (seven runs) where a higher-timeframe level was
+  taken before the chart's first bar; a 3H chart with a 4H source, so source
+  boundaries fall inside chart bars (sweeps judged on the real 1H bars); an
+  RTH-only symbol whose sessions follow each other with no bar in between;
+  and a no-volume feed.
+- Checked on every bar (64,765 chart bars): all 8 Data Window series.
+  Checked on every sweep (16,273): the alert. Checked on the last bar: the
   drawn profile.
-- **Result: 0 mismatches after warm-up in all 25.** "Warm-up" means only the
+- **Result: 0 mismatches after warm-up in all 29.** "Warm-up" means only the
   first, partial bar of the finest requested source above the chart (for
   example the first 4H bar of a 1H chart), which has no finer data to check
   it against. It resolves when that bar closes.
 
 Reproduce with `backtest/nq_liquidity_heatmap/verify.sh`. It installs PineTS
 and the data package into a temp dir; needs python3 and node ≥ 20.
+
+An adversarial audit then went over the whole script for things TradingView
+would reject or mis-run that PineTS cannot show. Five independent lenses
+looked for them: types and qualifiers, runtime limits, ETH/session
+semantics, repaint and realtime, and the API surface. Two skeptics each
+tried to refute every finding. 8 were confirmed and fixed:
+
+- **Inverted RTH check.** On CME futures TradingView names the full ETH
+  session "regular" (RTH is "us_regular"), so the RTH warning was inverted.
+- **Table merge on live updates.** Re-merging the table header on every
+  realtime update is a documented error.
+- **Misaligned timeframes (two fixes).** On misaligned timeframes, the bar
+  straddling a new snapshot was not checked for sweeps, and realtime
+  processed new snapshots one bar earlier than history.
+- **Non-standard charts.** Heikin Ashi/Renko charts would have fed synthetic
+  prices into the books.
+- **RTH chart series.** On an RTH chart, the chart-side series did not line
+  up with the chart's bars.
+- **Back-to-back sessions.** Session instances that follow each other with
+  no out-of-session bar never closed.
+- **TradingView rules from this repo's earlier MNQ scripts.** The shorttitle
+  must be at most 10 characters, and a timeframe set to "Chart" ("") must
+  never be sliced with `str.substring`.
+
+The two new fixtures above reproduce two of these on real data. The
+pre-audit commit fails them (2 and 888 series mismatches after warm-up), and
+the current script passes.
 
 Two PineTS 0.11 bugs turned up and were kept out of the indicator:
 
