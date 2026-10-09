@@ -11,6 +11,9 @@ the results in an on-chart dashboard.
   liquidity heatmap for Nasdaq-100 futures (NQ/MNQ) on Extended Trading
   Hours, built only from real OHLCV data
   ([section below](#nq-liquidity-heatmap--nasdaq-100-futures-eth))
+- **Combined:** `indicators/nq_liquidity_heatmap_terminus.pine` — the heatmap
+  and the TERMINUS reversal engine as one script
+  ([section below](#combined-script-heatmap--terminus))
 
 ## Audit findings (why v1's "backtest" was fiction)
 
@@ -464,3 +467,46 @@ What PineTS cannot exercise:
   prices. Turn on B-ADJ to line them up.
 - On an RTH chart, overnight sweeps are caught late (see ETH above). Use an
   ETH chart.
+
+## Combined script: heatmap + TERMINUS
+
+`indicators/nq_liquidity_heatmap_terminus.pine` (shows as **NQ Liq+TRM**) puts
+two indicators in one script: the NQ Liquidity Heatmap above and TERMINUS ·
+Price-Axis Survival Reversal Engine (`indicators/terminus_survival_reversal.pine`
+on `claude/friendly-mendel-0escsv`, latest version). Each part keeps its own
+inputs, math, drawings, table/dashboard, plots and alerts, and neither reads
+the other's values. "Indicators in this script" at the top of the settings
+turns either part off; a part that is off skips its work and draws nothing.
+
+What changed to make them share one script, and nothing else:
+
+- One `indicator()` declaration with both scripts' drawing limits. TERMINUS's
+  `max_bars_back = 500` is left out: it sizes the history buffer of every
+  series in the script, which here would keep 500 bars of the heatmap's
+  snapshot arrays from 11 `request.security` calls (the usual cause of
+  "Memory limits exceeded", per the Pine docs). Every history reference in
+  TERMINUS has a fixed, capped length that TradingView sizes automatically.
+- Settings groups are prefixed ① (heatmap) and ② (TERMINUS); both had an
+  "Alerts" group.
+- Names declared by both scripts are renamed in TERMINUS: `showTable` →
+  `showDash`, `ph`/`pl` → `stopPh`/`stopPl`, `tz` → `sessTzT`.
+- The 500-line limit is per script. TERMINUS draws at most 20 lines, so while
+  it is on the heatmap keeps 20 fewer swept-history lines (460 instead of 480,
+  minus its resting pools).
+
+Built by `backtest/combine_heatmap_terminus.py` from the two standalone files,
+with every edit an exact, asserted replacement.
+
+**Verification** (`backtest/nq_liquidity_heatmap/verify_combined.sh`): the
+combined script and each standalone script are run in PineTS on the same real
+data (EURUSD 1H and 4H, and the zero-volume variant). Results: 141 checks, 0
+mismatches. They cover:
+
+- With both parts on, every heatmap and TERMINUS plot, alert, label and box is
+  identical to its standalone script.
+- With one part switched off, the other's output is identical to running it
+  alone, and the part that is off produces nothing.
+
+A separate run with the swept-line cap raised checks that the line budget is
+kept. Not checked here: compiling on TradingView itself and real NQ data,
+neither of which is reachable from this environment.
