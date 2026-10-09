@@ -1,13 +1,13 @@
 # Tidewake — Project Status
 
-_Last updated: 2026-10-03 (44/44 tests passing; browser E2E passing for the self-hosted server and for the hosted web page with 4-player co-op)_
+_Last updated: 2026-10-09 (45/45 tests passing; browser E2E passing for the self-hosted server and for the hosted web page with 4-player co-op)_
 
 ## Build status
 | Check | Command | Result |
 |---|---|---|
 | Typecheck (strict) | `npm run typecheck` | ✅ clean |
 | Production client build | `npx vite build` | ✅ (≈1 MB JS, 300 KB gzip + 180 KB worker) |
-| Unit + integration + acceptance tests | `npm test` | ✅ 40 / 40 passing |
+| Unit + integration + acceptance tests | `npm test` | ✅ 45 / 45 passing |
 | Browser end-to-end (Chromium, SwiftShader WebGL) | `npx tsx tools/e2e-smoke.ts` | ✅ menu, single-player, all UI screens, mouse drag & drop, death screen, 2 browsers in multiplayer; no page or console errors |
 | Hosted web page build | `npm run build:web` | ✅ dist/web: page + 2 scripts, about 1.2 MB |
 | Hosted page E2E, 5 Chromium instances against the local platform stand-in | `npm run test:e2e:web` | ✅ host + 3 friends (list and code), movement sync, chat, 5th refused, leave and rejoin as the same survivor, world runs while the host is in the menu, cloud save, friends told when the host closes, export, cloud restore on a fresh browser; largest presence state 3.8 KB, none over the limit |
@@ -43,7 +43,7 @@ _Last updated: 2026-10-03 (44/44 tests passing; browser E2E passing for the self
 | UI | main/new/load/multiplayer/settings/pause/death/loading screens, HUD, inventory, crafting, stations, build menu, map, journal, chat, player list, controller navigation | e2e screenshots |
 | Settings | resolution presets, render scale, dynamic resolution, FPS cap, V-Sync, fullscreen, 5 quality presets and per-feature graphics options, audio buses, rebindable keys, gameplay options | e2e screenshot |
 | Audio | procedural SFX, ambience, music, spatial audio, underwater filter | manual (headless browser has no audio output) |
-| Graphics | custom sky with golden-hour horizon glow, self-shadowed cumulus clouds, PBR + PMREM, terrain splatting, caustics, ocean shader with Snell's window from below, instanced vegetation with wind, geometric blade grass with per-clump tint and edge fade, fractured mossy boulders, shader flames on torches and fires, varied castaway avatars, shadows, GTAO, bloom, god rays, grading, SMAA/FXAA/MSAA | visual QA screenshots (`tools/shot.ts`, including `animals` and a real dive for `underwater`) |
+| Graphics | custom sky with golden-hour horizon glow, self-shadowed cumulus clouds, PBR + PMREM, terrain splatting, caustics, ocean shader with planar reflections (Off / Half / Full resolution setting) and Snell's window from below, rain ripples, foam wakes behind boats and swimmers, rain-soaked glossy ground that dries afterwards, branching lightning bolts, a textured moon with halo, instanced vegetation with wind, geometric blade grass with per-clump tint and edge fade, fractured mossy boulders, shader flames on torches and fires, varied castaway avatars, vertex-animated animals (tails, fins, wings, legs), shadows, GTAO, bloom, god rays, grading, SMAA/FXAA/MSAA | visual QA screenshots (`tools/shot.ts`, including `animals` and a real dive for `underwater`) |
 
 ## Acceptance scenario (`tests/acceptance.test.ts`) — ✅ passing
 Four clients connect through the real protocol over a link with 60 ms lag, 30 ms

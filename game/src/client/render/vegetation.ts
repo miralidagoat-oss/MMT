@@ -76,6 +76,7 @@ export class VegetationSystem {
   instanceCount = 0;
   // grass
   private grass: THREE.InstancedMesh;
+  get grassMesh(): THREE.Object3D { return this.grass; }
   private grassCenter = new THREE.Vector3(1e9, 0, 1e9);
   grassDensity = 1;
 

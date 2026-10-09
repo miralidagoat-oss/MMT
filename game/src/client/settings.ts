@@ -22,6 +22,8 @@ export interface GraphicsSettings {
   vegetationDensity: number; // 0.25..1.5
   grassDensity: number; // 0..1.5
   waterQuality: 1 | 2 | 3;
+  /** planar water reflections: 0 off, 1 half resolution, 2 full resolution */
+  reflections: 0 | 1 | 2;
   ambientOcclusion: boolean;
   bloom: boolean;
   antiAliasing: AAMode;
@@ -84,11 +86,11 @@ export const DEFAULT_BINDS: Record<string, string[]> = {
 };
 
 const PRESETS: Record<Exclude<QualityPreset, 'custom'>, Partial<GraphicsSettings>> = {
-  low: { shadows: 1, viewDistance: 500, terrainDetail: 1, vegetationDensity: 0.4, grassDensity: 0, waterQuality: 1, ambientOcclusion: false, bloom: false, antiAliasing: 'fxaa', anisotropy: 1, postProcessing: true, godRays: false, renderScale: 0.85 },
-  medium: { shadows: 2, viewDistance: 800, terrainDetail: 2, vegetationDensity: 0.7, grassDensity: 0.4, waterQuality: 2, ambientOcclusion: false, bloom: true, antiAliasing: 'fxaa', anisotropy: 4, postProcessing: true, godRays: false, renderScale: 1 },
-  high: { shadows: 3, viewDistance: 1200, terrainDetail: 2, vegetationDensity: 1, grassDensity: 0.8, waterQuality: 3, ambientOcclusion: false, bloom: true, antiAliasing: 'smaa', anisotropy: 8, postProcessing: true, godRays: true, renderScale: 1 },
-  ultra: { shadows: 4, viewDistance: 1800, terrainDetail: 3, vegetationDensity: 1.2, grassDensity: 1.1, waterQuality: 3, ambientOcclusion: true, bloom: true, antiAliasing: 'smaa', anisotropy: 16, postProcessing: true, godRays: true, renderScale: 1 },
-  insane: { shadows: 4, viewDistance: 2600, terrainDetail: 3, vegetationDensity: 1.5, grassDensity: 1.5, waterQuality: 3, ambientOcclusion: true, bloom: true, antiAliasing: 'smaa', anisotropy: 16, postProcessing: true, godRays: true, renderScale: 1.25 },
+  low: { shadows: 1, viewDistance: 500, terrainDetail: 1, vegetationDensity: 0.4, grassDensity: 0, waterQuality: 1, reflections: 0, ambientOcclusion: false, bloom: false, antiAliasing: 'fxaa', anisotropy: 1, postProcessing: true, godRays: false, renderScale: 0.85 },
+  medium: { shadows: 2, viewDistance: 800, terrainDetail: 2, vegetationDensity: 0.7, grassDensity: 0.4, waterQuality: 2, reflections: 0, ambientOcclusion: false, bloom: true, antiAliasing: 'fxaa', anisotropy: 4, postProcessing: true, godRays: false, renderScale: 1 },
+  high: { shadows: 3, viewDistance: 1200, terrainDetail: 2, vegetationDensity: 1, grassDensity: 0.8, waterQuality: 3, reflections: 1, ambientOcclusion: false, bloom: true, antiAliasing: 'smaa', anisotropy: 8, postProcessing: true, godRays: true, renderScale: 1 },
+  ultra: { shadows: 4, viewDistance: 1800, terrainDetail: 3, vegetationDensity: 1.2, grassDensity: 1.1, waterQuality: 3, reflections: 2, ambientOcclusion: true, bloom: true, antiAliasing: 'smaa', anisotropy: 16, postProcessing: true, godRays: true, renderScale: 1 },
+  insane: { shadows: 4, viewDistance: 2600, terrainDetail: 3, vegetationDensity: 1.5, grassDensity: 1.5, waterQuality: 3, reflections: 2, ambientOcclusion: true, bloom: true, antiAliasing: 'smaa', anisotropy: 16, postProcessing: true, godRays: true, renderScale: 1.25 },
 };
 
 export const RESOLUTIONS = ['native', '1280x720', '1366x768', '1600x900', '1920x1080', '2560x1440', '3440x1440', '3840x2160'];
@@ -102,7 +104,7 @@ export function applyPreset(g: GraphicsSettings, p: Exclude<QualityPreset, 'cust
 export function defaultSettings(): Settings {
   const g: GraphicsSettings = {
     preset: 'high', resolution: 'native', renderScale: 1, fullscreen: false, fpsLimit: 0, vsync: true, showFps: false,
-    shadows: 3, viewDistance: 1200, terrainDetail: 2, vegetationDensity: 1, grassDensity: 0.8, waterQuality: 3, ambientOcclusion: false,
+    shadows: 3, viewDistance: 1200, terrainDetail: 2, vegetationDensity: 1, grassDensity: 0.8, waterQuality: 3, reflections: 1, ambientOcclusion: false,
     bloom: true, antiAliasing: 'smaa', anisotropy: 8, postProcessing: true, godRays: true, fov: 75, brightness: 1, dynamicResolution: false,
   };
   return {
@@ -126,6 +128,10 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY);
     if (!raw) return d;
     const s = JSON.parse(raw) as Partial<Settings>;
+    // settings saved by older versions: new graphics options follow the chosen preset
+    if (s.graphics && s.graphics.reflections === undefined && s.graphics.preset && s.graphics.preset !== 'custom') {
+      s.graphics.reflections = PRESETS[s.graphics.preset as Exclude<QualityPreset, 'custom'>]?.reflections ?? d.graphics.reflections;
+    }
     return {
       graphics: { ...d.graphics, ...s.graphics },
       audio: { ...d.audio, ...s.audio },

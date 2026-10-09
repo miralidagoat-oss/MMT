@@ -293,6 +293,7 @@ export class Menus {
       row('Vegetation density', slider(0.25, 1.5, 0.05, g.vegetationDensity, (v) => { g.vegetationDensity = v; changed(); }, (v) => `${Math.round(v * 100)}%`)),
       row('Grass density', slider(0, 1.5, 0.05, g.grassDensity, (v) => { g.grassDensity = v; changed(); }, (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`))),
       row('Water quality', select(['1', '2', '3'], String(g.waterQuality), (v) => { g.waterQuality = Number(v) as 1 | 2 | 3; changed(); }, (v) => ['', 'Low', 'Medium', 'High'][Number(v)]!), 'Takes effect on next world load'),
+      row('Water reflections', select(['0', '1', '2'], String(g.reflections), (v) => { g.reflections = Number(v) as 0 | 1 | 2; changed(); }, (v) => ['Off', 'Half resolution', 'Full resolution'][Number(v)]!), 'Islands, trees and boats mirrored in the sea'),
       row('Anti-aliasing', select(['off', 'fxaa', 'smaa', 'msaa'], g.antiAliasing, (v) => { g.antiAliasing = v as typeof g.antiAliasing; changed(); }, (v) => v.toUpperCase())),
       row('Ambient occlusion (GTAO)', check(g.ambientOcclusion, (v) => { g.ambientOcclusion = v; changed(); })),
       row('Bloom', check(g.bloom, (v) => { g.bloom = v; changed(); })),

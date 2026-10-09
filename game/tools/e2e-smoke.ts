@@ -37,6 +37,8 @@ async function main() {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl', '--autoplay-policy=no-user-gesture-required'],
   });
   const watch = (page: Page, tag: string) => {
+    // software WebGL renders a frame every few seconds at High settings: give screenshots room
+    page.setDefaultTimeout(120000);
     page.on('pageerror', (e) => errors.push(`[${tag}] pageerror: ${e.message}\n${e.stack ?? ''}`));
     page.on('console', (m) => {
       const t = m.text();

@@ -19,13 +19,19 @@ const PEAK = `(async()=>{ const gen=g.session.gen; let best={x:0,z:0,h:-1}; for 
 const SCENES: Record<string, Step[]> = {
   vista: [{ cmd: '/time 9.5' }, { eval: PEAK }, { wait: 2500 }, { yaw: 2.3, pitch: -0.12, wait: 3500 }],
   golden: [{ cmd: '/time 17.2' }, { eval: PEAK }, { wait: 2500 }, { yaw: -1.6, pitch: -0.08, wait: 3500 }],
-  animals: [{ cmd: '/time 10' }, { eval: 'g.yaw=0; g.pitch=-0.14' }, { wait: 600 }, { cmd: '/spawn boar 1' }, { cmd: '/spawn crab 2' }, { wait: 700 }, { eval: 'console.log("UW", JSON.stringify(g.session.viewPosition()), g.yaw, JSON.stringify(g.session.creatures().map(c=>[c.k,c.x|0,c.z|0,c.m])))' }],
+  animals: [{ cmd: '/time 10' }, { eval: 'g.yaw=0; g.pitch=-0.14' }, { wait: 600 }, { cmd: '/spawn crab 3' }, { cmd: '/spawn gull 2' }, { wait: 2500 }, { eval: 'console.log("UW", JSON.stringify(g.session.viewPosition()), g.yaw, JSON.stringify(g.session.creatures().map(c=>[c.k,c.x|0,c.z|0,c.m])))' }],
   day: [{ cmd: '/time 10' }, { yaw: 0.6, pitch: 0.02, wait: 2500 }],
   beach: [{ cmd: '/time 15' }, { yaw: 2.6, pitch: -0.08, wait: 2500 }],
   dusk: [{ cmd: '/time 18.3' }, { yaw: -1.4, pitch: 0.05, wait: 3000 }],
   night: [{ cmd: '/time 23' }, { cmd: '/give torch' }, { eval: 'g.session.me && g.act({a:"hotbar", index: g.session.me.inventory.slots.findIndex(s=>s&&s.id==="torch")})' }, { yaw: 0.5, pitch: -0.05, wait: 3000 }],
+  lightning: [{ cmd: '/time 21' }, { cmd: '/weather storm' }, { eval: 'g.yaw=2.6; g.pitch=0.08' }, { wait: 4000 }, { eval: 'g.session.weather.lightningAt = 1; ' }, { wait: 300 }, { eval: 'g.session.weather.lightningAt = 2; ' }, { wait: 90 }],
+  wake: [{ cmd: '/time 11' }, { cmd: '/give build_hammer' }, { cmd: '/give log 10' }, { cmd: '/give rope 8' }, { cmd: '/give stick 6' },
+    { eval: `(async()=>{ const s=g.session, gen=s.gen; const p=s.viewPosition(); for (let r=20;r<300;r+=4) for (let a=0;a<6.28;a+=0.12) { const x=p.x+Math.cos(a)*r, z=p.z+Math.sin(a)*r; if (gen.heightAt(x,z)<-4 && gen.heightAt(x-Math.sin(0)*30, z-Math.cos(0)*30)<-4) { await g.act({a:'chat',text:'/tp '+x.toFixed(1)+' '+z.toFixed(1)}); return; } } })()` },
+    { wait: 1500 },
+    { eval: `(async()=>{ const s=g.session; const p=s.viewPosition(); const r1 = await g.act({a:'build',structure:'log_raft',x:p.x,y:0,z:p.z-2.5,yaw:0}); await new Promise(r=>setTimeout(r,600)); const v=s.vehicles()[0]; const r2 = v ? await g.act({a:'board',id:v.id}) : null; console.log('UW build', JSON.stringify(r1), JSON.stringify(r2)); })()` },
+    { wait: 1500 }, { yaw: 0, pitch: -0.1 }, { hold: 'KeyW', holdMs: 16000 }, { yaw: 3.1416, pitch: -0.3, wait: 2500 }],
   storm: [{ cmd: '/time 14' }, { cmd: '/weather storm' }, { yaw: 2.6, pitch: 0.0, wait: 4000 }],
-  underwater: [{ cmd: '/time 12' }, { eval: `(async()=>{ const gen=g.session.gen; for (let r=60;r<400;r+=5) for (let a=0;a<6.28;a+=0.1) { const x=Math.cos(a)*r, z=Math.sin(a)*r, h=gen.heightAt(x,z); if (h<-5&&h>-8&&gen.heightAt(x,z+12)>-6) { await g.act({a:'chat',text:'/tp '+x.toFixed(1)+' '+z.toFixed(1)}); return; } } })()` }, { wait: 1500 }, { eval: 'g.yaw=0; g.pitch=-0.25' }, { hold: 'KeyC', holdMs: 14000 }, { eval: 'console.log("UW", g.session.pred.y.toFixed(2), g.session.pred.underwater)' }, { wait: 800 }],
+  underwater: [{ cmd: '/time 12' }, { eval: `(async()=>{ const gen=g.session.gen; for (let r=60;r<400;r+=5) for (let a=0;a<6.28;a+=0.1) { const x=Math.cos(a)*r, z=Math.sin(a)*r, h=gen.heightAt(x,z); if (h<-5&&h>-8&&gen.heightAt(x,z+12)>-6) { await g.act({a:'chat',text:'/tp '+x.toFixed(1)+' '+z.toFixed(1)}); return; } } })()` }, { wait: 1500 }, { yaw: 0, pitch: -0.25 }, { cmd: '/spawn fish 6' }, { cmd: '/spawn ray 1' }, { hold: 'KeyC', holdMs: 14000 }, { wait: 1500 }],
   fire: [{ cmd: '/time 20' }, { cmd: '/give stick 10' }, { cmd: '/give stone 10' }, { cmd: '/give log 4' }, { cmd: '/give torch' },
     { eval: `(async()=>{ const s=g.session; const p=s.viewPosition(); const fx=p.x-Math.sin(g.yaw)*2.5, fz=p.z-Math.cos(g.yaw)*2.5; await g.act({a:'build',structure:'campfire',x:fx,y:s.gen.heightAt(fx,fz),z:fz,yaw:0}); const st=Object.values(s.structures)[0]; if(!st) return; await g.act({a:'interact',kind:'structure',id:st.id,verb:'open'}); const li=s.me.inventory.slots.findIndex(x=>x&&x.id==='log'); await g.act({a:'move',from:{c:'inv',i:li},to:{c:'box',id:st.containerId,i:0}}); await g.act({a:'close_container'}); await g.act({a:'ignite',id:st.id}); })()` },
     { pitch: -0.25, wait: 4000 }],
@@ -47,6 +53,7 @@ async function main() {
   try {
     for (const name of list) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+      page.setDefaultTimeout(120000);
       page.on('pageerror', (e) => errors.push(`[${name}] ${e.message}`));
       page.on('console', (m) => { if (m.type() === 'error') errors.push(`[${name}] ${m.text()}`); if (m.text().startsWith('UW')) console.log(m.text()); });
       await page.goto(`http://localhost:${PORT}/?autostart=1&cheats=1&seed=4242`);

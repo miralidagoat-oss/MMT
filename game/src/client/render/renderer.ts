@@ -15,6 +15,10 @@ import { PostFX } from './post';
 import { ViewModel } from './viewmodel';
 import { structureParts } from './structure-models';
 import { setAnisotropy } from './textures';
+import { WaterReflection } from './reflection';
+import { LightningBolt } from './lightning';
+import { Wakes, type WakeSource } from './wakes';
+import { FLAG } from '../../shared/net/protocol';
 import { hourOf } from '../../shared/systems/weather';
 
 export interface FrameView {
@@ -60,6 +64,12 @@ export class WorldRenderer {
   private fpsFrames = 0;
   dynScale = 1;
   private menuOcean: OceanSystem | null = null;
+  reflection = new WaterReflection();
+  private bolt = new LightningBolt();
+  private wakes = new Wakes();
+  private wakeLast = new Map<string, { x: number; z: number; t: number; sp: number }>();
+  /** how soaked the ground looks (rain wets it, sun dries it) */
+  private wet = -1;
   private menuT = 0;
 
   constructor(public canvas: HTMLCanvasElement, settings: GraphicsSettings) {
@@ -83,7 +93,7 @@ export class WorldRenderer {
     this.fishingLine.visible = false;
     this.bobber = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshStandardMaterial({ color: 0xff3b2f, emissive: 0x220000 }));
     this.bobber.visible = false;
-    this.scene.add(this.fishingLine, this.bobber);
+    this.scene.add(this.fishingLine, this.bobber, this.bolt.mesh, this.wakes.mesh);
     this.applySettings(settings);
   }
 
@@ -104,6 +114,9 @@ export class WorldRenderer {
   disposeWorld() {
     for (const o of [this.terrain?.group, this.ocean?.mesh, this.vegetation?.group, this.entities?.group]) if (o) this.scene.remove(o);
     this.terrain = null; this.ocean = null; this.vegetation = null; this.entities = null;
+    this.wet = -1;
+    this.wakes.clear();
+    this.wakeLast.clear();
     this.renderer.renderLists.dispose();
   }
 
@@ -139,7 +152,7 @@ export class WorldRenderer {
     const scale = this.settings.renderScale * this.dynScale;
     w = Math.max(320, Math.round(w * scale));
     h = Math.max(180, Math.round(h * scale));
-    const key = `${w}x${h}|${this.settings.antiAliasing}|${this.settings.bloom}|${this.settings.ambientOcclusion}|${this.settings.postProcessing}`;
+    const key = `${w}x${h}|${this.settings.antiAliasing}|${this.settings.bloom}|${this.settings.ambientOcclusion}|${this.settings.postProcessing}|${this.settings.reflections}`;
     if (key === this.lastSize) return;
     const sizeOnly = this.lastSize && this.lastSize.split('|').slice(1).join('|') === key.split('|').slice(1).join('|');
     this.lastSize = key;
@@ -150,6 +163,7 @@ export class WorldRenderer {
     if (sizeOnly) this.post.setSize(w, h);
     else this.post.configure(this.settings, w, h);
     this.particles.setPixelScale(h);
+    this.reflection.setQuality(this.settings.reflections ?? 0, w, h);
     this.stats.renderW = w; this.stats.renderH = h;
   }
 
@@ -198,6 +212,35 @@ export class WorldRenderer {
     if (this.sky.envMap && u.envMap!.value !== this.sky.envMap) ocean.setEnv(this.sky.envMap);
   }
 
+  /** Foam trails behind boats and swimmers on the surface. */
+  private updateWakes(session: ClientSession, v: FrameView) {
+    const now = performance.now() / 1000;
+    const src: WakeSource[] = [];
+    const speedOf = (id: string, x: number, z: number) => {
+      const l = this.wakeLast.get(id);
+      let sp = 0;
+      if (l && now > l.t) sp = l.sp * 0.8 + (Math.hypot(x - l.x, z - l.z) / (now - l.t)) * 0.2;
+      this.wakeLast.set(id, { x, z, t: now, sp });
+      return sp;
+    };
+    for (const veh of session.vehicles()) {
+      const sp = Math.hypot(veh.vx, veh.vz);
+      if (sp > 0.4) src.push({ id: veh.id, x: veh.x, z: veh.z, speed: sp, width: veh.k === 'log_raft' ? 1.1 : 0.9 });
+    }
+    for (const p of session.remotePlayers()) {
+      if (!(p.f & FLAG.swim) || (p.f & FLAG.underwater) || p.v) continue;
+      const sp = speedOf(p.id, p.x, p.z);
+      if (sp > 0.5) src.push({ id: p.id, x: p.x, z: p.z, speed: sp * 1.6, width: 0.32 });
+    }
+    const me = session.pred, self = session.self;
+    if (self && (me.swimming || self.sw) && !(me.underwater || self.uw) && !self.vehicleId) {
+      const vp = session.viewPosition();
+      const sp = speedOf('me', vp.x, vp.z);
+      if (sp > 0.5) src.push({ id: 'me', x: vp.x, z: vp.z, speed: sp * 1.6, width: 0.32 });
+    }
+    this.wakes.update(now, v.time, src, (x, z) => session.waterLevel(x, z), this.sky.daylight);
+  }
+
   /** Main-menu backdrop: open ocean at golden hour with a slowly drifting camera. */
   renderMenu(dt: number) {
     this.resize();
@@ -239,8 +282,15 @@ export class WorldRenderer {
     const w = session.weather;
     const hour = hourOf({ time: v.time, dayOffset: session.dayOffset });
     // lightning flash envelope
-    if (w.lightningAt !== this.lastLightningAt && w.lightningAt > 0) { this.lastLightningAt = w.lightningAt; this.lightning = 1; }
+    if (w.lightningAt !== this.lastLightningAt && w.lightningAt > 0) {
+      const fresh = this.lastLightningAt !== 0;
+      this.lastLightningAt = w.lightningAt;
+      // a strike that happened before we joined is not replayed
+      this.lightning = fresh ? 1 : 0;
+      if (fresh && !v.underwater) this.bolt.strike(v.camPos, v.yaw, Math.random);
+    }
     this.lightning = Math.max(0, this.lightning - v.dt * 3.5);
+    this.bolt.update(this.lightning);
     const flash = this.lightning > 0 ? this.lightning * (0.6 + Math.random() * 0.4) : 0;
     this.sky.update({ hour, cloud: w.cloud, rain: w.rain, fog: w.fog, wind: w.wind, windDir: w.windDir, underwater: v.underwater, lightning: flash, time: v.time }, cam);
     this.sky.updateProbe(v.time);
@@ -251,6 +301,10 @@ export class WorldRenderer {
       tu.time.value = v.time;
       tu.sunDir.value.copy(this.sky.lightDir);
       tu.sunIntensity.value = this.sky.daylight * (1 - w.cloud * 0.6);
+      // joining a world mid-shower starts it wet; afterwards it soaks in ~40 s and dries over a few minutes
+      if (this.wet < 0) this.wet = Math.min(1, w.rain * 1.2);
+      this.wet = THREE.MathUtils.clamp(this.wet + (w.rain > 0.12 ? w.rain * v.dt / 40 : -v.dt * (0.15 + this.sky.daylight) / 300), 0, 1);
+      tu.rainWet.value = this.wet;
     }
     if (this.ocean) this.updateOcean(this.ocean, v.time, v.camPos, w, this.terrain!.heightCenter);
     this.vegetation?.setSun(this.sky.lightDir, this.sky.sunColor, this.sky.daylight * (1 - w.cloud * 0.75) * 0.9);
@@ -264,6 +318,7 @@ export class WorldRenderer {
       this.entities.update(v.dt, session, cam, { on: v.torch, pos: torchPos, radius: 11 });
     }
     this.particles.update(v.dt, v.camPos, w.rain, w.wind, w.windDir, v.underwater);
+    this.updateWakes(session, v);
     // fishing line
     const f = session.self?.fishing;
     if (f && this.viewmodel) {
@@ -283,7 +338,7 @@ export class WorldRenderer {
     g.underwater!.value = v.underwater ? 1 : 0;
     g.damage!.value = v.damageFlash;
     g.lowHealth!.value = v.lowHealth;
-    g.flash!.value = flash * 0.35;
+    g.flash!.value = flash * 0.16;
     g.cold!.value = v.cold;
     g.sleep!.value = v.sleep;
     const sunW = this.sky.sunDir.clone().multiplyScalar(5000).add(v.camPos).project(cam);
@@ -294,6 +349,16 @@ export class WorldRenderer {
 
     const t0 = performance.now();
     this.renderer.info.reset();
+    // mirrored pass for the water (skipped under water and when switched off)
+    if (this.ocean) {
+      const ou = this.ocean.material.uniforms;
+      if (!v.underwater && this.settings.reflections > 0) {
+        this.reflection.render(this.renderer, this.scene, cam, [this.ocean.mesh, this.menuOcean?.mesh, this.vegetation?.grassMesh, this.particles.group, this.viewmodel.root, this.fishingLine, this.bobber, this.ghost, this.highlight, this.wakes.mesh]);
+      } else this.reflection.valid = false;
+      ou.reflOn!.value = this.reflection.valid ? 1 : 0;
+      ou.tReflect!.value = this.reflection.rt.texture;
+      ou.reflMatrix!.value.copy(this.reflection.textureMatrix);
+    }
     this.post.render(v.dt);
     const info = this.renderer.info.render;
     this.stats.drawCalls = info.calls;

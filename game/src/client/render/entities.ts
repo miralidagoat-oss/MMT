@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three';
 import { makeFlameMaterial, flameGeometry } from './flame';
+import { creatureMaterial, type CreatureAnim } from './creature-anim';
 import type { ClientSession } from '../net/session';
 import type { WorldGen } from '../../shared/world/worldgen';
 import { STRUCTURES } from '../../shared/defs/structures';
@@ -31,7 +32,7 @@ export class EntityRenderer {
   private items = new Map<string, THREE.Mesh>();
   private containers = new Map<string, THREE.Mesh>();
   private players = new Map<string, PlayerView>();
-  private creatures = new Map<string, { mesh: THREE.Mesh; phase: number }>();
+  private creatures = new Map<string, { mesh: THREE.Mesh; phase: number; anim?: CreatureAnim }>();
   private vehicles = new Map<string, { group: THREE.Group; sail?: THREE.Mesh }>();
   private projectiles = new Map<string, THREE.Mesh>();
   private creatureGeo = new Map<string, THREE.BufferGeometry>();
@@ -298,16 +299,21 @@ export class EntityRenderer {
       if (!e) {
         let g = this.creatureGeo.get(c.k);
         if (!g) { g = creatureModel(c.k); this.creatureGeo.set(c.k, g); }
-        const mesh = new THREE.Mesh(g, this.propMat);
+        const anim = creatureMaterial(c.k);
+        const mesh = new THREE.Mesh(g, anim.mat);
         mesh.castShadow = true;
         mesh.userData.pick = { kind: 'creature', id: c.id } satisfies Pickable;
-        e = { mesh, phase: Math.random() * 10 };
+        e = { mesh, phase: Math.random() * 10, anim };
         this.creatures.set(c.id, e);
         this.group.add(mesh);
         this.pickables.push(mesh);
       }
       const m = e.mesh;
       e.phase += dt * (2 + c.sp * 3);
+      if (e.anim) {
+        e.anim.t.value = c.m === 'dead' ? 0 : e.phase;
+        e.anim.move.value = c.m === 'dead' ? 0 : Math.min(1, c.sp / (c.k === 'shark' ? 4 : c.k === 'boar' ? 3 : 1.5));
+      }
       m.position.set(c.x, c.y, c.z);
       m.rotation.set(0, c.yaw, 0);
       if (c.m === 'dead') {
@@ -318,14 +324,14 @@ export class EntityRenderer {
       switch (c.k) {
         case 'crab': m.position.y += Math.abs(Math.sin(e.phase * 3)) * 0.03 * Math.min(1, c.sp); m.rotation.y += Math.PI / 2; break;
         case 'boar': m.position.y += Math.abs(Math.sin(e.phase * 2)) * 0.06 * Math.min(1, c.sp / 2); m.rotation.x = Math.sin(e.phase * 2) * 0.04; break;
-        case 'snake': m.rotation.y += Math.sin(e.phase) * 0.25; break;
-        case 'fish': m.rotation.y += Math.sin(e.phase * 4) * 0.25; break;
-        case 'shark': m.rotation.y += Math.sin(e.phase * 1.2) * 0.12; m.rotation.z = Math.sin(e.phase * 0.6) * 0.08; break;
-        case 'ray': m.rotation.z = Math.sin(e.phase * 1.5) * 0.15; break;
+        case 'snake': m.rotation.y += Math.sin(e.phase) * 0.08; break;
+        case 'fish': m.rotation.y += Math.sin(e.phase * 4) * 0.06; break;
+        case 'shark': m.rotation.y += Math.sin(e.phase * 1.2) * 0.04; m.rotation.z = Math.sin(e.phase * 0.6) * 0.05; break;
+        case 'ray': m.rotation.z = Math.sin(e.phase * 1.5) * 0.05; break;
         case 'gull': m.position.y += Math.sin(e.phase) * 0.3; m.rotation.z = Math.sin(e.phase * 0.5) * 0.3; break;
       }
     }
-    for (const [id, e] of this.creatures) if (!cs.has(id)) { this.removeObj(e.mesh); this.creatures.delete(id); }
+    for (const [id, e] of this.creatures) if (!cs.has(id)) { this.removeObj(e.mesh); e.anim?.mat.dispose(); this.creatures.delete(id); }
 
     // vehicles
     const vs = new Set<string>();

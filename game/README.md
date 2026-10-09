@@ -100,7 +100,8 @@ Gamepads are supported in game and in menus.
 Quality presets (Low → Insane), internal resolution presets (720p to 4K or native),
 render scale (50–200%, supersampling above 100%), dynamic resolution, FPS cap (30 to
 240 or unlimited), V-Sync, fullscreen, FOV, brightness, shadow quality, view distance,
-terrain detail, vegetation and grass density, water quality, anti-aliasing
+terrain detail, vegetation and grass density, water quality, water reflections
+(off, half or full resolution; on by default from High), anti-aliasing
 (FXAA/SMAA/MSAA), GTAO ambient occlusion, bloom, god rays, anisotropic filtering, and
 an FPS counter.
 

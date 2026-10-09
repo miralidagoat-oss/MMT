@@ -69,7 +69,7 @@ const SKY_FRAG = `
     col += sunColor * (disk * 14.0 + pow(sd, 900.0) * 3.0 * step(0.0, sunSize)) * (1.0 - overcast * 0.92) * step(-0.04, sunDir.y);
     // moon glow at night
     float md = max(dot(d, moonDir), 0.0);
-    col += vec3(0.55, 0.62, 0.8) * pow(md, 200.0) * 0.25 * moonGlow * night;
+    col += vec3(0.55, 0.62, 0.8) * (pow(md, 900.0) * 0.5 + pow(md, 90.0) * 0.14 + pow(md, 12.0) * 0.025) * moonGlow * night * (1.0 - overcast * 0.8);
     // overcast flattens everything toward grey
     float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
     col = mix(col, vec3(lum) * vec3(0.95, 0.97, 1.0), overcast * 0.75);
@@ -152,7 +152,23 @@ export class SkySystem {
     this.stars.renderOrder = -9;
     scene.add(this.stars);
 
-    this.moon = new THREE.Mesh(new THREE.SphereGeometry(55, 24, 16), new THREE.MeshBasicMaterial({ color: 0xdfe6f0, fog: false }));
+    // the moon: maria and craters from layered noise, darker towards the limb
+    this.moon = new THREE.Mesh(new THREE.SphereGeometry(55, 32, 24), new THREE.ShaderMaterial({
+      uniforms: { brightness: { value: 1 }, tNoise: { value: textures().cloudNoise } },
+      vertexShader: `varying vec3 vN; varying vec3 vP; void main(){ vN = normalize(normalMatrix * normal); vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform float brightness; uniform sampler2D tNoise; varying vec3 vN; varying vec3 vP;
+        void main(){
+          vec3 p = normalize(vP);
+          vec2 uv = vec2(atan(p.z, p.x) * 0.159 + 0.5, p.y * 0.5 + 0.5);
+          float maria = smoothstep(0.45, 0.62, texture2D(tNoise, uv * vec2(1.0, 0.7)).r);
+          float craters = texture2D(tNoise, uv * 3.0 + 0.2).g;
+          float limb = pow(max(vN.z, 0.0), 0.35);
+          vec3 col = mix(vec3(0.92, 0.93, 0.95), vec3(0.55, 0.57, 0.62), maria * 0.75);
+          col *= 0.86 + craters * 0.22;
+          gl_FragColor = vec4(col * limb * brightness, 1.0);
+        }`,
+      fog: false,
+    }));
     this.moon.renderOrder = -8;
     scene.add(this.moon);
 
@@ -253,7 +269,7 @@ export class SkySystem {
     const grey = new THREE.Color(0.32, 0.34, 0.37).multiplyScalar(0.12 + 0.88 * Math.max(0, Math.min(1, elev * 3 + 0.3)));
     this.zenithColor.lerp(grey, overcast * 0.8);
     this.horizonColor.lerp(grey.clone().multiplyScalar(1.25), overcast * 0.75);
-    if (e.lightning > 0) { this.zenithColor.addScalar(e.lightning * 0.5); this.horizonColor.addScalar(e.lightning * 0.6); }
+    if (e.lightning > 0) { this.zenithColor.addScalar(e.lightning * 0.28); this.horizonColor.addScalar(e.lightning * 0.35); }
 
     for (const m of [this.skyMat, this.probeMat]) {
       const u = m.uniforms;
@@ -275,7 +291,7 @@ export class SkySystem {
       ? (0.2 + 3.1 * THREE.MathUtils.smoothstep(elev, -0.03, 0.3)) * (1 - overcast * 0.7)
       : 0.32 * (1 - overcast * 0.6);
     this.sun.color.copy(sunUp ? this.sunColor : moonCol);
-    this.sun.intensity = sunI + e.lightning * 6;
+    this.sun.intensity = sunI + e.lightning * 2.6;
     // snap shadow camera to texel grid to avoid shimmering
     const texel = (this.sun.shadow.camera.right * 2) / this.shadowSize;
     const cx = Math.round(camPos.x / texel) * texel, cz = Math.round(camPos.z / texel) * texel;
@@ -288,7 +304,7 @@ export class SkySystem {
     const ambNight = new THREE.Color(0.1, 0.13, 0.24);
     this.hemi.color.copy(ambSky).lerp(ambNight, nightK);
     this.hemi.groundColor.setRGB(0.28, 0.24, 0.18).multiplyScalar(0.25 + day * 0.75);
-    this.hemi.intensity = 0.25 + day * 0.3 + nightK * 0.35 + e.lightning * 2;
+    this.hemi.intensity = 0.25 + day * 0.3 + nightK * 0.35 + e.lightning * 0.9;
 
     // stars & moon
     const starsVis = THREE.MathUtils.smoothstep(-elev, 0.06, 0.25) * (1 - overcast);
@@ -297,7 +313,7 @@ export class SkySystem {
     sm.uniforms.time!.value = e.time;
     this.stars.position.copy(camPos);
     this.moon.position.copy(camPos).addScaledVector(this.moonDir, 2800);
-    (this.moon.material as THREE.MeshBasicMaterial).color.setScalar((0.35 + nightK * 1.1) * (1 - overcast * 0.7));
+    (this.moon.material as THREE.ShaderMaterial).uniforms.brightness!.value = (0.35 + nightK * 1.1) * (1 - overcast * 0.7);
     this.moon.visible = elev < 0.15;
     this.sky.position.copy(camPos);
     this.clouds.position.copy(camPos);

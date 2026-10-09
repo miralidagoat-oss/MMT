@@ -31,9 +31,8 @@ pass their acceptance criteria (see PROJECT_STATUS.md).
       `audio/audio.ts` → `buffers`).
 - [ ] Skinned character models and animation blending (current avatars use
       procedural limb animation).
-- [ ] Screen-space reflections or planar reflections on calm water (Ultra/Insane).
 - [ ] Volumetric clouds; currently a 2-layer animated cloud dome.
-- [ ] Footprints in sand, wet-surface rain ripples, wake trails behind boats.
+- [ ] Footprints in sand.
 - [ ] Localisation (all UI strings are English and inline).
 
 ## Engineering

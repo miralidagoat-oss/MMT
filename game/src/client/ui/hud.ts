@@ -164,7 +164,7 @@ export class Hud {
     this.compass.classList.toggle('hidden', !view.hasCompass);
     if (view.hasCompass) this.renderCompass(session, view.yaw);
     const icon = view.weather === 'storm' ? '⛈' : view.weather === 'rain' ? '🌧' : view.weather === 'cloudy' ? '☁' : view.weather === 'fog' ? '🌫' : view.hour > 6 && view.hour < 19 ? '☀' : '🌙';
-    const clockHtml = `<b>${fmtTime(view.hour)}</b> ${icon}<br>Day ${view.day} · ${view.temp.toFixed(0)}°C${this.settings.gameplay.showCoords || view.hasCompass ? `<br>${view.coords.x.toFixed(0)}, ${view.coords.z.toFixed(0)}` : ''}${this.settings.graphics.showFps ? `<br>${view.fps} FPS` : ''}`;
+    const clockHtml = `<b>${fmtTime(view.hour)}</b> ${icon}<br>Day ${view.day} · feels ${view.temp.toFixed(0)}°C${this.settings.gameplay.showCoords || view.hasCompass ? `<br>${view.coords.x.toFixed(0)}, ${view.coords.z.toFixed(0)}` : ''}${this.settings.graphics.showFps ? `<br>${view.fps} FPS` : ''}`;
     if (clockHtml !== this.clockHtml) { this.clockHtml = clockHtml; this.clock.innerHTML = clockHtml; }
     this.crosshair.classList.toggle('hidden', !this.settings.gameplay.crosshair);
     // objective

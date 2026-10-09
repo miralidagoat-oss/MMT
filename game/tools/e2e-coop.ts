@@ -29,6 +29,7 @@ async function player(name: string, user: string): Promise<{ browser: Browser; p
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
   });
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  page.setDefaultTimeout(120000);
   page.on('pageerror', (e) => errors.push(`[${name}] pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error' && !/favicon|GPU stall|CONTEXT_LOST|Autoplay/i.test(m.text())) errors.push(`[${name}] console.error: ${m.text()}`); if (process.env.VERBOSE) console.log(`[${name}] ${m.text()}`); });
   await page.addInitScript(([settings, nm]) => {

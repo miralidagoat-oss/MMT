@@ -18,6 +18,8 @@ export interface TerrainUniforms {
   nearRadius: { value: number };
   camPos: { value: THREE.Vector3 };
   waterTint: { value: THREE.Color };
+  /** 0 dry .. 1 soaked: rises while it rains, dries slowly afterwards */
+  rainWet: { value: number };
 }
 
 export function makeTerrainMaterial(u: TerrainUniforms, far: boolean): THREE.MeshStandardMaterial {
@@ -34,7 +36,7 @@ export function makeTerrainMaterial(u: TerrainUniforms, far: boolean): THREE.Mes
       .replace('#include <common>', `#include <common>
         varying vec3 vWPos; varying vec3 vWNormal;
         uniform sampler2D tSand, tGrass, tRock, tDirt, tNoise, tNorm;
-        uniform float time, sunIntensity, nearRadius; uniform vec3 sunDir, camPos, waterTint;
+        uniform float time, sunIntensity, nearRadius, rainWet; uniform vec3 sunDir, camPos, waterTint;
         float caustic(vec2 p, float t){
           vec2 q = p*0.35;
           float c = 0.0;
@@ -79,6 +81,10 @@ export function makeTerrainMaterial(u: TerrainUniforms, far: boolean): THREE.Mes
         }
         diffuseColor.rgb = col;
         float wetRough = mix(0.92, 0.35, wet * step(-0.2, h));
+        // rain soaks everything above the tide line: darker, glossier, rock least of all
+        float soak = rainWet * step(-0.2, h) * (1.0 - rockW * 0.45);
+        diffuseColor.rgb *= mix(1.0, 0.66 + 0.12 * (1.0 - sandW), soak);
+        wetRough = mix(wetRough, 0.32 + 0.2 * (1.0 - sandW), soak);
       `)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = wetRough;');
   };
@@ -141,7 +147,7 @@ export class TerrainSystem {
   group = new THREE.Group();
   uniforms: TerrainUniforms = {
     time: { value: 0 }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunIntensity: { value: 1 }, nearRadius: { value: 300 },
-    camPos: { value: new THREE.Vector3() }, waterTint: { value: new THREE.Color(0.05, 0.3, 0.33) },
+    camPos: { value: new THREE.Vector3() }, waterTint: { value: new THREE.Color(0.05, 0.3, 0.33) }, rainWet: { value: 0 },
   };
   private nearMat = makeTerrainMaterial(this.uniforms, false);
   private farMat = makeTerrainMaterial(this.uniforms, true);

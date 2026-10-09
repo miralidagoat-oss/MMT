@@ -116,7 +116,7 @@ export const AMBIENT = {
   waterTempDelta: -6,
   wetTempDelta: -6,
   rainTempDelta: -4,
-  stormTempDelta: -8,
+  stormTempDelta: -6,
   windChillPerMs: 0.35,
   shadeTempDelta: -3,
   shelterTempDelta: 4,

@@ -75,6 +75,7 @@ export class OceanSystem {
         deepColor: { value: new THREE.Color(0.01, 0.09, 0.16) }, shallowColor: { value: new THREE.Color(0.07, 0.55, 0.55) },
         daylight: { value: 1 }, rain: { value: 0 }, detail: { value: quality },
         camPos: { value: new THREE.Vector3() },
+        tReflect: { value: null }, reflMatrix: { value: new THREE.Matrix4() }, reflOn: { value: 0 },
       }]),
       vertexShader: `
         uniform float time, amp, windDir, heightSpan;
@@ -103,12 +104,24 @@ export class OceanSystem {
         uniform vec2 heightCenter;
         uniform sampler2D tNormal, tFoam, tHeight;
         uniform sampler2D envMap;
+        uniform sampler2D tReflect; uniform mat4 reflMatrix; uniform float reflOn;
         uniform vec3 sunDir, sunColor, skyColor, horizonColor, deepColor, shallowColor, camPos;
         varying vec3 vWPos; varying vec2 vGrad; varying float vH; varying float vDepth;
         #include <common>
         #include <cube_uv_reflection_fragment>
         #include <fog_pars_fragment>
         float terrainH(vec2 p){ vec2 uv = (p - heightCenter)/heightSpan + 0.5; if (uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0) return -40.0; return texture2D(tHeight, uv).r; }
+        // expanding rings where raindrops hit: returns a normal offset
+        vec2 ripple(vec2 p, float t){
+          vec2 cell = floor(p); vec2 f = fract(p) - 0.5;
+          float hh = fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.5453);
+          vec2 off = (vec2(fract(hh * 13.7), fract(hh * 7.3)) - 0.5) * 0.45;
+          float ph = fract(t * 0.85 + hh);
+          vec2 d = f - off; float r = length(d);
+          float ring = 0.5 * ph;
+          float w = sin((r - ring) * 42.0) * (1.0 - ph) * smoothstep(ring + 0.07, ring, r) * smoothstep(0.0, 0.05, r);
+          return d / max(r, 1e-3) * w;
+        }
         vec3 skyRefl(vec3 r){
           ${'#ifdef ENVMAP_TYPE_CUBE_UV'}
           if (hasEnv > 0.5) return textureCubeUV(envMap, r, 0.06).rgb;
@@ -126,6 +139,10 @@ export class OceanSystem {
           vec3 n2 = texture2D(tNormal, vWPos.xz*0.11 - wdir.yx*time*0.03).xzy*2.0-1.0;
           vec3 n3 = texture2D(tNormal, vWPos.xz*0.6 + vec2(time*0.07, -time*0.05)).xzy*2.0-1.0;
           vec3 dn = (n1*0.6 + n2*0.4 + n3*0.35*rain) * (0.35 + amp*0.25) * detailFade;
+          if (rain > 0.02 && dist < 45.0) {
+            vec2 rp = (ripple(vWPos.xz * 1.7, time) + ripple(vWPos.xz * 1.7 + 17.3, time + 0.43)) * rain * (1.0 - dist / 45.0);
+            dn.xz += rp * 0.5;
+          }
           N = normalize(N + vec3(dn.x, 0.0, dn.z));
           bool under = !gl_FrontFacing;
           if (under) N = -N;
@@ -136,6 +153,17 @@ export class OceanSystem {
           if (!under) {
             vec3 R = reflect(-V, N); R.y = abs(R.y);
             vec3 refl = skyRefl(R);
+            if (reflOn > 0.5) {
+              // planar reflection of islands, trees, boats and the sky, rippled by the waves
+              vec4 rc = reflMatrix * vec4(vWPos.x, 0.0, vWPos.z, 1.0);
+              vec2 ruv = rc.xy / rc.w;
+              float near = 1.0 / (1.0 + dist * 0.015);
+              ruv += (dn.xz * 0.07 + vGrad * 0.035) * (0.35 + 0.65 * near);
+              vec3 planar = texture2D(tReflect, clamp(ruv, vec2(0.002), vec2(0.998))).rgb;
+              // fade to the probe at the frame edges where the mirror has no data
+              float edge = smoothstep(0.0, 0.04, ruv.x) * smoothstep(1.0, 0.96, ruv.x) * smoothstep(0.0, 0.04, ruv.y) * smoothstep(1.0, 0.96, ruv.y);
+              refl = mix(refl, planar, edge * reflOn);
+            }
             // water body: absorption by depth, shallows show the sand
             float absorb = 1.0 - exp(-depth * 0.16);
             vec3 body = mix(shallowColor * (0.6 + 0.4*daylight), deepColor * (0.3 + 0.7*daylight), absorb);
