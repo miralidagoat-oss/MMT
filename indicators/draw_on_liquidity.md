@@ -67,7 +67,9 @@ default weights 30 / 20 / 30 / 20.
 - **Proximity P** — `1 − (d / MaxATR)^1.5`, where *d* is the ATR-normalised
   distance from the close to the draw point; 0 beyond Max ATR Distance.
 - **Freshness F** — `0.5^(age / half-life)`, age in execution-TF bars since
-  the level formed or last flipped / was reinforced (default half-life 48).
+  the level was detected or last flipped / reinforced (default half-life 48).
+  Ages, Max Level Age and the PoT horizon count real execution bars, so
+  overnight, weekend and holiday gaps don't count as elapsed time.
 - **Confluence C** — half anchor overlap, half structural bias.
   Anchors within ±0.25 ATR of the level: PDH/PDL (1.0 each), PWH/PWL (1.0),
   HTF swing high/low (0.8), PD and HTF equilibria (0.6), daily, weekly,
@@ -126,35 +128,35 @@ Each newly selected DOL, graded touched / not touched:
 
 | score bucket | EURUSD n | EURUSD touched | GOOG n | GOOG touched |
 |---|---|---|---|---|
-| 50–60 | 58 | 57% | 31 | 45% |
-| 60–70 | 227 | 64% | 153 | 60% |
-| ≥ 70 | 480 | 74% | 408 | 71% |
-| all | 780 | **69%** | 599 | **66%** |
-| *random eligible level, same moments* | | *42%* | | *41%* |
-| *nearest eligible level, same moments* | | *79%* | | *74%* |
+| 50–60 | 44 | 59% | 24 | 54% |
+| 60–70 | 190 | 71% | 135 | 65% |
+| ≥ 70 | 523 | 74% | 454 | 75% |
+| all | 766 | **72%** | 617 | **72%** |
+| *random eligible level, same moments* | | *42%* | | *45%* |
+| *nearest eligible level, same moments* | | *82%* | | *78%* |
 
-Every eligible level, sampled every 5 bars (EURUSD n = 8,285; GOOG n = 3,934):
+Every eligible level, sampled every 5 bars (EURUSD n = 8,689; GOOG n = 4,159):
 
 | score bucket | < 40 | 40–50 | 50–60 | 60–70 | ≥ 70 | AUC |
 |---|---|---|---|---|---|---|
-| EURUSD touched | 21% | 31% | 44% | 55% | 64% | 0.68 |
-| GOOG touched | 20% | 30% | 43% | 52% | 67% | 0.69 |
+| EURUSD touched | 19% | 30% | 42% | 56% | 62% | 0.68 |
+| GOOG touched | 23% | 34% | 48% | 57% | 73% | 0.69 |
 
 What this shows:
 
 - **The score is monotonic and roughly calibrated.** Higher score means a
   higher touch rate on both datasets, and a selected DOL labelled
-  "PoT 70%+" was touched 71–74% of the time.
-- **Proximity carries most of the touch signal** (AUC 0.77 on its own). The
+  "PoT 70%+" was touched 74–75% of the time.
+- **Proximity carries most of the touch signal** (AUC 0.77–0.78 on its own). The
   nearest level is touched more often than the DOL — expected, since the DOL
   deliberately trades some touch probability for structure, freshness and
   confluence. The DOL is touched far more often than a random eligible level.
-- **The other pillars are market-dependent.** Holding distance fixed,
-  freshness added +3 points of touch rate on EURUSD but −7 on GOOG;
-  confluence added −1 on EURUSD and +4 on GOOG; density added ~0 on both.
-  They stay at the described weights; tune them per market rather than
-  trusting these defaults universally.
-- Raising hysteresis from 3 to 8 cut target changes by 22% (1,009 → 783 on
+- **The other pillars are market-dependent.** Holding distance fixed, none
+  of them moved touch rate consistently: freshness −2 points (EURUSD) / −4
+  (GOOG), confluence −2 / +6, density +1 / −3. They stay at the described
+  weights; tune them per market rather than trusting these defaults
+  universally.
+- Raising hysteresis from 3 to 8 cut target changes by 23% (998 → 768 on
   EURUSD) with no loss of touch rate, so 8 is the default.
 
 Reproduce:

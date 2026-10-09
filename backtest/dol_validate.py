@@ -236,6 +236,7 @@ class Level:
     eligible: bool = False
     score: float = 0.0
     parts: tuple = (0.0, 0.0, 0.0, 0.0)
+    b_active: int = 0  # exec-bar clock at birth / flip / reinforcement
 
 
 def target(lv, p):
@@ -261,7 +262,6 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
     rng = random.Random(seed)
     t, o, h, l, c, v = bars
     n = len(t)
-    exec_sec = exec_min * 60
 
     # execution TF (== chart TF): the indicator's local path, off = 0
     a = atr(h, l, c, p["atr_len"])
@@ -360,6 +360,11 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
             continue
         e_close = c[i]
         arm_exec = t[i] + 1
+        eb = i + 1          # execBars: real execution bars, gaps don't count
+        dol_hit = False
+
+        prev_dol = dol_id
+        forced = False
 
         # 1) execution-TF close state machine
         for j in range(len(pool) - 1, -1, -1):
@@ -390,6 +395,10 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
                 elif inside:
                     lv.inside += 1
                     kill = lv.inside > p["ifvg_max_in"]
+            if (kill or flip) and lv.id == dol_id and not lv.mitigated and t[i] >= lv.arm:
+                dol_hit = dol_hit or touched(lv.above, False, target(lv, p), h[i], l[i])
+                dol_id = -1
+                forced = True
             if kill:
                 pool.pop(j)
             elif flip:
@@ -398,12 +407,13 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
                 lv.mitigated = False
                 lv.inside = 0
                 lv.t_active = t[i]
+                lv.b_active = eb
                 lv.arm = arm_exec
 
         # 2) new execution-TF zones (same detection as f_execPack, off = 0)
         def add_zone(kind, above, top, bot, tb, cz, ez, ind):
             nonlocal next_id
-            pool.append(Level(next_id, kind, above, top, bot, tb, tb, arm_exec, cz, float(ez), ind, rvol[i]))
+            pool.append(Level(next_id, kind, above, top, bot, tb, tb, arm_exec, cz, float(ez), ind, rvol[i], b_active=eb))
             next_id += 1
 
         for kind, above, top, bot, tb, cz, ez, ind in exec_events[i]:
@@ -423,15 +433,15 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
                 if hit is not None:
                     hit.eq += 1.0
                     hit.t_active = max(hit.t_active, pk["ptime"])
+                    hit.b_active = eb
                     hit.coil = max(hit.coil, pk["coil"])
                     hit.induce = hit.induce or pind
                 else:
                     pool.append(Level(next_id, kind, above, price, price, pk["ptime"], pk["ptime"], t[i],
-                                      pk["coil"], float(peq), pind, pk["rv"]))
+                                      pk["coil"], float(peq), pind, pk["rv"], b_active=eb))
                     next_id += 1
 
         # 4) touches, purge, score
-        dol_hit = False
         for j in range(len(pool) - 1, -1, -1):
             lv = pool[j]
             kill = False
@@ -444,20 +454,20 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
                     if not is_zone:
                         kill = True
             if not kill:
-                age = (t[i] - lv.t_active) / exec_sec
+                age = eb - lv.b_active
                 dist_abs = abs(target(lv, p) - c[i]) / atr_e
                 kill = age > p["max_age"] or dist_abs > p["max_atr_dist"] * p["purge_mult"]
             if kill:
                 pool.pop(j)
             else:
-                score_level(lv, p, c[i], t[i], atr_e, exec_sec, anchors, h_bias, s_bias)
+                score_level(lv, p, c[i], eb, atr_e, anchors, h_bias, s_bias)
 
         # 5) grade probes
         for key, plist in probes.items():
             keep = []
             for pr in plist:
                 hit = touched(pr[1], pr[2], pr[0], h[i], l[i])
-                if hit or t[i] >= pr[4]:
+                if hit or eb >= pr[4]:
                     stats[key][pr[3]][0] += 1
                     stats[key][pr[3]][1] += hit
                 else:
@@ -466,7 +476,7 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
         still = []
         for pr in pop_open:
             hit = touched(pr[1], pr[2], pr[0], h[i], l[i])
-            if hit or t[i] >= pr[4]:
+            if hit or eb >= pr[4]:
                 pop.append((pr[3], pr[5], hit))
             else:
                 still.append(pr)
@@ -481,17 +491,17 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
             pick = cur
         new_id = pick.id if pick else -1
         if new_id != dol_id:
-            if dol_id >= 0:
+            if prev_dol >= 0:
                 if dol_hit:
                     reasons["delivered"] += 1
-                elif cur is None:
+                elif cur is None or forced:
                     reasons["invalidated"] += 1   # flipped, purged, evicted or fell below eligibility
                 else:
                     reasons["overtaken"] += 1
             dol_id = new_id
             if pick is not None:
                 switches += 1
-                deadline = t[i] + p["horizon"] * exec_sec
+                deadline = eb + p["horizon"]
                 tp = target(pick, p)
                 probes["dol"].append((tp, pick.above, pick.kind not in ZONES, bucket(pick.score), deadline))
                 dist_log.append(abs(tp - c[i]) / atr_e)
@@ -502,7 +512,7 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
         if i % 5 == 0:
             for x in elig:
                 pop_open.append((target(x, p), x.above, x.kind not in ZONES, x.score,
-                                 t[i] + p["horizon"] * exec_sec, x.parts))
+                                 eb + p["horizon"], x.parts))
         while len(pool) > p["max_pool"]:
             cands = [(x.score if not x.mitigated else -1.0, x.t_active, q)
                      for q, x in enumerate(pool) if x.id != dol_id]
@@ -512,11 +522,11 @@ def run(bars, exec_min=60, stf_min=240, htf_min=1440, p=None, seed=7):
     return dict(stats=stats, pop=pop, switches=switches, dist=dist_log, bars=n, reasons=reasons)
 
 
-def score_level(lv, p, close, now, atr_e, exec_sec, anchors, h_bias, s_bias):
+def score_level(lv, p, close, eb, atr_e, anchors, h_bias, s_bias):
     tp = target(lv, p)
     dist = ((tp - close) if lv.above else (close - tp)) / atr_e
     in_rng = 0 <= dist <= p["max_atr_dist"]
-    age = max(0.0, (now - lv.t_active) / exec_sec)
+    age = max(0.0, eb - lv.b_active)
     prox = 1.0 - (dist / p["max_atr_dist"]) ** 1.5 if in_rng else 0.0
     fresh = 0.5 ** (age / p["half_life"])
     tol = p["conf_tol"] * atr_e

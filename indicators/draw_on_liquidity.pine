@@ -150,7 +150,6 @@ int  execOff     = execLocal ? 0 : 1
 int  stfOff      = timeframe.in_seconds(stfTF) == chartSec ? 0 : 1
 int  htfOff      = timeframe.in_seconds(htfTF) == chartSec ? 0 : 1
 int  volOff      = timeframe.in_seconds(volTF) == chartSec ? 0 : 1
-int  execMs      = timeframe.in_seconds(execTF) * 1000
 int  extMs       = extBars * chartSec * 1000
 bool zoneNear    = zoneTgtIn == ZONE_NEAR
 float wSum       = wProx + wFresh + wConf + wDens
@@ -409,6 +408,12 @@ float rvol1h = request.security(syminfo.tickerid, volTF, f_rvol(volOff), lookahe
 bool execEvent = not na(eTime) and (execLocal or eTime != nz(eTime[1], -1))
 bool stfEvent  = not na(sTime) and (stfOff == 0 or sTime != nz(sTime[1], -1))
 
+// execution-TF bar clock: ages and the PoT horizon count real exec bars, so
+// overnight, weekend and holiday gaps never count as elapsed bars
+var int execBars = 0
+if execEvent
+    execBars += 1
+
 // NY midnight and 09:30 opens (chart bars, exchange-agnostic)
 int  nyDay    = dayofmonth(time, "America/New_York")
 int  nyMin    = hour(time, "America/New_York") * 60 + minute(time, "America/New_York")
@@ -448,7 +453,8 @@ type Level
     float top
     float bot
     int   tBorn              // time of the origin candle (left edge)
-    int   tActive            // freshness clock: birth, or the latest flip / reinforcement
+    int   tActive            // time of birth / latest flip / reinforcement (eviction tie-break)
+    int   bActive            // exec-bar clock at birth / latest flip / reinforcement (freshness, age)
     int   armTime            // touch checks start on chart bars at or after this time
     float coil      = 0.0
     float eq        = 0.0
@@ -471,7 +477,7 @@ type Probe
     bool  above
     bool  strict
     int   bucket
-    int   deadline
+    int   deadline           // exec-bar clock value at which an untouched probe is a miss
 
 var array<Level> pool   = array.new<Level>()
 var array<int>   idSeq  = array.from(0)
@@ -579,7 +585,7 @@ f_addZone(Kind k, bool above, float top, float bot, int tBorn, float coil, int e
     int id = idSeq.get(0)
     idSeq.set(0, id + 1)
     Level lv = Level.new(id = id, kind = k, above = above, top = top, bot = bot, tBorn = tBorn, tActive = tBorn,
-         armTime = armExec, coil = nz(coil), eq = nz(eqCnt), induce = ind, rvol = rvol1h)
+         bActive = execBars, armTime = armExec, coil = nz(coil), eq = nz(eqCnt), induce = ind, rvol = rvol1h)
     pool.push(lv)
     f_render(lv)
 
@@ -596,13 +602,14 @@ f_addLiq(bool above, float price, int tBorn, float coil, int eqCnt, bool ind, fl
         Level m = pool.get(hit)
         m.eq      := m.eq + 1.0
         m.tActive := math.max(m.tActive, tBorn)
+        m.bActive := execBars
         m.coil    := math.max(m.coil, nz(coil))
         m.induce  := m.induce or ind
     else
         int id = idSeq.get(0)
         idSeq.set(0, id + 1)
         Level lv = Level.new(id = id, kind = k, above = above, top = price, bot = price, tBorn = tBorn, tActive = tBorn,
-             armTime = armStf, coil = nz(coil), eq = nz(eqCnt), induce = ind, rvol = rv)
+             bActive = execBars, armTime = armStf, coil = nz(coil), eq = nz(eqCnt), induce = ind, rvol = rv)
         pool.push(lv)
         f_render(lv)
     hit
@@ -651,7 +658,7 @@ f_score(Level lv, float atrV) =>
     float tp    = f_target(lv)
     float dist  = (lv.above ? tp - close : close - tp) / atrV
     bool  inRng = dist >= 0 and dist <= maxAtrDist
-    float age   = math.max(0.0, float(time - lv.tActive) / execMs)
+    float age   = math.max(0.0, float(execBars - lv.bActive))
     lv.pP := inRng ? 1.0 - math.pow(dist / maxAtrDist, 1.5) : 0.0
     lv.pF := math.pow(0.5, age / halfLife)
     lv.pC := 0.5 * f_anchorScore(lv.bot, lv.top, confTolAtr * atrV) + 0.5 * f_biasScore(lv.above)
@@ -717,6 +724,21 @@ if canRun and execEvent and pool.size() > 0
                 else if inside
                     lv.insideCnt := lv.insideCnt + 1
                     kill := lv.insideCnt > ifvgMaxIn
+        // when exec TF == chart TF this bar may have run through the DOL and
+        // closed beyond it: book the delivery before the kill / flip, then
+        // force a fresh selection (step 4 never sees this level as the DOL)
+        if (kill or flip) and lv.id == dolId and not lv.mitigated and time >= lv.armTime
+            float tp0 = f_target(lv)
+            if lv.above ? high >= tp0 : low <= tp0
+                dolHit    := true
+                dolHitTxt := f_name(lv.kind) + " @ " + str.tostring(tp0, format.mintick)
+                if showHits
+                    hitMarks.push(label.new(time, tp0, "✓ " + f_name(lv.kind), xloc = xloc.bar_time,
+                         style = lv.above ? label.style_label_down : label.style_label_up,
+                         color = color.new(lv.above ? dolUpCol : dolDnCol, 25), textcolor = color.black, size = size.tiny))
+                    if hitMarks.size() > 100
+                        label.delete(hitMarks.shift())
+            dolId := -1
         if kill
             f_kill(lv)
             pool.remove(i)
@@ -726,6 +748,7 @@ if canRun and execEvent and pool.size() > 0
             lv.mitigated := false
             lv.insideCnt := 0
             lv.tActive   := time
+            lv.bActive   := execBars
             lv.armTime   := armExec
             f_render(lv)
 
@@ -773,7 +796,7 @@ if canRun and pool.size() > 0
                 else
                     kill := true
         if not kill
-            float ageBars = float(time - lv.tActive) / execMs
+            float ageBars = float(execBars - lv.bActive)
             float distAbs = math.abs(f_target(lv) - close) / atrE
             kill := ageBars > maxAge or distAbs > maxAtrDist * purgeMult
         if kill
@@ -787,7 +810,7 @@ if canRun and probes.size() > 0
     for i = probes.size() - 1 to 0
         Probe p       = probes.get(i)
         bool  touched = p.above ? (p.strict ? high > p.price : high >= p.price) : (p.strict ? low < p.price : low <= p.price)
-        if touched or time >= p.deadline
+        if touched or execBars >= p.deadline
             calN.set(p.bucket, calN.get(p.bucket) + 1)
             if touched
                 calHit.set(p.bucket, calHit.get(p.bucket) + 1)
@@ -815,7 +838,7 @@ if canRun
             Level d  = pool.get(pick)
             float tp = f_target(d)
             dolChanged := true
-            probes.push(Probe.new(tp, d.above, not f_isZone(d.kind), f_bucket(d.score), time + potHorizon * execMs))
+            probes.push(Probe.new(tp, d.above, not f_isZone(d.kind), f_bucket(d.score), execBars + potHorizon))
             if probes.size() > 500
                 probes.shift()
             alert("DOL → " + f_name(d.kind) + " " + (d.above ? "▲ " : "▼ ") + str.tostring(tp, format.mintick) +
