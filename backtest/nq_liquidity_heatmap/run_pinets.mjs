@@ -1,4 +1,4 @@
-// Run indicators/liquidity_heatmap_mtf.pine in PineTS (an open-source Pine
+// Run indicators/nq_liquidity_heatmap.pine in PineTS (an open-source Pine
 // Script v6 runtime) on local kline fixtures from prep_data.py, and save its
 // Data Window series, drawings and alerts as JSON for truth.py.
 //

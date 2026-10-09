@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the Liquidity Heatmap's own output (lines, profile boxes, labels,
+"""Draw the NQ Liquidity Heatmap's own output (lines, profile boxes, labels,
 summary table as recorded by run_pinets.mjs) over the candles it ran on.
 Nothing is recomputed here — it only plots what the script drew.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build multi-timeframe OHLCV fixtures from real market data for verifying
-indicators/liquidity_heatmap_mtf.pine.
+indicators/nq_liquidity_heatmap.pine.
 
 Source: the historical data that ships inside the `backtesting` package
 (EURUSD 1h, 5000 bars 2017-04..2018-02; GOOG daily 2004..2013). Higher
