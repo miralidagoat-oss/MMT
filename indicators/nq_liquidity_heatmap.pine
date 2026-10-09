@@ -38,7 +38,8 @@ indicator("NQ/MNQ Liquidity Heatmap - ETH, all timeframes", shorttitle = "NQ ETH
 //     the 18:00–17:00 ET trading day are always part of the book. Use an ETH
 //     chart: on an RTH chart the overnight bars are missing, so sweeps that
 //     happen overnight are only caught when the next higher-timeframe bar
-//     closes (the table warns).
+//     closes (the table warns). Levels are always built from standard bars,
+//     also on Heikin Ashi / Renko charts.
 //   - Contract rolls: a raw continuous chart (NQ1!/MNQ1!) jumps by the
 //     calendar spread at every quarterly roll, which would fake sweeps of
 //     levels inside the jump and leave older levels at the expired
@@ -201,12 +202,25 @@ f_every(string tf) =>
     everyHTF and timeframe.in_seconds(tf) >= 86400
 bool ev0 = everyHTF and chartSec >= 86400
 
-// all data comes from the extended (ETH) session of the back-adjusted
-// continuous series (back-adjustment has no effect on symbols that are not
-// continuous futures)
-string ethTicker  = useEth ? ticker.modify(syminfo.tickerid, session = session.extended) : syminfo.tickerid
+// Is the chart itself on RTH? On CME futures TradingView names the full ETH
+// session "regular" (ETH is their default) and the RTH session "us_regular",
+// so a futures chart is on RTH when its session is neither regular nor
+// extended; on stocks RTH is session.regular. Daily+ charts have no split.
+bool chartRth = useEth and timeframe.isintraday and (syminfo.type == "futures" ?
+     syminfo.session != session.regular and syminfo.session != session.extended :
+     syminfo.type == "stock" and syminfo.session == session.regular)
+
+// All levels come from real OHLCV (standard bars even on Heikin Ashi/Renko
+// charts) on the extended (ETH) session of the back-adjusted continuous
+// series (back-adjustment has no effect on non-continuous symbols).
+string baseTicker = chart.is_standard ? syminfo.tickerid : ticker.standard(syminfo.tickerid)
+string ethTicker  = useEth ? ticker.modify(baseTicker, session = session.extended) : baseTicker
 string dataTicker = useBadj ? ticker.modify(ethTicker, backadjustment = backadjustment.on) : ethTicker
-[adjH, adjL, adjC] = request.security(dataTicker, timeframe.period, [high, low, close])
+// The chart-side series (sweep checks, profile window, distances) must line
+// up one-to-one with the chart's own bars: on an RTH chart it keeps the
+// chart's session, otherwise it is the same ETH series as the books.
+string chartTicker = chartRth ? (useBadj ? ticker.modify(syminfo.tickerid, backadjustment = backadjustment.on) : syminfo.tickerid) : dataTicker
+[adjH, adjL, adjC] = request.security(chartTicker, timeframe.period, [high, low, close])
 max_bars_back(adjH, 5000)
 max_bars_back(adjL, 5000)
 
@@ -318,10 +332,15 @@ f_sessBook(string tfS, string sess, string tz, int cap) =>
     var float        sLoT = na
     var float        sVol = 0.0
     var float        sEnd = na
+    var float        sStart = na
     bool inS    = not na(time(tfS, sess, tz))
     bool prevIn = inS[1]
+    // a new instance can start with no out-of-session bar in between (RTH-only
+    // symbols, holiday halts): an in-session bar that opens a full session
+    // length (+1 h for DST) after the instance began starts a new one
+    bool newInst = inS and prevIn and not na(sStart) and time - sStart >= f_sessSec(sess) * 1000 + 3600000
     // the session that ended at the previous bar's close is complete
-    if prevIn and not inS and not na(sHi) and not na(sEnd)
+    if prevIn and (not inS or newInst) and not na(sHi) and not na(sEnd)
         array.push(hi, sHi)
         array.push(hi, sVol)
         array.push(hi, sHiT)
@@ -360,12 +379,13 @@ f_sessBook(string tfS, string sess, string tz, int cap) =>
                     array.remove(lo, b)
 
     if inS
-        if not prevIn
-            sHi  := high
-            sLo  := low
-            sHiT := time
-            sLoT := time
-            sVol := nz(volume)
+        if not prevIn or newInst
+            sHi    := high
+            sLo    := low
+            sHiT   := time
+            sLoT   := time
+            sVol   := nz(volume)
+            sStart := time
         else
             if high > sHi
                 sHi  := high
@@ -667,15 +687,18 @@ f_detach(Engine e, Level lv, int reason) =>
                 array.remove(e.active, idx)
     true
 
-// was px traded through by a chart bar that opened at/after asOf (before this
-// bar)? With lookahead_on a snapshot arrives on the first chart bar of its
-// timeframe bar, so this scans nothing; it only matters if a snapshot is ever
-// delivered late, and then it keeps a level that was already taken from
-// being shown as resting.
+// was px traded through by an earlier chart bar that ended after asOf? When
+// the chart and the source timeframe line up, a snapshot arrives on the
+// first chart bar at/after asOf and this scans nothing. When they do not
+// (e.g. 10m chart, 15m slot; 20m chart, 30m session data) the snapshot
+// lands one chart bar late and the bar straddling asOf is scanned — its part
+// before asOf cannot have traded beyond a level that was valid at asOf, so
+// the test stays exact. It also covers a snapshot delivered late for any
+// other reason.
 f_sweptSince(float asOf, float px, bool isHigh) =>
     bool hit = false
     int  i   = 1
-    while i <= math.min(bar_index, 4999) and time[i] >= asOf
+    while i <= math.min(bar_index, 4999) and time[i - 1] > asOf
         if isHigh ? adjH[i] > px : adjL[i] < px
             hit := true
             break
@@ -733,7 +756,10 @@ f_process(Engine e, int s, array<float> snap) =>
     Slot st = array.get(e.slots, s)
     if st.enabled and not na(snap) and array.size(snap) >= 3
         float barT = array.get(snap, 0)
-        if na(st.lastBarTime) or barT != st.lastBarTime
+        // accept a snapshot only on a chart bar that opens at/after its
+        // timeframe bar, as history does (live, request.security already
+        // returns the new bar on the chart bar that straddles its open)
+        if (na(st.lastBarTime) or barT != st.lastBarTime) and float(time) >= barT
             // the snapshot is complete for the chart if the chart has watched
             // this timeframe roll over, or its first bar opens with that bar
             bool boundary = st.synced or float(time) == barT
@@ -893,11 +919,11 @@ f_poolText(Engine e, int i) =>
 
 // is this the Nasdaq-100 futures family, and are the chart's own candles
 // back-adjusted (they differ from the adjusted series before the last roll)?
-bool isNQ     = syminfo.root == "NQ" or syminfo.root == "MNQ"
-bool chartRth = useEth and syminfo.session == session.regular
+bool isNQ = syminfo.root == "NQ" or syminfo.root == "MNQ"
 var bool chartRaw = false
-// (on an RTH chart its bars do not line up with ETH bars, so only compare on ETH)
-if useBadj and not chartRth and not chartRaw and math.abs(close - adjC) > syminfo.mintick * 0.5
+// adjC is the chart-aligned back-adjusted close; on a non-standard chart
+// `close` is synthetic, so the comparison only means something on standard bars
+if useBadj and chart.is_standard and not chartRaw and math.abs(close - adjC) > syminfo.mintick * 0.5
     chartRaw := true
 
 if barstate.islast
@@ -982,9 +1008,14 @@ if barstate.islast
     // summary table
     if showTable
         string tp = tablePos
-        var table tb = table.new(tp == "Top right" ? position.top_right : tp == "Bottom right" ? position.bottom_right : tp == "Top left" ? position.top_left : position.bottom_left,
-             2, 11, bgcolor = color.new(chart.bg_color, 5), border_color = color.new(chart.fg_color, 85), border_width = 1,
-             frame_color = color.new(chart.fg_color, 70), frame_width = 1)
+        // created and merged once: merging an already-merged range is an
+        // error, and this block runs on every realtime update
+        var table tb = na
+        if na(tb)
+            tb := table.new(tp == "Top right" ? position.top_right : tp == "Bottom right" ? position.bottom_right : tp == "Top left" ? position.top_left : position.bottom_left,
+                 2, 11, bgcolor = color.new(chart.bg_color, 5), border_color = color.new(chart.fg_color, 85), border_width = 1,
+                 frame_color = color.new(chart.fg_color, 70), frame_width = 1)
+            table.merge_cells(tb, 0, 0, 1, 0)
         string tfsOn  = ""
         string tfsOff = ""
         for st in eng.slots
@@ -993,7 +1024,6 @@ if barstate.islast
             else if st.sec < chartSec
                 tfsOff := tfsOff + (str.length(tfsOff) > 0 ? " " : "") + st.name
         table.cell(tb, 0, 0, "NQ LIQUIDITY HEATMAP · ETH · ALL TIMEFRAMES", text_color = inkPri, text_size = size.small)
-        table.merge_cells(tb, 0, 0, 1, 0)
         table.cell(tb, 0, 1, "Heat",          text_color = inkSec, text_halign = text.align_left, text_size = size.small)
         table.cell(tb, 1, 1, sawVol ? "volume traded on the swing bar" : "timeframes confirming (no volume feed)", text_color = inkPri, text_halign = text.align_right, text_size = size.small)
         table.cell(tb, 0, 2, "Biggest BSL ▲", text_color = inkSec, text_halign = text.align_left, text_size = size.small)

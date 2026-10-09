@@ -50,10 +50,11 @@ PY
 }
 
 fail=0
-check() {  # symbol chart_tf start_idx slot_tfs left right cap every sessions
-  local sym=$1 tf=$2 st=$3 tfs=$4 l=$5 r=$6 c=$7 ev=$8 se=$9
+check() {  # symbol chart_tf start_idx slot_tfs left right cap every sessions [sweep_tf]
+  local sym=$1 tf=$2 st=$3 tfs=$4 l=$5 r=$6 c=$7 ev=$8 se=$9 sw=${10:-}
   local out="$WORK/out/${sym}_${tf}_${st}_${l}_${r}_${c}_e${ev}_s${se}.json" extra=()
   [ "$se" = 1 ] && extra=(--sessions "RTH=1000-1600,ON=1800-1000" --sess-tf 60)
+  [ -n "$sw" ] && extra+=(--sweep-tf "$sw")
   echo "== $sym chart=$tf start=$st swing=$l/$r cap=$c every-bar=$ev sessions=$se"
   (cd "$WORK" && node run_pinets.mjs "$PINE" "$WORK/data" "$sym" "$tf" "$st" "$out" "$(overrides "$l" "$r" "$c" "$ev" "$se")" --tv-timing)
   "$WORK/venv/bin/python" "$HERE/truth.py" "$WORK/data" "$sym" "$tf" "$st" "$out" "$tfs" \
@@ -87,6 +88,13 @@ check EURUSD 60  1500 60,240,D,W,M 5 3 10 1 1
 check EURUSD 60  2222 60,240,D,W,M 2 1 4  1 1
 check EURUSD 60  970  60,240,D,W,M 5 3 10 0 1
 check EURUSD 60  3333 60,240,D,W,M 5 3 20 1 1
+# 3-hour chart with a 4-hour source: boundaries fall inside chart bars
+# (sweeps judged on the real 1-hour bars)
+check EURUSD 180 400  180,240,D,W,M 5 3 10 1 0 60
+check EURUSD 180 777  180,240,D,W,M 2 1 4  0 0 60
+# RTH-only symbol: sessions follow each other with no bar in between
+check EURRTH 60  200  60,240,D,W,M 5 3 10 1 1
+check EURRTH 60  555  60,240,D,W,M 2 1 4  0 1
 # no volume feed → heat = number of confirming sources
 check EURNV  60  1500 60,240,D,W,M 5 3 10 1 1
 check EURNV  240 400  240,D,W,M    3 2 6  1 0

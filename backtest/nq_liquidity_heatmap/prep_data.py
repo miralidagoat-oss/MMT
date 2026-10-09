@@ -6,8 +6,13 @@ Source: the historical data that ships inside the `backtesting` package
 (EURUSD 1h, 5000 bars 2017-04..2018-02; GOOG daily 2004..2013). Higher
 timeframes are aggregated on a UTC calendar grid with explicit period keys
 (4H blocks, days, Monday-start weeks, calendar months): open = first, high =
-max, low = min, close = last, volume = sum. EURNV is EURUSD with volume
-zeroed, to exercise the indicator's no-volume fallback.
+max, low = min, close = last, volume = sum. Derived fixtures, all from the
+same real bars:
+  EURNV   EURUSD with volume zeroed (the indicator's no-volume fallback)
+  EURUSD_180  3-hour bars, so a 4-hour source is misaligned with the chart
+  EURRTH  only the bars that open 10:00-16:00 America/New_York on weekdays,
+          an "RTH-only symbol" whose sessions follow each other with no
+          out-of-session bar in between
 
 Writes <out_dir>/<SYMBOL>_<TF>.json as kline lists (ms open/close times;
 closeTime = end of the period).
@@ -23,6 +28,8 @@ from backtesting.test import EURUSD, GOOG
 
 
 def start_of(ts, tf):
+    if tf == "180":
+        return ts.floor("D") + pd.Timedelta(hours=(ts.hour // 3) * 3)
     if tf == "240":
         return ts.floor("D") + pd.Timedelta(hours=(ts.hour // 4) * 4)
     if tf == "D":
@@ -36,7 +43,7 @@ def start_of(ts, tf):
 
 
 def end_of(start, tf):
-    return {"240": start + pd.Timedelta(hours=4), "D": start + pd.Timedelta(days=1),
+    return {"180": start + pd.Timedelta(hours=3), "240": start + pd.Timedelta(hours=4), "D": start + pd.Timedelta(days=1),
             "W": start + pd.Timedelta(days=7), "M": start + pd.offsets.MonthBegin(1)}[tf]
 
 
@@ -75,6 +82,12 @@ def main(out_dir):
         dump(out_dir, f"{sym}_60", rows_of(e, pd.Timedelta(hours=1), zv))
         for tf in ("240", "D", "W", "M"):
             dump(out_dir, f"{sym}_{tf}", agg(e, tf, zv))
+    dump(out_dir, "EURUSD_180", agg(e, "180"))
+    ny = e.index.tz_localize("UTC").tz_convert("America/New_York")
+    rth = e[(ny.hour >= 10) & (ny.hour < 16) & (ny.weekday < 5)]
+    dump(out_dir, "EURRTH_60", rows_of(rth, pd.Timedelta(hours=1)))
+    for tf in ("240", "D", "W", "M"):
+        dump(out_dir, f"EURRTH_{tf}", agg(rth, tf))
     g = GOOG.copy()
     g.index = pd.to_datetime(g.index)
     dump(out_dir, "GOOG_D", rows_of(g, pd.Timedelta(days=1)))

@@ -27,7 +27,7 @@ const tvTiming = args.includes('--tv-timing');
 const [scriptPath, dataDir, symbol, chartTf, startIdxStr, outPath, inputsJson] = args.filter((a) => a !== '--tv-timing');
 const startIdx = parseInt(startIdxStr, 10);
 
-const TF_FILE = { '60': '60', '240': '240', D: 'D', '1D': 'D', W: 'W', '1W': 'W', M: 'M', '1M': 'M' };
+const TF_FILE = { '60': '60', '180': '180', '240': '240', D: 'D', '1D': 'D', W: 'W', '1W': 'W', M: 'M', '1M': 'M' };
 const load = (tf) => {
   const p = path.join(dataDir, `${symbol}_${TF_FILE[tf] ?? tf}.json`);
   return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null;

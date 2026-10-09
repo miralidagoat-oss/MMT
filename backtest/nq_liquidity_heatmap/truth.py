@@ -61,11 +61,13 @@ ap.add_argument("--sessions", default="")
 ap.add_argument("--sess-tf", default="30")
 ap.add_argument("--tz", default="America/New_York")
 ap.add_argument("--map", default="on")
+ap.add_argument("--sweep-tf", default=None,
+                help="finest real data to judge sweeps on (default: the chart timeframe)")
 args = ap.parse_args()
 L, R = args.swing
 CAP, MAP = args.cap, args.map
 TICK = 0.00001 if args.sym.startswith("EUR") else 0.01
-TF_SEC = {"60": 3600, "240": 14400, "D": 86400, "W": 604800, "M": 2628003}
+TF_SEC = {"60": 3600, "180": 10800, "240": 14400, "D": 86400, "W": 604800, "M": 2628003}
 # script defaults used by the profile check
 PROF_BARS, PROF_EXT_PCT, PROF_ROWS, PROF_WIDTH = 300, 25, 30, 30
 
@@ -75,11 +77,13 @@ def load(tf):
         return json.load(f)
 
 
-base = load(args.chart_tf)
-chart = base[args.start_idx:]
+chart = load(args.chart_tf)[args.start_idx:]
 chart_start, chart_end = chart[0]["openTime"], chart[-1]["openTime"]
-base_open = [r["openTime"] for r in base]
-has_volume = any(r["volume"] > 0 for r in base)
+# sweeps are judged on the finest real bars available, so a source boundary
+# that falls inside a chart bar is resolved exactly
+fine = load(args.sweep_tf or args.chart_tf)
+fine_open = [r["openTime"] for r in fine]
+has_volume = any(r["volume"] > 0 for r in chart)
 
 
 def pivots(rows):
@@ -130,23 +134,34 @@ def in_session(open_ms, sess, zone):
     return a <= m < b if a < b else (m >= a or m < b)
 
 
+def session_secs(sess):
+    a = int(sess[0:2]) * 60 + int(sess[2:4])
+    b = int(sess[5:7]) * 60 + int(sess[7:9])
+    d = (b - a + 1440) % 1440
+    return (d or 1440) * 60
+
+
 def session_books(rows, sess, zone):
     """A session's high/low becomes a level when its run of bars ends; it is
-    in the snapshot of the first bar after the session."""
+    in the snapshot of the first bar after the session. A run also ends when
+    an in-session bar opens a full session length (+1 h) after the run began
+    (sessions that follow each other with no out-of-session bar between)."""
     hi, lo, snaps = [], [], []
-    run = None  # [high, high_t, low, low_t, vol, end]
+    run = None  # [high, high_t, low, low_t, vol, end, start]
     prev_in = False
+    limit_ms = session_secs(sess) * 1000 + 3600000
     for r in rows:
         now_in = in_session(r["openTime"], sess, zone)
-        if prev_in and not now_in and run:
+        new_inst = now_in and prev_in and run is not None and r["openTime"] - run[6] >= limit_ms
+        if prev_in and (not now_in or new_inst) and run:
             push(hi, (run[0], run[4], run[1], run[5]))
             push(lo, (run[2], run[4], run[3], run[5]))
         snaps.append((list(hi), list(lo)))
         hi = [x for x in hi if not r["high"] > x[0]]
         lo = [x for x in lo if not r["low"] < x[0]]
         if now_in:
-            if not prev_in:
-                run = [r["high"], r["openTime"], r["low"], r["openTime"], r["volume"], r["closeTime"]]
+            if not prev_in or new_inst:
+                run = [r["high"], r["openTime"], r["low"], r["openTime"], r["volume"], r["closeTime"], r["openTime"]]
             else:
                 if r["high"] > run[0]:
                     run[0], run[1] = r["high"], r["openTime"]
@@ -180,26 +195,26 @@ def snap_index(s, bar):
     return bisect.bisect_right(s["closes"], bar["closeTime"]) - 1
 
 
-def extreme(a_time, b_time, visible_only):
-    """max high / min low of base bars opening in [a_time, b_time]."""
-    lo_i = bisect.bisect_left(base_open, max(a_time, chart_start) if visible_only else a_time)
-    seg = base[lo_i:bisect.bisect_right(base_open, b_time)]
+def extreme(a_time, end_excl, visible_only):
+    """max high / min low of the fine bars opening in [a_time, end_excl)."""
+    lo_i = bisect.bisect_left(fine_open, max(a_time, chart_start) if visible_only else a_time)
+    seg = fine[lo_i:bisect.bisect_left(fine_open, end_excl)]
     if not seg:
         return None, None
     return max(r["high"] for r in seg), min(r["low"] for r in seg)
 
 
-def pools_at(bar, visible_only, through=None):
-    """Pools resting on `bar` after sweeps by base bars up to `through`
-    (default: the bar itself)."""
-    through = bar["openTime"] if through is None else through
+def pools_at(bar, visible_only, end=None):
+    """Pools resting on `bar`, after sweeps by fine bars that open before
+    `end` (default: the bar's close, i.e. including the bar itself)."""
+    end = bar["closeTime"] if end is None else end
     levels = []
     for si, s in enumerate(slots):
         k = snap_index(s, bar)
         if k < 0:
             continue
         hi, lo = s["snaps"][k]
-        mx, mn = extreme(s["opens"][k], through, visible_only) if through >= s["opens"][k] else (None, None)
+        mx, mn = extreme(s["opens"][k], end, visible_only)
         levels += [(True, x, si) for x in hi if mx is None or not mx > x[0]]
         levels += [(False, x, si) for x in lo if mn is None or not mn < x[0]]
     parent = list(range(len(levels)))
@@ -295,7 +310,7 @@ for i in range(1, len(chart)):
     bar = chart[i]
     if bar["openTime"] < warm_end:
         continue
-    rest = pools_at(bar, False, through=chart[i - 1]["openTime"])
+    rest = pools_at(bar, False, end=bar["openTime"])
     exp = {("BSL" if p["isHigh"] else "SSL", round(p["price"], 8)) for p in rest
            if (p["isHigh"] and bar["high"] > p["price"]) or (not p["isHigh"] and bar["low"] < p["price"])}
     n_expected += len(exp)
