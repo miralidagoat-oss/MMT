@@ -7,8 +7,9 @@ the results in an on-chart dashboard.
 
 - **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
 - **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
-- **Order-flow companion:** `indicators/order_flow_delta.pine` — buy/sell
-  volume delta + CVD for 1m–15m charts ([section below](#order-flow-delta--cvd))
+- **Order-flow companion:** `indicators/order_flow_delta.pine` — big-move
+  order-flow setup bubbles for 1m–15m charts, self-graded on the chart
+  ([section below](#order-flow-big-move-bubbles))
 
 ## Audit findings (why v1's "backtest" was fiction)
 
@@ -234,68 +235,89 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
 
-## Order Flow Delta & CVD
+## Order Flow Big-Move Bubbles
 
-`indicators/order_flow_delta.pine` draws **delta** (aggressive buying
-volume − aggressive selling volume) as **bubbles right on the price chart**,
-with **CVD** (delta summed over the session) on its dashboard. It is built for 1m/5m/15m charts and
-works on any timeframe. It runs on a free TradingView plan and uses only data
-TradingView actually provides: there is no simulated order book, and bars
-without data are left empty instead of filled with guesses.
+`indicators/order_flow_delta.pine` is an on-chart order-flow indicator for
+NQ/MNQ on 1m, 5m and 15m charts (it works on any timeframe). It keeps the chart
+clean: a bubble appears **only** when one of three order-flow setups that tend
+to come before large moves prints on a closed bar. It runs on a free
+TradingView plan and uses only data TradingView actually provides. There is no
+simulated order book, and bars without data stay empty instead of guessed.
 
-### Where each bar's delta comes from
+### The three setups
 
-Every bar is graded, and the grade is shown by the bubble (faded vs solid),
-the dashboard and the Data Window:
+Green bubble = setup for an **up** move, red = for a **down** move. The circle
+sits at the bar's volume-weighted price, and a bigger circle (label `▲▲`/`▼▼`)
+means the setup cleared its trigger by 1.5× or more. Hover the label for the
+exact numbers and the invalidation price.
 
-| grade | source | when | accuracy |
+| tag | type | long (green) | short (red) |
 |---|---|---|---|
-| **LIVE** (solid) | tick rule: volume traded on an uptick = buying, on a downtick = selling | realtime bars watched from their first trade | closest Pine gets to exchange bid/ask delta |
-| **Intrabar** | each 1m bar inside the chart bar is classed up or down (close vs open, ties vs prior close) and its whole volume booked that way | history on 3m+ charts (5m = 5 pieces, 15m = 15) | estimate; same method as TradingView's built-in Volume Delta/CVD |
-| **Low-res** (faded) | the chart bar itself is the only 1m piece | history on a **1m** chart | coarse; drawn faded, never used for signals |
+| **ABS** | absorption / trapped traders → reversal | bar sweeps the 20-bar **low** on ≥ 1.5× normal volume with heavy **selling** delta (≥ 2× average), yet closes back above the old low in the upper half of its range | mirror at the 20-bar high with heavy **buying** delta |
+| **DIV** | delta divergence → reversal | bar sweeps the 20-bar low, but net delta since the prior low is **positive** (≥ 1× average): buyers were the aggressors into the new low | mirror at the high |
+| **BRK** | initiative breakout → continuation | bar **closes** above the 20-bar high on ≥ 1.5× volume with buying delta ≥ 2.5× average and a close in the top 30% of its range | mirror below the low |
 
-What is *not* available to any Pine script on a free plan: Level 2/order
-book, real bid/ask prints, footprint data (`request.footprint()` needs
-Premium) and seconds-resolution history.
+ABS longs are green even though the bar's delta is red: the heavy selling
+failed, and that is what the setup is about.
 
-### What it shows
+### Self-check: it grades its own bubbles
 
-- **Delta bubbles:** a circle on each bar at the bar's volume-weighted price
-  (from its real 1m intrabars, or the live ticks), sized by |Δ| against the
-  average |Δ| of the same data kind: green = net buying, red = net selling.
-  Only above-average bars get one by default. Bars at ≥ 2.5× average become a
-  bubble with the delta number printed in it; hover for buy/sell volume.
-- CVD (shown on the dashboard) can reset per trading day, at the 09:30 NY RTH
-  open, weekly, or never.
-- **Dashboard:** this bar's data source, bar delta and buy %, CVD, the
-  in-progress **5m / 15m / 1H** bar delta (summed from the chart's own bars,
-  so it is the same data), signal-engine status, and history coverage.
-- **Signals on the price chart** (confirmed bars only, never mid-bar):
-  - **ABS — absorption:** the bar sweeps the 20-bar low/high, aggressive
-    volume hits the sweep hard (|Δ| ≥ 1.5× average), yet the bar closes back
-    inside. Passive limit orders absorbed the aggression.
-  - **DIV — delta divergence:** the bar sweeps the 20-bar low/high, but the
-    net delta since the prior extreme points the other way (a lower low made
-    while buyers were the aggressors, or the mirror for highs).
-  - Hover a label for the exact numbers behind it.
+No indicator knows a move is coming, so every bubble is graded on the chart's
+own history and the dashboard shows the record per setup (wins, losses, time
+exits, win %, net R):
+
+- entry = the bubble bar's close; invalidation = one tick beyond that bar's
+  low (long) or high (short), drawn as a dotted line;
+- win = the target (default 2R) prints first; loss = the invalidation prints
+  first; **if both print in the same bar, it counts as a loss**;
+- still open after 30 bars → closed at market in fractional R;
+- no fees or slippage. The dashboard shows the win rate needed to break even
+  (33% at 2R).
+
+On a free plan, 5m and 15m charts carry about 5,000 bars of graded history.
+Read the record as evidence about your market, not a promise.
+
+### Where the delta comes from
+
+| grade | source | used for |
+|---|---|---|
+| **Intrabar** | each 1m bar inside the chart bar is classed up or down (close vs open, ties vs prior close, then prior direction) and its whole volume booked that way, the same method as TradingView's built-in Volume Delta / CVD | all signals on 3m+ charts, so they are identical live and after a reload and alerts match the chart; CVD; 5m/15m/1H rows |
+| **LIVE tick** | realtime bars watched from their first trade: volume traded on an uptick = buying, on a downtick = selling | signals on **1m** charts (1m history is too coarse there); the dashboard's live bar readout |
+| **Low-res** | on a 1m chart the bar itself is its only 1m piece | display only, never signals |
+
+The request asks for 100,000 intrabars (the cap on every non-professional
+plan), so all ~5,000 bars of a 5m or 15m chart have delta. Not available to
+any Pine script on a free plan: Level 2 / order book, real bid/ask prints,
+footprint data (`request.footprint()` needs Premium) and seconds-resolution
+history.
+
+### Dashboard
+
+Signal status, self-check record per setup and open setups, this bar's data
+source, delta and buy %, CVD (trading day / 09:30 NY RTH / week / never,
+flagged `partial` when its period began before the loaded data), the
+in-progress 5m / 15m / 1H bar delta, and how many bars have data. Optional
+every-bar delta bubbles (off by default) show the raw flow on every bar with
+above-average delta.
+
+### Alerts
+
+`Any Up Setup` / `Any Down Setup` plus one alert condition per setup and
+direction. For messages that include the price and invalidation level, create
+the alert with **Any alert() function call**.
 
 ### Honest caveats
 
-- **The signals are not backtested.** The Yahoo data behind `backtest/` has no
-  intrabar or tick delta, so there is nothing free to test them on. Treat them
-  as confirmation context, not a validated edge. The matrix's own MNQ results
-  (no edge below 1H) still stand.
-- **1m charts:** without seconds data, 1m history is low-res. Signals on a 1m
-  chart therefore come from live tick delta only and need 20 live bars of
-  warm-up after the chart loads (the dashboard counts them down). 5m and 15m
-  charts signal from history immediately.
-- **Live bars change on reload.** Tick-measured bars exist only while the
-  chart is open; after a reload they are rebuilt from 1m intrabars, so their
-  delta (and any signal on them) can differ.
+- **The setups are not externally backtested.** The Yahoo data behind
+  `backtest/` has no intrabar or tick delta. The self-check above is the
+  evidence: read it per chart before trusting any setup. The defaults are
+  starting points chosen from order-flow practice, not fitted to data.
+- **1m charts:** signals come from live tick delta only, need 20 live bars of
+  warm-up after the chart loads (the dashboard counts them down) and restart on
+  every reload. 5m and 15m charts signal from history immediately.
 - Tick-rule delta is classified from TradingView's realtime updates, which can
   bundle several trades, so it is close to, but not identical to, exchange
-  bid/ask delta.
-- Intrabar history is limited by TradingView's lower-timeframe request cap;
-  the dashboard's "Bars with data" row shows the real coverage.
-- Heikin Ashi/Renko etc. charts: delta is read from real bars, but the sweep
-  signals are switched off because chart highs/lows are synthetic there.
+  bid/ask delta. Intrabar delta classifies whole 1m bars, so it overstates
+  |delta|. Each kind is only compared with its own average.
+- Heikin Ashi / Renko etc.: delta is read from real bars, but signals and the
+  live tick engine are off because chart prices are synthetic there.
