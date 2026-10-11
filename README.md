@@ -236,17 +236,17 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
 
 ## Order Flow Delta & CVD
 
-`indicators/order_flow_delta.pine` is a separate lower-pane indicator that
-shows **delta** (aggressive buying volume − aggressive selling volume) and
-**CVD** (delta summed over the session). It is built for 1m/5m/15m charts and
+`indicators/order_flow_delta.pine` draws **delta** (aggressive buying
+volume − aggressive selling volume) as **bubbles right on the price chart**,
+with **CVD** (delta summed over the session) on its dashboard. It is built for 1m/5m/15m charts and
 works on any timeframe. It runs on a free TradingView plan and uses only data
 TradingView actually provides: there is no simulated order book, and bars
 without data are left empty instead of filled with guesses.
 
 ### Where each bar's delta comes from
 
-Every bar is graded, and the grade is shown in the pane (faded vs solid), the
-dashboard and the Data Window:
+Every bar is graded, and the grade is shown by the bubble (faded vs solid),
+the dashboard and the Data Window:
 
 | grade | source | when | accuracy |
 |---|---|---|---|
@@ -260,9 +260,13 @@ Premium) and seconds-resolution history.
 
 ### What it shows
 
-- **Pane:** delta histogram, or CVD candles whose wicks are the real running
-  delta path inside the bar. CVD can reset per trading day, at the 09:30 NY
-  RTH open, weekly, or never.
+- **Delta bubbles:** a circle on each bar at the bar's volume-weighted price
+  (from its real 1m intrabars, or the live ticks), sized by |Δ| against the
+  average |Δ| of the same data kind: green = net buying, red = net selling.
+  Only above-average bars get one by default. Bars at ≥ 2.5× average become a
+  bubble with the delta number printed in it; hover for buy/sell volume.
+- CVD (shown on the dashboard) can reset per trading day, at the 09:30 NY RTH
+  open, weekly, or never.
 - **Dashboard:** this bar's data source, bar delta and buy %, CVD, the
   in-progress **5m / 15m / 1H** bar delta (summed from the chart's own bars,
   so it is the same data), signal-engine status, and history coverage.
