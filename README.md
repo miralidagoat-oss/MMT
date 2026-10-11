@@ -7,6 +7,8 @@ the results in an on-chart dashboard.
 
 - **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
 - **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
+- **Order-flow companion:** `indicators/order_flow_delta.pine` — buy/sell
+  volume delta + CVD for 1m–15m charts ([section below](#order-flow-delta--cvd))
 
 ## Audit findings (why v1's "backtest" was fiction)
 
@@ -231,3 +233,65 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
   cap or tighten the filters.
 - With the time stop off (default), a filled trade runs until TP or stop is
   touched.
+
+## Order Flow Delta & CVD
+
+`indicators/order_flow_delta.pine` is a separate lower-pane indicator that
+shows **delta** (aggressive buying volume − aggressive selling volume) and
+**CVD** (delta summed over the session). It is built for 1m/5m/15m charts and
+works on any timeframe. It runs on a free TradingView plan and uses only data
+TradingView actually provides: there is no simulated order book, and bars
+without data are left empty instead of filled with guesses.
+
+### Where each bar's delta comes from
+
+Every bar is graded, and the grade is shown in the pane (faded vs solid), the
+dashboard and the Data Window:
+
+| grade | source | when | accuracy |
+|---|---|---|---|
+| **LIVE** (solid) | tick rule: volume traded on an uptick = buying, on a downtick = selling | realtime bars watched from their first trade | closest Pine gets to exchange bid/ask delta |
+| **Intrabar** | each 1m bar inside the chart bar is classed up or down (close vs open, ties vs prior close) and its whole volume booked that way | history on 3m+ charts (5m = 5 pieces, 15m = 15) | estimate; same method as TradingView's built-in Volume Delta/CVD |
+| **Low-res** (faded) | the chart bar itself is the only 1m piece | history on a **1m** chart | coarse; drawn faded, never used for signals |
+
+What is *not* available to any Pine script on a free plan: Level 2/order
+book, real bid/ask prints, footprint data (`request.footprint()` needs
+Premium) and seconds-resolution history.
+
+### What it shows
+
+- **Pane:** delta histogram, or CVD candles whose wicks are the real running
+  delta path inside the bar. CVD can reset per trading day, at the 09:30 NY
+  RTH open, weekly, or never.
+- **Dashboard:** this bar's data source, bar delta and buy %, CVD, the
+  in-progress **5m / 15m / 1H** bar delta (summed from the chart's own bars,
+  so it is the same data), signal-engine status, and history coverage.
+- **Signals on the price chart** (confirmed bars only, never mid-bar):
+  - **ABS — absorption:** the bar sweeps the 20-bar low/high, aggressive
+    volume hits the sweep hard (|Δ| ≥ 1.5× average), yet the bar closes back
+    inside. Passive limit orders absorbed the aggression.
+  - **DIV — delta divergence:** the bar sweeps the 20-bar low/high, but the
+    net delta since the prior extreme points the other way (a lower low made
+    while buyers were the aggressors, or the mirror for highs).
+  - Hover a label for the exact numbers behind it.
+
+### Honest caveats
+
+- **The signals are not backtested.** The Yahoo data behind `backtest/` has no
+  intrabar or tick delta, so there is nothing free to test them on. Treat them
+  as confirmation context, not a validated edge. The matrix's own MNQ results
+  (no edge below 1H) still stand.
+- **1m charts:** without seconds data, 1m history is low-res. Signals on a 1m
+  chart therefore come from live tick delta only and need 20 live bars of
+  warm-up after the chart loads (the dashboard counts them down). 5m and 15m
+  charts signal from history immediately.
+- **Live bars change on reload.** Tick-measured bars exist only while the
+  chart is open; after a reload they are rebuilt from 1m intrabars, so their
+  delta (and any signal on them) can differ.
+- Tick-rule delta is classified from TradingView's realtime updates, which can
+  bundle several trades, so it is close to, but not identical to, exchange
+  bid/ask delta.
+- Intrabar history is limited by TradingView's lower-timeframe request cap;
+  the dashboard's "Bars with data" row shows the real coverage.
+- Heikin Ashi/Renko etc. charts: delta is read from real bars, but the sweep
+  signals are switched off because chart highs/lows are synthetic there.

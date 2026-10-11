@@ -1,0 +1,428 @@
+//@version=6
+indicator("Order Flow Delta & CVD", "OF Delta", overlay = false, format = format.volume,
+     max_labels_count = 500)
+
+// ============================================================================
+// Buy/sell volume delta built only from data TradingView actually provides —
+// no synthetic order book, no invented numbers. Every bar is tagged with where
+// its delta came from, and bars without data stay empty instead of guessed.
+//
+//   LIVE tick-rule  realtime bars watched from their first trade: each update's
+//                   new volume is booked as buying on an uptick and selling on
+//                   a downtick (zero ticks inherit the last direction). This is
+//                   the closest Pine gets to exchange bid/ask delta, but it
+//                   only exists while the chart is open — after a reload those
+//                   bars are rebuilt from intrabars.
+//   Intrabar        historical bars: every lower-timeframe bar (default 1m)
+//                   inside the chart bar is classified up or down by its close
+//                   vs open (ties: vs prior close, then prior direction) and
+//                   its whole volume booked that way — the same up/down-volume
+//                   method TradingView's built-in Volume Delta and CVD use.
+//   Low-res         the intrabar is as large as the chart bar (1m chart with
+//                   1m data — seconds data needs a paid plan), so the bar's
+//                   "delta" is just its volume signed by its direction. Drawn
+//                   faded and never used for signals.
+//
+// Signals (drawn on the price chart, confirmed bars only):
+//   ABS  absorption — a bar sweeps the N-bar low/high, aggressive volume hits
+//        the sweep hard (|Δ| ≥ k × average), yet price closes back inside:
+//        passive limit orders absorbed the aggression.
+//   DIV  delta divergence — a bar sweeps the N-bar low/high, but the net delta
+//        since the prior extreme points the other way: price went lower while
+//        buyers were the aggressors (or higher while sellers were).
+// The signals are NOT backtested — no free intrabar-delta history exists to
+// test them on. Treat them as context, not a validated edge.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_DATA = "Data Source"
+var string G_VIEW = "Display"
+var string G_SIG  = "Sweep Signals (drawn on price chart)"
+var string G_DASH = "Dashboard"
+
+ibChoice = input.string("Auto", "Intrabar Resolution",
+     options = ["Auto", "1 minute", "1 second (paid plan)", "5 seconds (paid plan)", "15 seconds (paid plan)"], group = G_DATA,
+     tooltip = "Lower-timeframe bars used to split each chart bar's volume into buying and selling. Auto = 1 minute on intraday charts. Seconds data needs a paid TradingView plan; on a free plan use Auto or 1 minute.")
+useLive  = input.bool(true, "Live Tick Delta on Realtime Bars", group = G_DATA,
+     tooltip = "While the chart is open, measure delta tick by tick: volume traded on an uptick = buying, on a downtick = selling. Only bars watched from their first trade use it; after a reload those bars fall back to intrabar data.")
+minRes   = input.int(3, "Min Intrabars per Bar for Signals", minval = 1, group = G_DATA,
+     tooltip = "Intrabar delta is trusted for signals only when each chart bar holds at least this many intrabars (5m chart / 1m data = 5). On a 1m chart with 1m data (1 per bar) history is low-res, so signals come from live ticks only.")
+
+viewMode = input.string("Delta Histogram", "Pane Shows", options = ["Delta Histogram", "CVD Candles"], group = G_VIEW)
+cvdReset = input.string("Trading Day", "CVD Anchor", options = ["Trading Day", "RTH Open (09:30 NY)", "Week", "Never"], group = G_VIEW)
+bullCol  = input.color(#26A69A, "Buying Color",  group = G_VIEW)
+bearCol  = input.color(#EF5350, "Selling Color", group = G_VIEW)
+
+showSig  = input.bool(true,  "Show Signals on Price Chart",                       group = G_SIG)
+sweepLen = input.int(20,     "Sweep Lookback (bars)", minval = 2, maxval = 200,   group = G_SIG)
+avgLen   = input.int(50,     "Average |Δ| Length (bars)", minval = 5,             group = G_SIG)
+absMult  = input.float(1.5,  "Absorption: Opposing Δ ≥ × Avg |Δ|", minval = 0.5, step = 0.1, group = G_SIG)
+absClose = input.float(0.5,  "Absorption: Min Close Position (fraction of range)", minval = 0.0, maxval = 1.0, step = 0.05, group = G_SIG)
+divMult  = input.float(0.5,  "Divergence: Net Δ Since Prior Extreme ≥ × Avg |Δ|", minval = 0.0, step = 0.1, group = G_SIG)
+cooldown = input.int(5,      "Min Bars Between Signals (per side)", minval = 0,   group = G_SIG)
+
+showDash = input.bool(true, "Show Dashboard", group = G_DASH)
+
+// data-quality grades, lowest to highest
+const int Q_NONE = 0   // no intrabar data for this bar
+const int Q_LOW  = 1   // intrabar as large as the chart bar
+const int Q_IB   = 2   // classified from intrabars
+const int Q_TICK = 3   // measured live, tick by tick
+const int WARM   = 20  // bars an average needs before signals may use it
+
+f_tfLabel(simple string tf) =>
+    int s = timeframe.in_seconds(tf)
+    s < 60 ? str.tostring(s) + "s" : s < 3600 ? str.tostring(s / 60) + "m" : s < 86400 ? str.tostring(s / 3600) + "H" : tf
+
+f_signed(float x) =>
+    na(x) ? "—" : (x > 0 ? "+" : "") + str.tostring(x, format.volume)
+
+// ─────────────────────────────────────────────────────────────
+// INTRABAR ENGINE (history + forming bar)
+// ─────────────────────────────────────────────────────────────
+string ibTf = switch ibChoice
+    "1 minute"               => "1"
+    "1 second (paid plan)"   => "1S"
+    "5 seconds (paid plan)"  => "5S"
+    "15 seconds (paid plan)" => "15S"
+    => timeframe.isseconds ? "1S" : timeframe.isintraday ? "1" : timeframe.isdaily ? "5" : "60"
+
+int    ibSec   = timeframe.in_seconds(ibTf)
+int    chSec   = timeframe.in_seconds()
+int    expRes  = math.max(1, math.floor(chSec / ibSec))
+bool   ibSigOk = expRes >= minRes
+string ibLabel = f_tfLabel(ibTf)
+
+// runs on each intrabar: whole intrabar volume goes to its direction
+f_upDown() =>
+    var bool isBuy = true
+    if close > open
+        isBuy := true
+    else if close < open
+        isBuy := false
+    else if close > close[1]
+        isBuy := true
+    else if close < close[1]
+        isBuy := false
+    float v = nz(volume)
+    [isBuy ? v : 0.0, isBuy ? 0.0 : v]
+
+// Heikin Ashi / Renko etc. would feed synthetic prices — always read real bars
+string ibSym = chart.is_standard ? syminfo.tickerid : ticker.standard(syminfo.tickerid)
+[ibBuyArr, ibSellArr] = request.security_lower_tf(ibSym, ibTf, f_upDown(), ignore_invalid_timeframe = true)
+
+int   ibCount = na(ibBuyArr) ? 0 : array.size(ibBuyArr)
+float ibBuy   = ibCount > 0 ? array.sum(ibBuyArr)  : na
+float ibSell  = ibCount > 0 ? array.sum(ibSellArr) : na
+float ibDelta = ibBuy - ibSell
+
+// running delta through the bar — real wick extremes for the CVD candles
+float ibHi = 0.0
+float ibLo = 0.0
+if ibCount > 0
+    float run = 0.0
+    for i = 0 to ibCount - 1
+        run  += array.get(ibBuyArr, i) - array.get(ibSellArr, i)
+        ibHi := math.max(ibHi, run)
+        ibLo := math.min(ibLo, run)
+
+// ─────────────────────────────────────────────────────────────
+// LIVE TICK ENGINE (realtime only — varip survives intrabar updates)
+// ─────────────────────────────────────────────────────────────
+varip int   tkBar      = -1
+varip int   tkStartBar = -1
+varip float tkLastPx   = na
+varip float tkLastVol  = 0.0
+varip int   tkLastDir  = 0
+varip float tkBuy      = 0.0
+varip float tkSell     = 0.0
+varip float tkPathHi   = 0.0
+varip float tkPathLo   = 0.0
+varip int   tkUpdates  = 0
+
+if useLive and barstate.isrealtime
+    if tkStartBar < 0
+        tkStartBar := bar_index
+    if bar_index != tkBar
+        tkBar     := bar_index
+        tkBuy     := 0.0
+        tkSell    := 0.0
+        tkPathHi  := 0.0
+        tkPathLo  := 0.0
+        tkLastVol := 0.0
+        tkUpdates := 0
+    float v  = nz(volume)
+    // volume only grows within a bar; a drop is a feed correction, not a trade
+    float dv = math.max(v - tkLastVol, 0.0)
+    int   dir = na(tkLastPx) ? 0 : close > tkLastPx ? 1 : close < tkLastPx ? -1 : tkLastDir
+    if dv > 0
+        if dir > 0
+            tkBuy += dv
+        else if dir < 0
+            tkSell += dv
+        tkUpdates += 1
+    float run = tkBuy - tkSell
+    tkPathHi  := math.max(tkPathHi, run)
+    tkPathLo  := math.min(tkPathLo, run)
+    tkLastDir := dir
+    tkLastPx  := close
+    tkLastVol := v
+
+// the bar the script started on was joined mid-bar — only later bars are complete
+bool tickFull = useLive and barstate.isrealtime and tkStartBar >= 0 and bar_index > tkStartBar
+
+// ─────────────────────────────────────────────────────────────
+// BEST AVAILABLE DELTA PER BAR
+// ─────────────────────────────────────────────────────────────
+int   quality = tickFull ? Q_TICK : ibCount == 0 ? Q_NONE : expRes >= minRes ? Q_IB : Q_LOW
+float buyV    = tickFull ? tkBuy    : ibBuy
+float sellV   = tickFull ? tkSell   : ibSell
+float delta   = quality == Q_NONE ? na : buyV - sellV
+float pathHi  = tickFull ? tkPathHi : ibHi
+float pathLo  = tickFull ? tkPathLo : ibLo
+
+var float totVol = 0.0
+totVol += nz(volume)
+if barstate.islast and totVol == 0
+    runtime.error("This symbol has no volume data, so buy/sell delta can't be calculated.")
+
+// coverage counters (var rolls back on realtime updates, so each bar counts once)
+var int nAll  = 0
+var int nTick = 0
+var int nIb   = 0
+var int nLow  = 0
+nAll += 1
+if quality == Q_TICK
+    nTick += 1
+else if quality == Q_IB
+    nIb += 1
+else if quality == Q_LOW
+    nLow += 1
+
+// ─────────────────────────────────────────────────────────────
+// CVD
+// ─────────────────────────────────────────────────────────────
+bool dayChg   = timeframe.change("D")
+bool weekChg  = timeframe.change("W")
+bool rthNow   = not na(time(timeframe.period, "0930-1600", "America/New_York"))
+bool rthStart = rthNow and not rthNow[1]
+
+bool cvdResetNow = switch cvdReset
+    "Trading Day"         => dayChg
+    "RTH Open (09:30 NY)" => rthStart
+    "Week"                => weekChg
+    => false
+
+var float cvd = 0.0
+float cvdOpen  = cvdResetNow ? 0.0 : cvd
+float cvdClose = na(delta) ? na : cvdOpen + delta
+if not na(delta)
+    cvd := cvdClose
+else if cvdResetNow
+    cvd := 0.0
+
+// ─────────────────────────────────────────────────────────────
+// HIGHER-TIMEFRAME DELTA (summed from this chart's own bars)
+// ─────────────────────────────────────────────────────────────
+f_htfDelta(simple string tf, float d, int q) =>
+    var float acc   = 0.0
+    var bool  full  = false
+    var int   worst = Q_TICK
+    if timeframe.change(tf)
+        acc   := 0.0
+        full  := true
+        worst := Q_TICK
+    if na(d)
+        full := false
+    else
+        acc += d
+    worst := math.min(worst, q)
+    [acc, full, worst]
+
+[d5,  f5,  w5]  = f_htfDelta("5",  delta, quality)
+[d15, f15, w15] = f_htfDelta("15", delta, quality)
+[d60, f60, w60] = f_htfDelta("60", delta, quality)
+
+// ─────────────────────────────────────────────────────────────
+// SIGNAL ENGINE
+// ─────────────────────────────────────────────────────────────
+// separate |Δ| baselines: tick delta and intrabar delta live on different
+// scales (whole-intrabar classification overstates |Δ|), so each is only
+// ever compared with its own kind
+float alpha = 2.0 / (avgLen + 1)
+
+var float avgIb  = na
+var int   nIbAvg = 0
+bool ibUsable = ibSigOk and ibCount > 0
+if ibUsable
+    float a = math.abs(ibDelta)
+    avgIb  := na(avgIb) ? a : avgIb + (a - avgIb) * alpha
+    nIbAvg += 1
+
+var float avgTick  = na
+var int   nTickAvg = 0
+if quality == Q_TICK
+    float a = math.abs(delta)
+    avgTick  := na(avgTick) ? a : avgTick + (a - avgTick) * alpha
+    nTickAvg += 1
+
+bool  tickWarm = nTickAvg > WARM
+bool  useTick  = quality == Q_TICK and tickWarm
+float sigDelta = useTick ? delta : ibUsable ? ibDelta : na
+float sigAvg   = useTick ? avgTick[1] : avgIb[1]
+bool  sigReady = useTick or (ibUsable and nIbAvg > WARM)
+
+// running delta + count of bars without trustworthy delta, to measure a leg
+var float cumDelta = 0.0
+var int   cumBad   = 0
+if not na(delta)
+    cumDelta += delta
+if quality < Q_IB
+    cumBad += 1
+max_bars_back(cumDelta, 256)
+max_bars_back(cumBad, 256)
+
+float prevLL = ta.lowest(low, sweepLen)[1]
+float prevHH = ta.highest(high, sweepLen)[1]
+int   llBack = 1 - nz(ta.lowestbars(low, sweepLen)[1])
+int   hhBack = 1 - nz(ta.highestbars(high, sweepLen)[1])
+
+// net delta from the bar after the prior extreme through this bar
+float legBull   = cumDelta - cumDelta[llBack]
+float legBear   = cumDelta - cumDelta[hhBack]
+bool  legBullOk = cumBad == cumBad[llBack]
+bool  legBearOk = cumBad == cumBad[hhBack]
+
+float rng          = math.max(high - low, syminfo.mintick)
+float bullClosePos = (close - low) / rng
+float bearClosePos = (high - close) / rng
+
+bool sweepBull = low < prevLL and close > prevLL
+bool sweepBear = high > prevHH and close < prevHH
+
+bool baseOk = barstate.isconfirmed and chart.is_standard and sigReady and not na(sigDelta) and not na(sigAvg) and sigAvg > 0
+
+bool bullAbs = baseOk and sweepBull and sigDelta <= -absMult * sigAvg and bullClosePos >= absClose
+bool bearAbs = baseOk and sweepBear and sigDelta >=  absMult * sigAvg and bearClosePos >= absClose
+bool bullDiv = baseOk and sweepBull and not bullAbs and legBullOk and legBull >=  divMult * sigAvg and legBull > 0
+bool bearDiv = baseOk and sweepBear and not bearAbs and legBearOk and legBear <= -divMult * sigAvg and legBear < 0
+
+var int lastBullSig = na
+var int lastBearSig = na
+bool bullCdOk = cooldown == 0 or na(lastBullSig) or bar_index - lastBullSig >= cooldown
+bool bearCdOk = cooldown == 0 or na(lastBearSig) or bar_index - lastBearSig >= cooldown
+
+bool bullSig = (bullAbs or bullDiv) and bullCdOk
+bool bearSig = (bearAbs or bearDiv) and bearCdOk
+if bullSig
+    lastBullSig := bar_index
+if bearSig
+    lastBearSig := bar_index
+
+string sigSrc = useTick ? "live tick-rule" : ibLabel + " intrabars"
+if showSig and bullSig
+    string tip = bullAbs ?
+         "Bullish absorption: swept the " + str.tostring(sweepLen) + "-bar low, sellers hit it hard (Δ " + f_signed(sigDelta) +
+         " = " + str.tostring(math.abs(sigDelta) / sigAvg, "#.#") + "× avg |Δ|), yet the bar closed back above the old low at " +
+         str.tostring(bullClosePos * 100, "#") + "% of its range." :
+         "Bullish delta divergence: swept the " + str.tostring(sweepLen) + "-bar low, but net Δ since the prior low is " +
+         f_signed(legBull) + " — buyers were the aggressors into the new low."
+    label.new(bar_index, low, bullAbs ? "ABS" : "DIV", yloc = yloc.belowbar, style = label.style_label_up,
+         color = bullCol, textcolor = color.white, size = size.small,
+         tooltip = tip + "\nData: " + sigSrc, force_overlay = true)
+if showSig and bearSig
+    string tip = bearAbs ?
+         "Bearish absorption: swept the " + str.tostring(sweepLen) + "-bar high, buyers hit it hard (Δ " + f_signed(sigDelta) +
+         " = " + str.tostring(math.abs(sigDelta) / sigAvg, "#.#") + "× avg |Δ|), yet the bar closed back below the old high at " +
+         str.tostring((1 - bearClosePos) * 100, "#") + "% of its range." :
+         "Bearish delta divergence: swept the " + str.tostring(sweepLen) + "-bar high, but net Δ since the prior high is " +
+         f_signed(legBear) + " — sellers were the aggressors into the new high."
+    label.new(bar_index, high, bearAbs ? "ABS" : "DIV", yloc = yloc.abovebar, style = label.style_label_down,
+         color = bearCol, textcolor = color.white, size = size.small,
+         tooltip = tip + "\nData: " + sigSrc, force_overlay = true)
+
+// ─────────────────────────────────────────────────────────────
+// PLOTS (faded = lower-quality data, solid = measured live)
+// ─────────────────────────────────────────────────────────────
+int qTransp = quality == Q_TICK ? 0 : quality == Q_IB ? 30 : 75
+
+bool  showHist = viewMode == "Delta Histogram"
+color dCol     = na(delta) ? na : color.new(delta >= 0 ? bullCol : bearCol, qTransp)
+plot(showHist ? delta : na, "Delta", color = dCol, style = plot.style_columns)
+
+bool  showCvd = viewMode == "CVD Candles"
+color cCol    = na(cvdClose) ? na : color.new(cvdClose >= cvdOpen ? bullCol : bearCol, qTransp)
+plotcandle(showCvd ? cvdOpen : na, showCvd ? cvdOpen + pathHi : na, showCvd ? cvdOpen + pathLo : na, showCvd ? cvdClose : na,
+     "CVD", color = cCol, wickcolor = cCol, bordercolor = cCol)
+
+hline(0, "Zero", color = color.new(color.gray, 60))
+
+// raw numbers in the Data Window, so any bar can be checked by hand
+plot(buyV,    "Buy Volume",  color = bullCol, display = display.data_window)
+plot(sellV,   "Sell Volume", color = bearCol, display = display.data_window)
+plot(quality, "Data Quality (3 live · 2 intrabar · 1 low-res · 0 none)", display = display.data_window)
+
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────────────────────
+f_row(table t, int r, string k, string v, color vc) =>
+    table.cell(t, 0, r, k, text_color = color.silver, text_halign = text.align_left,  text_size = size.small)
+    table.cell(t, 1, r, v, text_color = vc,           text_halign = text.align_right, text_size = size.small)
+
+f_htfText(simple string tf, float acc, bool full, int worst) =>
+    int    tfSec = timeframe.in_seconds(tf)
+    string txt   = "n/a on this chart"
+    if tfSec >= chSec and tfSec % chSec == 0
+        string tag = not full ? "  partial" : worst == Q_TICK ? "  live" : tfSec / ibSec < minRes ? "  low-res" : ""
+        txt := f_signed(acc) + tag
+    txt
+
+f_htfColor(simple string tf, float acc) =>
+    int tfSec = timeframe.in_seconds(tf)
+    tfSec >= chSec and tfSec % chSec == 0 ? (acc >= 0 ? bullCol : bearCol) : color.gray
+
+if showDash and barstate.islast
+    var table dash = table.new(position.top_right, 2, 11,
+         bgcolor = color.new(#101418, 15), border_width = 1,
+         border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 55))
+
+    string srcTxt = quality == Q_TICK ? "LIVE tick-rule · " + str.tostring(tkUpdates) + " updates" :
+         quality == Q_IB  ? ibLabel + " intrabars · " + str.tostring(ibCount) :
+         quality == Q_LOW ? ibLabel + " bar · low-res" : "no data"
+    color srcCol = quality == Q_TICK ? color.aqua : quality == Q_IB ? color.white : quality == Q_LOW ? color.orange : color.gray
+
+    float tot    = nz(buyV) + nz(sellV)
+    float buyPct = tot > 0 ? 100.0 * buyV / tot : na
+
+    string sigTxt = not chart.is_standard ? "off · non-standard chart" :
+         tickWarm ? "ready · live ticks" :
+         ibSigOk and nIbAvg > WARM ? "ready · " + ibLabel + " intrabars" :
+         ibSigOk ? "warming up" :
+         useLive ? "live only · " + str.tostring(WARM + 1 - nTickAvg) + " more live bars" : "off · history low-res"
+
+    table.cell(dash, 0, 0, "ORDER FLOW Δ", text_color = color.white, text_halign = text.align_left, text_size = size.small)
+    table.cell(dash, 1, 0, f_tfLabel(timeframe.period) + " chart", text_color = color.silver, text_halign = text.align_right, text_size = size.small)
+    f_row(dash, 1,  "Source (this bar)", srcTxt, srcCol)
+    f_row(dash, 2,  "Bar Δ",
+         f_signed(delta) + (na(buyPct) ? "" : "  ·  " + str.tostring(buyPct, "#") + "% buy"),
+         na(delta) ? color.gray : delta >= 0 ? bullCol : bearCol)
+    f_row(dash, 3,  "CVD (" + cvdReset + ")", f_signed(cvd), cvd >= 0 ? bullCol : bearCol)
+    f_row(dash, 4,  "5m bar Δ",  f_htfText("5",  d5,  f5,  w5),  f_htfColor("5",  d5))
+    f_row(dash, 5,  "15m bar Δ", f_htfText("15", d15, f15, w15), f_htfColor("15", d15))
+    f_row(dash, 6,  "1H bar Δ",  f_htfText("60", d60, f60, w60), f_htfColor("60", d60))
+    f_row(dash, 7,  "Signals", sigTxt, str.startswith(sigTxt, "ready") ? bullCol : color.orange)
+    f_row(dash, 8,  "Bars with data", str.tostring(nTick + nIb + nLow) + " / " + str.tostring(nAll), color.white)
+    f_row(dash, 9,  "  live · intrabar · low-res",
+         str.tostring(nTick) + " · " + str.tostring(nIb) + " · " + str.tostring(nLow), color.silver)
+    f_row(dash, 10, "Chart type", chart.is_standard ? "standard ✓" : "⚠ non-standard — signals off",
+         chart.is_standard ? color.silver : color.orange)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(bullSig and bullAbs, "Bullish Absorption",       "OF Delta: bullish absorption at a swept low")
+alertcondition(bearSig and bearAbs, "Bearish Absorption",       "OF Delta: bearish absorption at a swept high")
+alertcondition(bullSig and bullDiv, "Bullish Delta Divergence", "OF Delta: bullish delta divergence at a swept low")
+alertcondition(bearSig and bearDiv, "Bearish Delta Divergence", "OF Delta: bearish delta divergence at a swept high")
