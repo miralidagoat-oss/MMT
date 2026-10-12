@@ -265,12 +265,16 @@ both directions gets no bubble.
 ### Time filter and key levels
 
 - **Time filter (on by default):** bubbles and alerts appear only inside your
-  trade windows, by default **09:30–11:30 New York**, where the MNQ study
-  found most of the edge. A second window (13:30–16:00) can be switched on.
+  trade windows, by default **09:30–11:30 New York** (the cash open). This
+  default is a starting point, not fitted to data: the MNQ study above tested
+  a different indicator on 1H bars. The dashboard's "outside window" row is
+  the test on your chart. A second window (13:30–16:00) can be switched on.
 - **Key levels (drawn on the chart):** prior-day high/low (last RTH session, or
   the full previous trading day), overnight high/low (18:00–09:30 NY, shown
   from 09:30), opening-range high/low (first 15 minutes after 09:30, shown once
-  complete) and VWAP (trading day or RTH anchor). Every level is built only from
+  complete, when the chart timeframe divides it evenly) and VWAP (trading day
+or RTH anchor; a setup is tested against VWAP as it stood before that bar).
+CME holiday sessions that halt at 13:00 NY never become the "prior day". Every level is built only from
   bars that already exist, so nothing is drawn with hindsight.
 - **★ bubbles:** a reversal (ABS/DIV) that traded at or through a level and
   closed back on the right side of it, or a breakout (BRK) that crossed a level
@@ -328,8 +332,8 @@ above-average delta.
 
 ### Alerts
 
-`Any Up Setup` / `Any Down Setup` plus one alert condition per setup and
-direction. For messages that include the price and invalidation level, create
+`Any Up Setup` / `Any Down Setup`, `★ Up/Down Setup at Key Level`, plus one
+alert condition per setup and direction. For messages that include the price and invalidation level, create
 the alert with **Any alert() function call**.
 
 ### Honest caveats

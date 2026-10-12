@@ -91,12 +91,12 @@ winTz    = input.string("America/New_York", "Window Time Zone", options = ["Amer
 
 showPD   = input.bool(true,  "Prior Day High / Low (PDH / PDL)", group = G_LVL)
 pdSrc    = input.string("RTH 09:30–16:00 NY", "Prior Day From", options = ["RTH 09:30–16:00 NY", "Full Session"], group = G_LVL,
-     tooltip = "RTH = the last regular session (09:30–16:00 New York). Full Session = the whole previous trading day from the daily bar.")
+     tooltip = "RTH = the last regular session (09:30–16:00 New York; CME holiday sessions that halt at 13:00 are skipped). Full Session = the whole previous trading day from the daily bar.")
 showON   = input.bool(true,  "Overnight High / Low (ONH / ONL, 18:00–09:30 NY)", group = G_LVL,
      tooltip = "Built from this chart's bars between 18:00 and 09:30 New York; shown from 09:30 until the next overnight starts.")
 showOR   = input.bool(true,  "Opening Range High / Low (ORH / ORL)", group = G_LVL)
 orMins   = input.int(15,     "Opening Range Minutes (from 09:30 NY)", minval = 1, maxval = 120, group = G_LVL,
-     tooltip = "Shown once the range is complete, until 16:00. Needs chart bars no longer than the range (e.g. 1m/5m/15m for 15 minutes).")
+     tooltip = "Shown once the range is complete, until 16:00. Needs a chart timeframe that divides the range evenly (e.g. 1m/5m/15m for 15 minutes); otherwise the range is not shown.")
 showVW   = input.bool(true,  "VWAP", group = G_LVL)
 vwAnchor = input.string("Trading Day (18:00 NY)", "VWAP Anchor", options = ["Trading Day (18:00 NY)", "RTH Open (09:30 NY)"], group = G_LVL)
 lvlTol   = input.float(0.15, "Level Touch Tolerance (× ATR 14)", minval = 0.0, step = 0.05, group = G_LVL,
@@ -354,18 +354,24 @@ var float rthLoRun = na
 var bool  rthLive  = false
 var float pdhR     = na
 var float pdlR     = na
-// finalize on the first bar after RTH, or at the next open on RTH-only charts
+var int   rthLastC = na
+// finalize on the first bar after RTH, or at the next open on RTH-only charts;
+// a CME holiday session halts at 13:00 NY (12:00 CT) with no cash session, so
+// it never replaces the last regular one (13:15 early closes still count)
 if (rthEnd or rthOpenBar) and rthLive
-    pdhR    := rthHiRun
-    pdlR    := rthLoRun
+    if hour(rthLastC, "America/New_York") * 60 + minute(rthLastC, "America/New_York") > 13 * 60
+        pdhR := rthHiRun
+        pdlR := rthLoRun
     rthLive := false
 if rthOpenBar
     rthHiRun := high
     rthLoRun := low
     rthLive  := true
+    rthLastC := time_close
 else if rthNow and rthLive
     rthHiRun := math.max(rthHiRun, high)
     rthLoRun := math.min(rthLoRun, low)
+    rthLastC := time_close
 
 // prior full trading day from the daily bar ([1] + lookahead_on = no future leak)
 [pdhD, pdlD] = request.security(ibSym, "D", [high[1], low[1]], lookahead = barmerge.lookahead_on)
@@ -394,7 +400,8 @@ if onEnd and onLive
     onLive := false
 
 // opening range: the first orMins minutes after 09:30 NY, valid until 16:00
-bool orOk = chSec <= orMins * 60
+// bars must divide the range exactly, or a straddling bar would stretch it
+bool orOk = chSec <= orMins * 60 and (orMins * 60) % chSec == 0
 var float orHiRun = na
 var float orLoRun = na
 var int   orEndT  = na
@@ -430,6 +437,9 @@ float lvONL = showON ? onlV : na
 float lvORH = showOR and orOk ? orhV : na
 float lvORL = showOR and orOk ? orlV : na
 float lvVW  = showVW ? vwapV : na
+// tested level: VWAP as it stood before this bar, so a setup bar can't make its
+// own level (none on the anchor bar, where VWAP is that bar's own price)
+float lvVWt = showVW and not vwReset ? vwapV[1] : na
 
 float atr14     = ta.atr(14)
 float tolPx     = lvlTol * nz(atr14)
@@ -451,11 +461,11 @@ f_levelAt(bool isLong, bool isBrk) =>
     f_hit(lvPDH, isLong, isBrk) ? "PDH" : f_hit(lvPDL, isLong, isBrk) ? "PDL" :
          f_hit(lvONH, isLong, isBrk) ? "ONH" : f_hit(lvONL, isLong, isBrk) ? "ONL" :
          f_hit(lvORH, isLong, isBrk) ? "ORH" : f_hit(lvORL, isLong, isBrk) ? "ORL" :
-         f_hit(lvVW, isLong, isBrk) ? "VWAP" : ""
+         f_hit(lvVWt, isLong, isBrk) ? "VWAP" : ""
 
 f_levelPx(string n) =>
     n == "PDH" ? lvPDH : n == "PDL" ? lvPDL : n == "ONH" ? lvONH : n == "ONL" ? lvONL :
-         n == "ORH" ? lvORH : n == "ORL" ? lvORL : n == "VWAP" ? lvVW : na
+         n == "ORH" ? lvORH : n == "ORL" ? lvORL : n == "VWAP" ? lvVWt : na
 
 // ─────────────────────────────────────────────────────────────
 // |Δ| BASELINES — tick delta and intrabar delta live on different scales
@@ -570,18 +580,28 @@ var int lastBullSig = na
 var int lastBearSig = na
 var int lastBullHid = na
 var int lastBearHid = na
+var int lastBullOut = na
+var int lastBearOut = na
+// graded-only setups keep their own spacing — one chain inside the windows,
+// one outside — so they never block bubbles or starve each other's rows
 bool bullSig = bullOne and bullShow and f_cdOk(lastBullSig)
 bool bearSig = bearOne and bearShow and f_cdOk(lastBearSig)
-bool bullHid = bullOne and not bullShow and f_cdOk(lastBullHid)
-bool bearHid = bearOne and not bearShow and f_cdOk(lastBearHid)
+bool bullHid = bullOne and not bullShow and f_cdOk(inWin ? lastBullHid : lastBullOut)
+bool bearHid = bearOne and not bearShow and f_cdOk(inWin ? lastBearHid : lastBearOut)
 if bullSig
     lastBullSig := bar_index
 if bearSig
     lastBearSig := bar_index
 if bullHid
-    lastBullHid := bar_index
+    if inWin
+        lastBullHid := bar_index
+    else
+        lastBullOut := bar_index
 if bearHid
-    lastBearHid := bar_index
+    if inWin
+        lastBearHid := bar_index
+    else
+        lastBearOut := bar_index
 
 // setup strength relative to its own trigger level → bubble size
 float bullStr = not bullSig ? na : bullKind == 0 ? -sigDelta / sigAvg / absMult :
@@ -783,17 +803,19 @@ float pONH = f_brk(lvONH)
 float pONL = f_brk(lvONL)
 float pORH = f_brk(lvORH)
 float pORL = f_brk(lvORL)
+// non-standard charts (Heikin Ashi, Renko…) have synthetic highs/lows
+bool  drawOk = drawLvl and chart.is_standard
 color colPD = color.new(#FF9800, 15)
 color colON = color.new(#B388FF, 15)
 color colOR = color.new(#90A4AE, 15)
 color colVW = color.new(#FFD54F, 20)
-plot(drawLvl ? pPDH  : na, "PDH",  colPD, 1, plot.style_linebr, display = display.pane + display.data_window)
-plot(drawLvl ? pPDL  : na, "PDL",  colPD, 1, plot.style_linebr, display = display.pane + display.data_window)
-plot(drawLvl ? pONH  : na, "ONH",  colON, 1, plot.style_linebr, display = display.pane + display.data_window)
-plot(drawLvl ? pONL  : na, "ONL",  colON, 1, plot.style_linebr, display = display.pane + display.data_window)
-plot(drawLvl ? pORH  : na, "ORH",  colOR, 1, plot.style_linebr, display = display.pane + display.data_window)
-plot(drawLvl ? pORL  : na, "ORL",  colOR, 1, plot.style_linebr, display = display.pane + display.data_window)
-plot(drawLvl ? lvVW  : na, "VWAP", colVW, 1, plot.style_line,   display = display.pane + display.data_window)
+plot(drawOk ? pPDH  : na, "PDH",  colPD, 1, plot.style_linebr, display = display.pane + display.data_window)
+plot(drawOk ? pPDL  : na, "PDL",  colPD, 1, plot.style_linebr, display = display.pane + display.data_window)
+plot(drawOk ? pONH  : na, "ONH",  colON, 1, plot.style_linebr, display = display.pane + display.data_window)
+plot(drawOk ? pONL  : na, "ONL",  colON, 1, plot.style_linebr, display = display.pane + display.data_window)
+plot(drawOk ? pORH  : na, "ORH",  colOR, 1, plot.style_linebr, display = display.pane + display.data_window)
+plot(drawOk ? pORL  : na, "ORL",  colOR, 1, plot.style_linebr, display = display.pane + display.data_window)
+plot(drawOk and not vwReset ? lvVW : na, "VWAP", colVW, 1, plot.style_linebr, display = display.pane + display.data_window)
 
 // names at the right edge: recreated on the last bar so they stay the newest
 // labels (never garbage-collected) and never pile up
@@ -805,7 +827,7 @@ f_tag(string n, float v, color c) =>
 if barstate.islast
     while array.size(lvlTags) > 0
         label.delete(array.pop(lvlTags))
-    if drawLvl
+    if drawOk
         f_tag("PDH",  lvPDH, colPD)
         f_tag("PDL",  lvPDL, colPD)
         f_tag("ONH",  lvONH, colON)
