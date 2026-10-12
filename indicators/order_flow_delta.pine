@@ -6,7 +6,7 @@ indicator("Order Flow Big-Move Bubbles", "OF Bubbles", overlay = true,
 // ORDER FLOW BIG-MOVE BUBBLES
 //
 // Keeps the chart clean: a bubble appears ONLY when one of three order-flow
-// setups that tend to come before large moves prints on a closed bar. Green =
+// setups meant to flag a possible large move prints on a closed bar. Green =
 // setup for an up move, red = for a down move. The circle sits at the bar's
 // volume-weighted price and is larger when the setup is stronger; the label
 // says which setup it is, and hovering it shows the exact numbers behind it.
@@ -430,9 +430,11 @@ if bullSig
     if showSig
         label.new(bar_index, low, f_kindName(bullKind) + (bullStr >= 1.5 ? " ▲▲" : " ▲"), yloc = yloc.belowbar,
              style = label.style_label_up, color = bullCol, textcolor = color.white, size = size.small,
-             tooltip = tip + rvTxt + "\nInvalid below " + str.tostring(low - syminfo.mintick, format.mintick) + "\nData: " + sigSrc + notTxt)
+             tooltip = tip + rvTxt + "\nInvalid at or below " + str.tostring(low - syminfo.mintick, format.mintick) +
+                  (gradeOn ? " · graded target " + str.tostring(close + rrTarget * (close - low + syminfo.mintick), format.mintick) : "") +
+                  "\nData: " + sigSrc + notTxt)
     alert("OF Bubbles: " + f_kindName(bullKind) + " UP setup on " + syminfo.ticker + " " + f_tfLabel(timeframe.period) +
-         " @ " + str.tostring(close, format.mintick) + " — invalid below " + str.tostring(low - syminfo.mintick, format.mintick),
+         " @ " + str.tostring(close, format.mintick) + " — invalid at or below " + str.tostring(low - syminfo.mintick, format.mintick),
          alert.freq_once_per_bar_close)
 if bearSig
     string tip = bearKind == 0 ?
@@ -448,9 +450,11 @@ if bearSig
     if showSig
         label.new(bar_index, high, f_kindName(bearKind) + (bearStr >= 1.5 ? " ▼▼" : " ▼"), yloc = yloc.abovebar,
              style = label.style_label_down, color = bearCol, textcolor = color.white, size = size.small,
-             tooltip = tip + rvTxt + "\nInvalid above " + str.tostring(high + syminfo.mintick, format.mintick) + "\nData: " + sigSrc + notTxt)
+             tooltip = tip + rvTxt + "\nInvalid at or above " + str.tostring(high + syminfo.mintick, format.mintick) +
+                  (gradeOn ? " · graded target " + str.tostring(close - rrTarget * (high + syminfo.mintick - close), format.mintick) : "") +
+                  "\nData: " + sigSrc + notTxt)
     alert("OF Bubbles: " + f_kindName(bearKind) + " DOWN setup on " + syminfo.ticker + " " + f_tfLabel(timeframe.period) +
-         " @ " + str.tostring(close, format.mintick) + " — invalid above " + str.tostring(high + syminfo.mintick, format.mintick),
+         " @ " + str.tostring(close, format.mintick) + " — invalid at or above " + str.tostring(high + syminfo.mintick, format.mintick),
          alert.freq_once_per_bar_close)
 
 // ─────────────────────────────────────────────────────────────
@@ -637,9 +641,9 @@ if showDash and barstate.islast
     f_row(dash, 1,  "Big-move bubbles", sigTxt, str.startswith(sigTxt, "ready") ? bullCol : color.orange)
     f_row(dash, 2,  "Self-check", gradeOn ? "target " + str.tostring(rrTarget, "#.#") + "R · needs " +
          str.tostring(100.0 / (1.0 + rrTarget), "#") + "% wins" : "off", color.silver)
-    f_row(dash, 3,  "  ABS (reversal)",     gradeOn ? f_gradeText(0) : "—", gradeOn ? f_gradeColor(0) : color.gray)
-    f_row(dash, 4,  "  DIV (reversal)",     gradeOn ? f_gradeText(1) : "—", gradeOn ? f_gradeColor(1) : color.gray)
-    f_row(dash, 5,  "  BRK (continuation)", gradeOn ? f_gradeText(2) : "—", gradeOn ? f_gradeColor(2) : color.gray)
+    f_row(dash, 3,  "  ABS (reversal)",     not useAbs ? "off" : gradeOn ? f_gradeText(0) : "—", gradeOn and useAbs ? f_gradeColor(0) : color.gray)
+    f_row(dash, 4,  "  DIV (reversal)",     not useDiv ? "off" : gradeOn ? f_gradeText(1) : "—", gradeOn and useDiv ? f_gradeColor(1) : color.gray)
+    f_row(dash, 5,  "  BRK (continuation)", not useBrk ? "off" : gradeOn ? f_gradeText(2) : "—", gradeOn and useBrk ? f_gradeColor(2) : color.gray)
     f_row(dash, 6,  "  open now", gradeOn ? str.tostring(array.size(setups)) : "—", color.aqua)
     f_row(dash, 7,  "This bar", srcTxt, srcCol)
     f_row(dash, 8,  "  Δ",

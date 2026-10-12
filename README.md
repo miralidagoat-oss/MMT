@@ -239,8 +239,8 @@ against the breakeven rate for the chosen RR (breakeven = `1/(1+RR)`, i.e.
 
 `indicators/order_flow_delta.pine` is an on-chart order-flow indicator for
 NQ/MNQ on 1m, 5m and 15m charts (it works on any timeframe). It keeps the chart
-clean: a bubble appears **only** when one of three order-flow setups that tend
-to come before large moves prints on a closed bar. It runs on a free
+clean: a bubble appears **only** when one of three order-flow setups meant to
+flag a possible large move prints on a closed bar. It runs on a free
 TradingView plan and uses only data TradingView actually provides. There is no
 simulated order book, and bars without data stay empty instead of guessed.
 
@@ -249,7 +249,7 @@ simulated order book, and bars without data stay empty instead of guessed.
 Green bubble = setup for an **up** move, red = for a **down** move. The circle
 sits at the bar's volume-weighted price, and a bigger circle (label `▲▲`/`▼▼`)
 means the setup cleared its trigger by 1.5× or more. Hover the label for the
-exact numbers and the invalidation price.
+exact numbers, the invalidation price and the graded target.
 
 | tag | type | long (green) | short (red) |
 |---|---|---|---|
