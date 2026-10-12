@@ -262,6 +262,26 @@ failed, and that is what the setup is about. A wide bar that sweeps the low
 and closes above the high counts as a BRK; an outside bar that qualifies in
 both directions gets no bubble.
 
+### Time filter and key levels
+
+- **Time filter (on by default):** bubbles and alerts appear only inside your
+  trade windows, by default **09:30–11:30 New York**, where the MNQ study
+  found most of the edge. A second window (13:30–16:00) can be switched on.
+- **Key levels (drawn on the chart):** prior-day high/low (last RTH session, or
+  the full previous trading day), overnight high/low (18:00–09:30 NY, shown
+  from 09:30), opening-range high/low (first 15 minutes after 09:30, shown once
+  complete) and VWAP (trading day or RTH anchor). Every level is built only from
+  bars that already exist, so nothing is drawn with hindsight.
+- **★ bubbles:** a reversal (ABS/DIV) that traded at or through a level and
+  closed back on the right side of it, or a breakout (BRK) that crossed a level
+  and closed beyond it, is starred with that level, e.g. `ABS ▲ ★PDL`. The
+  touch tolerance is 0.15 × ATR(14) by default. Optionally show **only**
+  starred bubbles.
+- **The filters prove themselves.** Setups a filter hides still get graded,
+  silently. The dashboard compares **★ at key level** vs **away from levels**
+  (inside the windows) and **outside window**. If a hidden row beats the shown
+  ones, that filter is hurting on your chart.
+
 ### Self-check: it grades its own bubbles
 
 No indicator knows a move is coming, so every bubble is graded on the chart's
@@ -298,7 +318,8 @@ history.
 
 ### Dashboard
 
-Signal status, self-check record per setup and open setups, this bar's data
+Signal status, the active filters, self-check record per setup, the
+at-level / away / outside-window comparison and open setups, this bar's data
 source, delta and buy %, CVD (trading day / 09:30 NY RTH / week / never,
 flagged `partial` when its period began before the loaded data), the
 in-progress 5m / 15m / 1H bar delta, and how many bars have data. Optional
