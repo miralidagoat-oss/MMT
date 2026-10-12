@@ -34,7 +34,9 @@ indicator("Order Flow Big-Move Bubbles", "OF Bubbles", overlay = true,
 //              its close vs open (ties: vs prior close, then prior direction)
 //              and its whole volume booked that way — the same method as
 //              TradingView's built-in Volume Delta / CVD. Signals on 3m+
-//              charts use this, so they are identical live and after reload.
+//              charts use this, so they normally match after a reload
+//              (TradingView notes realtime intrabar data can occasionally be
+//              corrected later, which can change a borderline signal).
 //   LIVE tick  realtime bars watched from their first trade: volume traded on
 //              an uptick = buying, on a downtick = selling. Closest Pine gets
 //              to exchange bid/ask delta, but it exists only while the chart
@@ -72,7 +74,7 @@ brkClose = input.float(0.7,  "BRK: Min Close Position (fraction of range)", minv
 cooldown = input.int(10,     "Min Bars Between Bubbles (per side)", minval = 0, group = G_SIG)
 
 gradeOn  = input.bool(true,  "Grade Every Bubble",                            group = G_SELF,
-     tooltip = "Entry = the bubble bar's close. Invalidation = one tick beyond that bar's low (long) / high (short). Win = target reached first; loss = invalidation reached first (if both print in one bar, it counts as a loss); unresolved after N bars = closed at market.")
+     tooltip = "Entry = the bubble bar's close. Invalidation = one tick beyond that bar's low (long) / high (short). Win = price trades at least one tick through the target first. Loss = invalidation reached first; a gap past it is booked at the bar's open, and if both print in one bar it counts as a loss. Unresolved after N bars = closed at market. No fees or slippage.")
 rrTarget = input.float(2.0,  "Target (R multiple)", minval = 0.5, step = 0.5, group = G_SELF)
 maxHold  = input.int(30,     "Bars to Resolve", minval = 1, maxval = 500,     group = G_SELF)
 showLvl  = input.bool(true,  "Draw Invalidation Line",                        group = G_SELF)
@@ -247,7 +249,7 @@ else if quality == Q_LOW
 
 // ─────────────────────────────────────────────────────────────
 // CVD + HIGHER-TIMEFRAME DELTA (intrabar data only: one consistent scale that
-// matches TradingView's own CVD and survives reloads)
+// matches TradingView's own CVD and is rebuilt from history on reload)
 // ─────────────────────────────────────────────────────────────
 bool dayChg   = timeframe.change("D")
 bool weekChg  = timeframe.change("W")
@@ -310,9 +312,10 @@ if quality == Q_TICK
     avgTick  := nz(avgTick) + (math.abs(delta) - nz(avgTick)) * math.max(alpha, 1.0 / nTickAvg)
 
 // ─────────────────────────────────────────────────────────────
-// SIGNAL SOURCE — intrabar wherever it is signal-grade (3m+ charts: identical
-// live and after reload, and alerts match the chart); live ticks only where
-// history is too coarse (1m chart on a free plan)
+// SIGNAL SOURCE — intrabar wherever it is signal-grade (3m+ charts: the same
+// data live and after a reload, apart from rare provider corrections, so
+// alerts match the chart); live ticks only where history is too coarse (1m
+// chart on a free plan)
 // ─────────────────────────────────────────────────────────────
 bool  ibUsable = ibSigOk and ibCount > 0
 bool  tickWarm = nTickAvg > WARM
@@ -370,7 +373,9 @@ bool bullAbs = useAbs and baseOk and volOk and sweepBull and sigDelta <= -absMul
 bool bearAbs = useAbs and baseOk and volOk and sweepBear and sigDelta >=  absMult * sigAvg and bearClosePos >= absClose
 bool bullDiv = useDiv and baseOk and sweepBull and not bullAbs and legBullOk and legBull >=  divMult * sigAvg
 bool bearDiv = useDiv and baseOk and sweepBear and not bearAbs and legBearOk and legBear <= -divMult * sigAvg
-// a breakout is a CLOSE beyond the level, so it can never coincide with a sweep
+// a breakout is a CLOSE beyond the level, so it never coincides with a same-side
+// sweep; a wide bar can sweep the low and close above the high, which the kind
+// selection below treats as a breakout
 bool bullBrk = useBrk and baseOk and volOk and close > prevHH and sigDelta >=  brkMult * sigAvg and bullClosePos >= brkClose
 bool bearBrk = useBrk and baseOk and volOk and close < prevLL and sigDelta <= -brkMult * sigAvg and bearClosePos >= brkClose
 
@@ -379,18 +384,18 @@ var int lastBearSig = na
 bool bullCdOk = cooldown == 0 or na(lastBullSig) or bar_index - lastBullSig >= cooldown
 bool bearCdOk = cooldown == 0 or na(lastBearSig) or bar_index - lastBearSig >= cooldown
 
-bool bullRaw = (bullAbs or bullDiv or bullBrk) and bullCdOk
-bool bearRaw = (bearAbs or bearDiv or bearBrk) and bearCdOk
-// an outside bar that sweeps both extremes has no directional read
-bool bullSig = bullRaw and not bearRaw
-bool bearSig = bearRaw and not bullRaw
+bool bullAny = bullAbs or bullDiv or bullBrk
+bool bearAny = bearAbs or bearDiv or bearBrk
+// an outside bar that qualifies both ways has no directional read, whatever the cooldowns
+bool bullSig = bullAny and bullCdOk and not bearAny
+bool bearSig = bearAny and bearCdOk and not bullAny
 if bullSig
     lastBullSig := bar_index
 if bearSig
     lastBearSig := bar_index
 
-int bullKind = bullAbs ? 0 : bullDiv ? 1 : 2
-int bearKind = bearAbs ? 0 : bearDiv ? 1 : 2
+int bullKind = bullAbs ? 0 : bullBrk ? 2 : 1
+int bearKind = bearAbs ? 0 : bearBrk ? 2 : 1
 
 // setup strength relative to its own trigger level → bubble size
 float bullStr = not bullSig ? na : bullKind == 0 ? -sigDelta / sigAvg / absMult :
@@ -409,7 +414,7 @@ plotshape(showSig and bearSig and bearStr >= 1.5 ? evY : na, "Down Setup (strong
 
 string sigSrc = useTick ? "live tick-rule" : ibLabel + " intrabars"
 string rvTxt  = na(relVol) ? "" : "\nVolume " + str.tostring(relVol, "#.#") + "× its 20-bar average"
-string notTxt = "\nGraded by the self-check; not a guarantee — confirm with price."
+string notTxt = (gradeOn ? "\nGraded by the self-check; not" : "\nNot graded (self-check off); not") + " a guarantee — confirm with price."
 
 if bullSig
     string tip = bullKind == 0 ?
@@ -483,17 +488,22 @@ if gradeOn and barstate.isconfirmed
             Setup s = array.get(setups, i)
             if not na(s.lvl)
                 line.set_x2(s.lvl, bar_index)
-            bool  stopHit = s.isLong ? low  <= s.stop   : high >= s.stop
-            bool  tgtHit  = s.isLong ? high >= s.target : low  <= s.target
+            bool  stopHit = s.isLong ? low  <= s.stop : high >= s.stop
+            // a resting target order isn't guaranteed a fill on a touch: price must trade through it
+            bool  tgtHit  = s.isLong ? high >= s.target + syminfo.mintick : low <= s.target - syminfo.mintick
             int   res     = 0     // 1 win, -1 loss, 2 time exit
             float r       = 0.0
+            float exitPx  = close
             // invalidation beats target when both print inside one bar
             if stopHit
-                res := -1
-                r   := -1.0
+                res    := -1
+                // a gap past the line (e.g. the 18:00 ET reopen) fills at the open, not at the line
+                exitPx := s.isLong ? math.min(open, s.stop) : math.max(open, s.stop)
+                r      := (s.isLong ? exitPx - s.entry : s.entry - exitPx) / s.risk
             else if tgtHit
-                res := 1
-                r   := rrTarget
+                res    := 1
+                exitPx := s.target
+                r      := rrTarget
             else if bar_index - s.bar >= maxHold
                 res := 2
                 r   := (s.isLong ? close - s.entry : s.entry - close) / s.risk
@@ -502,7 +512,7 @@ if gradeOn and barstate.isconfirmed
                 if not na(s.lvl)
                     line.set_color(s.lvl, color.new(color.gray, 60))
                 if showOut
-                    label.new(bar_index, res == 1 ? s.target : res == -1 ? s.stop : close,
+                    label.new(bar_index, exitPx,
                          (res == 1 ? "✔ " : res == -1 ? "✘ " : "⏱ ") + f_kindName(s.kind) + " " + (r >= 0 ? "+" : "") + str.tostring(r, "#.#") + "R",
                          style = label.style_label_left, size = size.tiny, textcolor = color.white,
                          color = color.new(res == 1 ? color.teal : res == -1 ? color.maroon : color.gray, 25))
@@ -545,16 +555,20 @@ plotshape(tier == 3 ? bubY : na, "Δ Bubble M",  shape.circle, location.absolute
 plotshape(tier == 4 ? bubY : na, "Δ Bubble L",  shape.circle, location.absolute, bubCol, size = size.large,  display = display.pane)
 plotshape(tier == 5 ? bubY : na, "Δ Bubble XL", shape.circle, location.absolute, bubCol, size = size.huge,   display = display.pane)
 
+var array<label> numLbls = array.new<label>()
 if numbered
     string bubSrc = bubQ == Q_TICK ? "live tick-rule" : bubQ == Q_IB ? ibLabel + " intrabars" : ibLabel + " bar (low-res)"
     float  bB     = bubTick ? tkBuy  : ibBuy
     float  bS     = bubTick ? tkSell : ibSell
-    label.new(bar_index, bubY, f_signed(bubD), style = label.style_label_center,
+    array.push(numLbls, label.new(bar_index, bubY, f_signed(bubD), style = label.style_label_center,
          color = bubCol, textcolor = color.white, size = bubR >= 4.0 ? size.normal : size.small,
          tooltip = "Δ " + f_signed(bubD) + " = " + str.tostring(bubR, "#.#") + "× avg |Δ|" +
               "\nBuy " + str.tostring(bB, format.volume) + " · Sell " + str.tostring(bS, format.volume) +
               (bubTick ? "\nAt the live VWAP " : "\nAt ≈VWAP of the " + ibLabel + " bars (hlc3) ") + str.tostring(bubY, format.mintick) +
-              "\nData: " + bubSrc)
+              "\nData: " + bubSrc))
+    // cap number labels at 150 so they never push setup labels out of the 500-label budget
+    if array.size(numLbls) > 150
+        label.delete(array.shift(numLbls))
 
 // raw numbers in the Data Window (location.top keeps them off the price scale)
 plotchar(buyV,    "Buy Volume",  "", location.top, color = bullCol, display = display.data_window, format = format.volume)
@@ -632,9 +646,9 @@ if showDash and barstate.islast
          f_signed(delta) + (na(buyPct) ? "" : "  ·  " + str.tostring(buyPct, "#") + "% buy"),
          na(delta) ? color.gray : delta >= 0 ? bullCol : bearCol)
     f_row(dash, 9,  "CVD (" + cvdReset + ")", f_signed(cvd) + cvdTag, cvd >= 0 ? bullCol : bearCol)
-    f_row(dash, 10, "5m bar Δ",  f_htfText("5",  d5,  f5),  f_htfColor("5",  d5))
-    f_row(dash, 11, "15m bar Δ", f_htfText("15", d15, f15), f_htfColor("15", d15))
-    f_row(dash, 12, "1H bar Δ",  f_htfText("60", d60, f60), f_htfColor("60", d60))
+    f_row(dash, 10, "5m bar Δ (" + ibLabel + " data)",  f_htfText("5",  d5,  f5),  f_htfColor("5",  d5))
+    f_row(dash, 11, "15m bar Δ (" + ibLabel + " data)", f_htfText("15", d15, f15), f_htfColor("15", d15))
+    f_row(dash, 12, "1H bar Δ (" + ibLabel + " data)",  f_htfText("60", d60, f60), f_htfColor("60", d60))
     f_row(dash, 13, "Bars with data", str.tostring(nTick + nIb + nLow) + " / " + str.tostring(nAll) +
          "  (live " + str.tostring(nTick) + " · low-res " + str.tostring(nLow) + ")", color.silver)
 

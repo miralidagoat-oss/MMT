@@ -258,7 +258,9 @@ exact numbers and the invalidation price.
 | **BRK** | initiative breakout → continuation | bar **closes** above the 20-bar high on ≥ 1.5× volume with buying delta ≥ 2.5× average and a close in the top 30% of its range | mirror below the low |
 
 ABS longs are green even though the bar's delta is red: the heavy selling
-failed, and that is what the setup is about.
+failed, and that is what the setup is about. A wide bar that sweeps the low
+and closes above the high counts as a BRK; an outside bar that qualifies in
+both directions gets no bubble.
 
 ### Self-check: it grades its own bubbles
 
@@ -268,8 +270,11 @@ exits, win %, net R):
 
 - entry = the bubble bar's close; invalidation = one tick beyond that bar's
   low (long) or high (short), drawn as a dotted line;
-- win = the target (default 2R) prints first; loss = the invalidation prints
-  first; **if both print in the same bar, it counts as a loss**;
+- win = price trades at least one tick **through** the target (default 2R)
+  first, because a touch alone may not fill a resting order; loss = the
+  invalidation prints first, **if both print in the same bar it counts as a
+  loss**, and a gap past the line (for example the 18:00 ET reopen) is booked
+  at the bar's open, so the loss can be worse than −1R;
 - still open after 30 bars → closed at market in fractional R;
 - no fees or slippage. The dashboard shows the win rate needed to break even
   (33% at 2R).
@@ -281,7 +286,7 @@ Read the record as evidence about your market, not a promise.
 
 | grade | source | used for |
 |---|---|---|
-| **Intrabar** | each 1m bar inside the chart bar is classed up or down (close vs open, ties vs prior close, then prior direction) and its whole volume booked that way, the same method as TradingView's built-in Volume Delta / CVD | all signals on 3m+ charts, so they are identical live and after a reload and alerts match the chart; CVD; 5m/15m/1H rows |
+| **Intrabar** | each 1m bar inside the chart bar is classed up or down (close vs open, ties vs prior close, then prior direction) and its whole volume booked that way, the same method as TradingView's built-in Volume Delta / CVD | all signals on 3m+ charts, so they normally match after a reload and alerts match the chart (TradingView notes realtime intrabar data can occasionally be corrected later, which can flip a borderline signal); CVD; 5m/15m/1H rows |
 | **LIVE tick** | realtime bars watched from their first trade: volume traded on an uptick = buying, on a downtick = selling | signals on **1m** charts (1m history is too coarse there); the dashboard's live bar readout |
 | **Low-res** | on a 1m chart the bar itself is its only 1m piece | display only, never signals |
 
