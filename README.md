@@ -273,9 +273,10 @@ both directions gets no bubble.
   the full previous trading day), overnight high/low (18:00–09:30 NY, shown
   from 09:30), opening-range high/low (first 15 minutes after 09:30, shown once
   complete, when the chart timeframe divides it evenly) and VWAP (trading day
-or RTH anchor; a setup is tested against VWAP as it stood before that bar).
-CME holiday sessions that halt at 13:00 NY never become the "prior day". Every level is built only from
-  bars that already exist, so nothing is drawn with hindsight.
+  or RTH anchor; a setup is tested against VWAP as it stood before that bar).
+  CME holiday sessions that halt at 13:00 NY never become the "prior day".
+  Every level is built only from bars that already exist, so nothing is drawn
+  with hindsight.
 - **★ bubbles:** a reversal (ABS/DIV) that traded at or through a level and
   closed back on the right side of it, or a breakout (BRK) that crossed a level
   and closed beyond it, is starred with that level, e.g. `ABS ▲ ★PDL`. The
