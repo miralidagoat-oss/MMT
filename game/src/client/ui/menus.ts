@@ -384,7 +384,7 @@ export class Menus {
       if (coop.code) {
         const copied = h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;min-height:0' });
         coopBox.append(
-          h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;line-height:1.5;padding:4px 2px' }, 'Open to friends · code ', h('b', { class: 'code', text: coop.code }), ` · ${coop.players}/4 players. Friends open this page, choose Play with Friends and pick your game.`),
+          h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;line-height:1.5;padding:4px 2px' }, 'Open to friends · code ', h('b', { class: 'code', text: coop.code }), ` · ${coop.players}/4 players. Friends open this page, choose Play with Friends and pick your game. If you quit, the friend who joined first takes over the world.`),
           h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap' },
             this.btn('Copy Code', () => {
               const code = coop.code ?? '';

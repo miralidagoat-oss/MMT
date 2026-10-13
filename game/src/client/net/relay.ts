@@ -92,7 +92,8 @@ export class RelayTransport implements Transport {
     this.closed = true;
     this.stopBeat?.();
     this.pumper.remove(this.link);
-    setTimeout(() => this.pipe.close(), 300);
+    // linger so the final state (acks, 'bye') reaches the other side before leaving the room
+    setTimeout(() => this.pipe.close(), 1500);
   }
 }
 
@@ -124,12 +125,16 @@ export class RelayPeerLink {
     this.link.sendReliable(frame);
     if (snap) this.onSnapshotIdle();
   }
+  /** true once this link has ended (either side) */
+  get ended(): boolean { return this.closed; }
+
   end(reason: string) {
     if (this.closed) return;
     this.closed = true;
     this.pumper.remove(this.link);
     this.link.flush(performance.now() + 1e6);
-    setTimeout(() => this.pipe.close(), 300);
+    // linger so the final state (acks, 'bye') reaches the other side before leaving the room
+    setTimeout(() => this.pipe.close(), 1500);
     this.onEnd(reason);
   }
 }

@@ -85,6 +85,14 @@ export async function exportWorld(slot: string): Promise<string> {
   return 'Save file downloaded.';
 }
 
+/** Store a world received from another player (host handoff). Returns the new slot. */
+export async function importWorldText(text: string): Promise<string> {
+  readEnvelope(text); // validates JSON, version and checksum
+  const slot = `h${Date.now().toString(36)}`;
+  await saveStore.put(`world:${slot}`, text);
+  return slot;
+}
+
 /** Import a save file chosen by the player. Returns the new slot. */
 export async function importWorld(file: File): Promise<string> {
   if (file.size > 64 * 1024 * 1024) throw new Error('That file is too large to be a Tidewake save.');

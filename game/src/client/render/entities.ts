@@ -417,42 +417,92 @@ export class EntityRenderer {
   private animatePlayer(v: PlayerView, p: NetPlayer, dt: number) {
     const h = v.h;
     const swim = !!(p.f & FLAG.swim), crouch = !!(p.f & FLAG.crouch), downed = !!(p.f & FLAG.downed), sleeping = !!(p.f & FLAG.sleeping), seated = !!p.v;
+    const sprint = !!(p.f & FLAG.sprint), using = !!(p.f & FLAG.using);
     const sp = Math.min(v.speed, 7);
-    v.phase += dt * (2 + sp * 1.6);
+    v.phase += dt * (swim ? 1.6 + sp * 0.8 : 2 + sp * 1.6);
     const s = Math.sin(v.phase), c = Math.cos(v.phase);
+    // neutral pose
     h.root.rotation.x = 0; h.root.rotation.z = 0;
     h.body.position.y = 1.2; h.head.position.y = 1.67;
-    h.body.rotation.y = 0;
-    h.armL.rotation.z = 0.07; h.armR.rotation.z = -0.07;
+    h.body.rotation.set(0, 0, 0);
+    h.head.rotation.set(0, 0, 0);
+    // arms hang slightly away from the body (left arm rotates to -x, right to +x)
+    h.armL.rotation.set(0, 0, -0.07); h.armR.rotation.set(0, 0, 0.07);
+    h.legL.rotation.set(0, 0, 0); h.legR.rotation.set(0, 0, 0);
+    h.elbowL.rotation.set(0, 0, 0); h.elbowR.rotation.set(0, 0, 0);
+    h.kneeL.rotation.set(0, 0, 0); h.kneeR.rotation.set(0, 0, 0);
     if (downed || sleeping) {
       h.root.rotation.z = Math.PI / 2;
       h.root.position.y += 0.25;
-      h.armL.rotation.x = h.armR.rotation.x = h.legL.rotation.x = h.legR.rotation.x = 0;
+      h.kneeL.rotation.x = 0.35; h.elbowR.rotation.x = -0.5;
+      if (downed) h.armR.rotation.x = -0.4 + Math.sin(this.time * 2) * 0.15; // reaching for help
       return;
     }
     if (swim) {
-      h.root.rotation.x = Math.PI / 2.6;
+      // breaststroke: arms sweep out and back with bent elbows, legs frog-kick
+      h.root.rotation.x = Math.PI / 2.5;
       h.root.position.y += 0.6;
-      h.armL.rotation.x = -Math.PI / 2 + s * 0.9; h.armR.rotation.x = -Math.PI / 2 - s * 0.9;
-      h.legL.rotation.x = c * 0.4; h.legR.rotation.x = -c * 0.4;
+      const stroke = Math.max(0, s);
+      h.armL.rotation.x = -Math.PI / 2 - 0.2 + stroke * 0.3; h.armR.rotation.x = h.armL.rotation.x;
+      h.armL.rotation.z = -(0.3 + stroke * 1.0); h.armR.rotation.z = -h.armL.rotation.z;
+      h.elbowL.rotation.x = -0.25 - (1 - stroke) * 0.9; h.elbowR.rotation.x = h.elbowL.rotation.x;
+      const kick = Math.max(0, -s);
+      h.legL.rotation.x = -0.2 - kick * 0.5; h.legR.rotation.x = h.legL.rotation.x;
+      h.legL.rotation.z = -kick * 0.35; h.legR.rotation.z = kick * 0.35;
+      h.kneeL.rotation.x = 0.2 + kick * 1.3; h.kneeR.rotation.x = h.kneeL.rotation.x;
+      h.head.rotation.x = -0.9; // head up out of the water
       return;
     }
     if (seated) {
       h.legL.rotation.x = h.legR.rotation.x = -Math.PI / 2;
+      h.kneeL.rotation.x = h.kneeR.rotation.x = Math.PI / 2;
       h.root.position.y -= 0.45;
-      h.armL.rotation.x = h.armR.rotation.x = -0.6 + s * 0.4;
+      // paddling: both arms pull together
+      h.armL.rotation.x = h.armR.rotation.x = -0.7 + s * 0.45;
+      h.elbowL.rotation.x = h.elbowR.rotation.x = -0.5 - Math.max(0, c) * 0.4;
+      h.head.rotation.x = -p.pitch * 0.6;
       return;
     }
-    const amp = Math.min(1, sp / 3) * 0.8;
+    const amp = Math.min(1, sp / 3) * (sprint ? 1.05 : 0.8);
+    // legs: thighs swing, knees fold on the forward swing and stay slightly soft on contact
     h.legL.rotation.x = s * amp; h.legR.rotation.x = -s * amp;
-    // a little bounce and counter-twist in the stride; a slow breathing idle
-    const bob = Math.abs(c) * 0.035 * amp + Math.sin(this.time * 1.7 + v.phase * 0.01) * 0.006;
+    h.kneeL.rotation.x = (0.08 + Math.max(0, c) * 1.25) * amp + 0.04;
+    h.kneeR.rotation.x = (0.08 + Math.max(0, -c) * 1.25) * amp + 0.04;
+    // a little bounce, counter-twist and forward lean in the stride; slow breathing at rest
+    const breathe = Math.sin(this.time * 1.7 + v.phase * 0.01);
+    const bob = Math.abs(c) * (sprint ? 0.05 : 0.035) * amp + breathe * 0.006;
     h.body.position.y += bob; h.head.position.y += bob;
     h.body.rotation.y = s * amp * 0.12;
+    h.body.rotation.x = amp * (sprint ? 0.16 : 0.06);
+    // arms counter-swing with bent elbows (more bent when running)
     h.armL.rotation.x = -s * amp * 0.8;
-    h.armR.rotation.x = p.f & FLAG.using ? -1.6 + Math.sin(this.time * 18) * 0.6 : s * amp * 0.8 - (p.it ? 0.5 : 0);
-    if (crouch) { h.root.position.y -= 0.35; h.legL.rotation.x -= 0.6; h.legR.rotation.x -= 0.6; }
-    h.head.rotation.x = -p.pitch * 0.6;
+    h.elbowL.rotation.x = -(0.18 + amp * (sprint ? 0.9 : 0.45) + Math.max(0, -s) * 0.3 * amp);
+    if (using) {
+      // chopping / mining / hammering: wind up and strike
+      const w = Math.sin(this.time * 9);
+      h.armR.rotation.x = -1.9 + w * 0.75;
+      h.elbowR.rotation.x = -0.35 - Math.max(0, w) * 0.6;
+      h.body.rotation.y = -0.25 + w * 0.12;
+    } else if (p.it) {
+      // carrying something: forearm raised
+      h.armR.rotation.x = s * amp * 0.4 - 0.35;
+      h.elbowR.rotation.x = -0.9;
+    } else {
+      h.armR.rotation.x = s * amp * 0.8;
+      h.elbowR.rotation.x = -(0.18 + amp * (sprint ? 0.9 : 0.45) + Math.max(0, s) * 0.3 * amp);
+    }
+    if (amp < 0.05) {
+      // idle: weight shifts from foot to foot, arms hang loose
+      h.body.rotation.z = Math.sin(this.time * 0.6 + v.phase) * 0.025;
+      h.armL.rotation.z = -0.09 - breathe * 0.015; h.armR.rotation.z = 0.09 + breathe * 0.015;
+    }
+    if (crouch) {
+      h.root.position.y -= 0.32;
+      h.legL.rotation.x -= 0.95; h.legR.rotation.x -= 0.95;
+      h.kneeL.rotation.x += 1.5; h.kneeR.rotation.x += 1.5;
+      h.body.rotation.x += 0.3;
+    }
+    h.head.rotation.x = -p.pitch * 0.6 - h.body.rotation.x * 0.6;
   }
 
   /** Root object of a structure (for build-mode highlighting). */

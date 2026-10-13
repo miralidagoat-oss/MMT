@@ -10,7 +10,7 @@ _Last updated: 2026-10-13 (47/47 tests passing; browser E2E passing for the self
 | Unit + integration + acceptance tests | `npm test` | ✅ 47 / 47 passing |
 | Browser end-to-end (Chromium, SwiftShader WebGL) | `npx tsx tools/e2e-smoke.ts` | ✅ menu, single-player, all UI screens, mouse drag & drop, death screen, 2 browsers in multiplayer; no page or console errors |
 | Hosted web page build | `npm run build:web` | ✅ dist/web: page + 2 scripts, about 1.2 MB |
-| Hosted page E2E, up to 6 Chromium instances against a local platform stand-in that enforces the room rules (own tabs flagged `isMe`, 4 KiB / 1 KiB presence bounds, ~40 updates/s budget) | `npm run test:e2e:web` | ✅ host + 3 friends (list and code), movement sync, chat, 5th refused, leave and rejoin as the same survivor, the host's own account joining from a second tab as a separate survivor, world runs while the host is in the menu, cloud save, friends told when the host closes, export, cloud restore on a fresh browser; largest presence state 3.8 KB, none over the limit |
+| Hosted page E2E, up to 6 Chromium instances against a local platform stand-in that enforces the room rules (own tabs flagged `isMe`, 4 KiB / 1 KiB presence bounds, ~40 updates/s budget) | `npm run test:e2e:web` | ✅ host + 3 friends (list and code), movement sync, chat, 5th refused, leave and rejoin as the same survivor, the host's own account joining from a second tab as a separate survivor, the host quitting and the first friend taking the world over under the same code with the others following, world runs while the host is in the menu, cloud save, friends told when the host closes, export, cloud restore on a fresh browser; largest presence state 3.8 KB, none over the limit |
 | Server profile | `npx tsx tools/profile-sim.ts` | ✅ see Performance |
 
 ## Completed systems (implemented **and** tested)
@@ -43,7 +43,7 @@ _Last updated: 2026-10-13 (47/47 tests passing; browser E2E passing for the self
 | UI | main/new/load/multiplayer/settings/pause/death/loading screens, HUD, inventory, crafting, stations, build menu, map, journal, chat, player list, controller navigation | e2e screenshots |
 | Settings | resolution presets, render scale, dynamic resolution, FPS cap, V-Sync, fullscreen, 5 quality presets and per-feature graphics options, audio buses, rebindable keys, gameplay options | e2e screenshot |
 | Audio | procedural SFX, ambience, music, spatial audio, underwater filter | manual (headless browser has no audio output) |
-| Graphics | custom sky with golden-hour horizon glow, self-shadowed cumulus clouds, PBR + PMREM, terrain splatting, caustics, ocean shader with planar reflections (Off / Half / Full resolution setting) and Snell's window from below, rain ripples, foam wakes behind boats and swimmers, footprints in the sand that fade (faster at the waterline), rain-soaked glossy ground that dries afterwards, branching lightning bolts, a textured moon with halo, instanced vegetation with wind, geometric blade grass with per-clump tint and edge fade, fractured mossy boulders, shader flames on torches and fires, varied castaway avatars, vertex-animated animals (tails, fins, wings, legs), shadows, GTAO, bloom, god rays, grading, SMAA/FXAA/MSAA | visual QA screenshots (`tools/shot.ts`, including `animals` and a real dive for `underwater`) |
+| Graphics | custom sky with golden-hour horizon glow, self-shadowed cumulus clouds, PBR + PMREM, terrain splatting, caustics, ocean shader with planar reflections (Off / Half / Full resolution setting) and Snell's window from below, rain ripples, foam wakes behind boats and swimmers, footprints in the sand that fade (faster at the waterline), rain-soaked glossy ground that dries afterwards, branching lightning bolts, a textured moon with halo, instanced vegetation with wind, geometric blade grass with per-clump tint and edge fade, fractured mossy boulders, shader flames on torches and fires, varied castaway avatars with jointed limbs (knee and elbow bends, running lean, crouch, breaststroke, paddling, tool swings, idle sway), vertex-animated animals (tails, fins, wings, legs), shadows, GTAO, bloom, god rays, grading, SMAA/FXAA/MSAA | visual QA screenshots (`tools/shot.ts`, including `animals` and a real dive for `underwater`) |
 
 ## Acceptance scenario (`tests/acceptance.test.ts`) — ✅ passing
 Four clients connect through the real protocol over a link with 60 ms lag, 30 ms
@@ -85,8 +85,8 @@ Multiplayer consistency is additionally tested at 80 ms / 5% loss and
 * Water-quality changes apply on the next world load.
 
 ## Multiplayer issues
-* No host migration: when the host leaves, the world closes for everyone and stays in
-  the host's saves.
+* Host handoff happens when the host uses Save & Quit; closing the tab instead ends
+  the session for everyone (the world stays in the host's saves).
 * Web co-op needs every player signed in, with access to the page link. The relay
   runs snapshots at about 10–12 Hz instead of 20 Hz, so remote players and animals
   are shown with a 280 ms interpolation delay.

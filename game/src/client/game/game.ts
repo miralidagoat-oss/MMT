@@ -47,6 +47,8 @@ export interface GameHooks {
   onPause: (paused: boolean) => void;
   requestSave: () => Promise<boolean>;
   inviteAddress: string | null;
+  /** the host handed this world to us: we become the new host */
+  onHandoff?: (m: { code: string; host: string; gz: boolean; save: Uint8Array | string }) => void;
 }
 
 const tmpV = new THREE.Vector3();
@@ -102,6 +104,7 @@ export class Game {
       disconnect: (r) => { if (!this.disposed) this.hooks.onDisconnect(r); },
       reject: (r) => { if (!this.disposed) this.hooks.onDisconnect(r); },
       saved: (ok) => this.hud.notify(ok ? 'Game saved.' : 'Save failed!', ok ? 'good' : 'bad'),
+      handoff: (m) => { if (!this.disposed) this.hooks.onHandoff?.(m); },
     });
     this.hud = new Hud(this.uiRoot, settings);
     this.hud.onChat = (t) => void this.act({ a: 'chat', text: t });

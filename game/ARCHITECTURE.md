@@ -139,6 +139,15 @@ page's live **room** channel. The host still runs the authoritative `GameHost`
   same page takes over the stale connection, while the same account in another tab
   or on another device gets its own survivor (`token#2`, …) instead of kicking the
   first one.
+* **Host handoff:** when the host chooses Save & Quit while friends are connected,
+  the world is frozen and saved, and the save (gzip, about 30 KB) goes over the
+  reliable lane as a `handoff` message to the friend who joined first. That friend
+  stores it, loads it and opens it to friends under the **same game code**. The
+  others receive a non-fatal notice and reconnect by code on their own, waiting up
+  to 90 s for the new host. Survivors carry over because identities are tokens, not
+  hosts. The departing host waits until everything has been acknowledged (or its
+  partners have left, at most 30 s), and links linger 1.5 s on close so final acks
+  get through. Closing the tab instead of quitting cannot hand anything over.
 * **Consent:** the hosted page asks for all of its capabilities in one dialog after
   start-up (`client/net/permissions.ts`). If online play is declined, the
   multiplayer screen says so and opens the Permissions panel.

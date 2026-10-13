@@ -156,6 +156,8 @@ export type ServerMsg =
   | { t: 'roster'; list: { id: string; name: string; color: string; connected: boolean }[] }
   | { t: 'pong'; c: number; s: number }
   | { t: 'reject'; reason: string }
-  | { t: 'saved'; ok: boolean; at: number };
+  | { t: 'saved'; ok: boolean; at: number }
+  /** the host is leaving and hands the world to this player, who becomes the new host (same game code) */
+  | { t: 'handoff'; code: string; host: string; gz: boolean; save: Uint8Array | string };
 
 export const FLAG = { ground: 1, crouch: 2, sprint: 4, swim: 8, underwater: 16, downed: 32, dead: 64, sleeping: 128, using: 256 } as const;

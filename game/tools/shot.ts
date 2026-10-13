@@ -33,6 +33,20 @@ const SCENES: Record<string, Step[]> = {
   footprints: [{ cmd: '/time 15.5' }, { yaw: 2.6, pitch: -0.55, wait: 1500 },
     { eval: `(()=>{ const F=window.tidewake.renderer.footprints; const s=g.session; const p=s.viewPosition(); const now=performance.now()/1000; for (let i=0;i<40;i++) { const d=0.8+i*0.25; const yaw=g.yaw+Math.sin(i*0.15)*0.3; F.update(now-(40-i)*0.6, [{id:'t', x:p.x-Math.sin(g.yaw)*d+Math.cos(g.yaw)*Math.sin(i*0.2)*0.6, z:p.z-Math.cos(g.yaw)*d-Math.sin(g.yaw)*Math.sin(i*0.2)*0.6, yaw, onGround:true}]); } })()` },
     { wait: 3000 }],
+  people: [{ cmd: '/time 10.5' }, { yaw: 2.6, pitch: -0.12, wait: 800 },
+    { eval: `(()=>{ const s=g.session; const p=s.viewPosition(); const yaw=g.yaw; const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
+      const at=(d,side)=>({x:p.x+fx*d+rx*side, z:p.z+fz*d+rz*side});
+      const H=(x,z)=>s.gen.heightAt(x,z);
+      const people=[
+        {id:'walk',n:'Walking',c:'#4a9dff',f:1,it:'',side:-3.2,d:6,move:1.6},
+        {id:'run',n:'Running',c:'#ff5f6d',f:1|4,it:'',side:-1.1,d:7,move:5},
+        {id:'chop',n:'Chopping',c:'#e9d34a',f:1|256,it:'stone_axe',side:1.1,d:6,move:0},
+        {id:'crouch',n:'Crouching',c:'#5fcf73',f:1|2,it:'',side:3.2,d:6.5,move:1.2},
+        {id:'idle',n:'Idle',c:'#c95fd6',f:1,it:'torch',side:0,d:9,move:0},
+      ];
+      s.remotePlayers=()=>{ const t=performance.now()/1000; return people.map(q=>{ const a=at(q.d+Math.sin(t*0.8)*0.6*(q.move?1:0), q.side); const ph=t*q.move; const x=a.x+rx*Math.sin(ph)*0.0+fx*ph%1*0, z=a.z; const walkYaw=yaw+Math.PI; return {id:q.id,n:q.n,c:q.c,x:a.x + (q.move? -fx*((t*q.move)%2):0), y:H(a.x,a.z), z:a.z + (q.move? -fz*((t*q.move)%2):0), yaw: q.move? walkYaw: yaw+Math.PI*0.85, pitch:0, f:q.f, h:100, it:q.it, v:null}; }); };
+    })()` },
+    { wait: 4000 }],
   storm: [{ cmd: '/time 14' }, { cmd: '/weather storm' }, { yaw: 2.6, pitch: 0.0, wait: 4000 }],
   underwater: [{ cmd: '/time 12' }, { eval: `(async()=>{ const gen=g.session.gen; for (let r=60;r<400;r+=5) for (let a=0;a<6.28;a+=0.1) { const x=Math.cos(a)*r, z=Math.sin(a)*r, h=gen.heightAt(x,z); if (h<-5&&h>-8&&gen.heightAt(x,z+12)>-6) { await g.act({a:'chat',text:'/tp '+x.toFixed(1)+' '+z.toFixed(1)}); return; } } })()` }, { wait: 1500 }, { yaw: 0, pitch: -0.25 }, { cmd: '/spawn fish 6' }, { cmd: '/spawn ray 1' }, { hold: 'KeyC', holdMs: 14000 }, { wait: 1500 }],
   fire: [{ cmd: '/time 20' }, { cmd: '/give stick 10' }, { cmd: '/give stone 10' }, { cmd: '/give log 4' }, { cmd: '/give torch' },

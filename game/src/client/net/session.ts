@@ -41,6 +41,7 @@ export interface SessionEvents {
   reject?: (reason: string) => void;
   saved?: (ok: boolean) => void;
   snapshot?: (s: Snapshot) => void;
+  handoff?: (m: Extract<ServerMsg, { t: 'handoff' }>) => void;
 }
 
 /** Identifies this page load: a reconnect keeps it, another tab of the same account does not. */
@@ -172,6 +173,7 @@ export class ClientSession {
       case 'pong': this.rtt = this.rtt ? this.rtt * 0.8 + (performance.now() - m.c) * 0.2 : performance.now() - m.c; break;
       case 'reject': this.on.reject?.(m.reason); break;
       case 'saved': this.on.saved?.(m.ok); break;
+      case 'handoff': this.on.handoff?.(m); break;
     }
   }
 

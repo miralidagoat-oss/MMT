@@ -229,11 +229,31 @@ async function main() {
     assert(cloudKeys.length === 1, `cloud save written (${cloudKeys.join(',')})`);
     step('host saved; cloud copy present');
 
-    // ------------------------------------------------ host quits: friends are told
+    // ------------------------------------------------ host quits: the first friend takes the world over
+    const cyId = (await state(C.page))!.id;
+    const benId = (await state(B.page))!.id;
     await click(A.page, 'Save & Quit to Menu');
-    await B.page.waitForSelector('text=closed the world', { timeout: 30000 });
+    // (the loading screen also shows the title: wait for the real main menu)
+    await A.page.locator('#ui button', { hasText: 'Load Game' }).first().waitFor({ state: 'visible', timeout: 120000 });
+    step('departing host is back at the main menu');
+    // Ben becomes the host of the same world under the same code
+    await B.page.waitForFunction((c) => { const t = (window as any).tidewake; return t?.coop?.code === c && t.game?.isReady === true && t.local; }, code, { timeout: 180000, polling: 1000 });
+    const benHost = (await state(B.page))!;
+    assert(benHost.kind !== 'relay' && benHost.id === benId, `Ben hosts as the same survivor (${JSON.stringify(benHost)})`);
+    const worldName = await B.page.evaluate(() => (window as any).tidewake.game.session.worldName);
+    assert(worldName === 'Coop Atoll', `same world (${worldName})`);
+    // Cy reconnects to Ben on their own and keeps their survivor
+    await C.page.waitForFunction(() => { const s = (window as any).tidewake?.game?.session; return s?.connected && (window as any).tidewake.game.isReady && s.roster.filter((r: any) => r.connected).length === 2; }, null, { timeout: 180000, polling: 1000 });
+    const cyAfter = (await state(C.page))!;
+    assert(cyAfter.kind === 'relay' && cyAfter.id === cyId, `Cy rejoined the new host as the same survivor (${JSON.stringify(cyAfter)})`);
+    await B.page.screenshot({ path: path.join(OUT, 'web-08-new-host.png') });
+    step('host left: Ben took the world over, Cy followed');
+
+    // ------------------------------------------------ the new host closes the world to friends: Cy is told
+    await B.page.keyboard.press('Escape');
+    await click(B.page, 'Close to Friends');
+    await C.page.waitForSelector('text=closed the world', { timeout: 60000 });
     step('friends told the host closed the world');
-    await A.page.waitForSelector('.title', { timeout: 30000 });
 
     // load screen lists the world; export works
     await click(A.page, 'Load Game');

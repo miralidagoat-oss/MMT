@@ -352,6 +352,8 @@ export interface Humanoid {
   root: THREE.Group;
   body: THREE.Mesh; head: THREE.Mesh;
   armL: THREE.Group; armR: THREE.Group; legL: THREE.Group; legR: THREE.Group;
+  /** elbow and knee pivots (the forearm / shin hang from these) */
+  elbowL: THREE.Group; elbowR: THREE.Group; kneeL: THREE.Group; kneeR: THREE.Group;
   hand: THREE.Group;
 }
 
@@ -434,28 +436,35 @@ export function humanoid(shirt: string, seed = 0): Humanoid {
   }
 
   // limbs: pivot groups at shoulder / hip; sleeve or shorts above, skin below
+  // limbs: pivot groups at shoulder / hip with a second joint (elbow / knee) half-way down
   const limb = (upper: THREE.Material, lower: THREE.Material, len: number, r: number, end: THREE.Mesh) => {
     const g = new THREE.Group();
     const half = len / 2;
     const top = shadow(new THREE.Mesh(new THREE.CapsuleGeometry(r * 1.12, half * 0.75, 4, 10), upper));
     top.position.y = -half * 0.45;
+    const joint = new THREE.Group();
+    joint.position.y = -half * 0.92;
     const bot = shadow(new THREE.Mesh(new THREE.CapsuleGeometry(r * 0.88, half * 0.85, 4, 10), lower));
-    bot.position.y = -half * 1.35;
-    end.position.y = -len - r * 0.2;
-    g.add(top, bot, end);
-    return g;
+    bot.position.y = -half * 0.43;
+    end.position.y = -len - r * 0.2 + half * 0.92;
+    joint.add(bot, end);
+    g.add(top, joint);
+    return { g, joint };
   };
   const handMesh = () => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.048, 10, 8), skin); m.scale.set(0.85, 1.1, 0.7); return m; };
   const footMesh = () => { const m = shadow(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.24), dark)); m.position.z = 0.05; return m; };
-  const armL = limb(cloth, skin, 0.58, 0.058, handMesh()), armR = limb(cloth, skin, 0.58, 0.058, handMesh());
+  const aL = limb(cloth, skin, 0.58, 0.058, handMesh()), aR = limb(cloth, skin, 0.58, 0.058, handMesh());
+  const armL = aL.g, armR = aR.g;
   armL.position.set(-0.27, 1.44, 0); armR.position.set(0.27, 1.44, 0);
-  const legL = limb(pants, skin, 0.74, 0.075, footMesh()), legR = limb(pants, skin, 0.74, 0.075, footMesh());
+  const lL = limb(pants, skin, 0.74, 0.075, footMesh()), lR = limb(pants, skin, 0.74, 0.075, footMesh());
+  const legL = lL.g, legR = lR.g;
   legL.position.set(-0.1, 0.79, 0); legR.position.set(0.1, 0.79, 0);
+  // held items follow the forearm
   const hand = new THREE.Group();
-  hand.position.set(0, -0.6, 0.06);
-  armR.add(hand);
+  hand.position.set(0, -0.6 + 0.29 * 0.92, 0.06);
+  aR.joint.add(hand);
   root.add(body, head, armL, armR, legL, legR);
-  return { root, body, head, armL, armR, legL, legR, hand };
+  return { root, body, head, armL, armR, legL, legR, elbowL: aL.joint, elbowR: aR.joint, kneeL: lL.joint, kneeR: lR.joint, hand };
 }
 
 // ============================================================ items (held / dropped)

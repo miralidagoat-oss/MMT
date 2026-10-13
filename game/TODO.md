@@ -17,8 +17,8 @@ pass their acceptance criteria (see PROJECT_STATUS.md).
 ## Multiplayer
 - [ ] Host migration (out of scope for the dedicated/listen-server architecture; the
       portable save lets any player re-host instead).
-- [ ] Hand the host role to another player when the host leaves (today the world
-      closes for everyone and stays in the host's saves).
+- [ ] Keep a rolling copy of the world with the next host, so a host who closes the
+      tab (rather than using Save & Quit) can also be taken over.
 - [ ] Bit-packed snapshots so the web relay can carry 20 Hz updates (it runs at
       about 10–12 Hz to stay inside the room channel's message budget).
 - [ ] Optional server password and kick/ban commands.
@@ -29,8 +29,8 @@ pass their acceptance criteria (see PROJECT_STATUS.md).
 - [ ] Authored art to replace the procedural placeholders (asset replacement points:
       `client/render/textures.ts`, `models.ts`, `structure-models.ts`, `ui/icons.ts`,
       `audio/audio.ts` → `buffers`).
-- [ ] Skinned character models and animation blending (current avatars use
-      procedural limb animation).
+- [ ] Skinned character models with authored animation clips (current avatars use
+      jointed procedural animation).
 - [ ] Volumetric clouds; currently a 2-layer animated cloud dome.
 - [ ] Localisation (all UI strings are English and inline).
 
