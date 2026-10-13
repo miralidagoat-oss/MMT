@@ -161,7 +161,7 @@ export class GameHost {
     // timeouts
     const now = this.now();
     for (const peer of [...this.peers.values()]) {
-      if (!peer.noTimeout && now - peer.lastSeen > (peer.timeoutMs ?? NET.timeoutMs)) { this.disconnect(peer, 'timed out'); peer.close('timeout'); }
+      if (!peer.noTimeout && now - peer.lastSeen > (peer.timeoutMs ?? NET.timeoutMs)) { this.disconnect(peer, `timed out (silent ${((now - peer.lastSeen) / 1000).toFixed(0)} s)`); peer.close('timeout'); }
     }
     const ms = this.now() - t0;
     this.stats.ticks++;

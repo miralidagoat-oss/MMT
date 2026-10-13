@@ -42,6 +42,13 @@ async function player(name: string, user: string): Promise<{ browser: Browser; p
     try { localStorage.setItem('tidewake.settings.v1', JSON.stringify({ graphics: settings, gameplay: { name: nm, showTutorial: false } })); } catch { /* */ }
   }, [LOW, name] as const);
   await page.addInitScript(mockClient);
+  // measure main-thread freezes (a frozen page cannot answer its partners)
+  await page.addInitScript(() => {
+    const w = window as any;
+    w.__stall = { max: 0, at: 0 };
+    let last = performance.now();
+    setInterval(() => { const now = performance.now(); const gap = now - last - 100; if (gap > w.__stall.max) { w.__stall.max = gap; w.__stall.at = now; } last = now; }, 100);
+  });
   await page.goto(`http://localhost:${PORT}/?mockuser=${user}`);
   await page.waitForSelector('.title', { timeout: 30000 });
   return { browser, page };
@@ -250,6 +257,10 @@ async function main() {
     assert(roster2.connected, 'cloud world loads on another device');
     step('cloud save loaded on a fresh browser');
     console.log(`host connection log: ${hostLog.join(' | ') || '(nothing unusual)'}`);
+    for (const [n, p] of [['A', A.page], ['B', B.page], ['C', C.page]] as const) {
+      const st = await p.evaluate(() => (window as any).__stall).catch(() => null);
+      console.log(`longest main-thread freeze ${n}: ${st ? (st.max / 1000).toFixed(1) + ' s at ' + (st.at / 1000).toFixed(0) + ' s' : '?'}`);
+    }
     console.log(`presence max ${platform.stats.maxPresence} bytes, rejected ${platform.stats.presenceRejected}${platform.stats.lastRejection ? ` (${platform.stats.lastRejection})` : ''}, sent ${platform.stats.presenceSent}`);
     assert(platform.stats.presenceRejected === 0, 'no presence update over the 4 KiB limit');
   } finally {
