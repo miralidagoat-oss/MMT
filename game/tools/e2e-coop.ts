@@ -23,6 +23,8 @@ const mockClient = readFileSync(path.resolve('tools/mock/client.js'), 'utf8');
 
 function assert(c: unknown, msg: string): asserts c { if (!c) throw new Error(`ASSERT: ${msg}`); }
 
+const hostLog: string[] = [];
+
 async function player(name: string, user: string): Promise<{ browser: Browser; page: Page }> {
   const browser = await chromium.launch({
     executablePath: process.env.CHROME ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -31,7 +33,11 @@ async function player(name: string, user: string): Promise<{ browser: Browser; p
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   page.setDefaultTimeout(120000);
   page.on('pageerror', (e) => errors.push(`[${name}] pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/favicon|GPU stall|CONTEXT_LOST|Autoplay/i.test(m.text())) errors.push(`[${name}] console.error: ${m.text()}`); if (process.env.VERBOSE) console.log(`[${name}] ${m.text()}`); });
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !/favicon|GPU stall|CONTEXT_LOST|Autoplay/i.test(m.text())) errors.push(`[${name}] console.error: ${m.text()}`);
+    if (/^\[sp\] peer \d+/.test(m.text())) hostLog.push(`[${name}] ${m.text()}`);
+    if (process.env.VERBOSE) console.log(`[${name}] ${m.text()}`);
+  });
   await page.addInitScript(([settings, nm]) => {
     try { localStorage.setItem('tidewake.settings.v1', JSON.stringify({ graphics: settings, gameplay: { name: nm, showTutorial: false } })); } catch { /* */ }
   }, [LOW, name] as const);
@@ -46,6 +52,16 @@ const click = async (page: Page, text: string | RegExp) => {
   await loc.waitFor({ state: 'visible', timeout: 20000 });
   await loc.click();
 };
+/** Open the pause menu (Esc). Software rendering is slow, so re-press if the menu has not appeared. */
+async function quitToMenu(page: Page) {
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('Escape');
+    const btn = page.locator('#ui button', { hasText: 'Save & Quit to Menu' }).first();
+    if (await btn.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) { await btn.click(); return; }
+  }
+  await page.screenshot({ path: path.join(OUT, 'web-fail-pause.png') });
+  throw new Error('pause menu did not open');
+}
 const ready = (page: Page, ms = 180000) => page.waitForFunction(() => (window as any).tidewake?.game?.isReady === true, null, { timeout: ms, polling: 500 });
 const state = (page: Page) => page.evaluate(() => {
   const g = (window as any).tidewake?.game;
@@ -101,14 +117,19 @@ async function main() {
     await ready(D.page);
     step('Dee joined: 4 players');
 
-    await sleep(3000);
-    const sa = await state(A.page);
-    assert(sa && sa.roster.length === 4, `host roster ${JSON.stringify(sa?.roster)}`);
-    for (const [n, p] of [['B', B.page], ['C', C.page], ['D', D.page]] as const) {
-      const s = await state(p);
-      assert(s && s.kind === 'relay' && s.roster.length === 4, `${n} roster ${JSON.stringify(s)}`);
-      assert(s.remotes === 3, `${n} sees ${s.remotes} remote players`);
-    }
+    // everyone converges on the same 4-player roster (replicated state settles within seconds)
+    const everyone = async () => {
+      const out: string[] = [];
+      for (const [n, p] of [['A', A.page], ['B', B.page], ['C', C.page], ['D', D.page]] as const) {
+        const st = await state(p);
+        if (!st || st.roster.length !== 4 || (n !== 'A' && (st.kind !== 'relay' || st.remotes !== 3))) out.push(`${n}: ${JSON.stringify(st && { roster: st.roster, remotes: st.remotes, kind: st.kind })}`);
+      }
+      return out;
+    };
+    let pending: string[] = [];
+    for (let i = 0; i < 30; i++) { pending = await everyone(); if (!pending.length) break; await sleep(1000); }
+    assert(!pending.length, `rosters did not converge: ${pending.join(' | ')}`);
+    assert(!hostLog.some((l) => /timed out|relay closed/.test(l)), `a player dropped: ${hostLog.join(' | ')}`);
 
     // ------------------------------------------------ Ben walks; the host sees him move
     const before = await A.page.evaluate((id) => { const p = (window as any).tidewake.game.session.remotePlayers().find((r: any) => r.id === id); return p ? { x: p.x, z: p.z } : null; }, (await state(B.page))!.id);
@@ -152,8 +173,7 @@ async function main() {
 
     // ------------------------------------------------ Dee leaves, then rejoins as the same survivor
     const deeId = (await state(D.page))!.id;
-    await D.page.keyboard.press('Escape');
-    await click(D.page, 'Save & Quit to Menu');
+    await quitToMenu(D.page);
     await D.page.waitForSelector('.title', { timeout: 30000 });
     await A.page.waitForFunction(() => (window as any).tidewake.game.session.roster.filter((r: any) => r.connected).length === 3, null, { timeout: 30000 });
     step('Dee left; host shows 3 players');
@@ -165,8 +185,7 @@ async function main() {
     step('Dee rejoined as the same survivor');
 
     // ------------------------------------------------ the host's own account joins from a second tab
-    await D.page.keyboard.press('Escape');
-    await click(D.page, 'Save & Quit to Menu');
+    await quitToMenu(D.page);
     await D.page.waitForSelector('.title', { timeout: 30000 });
     await A.page.waitForFunction(() => (window as any).tidewake.game.session.roster.filter((r: any) => r.connected).length === 3, null, { timeout: 30000 });
     const hostId = (await state(A.page))!.id;
@@ -183,8 +202,7 @@ async function main() {
     const hostAfter = (await state(A.page))!;
     assert(hostAfter.connected && hostAfter.id === hostId, 'host keeps its own survivor');
     step('host account joined from a second tab as a separate survivor');
-    await A2tab.page.keyboard.press('Escape');
-    await click(A2tab.page, 'Save & Quit to Menu');
+    await quitToMenu(A2tab.page);
     await A2tab.page.waitForSelector('.title', { timeout: 30000 });
     await A2tab.browser.close();
     all.splice(all.indexOf(A2tab.browser), 1);
@@ -231,6 +249,7 @@ async function main() {
     const roster2 = (await state(A2.page))!;
     assert(roster2.connected, 'cloud world loads on another device');
     step('cloud save loaded on a fresh browser');
+    console.log(`host connection log: ${hostLog.join(' | ') || '(nothing unusual)'}`);
     console.log(`presence max ${platform.stats.maxPresence} bytes, rejected ${platform.stats.presenceRejected}${platform.stats.lastRejection ? ` (${platform.stats.lastRejection})` : ''}, sent ${platform.stats.presenceSent}`);
     assert(platform.stats.presenceRejected === 0, 'no presence update over the 4 KiB limit');
   } finally {

@@ -65,7 +65,7 @@ self.onmessage = async (ev: MessageEvent) => {
         // the cap is enforced here so a world can be opened to friends mid-game
         const handle = host.handle.bind(host);
         host.handle = (p, msg) => {
-          if (msg && (msg as { t?: string }).t === 'hello' && p !== peer && [...remote.values()].filter((r) => r.peer !== p && r.peer.playerId).length >= maxPlayers - 1) { p.send({ t: 'reject', reason: maxPlayers > 1 ? 'Server is full' : 'This world is not open to friends right now' }); p.close('full'); return; }
+          if (msg && (msg as { t?: string }).t === 'hello' && p !== peer && [...remote.values()].filter((r) => r.peer !== p && r.peer.playerId).length >= maxPlayers - 1) { host!.reject(p, maxPlayers > 1 ? 'Server is full' : 'This world is not open to friends right now', 'full'); return; }
           handle(p, msg);
         };
         peer = host.connect((msg) => { const d = encode(msg); self.postMessage({ type: 'frame', data: d }, [d.buffer as ArrayBuffer]); }, () => {});
@@ -92,6 +92,7 @@ self.onmessage = async (ev: MessageEvent) => {
           if (snap) r.ready = false;
           self.postMessage({ type: 'peer-out', id, data: d, snap }, [d.buffer as ArrayBuffer]);
         }, () => { remote.delete(id); self.postMessage({ type: 'peer-kick', id }); });
+        p.timeoutMs = 30000;
         const r = { peer: p, ready: true };
         p.wantsSnapshot = () => r.ready;
         remote.set(id, r);

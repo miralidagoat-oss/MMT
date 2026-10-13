@@ -72,6 +72,7 @@ describe('online co-op over the room relay', () => {
       let reason = '';
       extra.session.on.reject = (r) => { reason = r; };
       await waitFor(() => /full/i.test(reason), 10000, 'fifth player rejected');
+      expect(host.peers.has(extra.peer.id)).toBe(false); // refused connections are forgotten at once
 
       // everyone walks forward; positions converge with the server
       await run(sessions, 2500, (_c, i) => ({ ...idle, mz: 1, yaw: i * 1.5 }));

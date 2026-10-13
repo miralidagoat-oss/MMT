@@ -22,6 +22,8 @@ export interface Peer {
   tab?: string;
   /** in-process peers (the host's own player) never time out */
   noTimeout?: boolean;
+  /** per-peer idle limit (relayed players get longer: the relay has routine hiccups) */
+  timeoutMs?: number;
 }
 
 export interface HostOptions {
@@ -69,9 +71,9 @@ export class GameHost {
     if (!msg || typeof msg !== 'object') return;
     switch (msg.t) {
       case 'hello': {
-        if (msg.protocol !== PROTOCOL_VERSION) { peer.send({ t: 'reject', reason: `Version mismatch (server ${PROTOCOL_VERSION}, client ${msg.protocol})` }); peer.close('version'); return; }
+        if (msg.protocol !== PROTOCOL_VERSION) { this.reject(peer, `Version mismatch (server ${PROTOCOL_VERSION}, client ${msg.protocol})`, 'version'); return; }
         const baseToken = String(msg.token ?? '').slice(0, 64);
-        if (baseToken.length < 8) { peer.send({ t: 'reject', reason: 'Bad identity token' }); peer.close('token'); return; }
+        if (baseToken.length < 8) { this.reject(peer, 'Bad identity token', 'token'); return; }
         peer.tab = typeof msg.tab === 'string' ? msg.tab.slice(0, 32) : undefined;
         // The same account already playing from another tab or device gets its own survivor
         // (a reconnect from the same tab replaces the stale connection instead).
@@ -85,7 +87,7 @@ export class GameHost {
         const online = Object.values(this.sim.world.players).filter((p) => p.connected);
         const pid = 'p' + hashTok(token);
         const already = online.find((p) => p.id === pid);
-        if (!already && online.length >= (this.opts.maxPlayers ?? SIM.maxPlayers)) { peer.send({ t: 'reject', reason: 'Server is full' }); peer.close('full'); return; }
+        if (!already && online.length >= (this.opts.maxPlayers ?? SIM.maxPlayers)) { this.reject(peer, 'Server is full', 'full'); return; }
         if (already) {
           // a stale connection for the same identity: drop it (reconnect)
           for (const other of this.peers.values()) if (other !== peer && other.playerId === pid) { other.playerId = null; this.peers.delete(other.id); other.close('replaced'); }
@@ -108,6 +110,13 @@ export class GameHost {
         if (this.opts.onSaveRequest) this.opts.onSaveRequest().then((ok) => peer.send({ t: 'saved', ok, at: Date.now() })).catch(() => peer.send({ t: 'saved', ok: false, at: Date.now() }));
         break;
     }
+  }
+
+  /** Refuse a connection: tell it why, forget it, close it. */
+  reject(peer: Peer, reason: string, code: string): void {
+    peer.send({ t: 'reject', reason });
+    this.peers.delete(peer.id);
+    peer.close(code);
   }
 
   broadcast(msg: ServerMsg): void {
@@ -152,7 +161,7 @@ export class GameHost {
     // timeouts
     const now = this.now();
     for (const peer of [...this.peers.values()]) {
-      if (!peer.noTimeout && now - peer.lastSeen > NET.timeoutMs) { this.disconnect(peer, 'timed out'); peer.close('timeout'); }
+      if (!peer.noTimeout && now - peer.lastSeen > (peer.timeoutMs ?? NET.timeoutMs)) { this.disconnect(peer, 'timed out'); peer.close('timeout'); }
     }
     const ms = this.now() - t0;
     this.stats.ticks++;

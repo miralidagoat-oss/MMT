@@ -382,9 +382,16 @@ export class Menus {
       clear(coopBox);
       if (!coop) return;
       if (coop.code) {
+        const copied = h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;min-height:0' });
         coopBox.append(
           h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;line-height:1.5;padding:4px 2px' }, 'Open to friends · code ', h('b', { class: 'code', text: coop.code }), ` · ${coop.players}/4 players. Friends open this page, choose Play with Friends and pick your game.`),
-          this.btn('Close to Friends', () => { coop.close(); coop.code = null; renderCoop(); }, 'small'));
+          h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap' },
+            this.btn('Copy Code', () => {
+              const code = coop.code ?? '';
+              navigator.clipboard?.writeText(code).then(() => { copied.textContent = 'Copied.'; }, () => { copied.textContent = `Code: ${code}`; });
+            }, 'small'),
+            this.btn('Close to Friends', () => { coop.close(); coop.code = null; renderCoop(); }, 'small')),
+          copied);
       } else {
         const note = h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;min-height:0' });
         coopBox.append(this.btn('Invite Friends (online co-op)', async () => {
