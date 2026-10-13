@@ -708,7 +708,9 @@ export class UI {
       <div class="world-list" id="wl">${worlds.length ? '' : '<p class="muted">No saved worlds yet. Create one to start.</p>'}</div>
       ${this.storage.persistent ? '' : '<p class="warn">Saving is unavailable in this browser session; worlds last until the page closes.</p>'}
       <div class="row"><button id="b-playw" class="btn" disabled>Play Selected World</button><button id="b-new" class="btn">Create New World</button></div>
-      <div class="row"><button id="b-del" class="btn" disabled>Delete</button><button id="b-back" class="btn">Back</button></div>`, 'worlds');
+      <div class="row"><button id="b-export" class="btn" disabled>Export</button><button id="b-import" class="btn">Import…</button></div>
+      <div class="row"><button id="b-del" class="btn" disabled>Delete</button><button id="b-back" class="btn">Back</button></div>
+      <p class="warn" id="wl-msg"></p>`, 'worlds');
     const list = $('#wl', m);
     let sel = null;
     for (const w of worlds) {
@@ -717,12 +719,31 @@ export class UI {
       it.addEventListener('click', () => {
         for (const x of list.children) x.classList.remove('sel');
         it.classList.add('sel'); sel = w;
-        $('#b-playw', m).disabled = false; $('#b-del', m).disabled = false;
+        $('#b-playw', m).disabled = false; $('#b-del', m).disabled = false; $('#b-export', m).disabled = false;
       });
       it.addEventListener('dblclick', () => { this.click(); this.app.loadWorld(w); });
       list.appendChild(it);
     }
     this.bind(m, '#b-playw', () => sel && this.app.loadWorld(sel));
+    const msg = $('#wl-msg', m);
+    // a world as a file: to keep, or to carry into the standalone game
+    this.bind(m, '#b-export', async () => {
+      if (!sel) return;
+      msg.textContent = 'Exporting…';
+      try {
+        const r = await this.app.exportWorld(sel);
+        msg.textContent = r.ok ? `Saved “${sel.name}” as a file. Import it on another page or browser.` : r.code === 'declined' ? 'Not saved.' : 'The file could not be saved here.';
+      } catch (e) { msg.textContent = e.message || String(e); }
+    });
+    this.bind(m, '#b-import', async () => {
+      msg.textContent = '';
+      try {
+        const w = await this.app.importWorld();
+        if (!w) return;
+        await this.showWorlds();
+        const n = $('#wl-msg'); if (n) n.textContent = `Imported “${w.name}”.`;
+      } catch (e) { msg.textContent = e.message || String(e); }
+    });
     this.bind(m, '#b-new', () => this.showCreate());
     this.bind(m, '#b-back', () => this.showTitle());
     this.bind(m, '#b-del', () => {
@@ -796,15 +817,60 @@ export class UI {
   notice(text) { this.noticeText = text; this.showTitle(); }
 
   // Choose how to reach friends: the people viewing this page, other tabs, or a relay.
+  // What this page can reach, worked out once per visit: the transports
+  // and whether online play is allowed here (a claude.ai page forbids it).
+  async reach() {
+    const [links, chk] = await Promise.all([this.app.links(), this.app.onlineCheck()]);
+    const online = links.find((l) => l.kind === 'online') || null;
+    const claude = links.find((l) => l.kind === 'claude') || null;
+    const onlineOk = !!online && chk.direct === 'ok' && chk.signal === 'ok';
+    const requestsOnly = !!online && chk.direct === 'ok' && chk.signal === 'blocked';
+    return { links, online, claude, onlineOk, requestsOnly, inClaude: !!(globalThis.claude && globalThis.claude.use) };
+  }
+
+  // Where online play is blocked: say so plainly, and offer the way out.
+  elsewhereNote(r, role) {
+    if (r.onlineOk) return '';
+    const here = r.inClaude
+      ? (r.claude
+        ? `Inside claude.ai the game can only reach people viewing this same page: share it with your friends from the page's Share menu (they need to be signed in to claude.ai) and ${role === 'host' ? 'they join with the 5-letter code' : 'join with their 5-letter code'}.`
+        : 'Inside claude.ai the game can only reach people the page is shared with, and its room is closed to you here (you need to be signed in to claude.ai, with the page shared with you).')
+      : 'This page is not allowed to make online connections.';
+    const viaRequest = r.requestsOnly
+      ? (role === 'host'
+        ? ' Friends who can\'t use the page\'s room can still get in by request: share with "Online — by join request", and paste what they send you.'
+        : ' If you can\'t use the page\'s room, Join with a Request still works here: send it to your friend and paste their reply.')
+      : '';
+    const way = viaRequest + ' To play with anyone by code, everyone uses the standalone game: get the file below, open it in your browser, and share or join with the 8-letter online code.' + (role === 'host' ? ' Bring your world along with Export on the Select World screen, then Import it in the standalone game.' : '');
+    return `<div class="elsewhere"><p class="muted small">${esc(here)} ${esc(way)}</p>${this.app.canSaveGame() ? '<button class="btn wide b-standalone">Get the Standalone Game</button>' : ''}</div>`;
+  }
+  bindElsewhere(m, err) {
+    for (const b of m.querySelectorAll('.b-standalone')) b.addEventListener('click', async () => {
+      this.click();
+      const r = await this.app.saveGame();
+      const t = r.ok ? 'Saved blockforge.html. Open it in your browser (double-click the file) to play anywhere.' : r.code === 'declined' ? 'Not saved.' : r.code === 'extension_not_enabled' ? 'This page is not allowed to save web pages, so the standalone file is not available here.' : 'The file could not be saved here.';
+      if (err) err.textContent = t; else this.message(t, '#f2e27a');
+    });
+  }
+
+  // Choose how to reach friends: online, the people viewing this page, other tabs, or a relay.
   async connectionPicker(m, sel) {
     const box = $(sel, m);
     box.innerHTML = '<p class="muted">Looking for connections…</p>';
-    const links = await this.app.links();
+    const r = await this.reach();
+    const { links } = r;
     if (this.settings.relayUrl === undefined) this.settings.relayUrl = '';
-    let pick = links[0] || null;
+    const usable = (l) => l.kind !== 'online' || r.onlineOk || r.requestsOnly;
+    let pick = r.onlineOk ? r.online : r.claude || links.find(usable) || null;
+    const label = (l) => {
+      if (l.kind === 'online') return r.onlineOk ? l.label : r.requestsOnly ? 'Online — by join request only here' : 'Online (not allowed on this page)';
+      if (l.kind === 'tabs') return 'Other tabs (testing)';
+      return l.label;
+    };
     const render = () => {
-      box.innerHTML = `<div class="seg links">${links.map((l, i) => `<button class="btn${l === pick ? ' sel' : ''}" data-i="${i}">${esc(l.label)}</button>`).join('')}<button class="btn${pick && pick.kind === 'relay' ? ' sel' : ''}" data-i="relay">Relay server…</button></div>
-        <label class="field relay" ${pick && pick.kind === 'relay' ? '' : 'hidden'}><span>Relay address (run tools/relay.mjs)</span><input id="relay-url" placeholder="ws://192.168.1.20:8787" value="${esc(this.settings.relayUrl || '')}"></label>`;
+      box.innerHTML = `<div class="seg links">${links.map((l, i) => `<button class="btn${l === pick ? ' sel' : ''}" data-i="${i}" ${usable(l) ? '' : 'disabled'}>${esc(label(l))}</button>`).join('')}<button class="btn${pick && pick.kind === 'relay' ? ' sel' : ''}" data-i="relay">Relay server…</button></div>
+        <label class="field relay" ${pick && pick.kind === 'relay' ? '' : 'hidden'}><span>Relay address (run tools/relay.mjs)</span><input id="relay-url" placeholder="ws://192.168.1.20:8787" value="${esc(this.settings.relayUrl || '')}"></label>
+        ${this.elsewhereNote(r, 'host')}`;
       for (const b of box.querySelectorAll('.links .btn')) {
         b.addEventListener('click', () => {
           this.click();
@@ -814,6 +880,7 @@ export class UI {
           if (box.onPick) box.onPick(pick);
         });
       }
+      this.bindElsewhere(box, null);
       const inp = $('#relay-url', box);
       if (inp) inp.addEventListener('change', () => { this.settings.relayUrl = inp.value.trim(); this.saveSettings(); });
     };
@@ -917,6 +984,7 @@ export class UI {
       <p class="warn" id="mp-err"></p>
       <div class="row"><button id="b-request" class="btn">Join with a Request</button><button id="b-relay" class="btn">Relay Server…</button></div>
       <label class="field relay" id="mp-relay" ${this.settings.useRelay ? '' : 'hidden'}><span>Relay address (run tools/relay.mjs); clear it to stop using a relay</span><input id="relay-url" placeholder="ws://192.168.1.20:8787" value="${esc(this.settings.relayUrl || '')}"></label>
+      <div id="mp-note"></div>
       <p class="muted small">To host, open one of your worlds, press Esc and choose Open to Friends. The room code it shows is all your friends need.</p>
       <button id="b-back" class="btn wide">Back</button>`, 'worlds multiplayer');
     const nameIn = $('#mp-name', m);
@@ -929,7 +997,15 @@ export class UI {
     let closed = false;
     const lobbies = [];
     // the buttons work at once; finding connections can take a few seconds on some pages
-    const linksP = this.app.links();
+    const reachP = this.reach();
+    const linksP = reachP.then((r) => r.links);
+    reachP.then((r) => {
+      const note = $('#mp-note', m);
+      if (!note || !m.isConnected) return;
+      note.innerHTML = this.elsewhereNote(r, 'guest');
+      this.bindElsewhere(note, err);
+      if (!r.onlineOk && !r.requestsOnly) { const b = $('#b-request', m); if (b) b.disabled = true; }
+    });
     // worlds open on the connections that can list them (this page's room, other tabs)
     const showGames = () => {
       const open = [];
@@ -964,9 +1040,16 @@ export class UI {
         if (!/^wss?:\/\//.test(relayUrl)) { err.textContent = 'Enter the relay address, like ws://192.168.1.20:8787'; return; }
         link = this.app.relayLink(relayUrl);
       } else link = links.find((l) => l.accepts && l.accepts(code)) || null;
+      const r = await reachP;
+      if (link && link.kind === 'online' && !r.onlineOk) {
+        err.textContent = r.inClaude
+          ? 'That is an online code, and claude.ai pages are not allowed to make online connections. Join from the standalone game (below), or ask your friend to share with "People viewing this claude.ai page" and send you the 5-letter code.'
+          : 'This page is not allowed to make online connections, so online codes cannot work here. Use the standalone game (below).';
+        return;
+      }
       if (!link) {
         if (!code) err.textContent = 'Enter the room code your friend sees in their game menu.';
-        else if (code.length === 5) err.textContent = 'That code is for people viewing the same claude.ai page, which isn\'t available here. Ask your friend to stop sharing and share again with "Online".';
+        else if (code.length === 5) err.textContent = r.inClaude ? 'That code is for this claude.ai page\'s room, which is closed to you: sign in to claude.ai and ask your friend to share the page with you.' : 'That code is for people viewing a claude.ai page together, so it does not work here. Ask your friend to share again with "Online".';
         else if (code.length === 6) err.textContent = 'That code only reaches other tabs of your friend\'s own browser. Ask them to share again with "Online".';
         else if (code.length === 8) err.textContent = 'This browser can\'t make direct online connections. Try an up-to-date Chrome, Edge, Firefox or Safari.';
         else err.textContent = 'Room codes look like abcd-2345 (8 letters and numbers). Check it and try again.';

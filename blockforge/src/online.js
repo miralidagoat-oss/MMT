@@ -532,3 +532,40 @@ export class OnlineLink {
 }
 
 export const isHubRoom = (room) => room instanceof HubRoom;
+
+// Can this page play online at all? Some hosts (a claude.ai page among them)
+// forbid outside connections and peer-to-peer links. Resolves
+// { signal: 'ok' | 'blocked', direct: 'ok' | 'blocked' } once, quickly:
+// - signal: the matchmaking brokers are not forbidden by the page's policy
+//   (a forbidden connection raises a 'securitypolicyviolation' event);
+// - direct: a peer connection can gather a way to be reached.
+let checked = null;
+export function onlineCheck() {
+  if (checked) return checked;
+  checked = (async () => {
+    if (typeof RTCPeerConnection !== 'function' || typeof WebSocket !== 'function') return { signal: 'blocked', direct: 'blocked' };
+    let violated = false;
+    const onViolation = (e) => { if (/connect-src|default-src/.test(e.effectiveDirective || e.violatedDirective || '')) violated = true; };
+    document.addEventListener('securitypolicyviolation', onViolation);
+    try {
+      const ws = new WebSocket(brokers[0], ['mqtt']);
+      ws.onerror = () => {};
+      setTimeout(() => { try { ws.close(); } catch { /* closed */ } }, 1800);
+    } catch { violated = true; }
+    let candidates = 0, broken = false;
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      pc.onicecandidate = (e) => { if (e.candidate) candidates++; };
+      pc.createDataChannel('probe');
+      await pc.setLocalDescription(await pc.createOffer());
+      await new Promise((r) => setTimeout(r, 1500));
+      pc.close();
+    } catch { broken = true; }
+    await new Promise((r) => setTimeout(r, 200));
+    document.removeEventListener('securitypolicyviolation', onViolation);
+    const out = { signal: violated ? 'blocked' : 'ok', direct: broken || !candidates ? 'blocked' : 'ok' };
+    debug('check', JSON.stringify(out));
+    return out;
+  })();
+  return checked;
+}

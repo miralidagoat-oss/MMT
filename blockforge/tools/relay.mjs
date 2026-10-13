@@ -25,7 +25,8 @@ const server = http.createServer((req, res) => {
   if (req.url === '/' || req.url.startsWith('/?') || req.url === '/index.html') {
     fs.readFile(PAGE, (err, data) => {
       if (err) { res.writeHead(404, { 'content-type': 'text/plain' }); res.end('Build the game first: npm run build'); return; }
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+      // BF_CSP serves the page under a content security policy (tests use one like a claude.ai page's)
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', ...(process.env.BF_CSP ? { 'content-security-policy': process.env.BF_CSP } : {}) });
       res.end(data);
     });
     return;

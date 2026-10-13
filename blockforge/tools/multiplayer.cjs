@@ -1,7 +1,11 @@
 // Two players in one shared world (host + guest) over BroadcastChannel, the
 // relay, or direct online connections (WebRTC) set up through an MQTT broker
 // or by pasting a join request and a reply.
-// Usage: node tools/multiplayer.cjs <base-url> <outdir> [tabs|relay|online|manual] [broker-ws-url]
+// 'claude' runs both players inside a stand-in for the claude.ai page runtime
+// (tools/mock-claude.js), the host as the page's owner and the guest as a
+// plain viewer, with the platform's size limits, merging presence and send
+// budget.
+// Usage: node tools/multiplayer.cjs <base-url> <outdir> [tabs|relay|online|manual|claude] [broker-ws-url]
 const { chromium } = require('playwright');
 const base = process.argv[2];
 const out = process.argv[3] || '.';
@@ -14,6 +18,10 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const errors = [];
   const open = async (label) => {
     const page = await ctx.newPage();
+    if (mode === 'claude') {
+      await page.addInitScript(`window.__mockRole = ${JSON.stringify(label === 'host' ? 'admin' : 'viewer')};`);
+      await page.addInitScript({ path: require('path').join(__dirname, 'mock-claude.js') });
+    }
     page.on('pageerror', (e) => errors.push(label + ': ' + e.message + '\n' + e.stack));
     page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT') && !m.text().includes("WebSocket connection to 'ws://127.0.0.1:8897")) errors.push(label + ': ' + m.text()); else if (m.text().startsWith('online:')) console.log(label, m.text()); });
     await page.goto(base);
@@ -318,6 +326,84 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   await host.screenshot({ path: `${out}/80-host-view-${mode}.png` });
   await guest.screenshot({ path: `${out}/81-guest-view-${mode}.png` });
 
+  // ---- big messages and stale presence (the claude.ai room refuses anything over 4 KiB) ----
+  // the host changes 400 blocks at once: one batch of edits well over 4 KiB
+  await H(([x, y, z]) => { const g = window.__blockforge.game, { B } = window.__blockforge; for (let i = 0; i < 400; i++) g.world.setBlock(x - 10 + (i % 20), y + 8 + Math.floor(i / 200), z - 10 + Math.floor((i % 200) / 20), B.glass, 0); }, [pillar.x, pillar.y, pillar.z]);
+  await guest.waitForFunction(([x, y, z]) => { const g = window.__blockforge.game, { B } = window.__blockforge; let n = 0; for (let i = 0; i < 400; i++) if (g.world.getBlock(x - 10 + (i % 20), y + 8 + Math.floor(i / 200), z - 10 + Math.floor((i % 200) / 20)) === B.glass) n++; return n === 400; }, [pillar.x, pillar.y, pillar.z], { timeout: 60000 }).catch(() => {});
+  r = await Gu(([x, y, z]) => { const g = window.__blockforge.game, { B } = window.__blockforge; let n = 0; for (let i = 0; i < 400; i++) if (g.world.getBlock(x - 10 + (i % 20), y + 8 + Math.floor(i / 200), z - 10 + Math.floor((i % 200) / 20)) === B.glass) n++; return n; }, [pillar.x, pillar.y, pillar.z]);
+  assert(r === 400, `a 400-block change reaches the guest whole (${r}/400)`);
+  // a guest fills a chest with enchanted gear: one request well over 4 KiB
+  const chestAt = [pillar.x + 2, pillar.y, pillar.z + 2];
+  await H(([x, y, z]) => { const g = window.__blockforge.game, { B } = window.__blockforge; g.world.setBlock(x, y, z, B.chest, 2); g.world.blockEntities.set(`${x},${y},${z}`, { type: 'chest', slots: new Array(27).fill(null) }); }, chestAt);
+  await settle(40);
+  await Gu(([x, y, z]) => {
+    const g = window.__blockforge.game, { I, B } = window.__blockforge, key = `${x},${y},${z}`;
+    if (!g.world.blockEntities.has(key)) g.world.blockEntities.set(key, { type: 'chest', slots: new Array(27).fill(null) });
+    const be = g.world.blockEntities.get(key);
+    for (let i = 0; i < 27; i++) be.slots[i] = { id: I.diamond_sword, count: 1, ench: { sharpness: 5, unbreaking: 3, knockback: 2 }, name: 'Blade of the guest number ' + i };
+    g.net.blockEntityChanged(key);
+  }, chestAt);
+  await host.waitForFunction((k) => { const be = window.__blockforge.game.world.blockEntities.get(k); return be && be.slots.filter(Boolean).length === 27; }, chestAt.join(','), { timeout: 60000 }).catch(() => {});
+  r = await H((k) => { const be = window.__blockforge.game.world.blockEntities.get(k); return be ? be.slots.filter((s) => s && s.ench && s.ench.sharpness === 5).length : -1; }, chestAt.join(','));
+  assert(r === 27, `a chest a guest fills with enchanted gear arrives whole on the host (${r}/27)`);
+  // a full inventory is kept by the host for the guest's next visit
+  await Gu(() => {
+    const g = window.__blockforge.game, { I } = window.__blockforge, inv = g.player.inventory;
+    for (let i = 0; i < 36; i++) inv.set(i, { id: I.diamond_pickaxe, count: 1, ench: { efficiency: 5, unbreaking: 3, fortune: 3 } });
+    g.net.saveState();
+  });
+  await host.waitForFunction(() => { const pl = window.__blockforge.game.meta.players && window.__blockforge.game.meta.players.Guesty; return pl && JSON.stringify(pl).split('fortune').length > 36; }, null, { timeout: 60000 }).catch(() => {});
+  r = await H(() => { const pl = window.__blockforge.game.meta.players && window.__blockforge.game.meta.players.Guesty; return pl ? JSON.stringify(pl).split('fortune').length - 1 : 0; });
+  assert(r >= 36, `the host keeps a guest's full inventory (${r} enchanted tools)`);
+  // presence the guest stops sending must not linger (the claude.ai room merges presence)
+  await Gu((id) => { const g = window.__blockforge.game, m = g.net.mirrors.get(id); if (m) g.mount(m); }, pigId);
+  await host.waitForFunction(() => [...window.__blockforge.game.net.remote.values()].some((rp) => rp.lastPresence && rp.lastPresence.v), null, { timeout: 30000 }).catch(() => {});
+  const rode = await H(() => [...window.__blockforge.game.net.remote.values()].some((rp) => rp.lastPresence && rp.lastPresence.v));
+  await Gu(() => window.__blockforge.game.dismount());
+  await settle(40);
+  r = await H(() => [...window.__blockforge.game.net.remote.values()].some((rp) => rp.lastPresence && (rp.lastPresence.v || rp.lastPresence.vp)));
+  assert(rode && !r, `getting off clears the ride from the host's view (rode ${rode}, still riding ${r})`);
+  // the guest's own alpaca: its pack opens on the guest's screen and changes go back
+  const alpacaId = await H(([x, y, z]) => {
+    const bf = window.__blockforge, g = bf.game, rp = g.remotePlayers()[0], { I } = bf;
+    const m = new bf.Mob('alpaca', rp.x + 1.5, rp.y, rp.z + 0.5, { persistent: true });
+    m.tamed = true; m.owner = 'Guesty'; m.noAI = true;
+    m.pack = { type: 'pack', slots: new Array(9).fill(null) };
+    m.pack.slots[0] = { id: I.emerald, count: 7 };
+    g.entities.push(m);
+    return m.id;
+  }, [pillar.x, pillar.y, pillar.z]);
+  await guest.waitForFunction((id) => window.__blockforge.game.net.mirrors.has(id), alpacaId, { timeout: 30000 }).catch(() => {});
+  // hold sneak, as a player holding Shift does, until the host sees it
+  await Gu(() => { const b = window.__blockforge; if (b.ui.screen) b.ui.closeScreen(true); if (b.ui.closeMenus) b.ui.closeMenus(); b.game.state = 'playing'; b.game.input.touch.sneak = true; });
+  await host.waitForFunction(() => window.__blockforge.game.remotePlayers().some((rp) => rp.sneaking), null, { timeout: 30000 }).catch(() => {});
+  // big uploads queued earlier drain one acknowledgement at a time (seconds here, at a few ticks a second)
+  await guest.waitForFunction(() => { const n = window.__blockforge.game.net; return !n.backlog.length && !n.outbox.length; }, null, { timeout: 120000 }).catch(() => {});
+  await Gu((id) => { const g = window.__blockforge.game, m = g.net.mirrors.get(id); if (m) g.net.useMirror(m, null); }, alpacaId);
+  await guest.waitForFunction(() => { const ui = window.__blockforge.ui; return ui.screen && ui.screen.name === 'chest' && /Pack/.test(ui.screen.data.title || ''); }, null, { timeout: 60000 }).catch(() => {});
+  console.log('pack state', JSON.stringify({
+    guest: await Gu((id) => { const g = window.__blockforge.game, ui = window.__blockforge.ui; return { mirror: g.net.mirrors.has(id), screen: ui.screen && ui.screen.name, backlog: g.net.backlog.length, outbox: g.net.outbox.length, sneaking: g.player.sneaking, state: g.state }; }, alpacaId),
+    host: await H(() => window.__blockforge.game.remotePlayers().map((rp) => ({ sneaking: rp.sneaking, name: rp.name }))),
+  }));
+  r = await Gu(() => { const ui = window.__blockforge.ui, g = window.__blockforge.game; const sc = ui.screen; if (!sc || sc.name !== 'chest') return null; const be = sc.data.be; const got = be.slots[0] && be.slots[0].count; be.slots[0] = null; g.net.blockEntityChanged(sc.data.key); ui.closeScreen(true); g.input.touch.sneak = false; return got; });
+  assert(r === 7, `a guest opens their alpaca's pack (${r} emeralds inside)`);
+  await host.waitForFunction((id) => { const m = window.__blockforge.game.entities.find((e) => e.id === id); return m && !m.pack.slots[0]; }, alpacaId, { timeout: 30000 }).catch(() => {});
+  r = await H((id) => { const m = window.__blockforge.game.entities.find((e) => e.id === id); return m && m.pack.slots[0] ? m.pack.slots[0].count : 0; }, alpacaId);
+  assert(r === 0, 'and what they take out leaves the pack in the host world');
+
+  // ---- a dropped connection: the guest finds its way back with its things ----
+  // (a join by pasted request has no code to go back to)
+  if (mode !== 'manual') {
+  await Gu(() => { const g = window.__blockforge.game; g.player.inventory.set(0, { id: window.__blockforge.I.golden_apple, count: 13 }); g.net.saveState(); });
+  await settle(40);
+  await Gu(() => { window.__oldNet = window.__blockforge.game.net; window.__oldNet.room.close(); window.__oldNet.hostGone(true); });
+  await guest.waitForFunction(() => { const g = window.__blockforge.game; return g.net && g.net !== window.__oldNet && g.net.inWorld && g.state === 'playing'; }, null, { timeout: 120000 }).catch(() => {});
+  r = await Gu(() => { const g = window.__blockforge.game, s = g.player.inventory.get(0); return { back: !!(g.net && g.net !== window.__oldNet && g.net.inWorld), apples: s && s.count }; });
+  assert(r.back, 'a guest whose connection drops reconnects by itself');
+  assert(r.apples === 13, `and gets their things back (${r.apples} golden apples)`);
+  await settle(40);
+  }
+
   // the host changes dimension and the guest follows
   await H(() => window.__blockforge.game.runCommand('/dimension underworld'));
   await host.waitForFunction(() => window.__blockforge.game.state === 'playing' && window.__blockforge.game.dim === 'underworld', null, { timeout: 120000 });
@@ -338,6 +424,12 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   assert(r === 0, 'the host sees the guest leave');
 
   if (mode === 'online' || mode === 'manual') console.log('messages the host dropped:', await H(() => { const n = window.__blockforge.game.net; return n && n.room ? n.room.dropped : 'n/a'; }).catch(() => 'n/a'));
+  if (mode === 'claude') {
+    const st = { host: await H(() => window.__mockStats), guest: await Gu(() => window.__mockStats) };
+    console.log('platform stats', JSON.stringify(st));
+    assert(st.host.refused === 0 && st.guest.refused === 0, `nothing was refused by the platform's limits or permissions (${st.host.refused}, ${st.guest.refused})`);
+    assert(st.host.dropped === 0, `the host stayed inside the send budget (${st.host.dropped} dropped)`);
+  }
   console.log('ERRORS:', errors.length ? '\n' + errors.join('\n') : 'none');
   if (errors.length) process.exitCode = 1;
   await browser.close();

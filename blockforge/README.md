@@ -97,16 +97,34 @@ One player hosts a world and friends join it:
    **Join**. Case and the dash don't matter; the code itself says which kind of
    connection to use, so there is nothing else to pick.
 
-Ways to connect (chosen when you start sharing):
-- **Online — friends anywhere** (the default): each friend's browser connects
-  straight to the host's (WebRTC data channels; the host's page passes
-  messages between everyone). To find each other with the code, both games
-  briefly meet on public MQTT brokers (EMQX, HiveMQ, Mosquitto test brokers).
-  The code derives both the meeting topic and an AES-GCM key (PBKDF2), so the
-  brokers only ever see ciphertext on a topic that doesn't reveal the code;
-  nothing is sent through them once you're connected.
-  - **Join with a Request** works with no server at all, for when the brokers
-    can't be reached (the sharing menu says so): the friend chooses
+**Where you play decides what can connect.** A claude.ai page runs the game
+in a locked-down frame (its policy forbids outside connections and is set to
+block peer-to-peer links), so online codes can't work there. The game checks
+this when you open Multiplayer or Open to Friends, and offers only what works:
+
+- **In the standalone game** (the file from **Get the Standalone Game**, or
+  `dist/blockforge.html` from this repository, opened in any browser or
+  hosted anywhere): **Online — friends anywhere** is the default and needs
+  nothing else. Bring a world from claude.ai with **Export** on the Select
+  World screen, then **Import…** it in the standalone game.
+- **On the claude.ai page**: **People viewing this claude.ai page** is the
+  default. Friends need to be signed in to claude.ai with the page shared
+  with them (from the page's Share menu); they join with the 5-letter code.
+  Anyone else can still get in with **Join with a Request** in browsers that
+  allow peer-to-peer links there (current Chrome, Edge and Firefox do): the
+  host shares with "Online — by join request", the friend sends their
+  request, the host pastes it and sends back the reply. Or everyone moves to
+  the standalone game.
+
+Ways to connect:
+- **Online — friends anywhere**: each friend's browser connects straight to
+  the host's (WebRTC data channels; the host's page passes messages between
+  everyone). To find each other with the code, both games briefly meet on
+  public MQTT brokers (EMQX, HiveMQ, Mosquitto test brokers). The code derives
+  both the meeting topic and an AES-GCM key (PBKDF2), so the brokers only ever
+  see ciphertext on a topic that doesn't reveal the code; nothing is sent
+  through them once you're connected.
+  - **Join with a Request** works with no server at all: the friend chooses
     Multiplayer → Join with a Request and sends the host the request text; the
     host pastes it under "A friend can't get in with the code?" in Open to
     Friends and sends back the reply; the friend pastes the reply and
@@ -115,23 +133,27 @@ Ways to connect (chosen when you start sharing):
     network pairs (some strict school/work firewalls, some mobile carriers)
     can't connect; the game says so, and a relay server or another network
     works around it.
-- **People viewing this claude.ai page**: when the game runs as a claude.ai
-  artifact, signed-in people the page is shared with (members of the owner's
-  organization, or invited guests) can use the page's own room. People opening
-  a public link can't use this room; they use Online instead.
+- **People viewing this claude.ai page**: the page's own room. The game keeps
+  to its rules: messages over 4 KiB travel in pieces and are put back
+  together, presence is sent as a patch that clears what is no longer set,
+  and messages are paced under the room's budget.
 - **Other tabs in this browser**: handy for trying it out.
 - **Relay server**: run `node tools/relay.mjs` (no dependencies) on one
   computer. It prints addresses like `http://192.168.1.20:8787/`, where
   everyone on the network can open the game, and `ws://192.168.1.20:8787` to
   enter under Multiplayer → Relay Server….
 
+If a guest's connection drops, their game reconnects to the same room by
+itself (up to four tries) and the host gives back their inventory, which it
+keeps under the guest's name.
+
 The host's game runs the world: creatures, crops, fluids, circuits, weather and
 time. Everyone generates the same terrain from the seed, so only changes
 travel: block edits, each chunk's differences from the generated terrain,
 creature and item snapshots, damage, pickups and chat. Guests see each other
 with name tags; they mine, build, fight, ride, trade (from the host's own
-settlers, who count the trades), open containers, hang frames and paintings,
-keep their own void chest and pick up items; when the host goes through a
+settlers, who count the trades), open containers and their own alpacas'
+packs, hang frames and paintings, keep their own void chest and pick up items; when the host goes through a
 portal everyone follows. If the host's tab goes to the background the world
 keeps ticking for the guests. The world and each guest's inventory are saved
 in the host's browser.
@@ -380,8 +402,8 @@ place.
 Pathfinding is
 bounded (a few hundred steps per search) and doesn't plan ladder climbs or
 swims through deep water. Raids are not saved mid-wave. In multiplayer
-everyone shares the host's dimension, guests can't open an alpaca's pack,
-and the host's world lives in their browser (browsers may still slow a
+everyone shares the host's dimension (guests follow the host through
+portals rather than travelling on their own), and the host's world lives in their browser (browsers may still slow a
 hidden tab's timers). Frame rate depends on the device; the presets exist so
 slower machines can trade detail for speed.
 
@@ -454,6 +476,9 @@ NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/
 node tools/broker.mjs 8899 &  # a minimal MQTT-over-WebSocket broker for the handshake
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots online ws://localhost:8899
 NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots manual
+NODE_PATH=$(npm root -g) node tools/multiplayer.cjs http://localhost:8799/ /tmp/shots claude   # in a stand-in for the claude.ai page runtime (tools/mock-claude.js)
+BF_CSP="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src data: blob:; connect-src 'self'; webrtc 'block'" node tools/relay.mjs 8798 &
+NODE_PATH=$(npm root -g) node tools/share.cjs http://localhost:8798/ /tmp/shots   # a locked-down page: guidance, standalone copy, world export/import
 ```
 
 `tools/texture-sheet.mjs out.png [detail] [tile px] [filter]` renders the

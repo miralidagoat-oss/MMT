@@ -100,6 +100,34 @@ export class Storage {
     } catch { return null; }
   }
 
+  // Every chunk saved for a world (all its dimensions), as [key suffix, record].
+  async worldChunks(worldId) {
+    const out = [];
+    const take = (k, v) => { if (k.startsWith(worldId + ':') || k.startsWith(worldId + '@')) out.push([k.slice(worldId.length), v]); };
+    if (!this.db) { for (const [k, v] of this.memory) take(k, v); return out; }
+    try {
+      const tx = this.db.transaction('chunks', 'readonly');
+      const st = tx.objectStore('chunks');
+      for (const range of [IDBKeyRange.bound(worldId + ':', worldId + ':\uffff'), IDBKeyRange.bound(worldId + '@', worldId + '@\uffff')]) {
+        const [keys, vals] = await Promise.all([req(st.getAllKeys(range)), req(st.getAll(range))]);
+        keys.forEach((k, i) => take(k, vals[i]));
+      }
+    } catch (err) { console.warn('reading chunks failed', err); }
+    return out;
+  }
+
+  // Store chunk records under a world, from [key suffix, record] pairs.
+  async putChunks(worldId, pairs) {
+    const ok = pairs.filter(([suf]) => /^(@[a-z_]+)?:-?\d+,-?\d+$/.test(suf));
+    if (!this.db) { for (const [suf, v] of ok) this.memory.set(worldId + suf, v); return; }
+    try {
+      const tx = this.db.transaction('chunks', 'readwrite');
+      const st = tx.objectStore('chunks');
+      for (const [suf, v] of ok) st.put(v, worldId + suf);
+      await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+    } catch (err) { console.warn('chunk import failed', err); throw new Error('Could not store the world in this browser.'); }
+  }
+
   async saveChunks(worldId, list) {
     if (!list.length) return;
     if (!this.db) { for (const c of list) this.memory.set(`${worldId}:${c.cx},${c.cz}`, c); return; }

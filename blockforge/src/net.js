@@ -95,23 +95,103 @@ class ClaudeLink {
   }
 }
 
+// The claude.ai room has firm rules: an event or a presence object of at
+// most 4 KiB, presence that MERGES field by field (a field left out keeps
+// its old value), and about 40 sends a second shared between events and
+// presence (past that, events are silently dropped). This adapter keeps
+// the game inside them: big events travel in pieces and are put back
+// together on arrival, presence is sent as a patch that clears fields we
+// no longer set, and events go out at a steady pace.
+const ROOM_LIMIT = 3800; // bytes of JSON, under the platform's 4 KiB
+const utf8 = new TextEncoder();
+const byteLen = (s) => utf8.encode(s).length;
+const PIECE = 1100; // characters per piece: under the limit even if every one were 3 bytes
+
 class ClaudeRoom {
   constructor(r, lobby) {
     this.r = r; this.lobby = lobby; this.me = null; this.unsubs = []; this.peerFns = [];
+    this.setKeys = new Set();
+    this.outq = []; this.tokens = 20; this.refill = performance.now();
+    this.pieces = new Map(); // `${peer}:${id}` -> { parts, got, t }
+    this.dropped = 0;
+    const seeMe = (peers) => { const mine = peers.find((p) => p.isMe && p.sameTab); if (mine) this.me = mine.peer; };
+    seeMe(r.peers());
     this.unsubs.push(r.onPeers((ch) => {
-      const mine = ch.peers.find((p) => p.isMe && p.sameTab);
-      if (mine) this.me = mine.peer;
+      seeMe(ch.peers);
       const list = this.peers();
       for (const f of this.peerFns) f(list);
     }, (e) => { this.error = e; }));
+    // events wait in a queue a hidden tab's slowed timers still drain
+    this.pump = setInterval(() => this.drain(), 50);
   }
-  emit(topic, data) { return this.r.emit(topic, data).catch((e) => { this.error = e; }); }
-  on(topic, fn) { this.unsubs.push(this.r.on(topic, (m) => { if (m.sameTab) return; fn(m.data, m.peer); }, (e) => { this.error = e; })); }
-  presence(obj) { return this.r.presence(obj).catch((e) => { this.error = e; }); }
+  emit(topic, data) {
+    const s = JSON.stringify(data === undefined ? null : data);
+    if (byteLen(s) <= ROOM_LIMIT) this.outq.push([topic, data]);
+    else {
+      const id = randomId(), n = Math.ceil(s.length / PIECE);
+      for (let i = 0; i < n; i++) this.outq.push([topic, { __p: id, i, n, s: s.slice(i * PIECE, (i + 1) * PIECE) }]);
+    }
+    this.drain();
+    return Promise.resolve();
+  }
+  // a steady 25 a second (bursts of 30), leaving the rest of the budget to presence
+  drain() {
+    const now = performance.now();
+    this.tokens = Math.min(30, this.tokens + ((now - this.refill) / 1000) * 25);
+    this.refill = now;
+    if (!this.r.connected()) return; // sends while disconnected are dropped: wait for the line
+    while (this.outq.length && this.tokens >= 1) {
+      const [topic, data] = this.outq.shift();
+      this.tokens -= 1;
+      this.r.emit(topic, data).catch((e) => { if (e && e.code === 'invalid_argument') this.dropped++; else this.error = e; });
+    }
+  }
+  on(topic, fn) {
+    this.unsubs.push(this.r.on(topic, (m) => {
+      if (m.sameTab) return;
+      const d = m.data;
+      if (d && typeof d === 'object' && typeof d.__p === 'string') {
+        const key = m.peer + ':' + d.__p;
+        let e = this.pieces.get(key);
+        if (!e) {
+          if (!(d.n > 0 && d.n < 2000)) return;
+          e = { parts: new Array(d.n), got: 0, t: Date.now() };
+          this.pieces.set(key, e);
+          // forget pieces of messages that never completed
+          for (const [k, v] of this.pieces) if (Date.now() - v.t > 60000) this.pieces.delete(k);
+        }
+        if (e.parts[d.i] === undefined && typeof d.s === 'string') { e.parts[d.i] = d.s; e.got++; }
+        if (e.got === e.parts.length) {
+          this.pieces.delete(key);
+          let whole;
+          try { whole = JSON.parse(e.parts.join('')); } catch { return; }
+          fn(whole, m.peer);
+        }
+        return;
+      }
+      fn(d, m.peer);
+    }, (e) => { this.error = e; }));
+  }
+  // send the whole object as a patch that also clears what we dropped
+  presence(obj) {
+    let s = JSON.stringify(obj);
+    if (byteLen(s) > ROOM_LIMIT && Array.isArray(obj.o)) {
+      // never let the request outbox push presence over the limit
+      obj = { ...obj, o: obj.o.slice() };
+      while (obj.o.length > 1 && byteLen(JSON.stringify(obj)) > ROOM_LIMIT) obj.o.pop();
+      s = JSON.stringify(obj);
+    }
+    if (byteLen(s) > ROOM_LIMIT) { this.dropped++; return Promise.resolve(); }
+    const patch = { ...obj };
+    for (const k of this.setKeys) if (!(k in obj)) patch[k] = null;
+    this.setKeys = new Set(Object.keys(obj));
+    return this.r.presence(patch).catch((e) => { this.error = e; });
+  }
   peers() { return this.r.peers().map((p) => ({ peer: p.peer, isMe: p.isMe && p.sameTab, presence: p.presence || {} })); }
   onPeers(fn) { this.peerFns.push(fn); }
   connected() { return this.r.connected(); }
   close() {
+    clearInterval(this.pump);
     for (const u of this.unsubs) { try { u(); } catch { /* gone */ } }
     if (!this.lobby) this.r.leave().catch(() => {});
     else this.r.presence({ bf: null }).catch(() => {});
@@ -633,7 +713,7 @@ export class NetSession {
       this.remote.delete(peer);
       this.game.ui.message(`${rp.name} left the game`, '#f2e27a');
       if (this.isHost) this.guestLeft(peer, rp);
-      else if (peer === this.hostPeer) this.hostGone();
+      else if (peer === this.hostPeer) this.hostGone(true);
     }
   }
 
@@ -659,10 +739,18 @@ export class NetSession {
     if (this.ticks % 2 === 0 || this.presenceDirty) { this.pushPresence(); this.presenceDirty = false; }
     this.flush();
     if (this.room.error && !this.reportedError) {
-      this.reportedError = true;
       const code = this.room.error.code || String(this.room.error);
-      if (code === 'not_permitted' && this.isHost) this.game.ui.message('Hosting needs edit or contributor access to this page.', '#ff9a8a');
-      else if (code !== 'upstream_error') this.game.ui.message(`Connection problem: ${code}`, '#ff9a8a');
+      if (code === 'upstream_error' || code === 'rate_limited' || code === 'limit_reached') this.room.error = null; // passing trouble
+      else {
+        this.reportedError = true;
+        const why = {
+          not_permitted: this.isHost ? 'Hosting here needs edit or contributor access to this claude.ai page.' : 'This claude.ai page does not let you send to its room.',
+          not_granted: 'This claude.ai page\'s room is closed to you: sign in to claude.ai, with the page shared with you, or use the standalone game.',
+          revoked: 'Your access to this claude.ai page changed, so its room closed.',
+          invalid_argument: 'A message was too large for this connection and was dropped.',
+        }[code] || `Connection problem: ${code}`;
+        this.game.ui.message(why, '#ff9a8a');
+      }
     }
   }
 
@@ -736,6 +824,21 @@ export class NetSession {
   hostHandle(peer, rp, kind, d) {
     const g = this.game, w = g.world;
     switch (kind) {
+      case '_f': { // a piece of a large request
+        if (!d || typeof d.id !== 'string' || !(d.n > 0 && d.n <= 400) || typeof d.s !== 'string') break;
+        this.reqPieces = this.reqPieces || new Map();
+        const key = peer + ':' + d.id;
+        let e = this.reqPieces.get(key);
+        if (!e) { e = { parts: new Array(d.n), got: 0 }; this.reqPieces.set(key, e); }
+        if (e.parts[d.i] === undefined) { e.parts[d.i] = d.s; e.got++; }
+        if (e.got === e.parts.length) {
+          this.reqPieces.delete(key);
+          let whole;
+          try { whole = JSON.parse(e.parts.join('')); } catch { break; }
+          if (typeof d.k === 'string' && d.k !== '_f') this.hostHandle(peer, rp, d.k, whole);
+        }
+        break;
+      }
       case 'hi': this.sendWelcome(peer, rp, d); break;
       case 'q': // chunk diff requests
         if (Array.isArray(d)) for (let i = 0; i + 1 < d.length; i += 2) this.diffQueue.push({ peer, cx: d[i] | 0, cz: d[i + 1] | 0, t: performance.now() });
@@ -786,6 +889,11 @@ export class NetSession {
       }
       case 'open': { // container contents
         const key = String(d);
+        if (key.startsWith('pack:')) {
+          const mob = g.entities.find((e) => e.id === +key.slice(5));
+          if (mob && mob.pack) this.event(peer, { t: 'be', key, be: { type: 'pack', slots: mob.pack.slots } });
+          break;
+        }
         // a void chest is per player: only its owner gets it
         const be = key.startsWith('void:') ? (key === 'void:' + rp.name ? g.voidChestOf(rp.name) : null) : w.blockEntities.get(key);
         if (be) this.event(peer, { t: 'be', key, be });
@@ -793,6 +901,12 @@ export class NetSession {
       }
       case 'be': { // container or sign edited by the guest
         if (!d || typeof d.key !== 'string' || !d.be) break;
+        if (d.key.startsWith('pack:')) { // an alpaca's pack, filled or emptied by a guest
+          const mob = g.entities.find((e) => e.id === +d.key.slice(5));
+          if (!mob || !mob.pack || !Array.isArray(d.be.slots) || Math.hypot(mob.x - rp.x, mob.z - rp.z) > 10) break;
+          mob.pack.slots = d.be.slots.map((s) => (s && ITEMS[s.id] ? { ...s, count: Math.max(1, Math.min(64, s.count | 0)) } : null)).slice(0, mob.pack.slots.length);
+          break;
+        }
         if (d.key.startsWith('void:')) {
           if (d.key !== 'void:' + rp.name || !Array.isArray(d.be.slots)) break;
           g.voidChestOf(rp.name).slots = d.be.slots.map((s) => (s && ITEMS[s.id] ? s : null)).slice(0, 27);
@@ -988,7 +1102,14 @@ export class NetSession {
     stand.localName = () => rp.name;
     stand.ui = Object.assign(Object.create(g.ui), {
       message: (text, color) => this.event(peer, { t: 'msg', text: String(text), color }),
-      openScreen: () => this.event(peer, { t: 'msg', text: 'Only the host can open that for now.' }),
+      openScreen: (name, data) => {
+        // an alpaca's pack opens on the guest's screen as a chest kept here
+        if (name === 'chest' && data && data.mob && data.mob.pack) {
+          this.event(peer, { t: 'pack', id: data.mob.id, title: String(data.title || 'Pack'), be: { type: 'pack', slots: data.mob.pack.slots } });
+          return;
+        }
+        this.event(peer, { t: 'msg', text: 'Only the host can open that for now.' });
+      },
     });
     stand.advance = () => {};
     const res = e.interact(stand, d.held ? { id: d.held, count: 1 } : null);
@@ -1082,7 +1203,11 @@ export class NetSession {
   // ==========================================================================
   // GUEST
   request(kind, data) {
-    this.backlog.push([kind, data]);
+    // a request too big for one presence update travels in pieces
+    const s = JSON.stringify(data === undefined ? null : data);
+    if (s.length <= 900) { this.backlog.push([kind, data]); return; }
+    const id = randomId(), n = Math.ceil(s.length / 700);
+    for (let i = 0; i < n; i++) this.backlog.push(['_f', { id, i, n, k: kind, s: s.slice(i * 700, (i + 1) * 700) }]);
   }
 
   guestTick() {
@@ -1092,7 +1217,7 @@ export class NetSession {
     }
     // our block edits
     if (this.localEdits.length) {
-      for (let i = 0; i < this.localEdits.length; i += 300) this.request('g', this.localEdits.slice(i, i + 300));
+      for (let i = 0; i < this.localEdits.length; i += 100) this.request('g', this.localEdits.slice(i, i + 100));
       this.localEdits = [];
     }
     if (this.welcome && g.world) {
@@ -1101,11 +1226,11 @@ export class NetSession {
     }
     // move requests into the outbox while it has room (presence is limited to 4 KB)
     this.outbox = this.outbox.filter((o) => o[0] > this.acked);
-    let size = JSON.stringify(this.outbox).length;
+    let size = byteLen(JSON.stringify(this.outbox));
     while (this.backlog.length) {
       const [kind, data] = this.backlog[0];
       const item = [this.seq + 1, kind, data];
-      const s = JSON.stringify(item).length;
+      const s = byteLen(JSON.stringify(item));
       if (size + s > 2600 && this.outbox.length) break;
       this.backlog.shift();
       this.seq++;
@@ -1308,15 +1433,16 @@ export class NetSession {
     if (!this.isGuest) return;
     const st = this.game.player.toJSON();
     st.dim = this.game.dim;
-    // keep it small enough for the outbox
-    const s = JSON.stringify(st);
-    if (s.length < 2400) this.request('st', st);
+    // large inventories travel in pieces (see request)
+    this.request('st', st);
   }
 
-  hostGone() {
-    if (this.closed) return;
-    this.game.ui.message('The host closed the world.', '#ff9a8a');
-    if (this.onHostGone) this.onHostGone();
+  // lost: the connection dropped (rather than the host saying goodbye)
+  hostGone(lost = false) {
+    if (this.closed || this.goneReported) return;
+    this.goneReported = true;
+    if (!lost) this.game.ui.message('The host closed the world.', '#ff9a8a');
+    if (this.onHostGone) this.onHostGone(lost);
   }
 
   // ---- events and chat ---------------------------------------------------------
@@ -1350,6 +1476,15 @@ export class NetSession {
         if (d.op === 'set' && d.stack && ITEMS[d.stack.id]) g.replaceHeld({ ...d.stack });
         else if (d.op === 'consume' && h && !p.creative) p.inventory.useHeld();
         else if (d.op === 'damage' && h) g.damageTool(1);
+        break;
+      }
+      case 'pack': { // the host opened an alpaca's pack for us
+        if (!g.world || typeof d.id !== 'number' || !d.be || !Array.isArray(d.be.slots)) break;
+        const key = 'pack:' + d.id;
+        const be = { type: 'pack', slots: d.be.slots.slice(0, 27) };
+        g.world.blockEntities.set(key, be);
+        const mob = this.mirrors.get(d.id) || null;
+        g.ui.openScreen('chest', { key, be, title: String(d.title || 'Pack').slice(0, 40), mob });
         break;
       }
       case 'be': {

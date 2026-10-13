@@ -23,7 +23,10 @@ const css = readFileSync('src/style.css', 'utf8');
 const html = readFileSync('index.html', 'utf8');
 const app = html.slice(html.indexOf('<!--APP-->') + 10, html.indexOf('<!--/APP-->')).trim();
 const fonts = '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Pixelify+Sans:wght@400;600;700&family=Silkscreen:wght@400;700&family=VT323&display=swap">';
-const scripts = `<script>globalThis.__BF_WORKER_SRC__=${safe(JSON.stringify(workerSrc))};</script>\n<script>${safe(mainSrc)}</script>`;
+// The game keeps a copy of its page as it stood when its script started, so
+// it can hand players a standalone file (see src/share.js).
+const capture = 'globalThis.__BF_PAGE__=document.documentElement.outerHTML;';
+const scripts = `<script>globalThis.__BF_WORKER_SRC__=${safe(JSON.stringify(workerSrc))};</script>\n<script>${capture}${safe(mainSrc)}</script>`;
 
 const page = `<!doctype html>
 <html lang="en">
@@ -43,7 +46,7 @@ ${scripts}
 </html>
 `;
 
-const fragment = `<title>Blockforge</title>
+const fragment = `<!--BF-PAGE--><title>Blockforge</title>
 ${fonts}
 <style>${css}</style>
 ${app}

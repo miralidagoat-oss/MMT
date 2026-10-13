@@ -16,7 +16,8 @@ import { B } from './blocks.js';
 import { Mob } from './entities.js';
 import { PRESETS, VIDEO_KEYS, applyPreset, matchPreset, detectPreset, applyQuality } from './quality.js';
 import { NetSession, availableLinks, relayLink, makeCode } from './net.js';
-import { setBrokers } from './online.js';
+import { setBrokers, onlineCheck } from './online.js';
+import { saveFile, standalonePage, exportWorld, importWorld, pickTextFile } from './share.js';
 
 const VERSION = '1.0';
 const SETTINGS_KEY = 'blockforge:settings';
@@ -102,6 +103,22 @@ async function boot() {
     },
     // ---- shared worlds ------------------------------------------------------
     links: async () => availableLinks(''),
+    onlineCheck: () => onlineCheck(),
+    // the whole game as one file that runs anywhere
+    canSaveGame: () => !!standalonePage(),
+    saveGame: () => { const page = standalonePage(); return page ? saveFile('blockforge.html', page, 'text/html') : Promise.resolve({ ok: false, code: 'unavailable' }); },
+    // worlds as files, to carry them between browsers and pages
+    exportWorld: async (meta) => {
+      if (game.meta && game.meta.id === meta.id && game.state !== 'title') await game.save();
+      const text = await exportWorld(storage, meta);
+      const safeName = String(meta.name || 'world').replace(/[^\w -]+/g, '').trim().slice(0, 40) || 'world';
+      return saveFile(`${safeName}.blockforge.json`, text, 'application/json');
+    },
+    importWorld: async () => {
+      const f = await pickTextFile();
+      if (!f) return null;
+      return importWorld(storage, f.text);
+    },
     relayLink: (url) => relayLink(url),
     playerName: () => {
       if (!settings.playerName) { settings.playerName = 'Player' + Math.floor(100 + Math.random() * 900); saveSettings(); }
@@ -142,13 +159,32 @@ async function boot() {
           clearTimeout(giveUp);
           try { await enterRemoteWorld(wel, session); resolve(); } catch (err) { clearInterval(timer); reject(err); }
         };
-        session.onHostGone = () => { if (game.net === session) app.leave('The host closed the world.'); };
+        session.onHostGone = (lost) => {
+          if (game.net !== session) return;
+          if (lost && code && link) app.reconnect(session, link, code, 1);
+          else app.leave('The host closed the world.');
+        };
         session.onHostTravel = (d) => {
           session.mirrors.clear(); session.diffPending.clear();
           game.travel(d.dim, d.x + 1, d.y, d.z, false);
         };
       })().catch(reject);
     }),
+    // The connection to the host dropped: try the same room again a few
+    // times (the host keeps each guest's things under their name).
+    reconnect: async (old, link, code, attempt) => {
+      if (old && game.net === old) { old.close(); game.net = null; }
+      ui.message(attempt === 1 ? 'Lost the connection to the host. Reconnecting…' : `Reconnecting (try ${attempt} of 4)…`, '#ffb36a');
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+      if (game.net || game.state === 'title') return; // the player left meanwhile
+      try {
+        await app.join(link, code);
+        ui.message('Reconnected.', '#9ae29a');
+      } catch {
+        if (attempt < 4) app.reconnect(null, link, code, attempt + 1);
+        else app.leave('Lost the connection to the host.');
+      }
+    },
     leave: async (why) => {
       const s = game.net;
       if (s) { s.close(); game.net = null; }
