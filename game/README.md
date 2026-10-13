@@ -19,7 +19,9 @@ The game is published as a web page (built with `npm run build:web`, output in
   (or **Host a Saved World**), or press Esc in any game and choose **Invite
   Friends**. Share the page link with your friends. They open it signed in, choose
   **Play with Friends**, and pick your game from **Open games** or type your
-  6-character code. The host's browser runs the world (keep the tab open), and the
+  6-character code. Invite friends **by email** from the page's Share menu: people
+  who arrive through a public link can only play single-player. You can also try
+  co-op alone with a second tab, which joins as a second survivor. The host's browser runs the world (keep the tab open), and the
   world is saved in the host's worlds. Players who drop out can rejoin as the same
   survivor.
 

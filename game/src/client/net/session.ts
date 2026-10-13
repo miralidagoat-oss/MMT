@@ -43,6 +43,9 @@ export interface SessionEvents {
   snapshot?: (s: Snapshot) => void;
 }
 
+/** Identifies this page load: a reconnect keeps it, another tab of the same account does not. */
+const PAGE_TAB = Math.random().toString(36).slice(2, 12);
+
 export class ClientSession {
   // identity / meta
   playerId = '';
@@ -106,7 +109,7 @@ export class ClientSession {
 
   /** For transports that are already open (worker/loopback). */
   hello(): void {
-    this.transport.send({ t: 'hello', protocol: PROTOCOL_VERSION, name: this.identity.name, token: this.identity.token, color: this.identity.color });
+    this.transport.send({ t: 'hello', protocol: PROTOCOL_VERSION, name: this.identity.name, token: this.identity.token, color: this.identity.color, tab: PAGE_TAB });
     if (!this.pingTimer) this.pingTimer = setInterval(() => this.transport.send({ t: 'ping', c: performance.now() }), NET.heartbeatMs);
   }
 

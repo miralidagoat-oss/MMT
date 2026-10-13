@@ -18,6 +18,7 @@ import { setAnisotropy } from './textures';
 import { WaterReflection } from './reflection';
 import { LightningBolt } from './lightning';
 import { Wakes, type WakeSource } from './wakes';
+import { Footprints, type Walker } from './footprints';
 import { FLAG } from '../../shared/net/protocol';
 import { hourOf } from '../../shared/systems/weather';
 
@@ -67,6 +68,7 @@ export class WorldRenderer {
   reflection = new WaterReflection();
   private bolt = new LightningBolt();
   private wakes = new Wakes();
+  private footprints: Footprints | null = null;
   private wakeLast = new Map<string, { x: number; z: number; t: number; sp: number }>();
   /** how soaked the ground looks (rain wets it, sun dries it) */
   private wet = -1;
@@ -107,12 +109,16 @@ export class WorldRenderer {
     this.vegetation = new VegetationSystem(gen, (id) => session.isNodeDepleted(id));
     this.scene.add(this.vegetation.group);
     this.entities = new EntityRenderer(this.scene, gen, this.particles);
+    this.footprints = new Footprints((x, z) => gen.heightAt(x, z));
+    this.scene.add(this.footprints.mesh);
     if (this.menuOcean) this.menuOcean.mesh.visible = false;
     this.applySettings(this.settings);
   }
 
   disposeWorld() {
     for (const o of [this.terrain?.group, this.ocean?.mesh, this.vegetation?.group, this.entities?.group]) if (o) this.scene.remove(o);
+    if (this.footprints) this.scene.remove(this.footprints.mesh);
+    this.footprints = null;
     this.terrain = null; this.ocean = null; this.vegetation = null; this.entities = null;
     this.wet = -1;
     this.wakes.clear();
@@ -239,6 +245,19 @@ export class WorldRenderer {
       if (sp > 0.5) src.push({ id: 'me', x: vp.x, z: vp.z, speed: sp * 1.6, width: 0.32 });
     }
     this.wakes.update(now, v.time, src, (x, z) => session.waterLevel(x, z), this.sky.daylight);
+    // footprints on the beach
+    if (this.footprints) {
+      const walkers: Walker[] = [];
+      for (const p of session.remotePlayers()) {
+        if (p.v || (p.f & FLAG.dead) || (p.f & FLAG.swim)) continue;
+        walkers.push({ id: p.id, x: p.x, z: p.z, yaw: p.yaw, onGround: !!(p.f & FLAG.ground) });
+      }
+      if (self && !self.vehicleId && !self.dead) {
+        const vp = session.viewPosition();
+        walkers.push({ id: 'me', x: vp.x, z: vp.z, yaw: v.yaw, onGround: me.onGround && !me.swimming });
+      }
+      this.footprints.update(now, walkers);
+    }
   }
 
   /** Main-menu backdrop: open ocean at golden hour with a slowly drifting camera. */
@@ -353,7 +372,7 @@ export class WorldRenderer {
     if (this.ocean) {
       const ou = this.ocean.material.uniforms;
       if (!v.underwater && this.settings.reflections > 0) {
-        this.reflection.render(this.renderer, this.scene, cam, [this.ocean.mesh, this.menuOcean?.mesh, this.vegetation?.grassMesh, this.particles.group, this.viewmodel.root, this.fishingLine, this.bobber, this.ghost, this.highlight, this.wakes.mesh]);
+        this.reflection.render(this.renderer, this.scene, cam, [this.ocean.mesh, this.menuOcean?.mesh, this.vegetation?.grassMesh, this.particles.group, this.viewmodel.root, this.fishingLine, this.bobber, this.ghost, this.highlight, this.wakes.mesh, this.footprints?.mesh]);
       } else this.reflection.valid = false;
       ou.reflOn!.value = this.reflection.valid ? 1 : 0;
       ou.tReflect!.value = this.reflection.rt.texture;

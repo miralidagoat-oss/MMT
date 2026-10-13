@@ -109,6 +109,9 @@ export class Hud {
     this.crosshair.classList.add('active');
   }
 
+  /** set while this player hosts a world open to friends */
+  inviteCode: string | null = null;
+
   togglePlayers(show: boolean, session: ClientSession) {
     this.players.classList.toggle('hidden', !show);
     if (!show) return;
@@ -119,7 +122,10 @@ export class Hud {
         h('span', {}, h('span', { style: `display:inline-block;width:10px;height:10px;border-radius:50%;background:${r.color};margin-right:8px` }), r.name + (r.id === session.playerId ? ' (you)' : '')),
         h('span', { class: 'meta', text: r.connected ? 'online' : 'away' })));
     }
-    this.players.append(h('div', { class: 'meta', style: 'margin-top:8px;color:var(--muted);font-size:12px', text: `Ping ${Math.round(session.rtt)} ms` }));
+    const rtt = Math.round(session.rtt);
+    const quality = rtt < 120 ? 'good' : rtt < 300 ? 'fair' : 'slow';
+    this.players.append(h('div', { class: 'meta', style: 'margin-top:8px;color:var(--muted);font-size:12px', text: `Connection ${quality} · ping ${rtt} ms` }));
+    if (this.inviteCode) this.players.append(h('div', { class: 'meta', style: 'margin-top:6px;font-size:12px' }, 'Game code ', h('b', { class: 'code', text: this.inviteCode }), ' · friends join from Play with Friends'));
   }
 
   update(session: ClientSession, view: { yaw: number; hour: number; day: number; temp: number; fps: number; showNet: boolean; netText: string; coords: { x: number; z: number }; hasCompass: boolean; weather: string }) {

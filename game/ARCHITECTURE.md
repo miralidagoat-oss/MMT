@@ -123,6 +123,25 @@ page's live **room** channel. The host still runs the authoritative `GameHost`
   `peer-close`, and emits `peer-out` and `peer-kick`. The world is opened to
   friends with `open` (cap 4). While it is open, the host's pause menu does not stop
   the simulation.
+* **Platform rules the link follows:** every presence state stays under 4 KiB and
+  every string in it under 1 KiB (reliable chunks are 720 raw bytes, and snapshots
+  are split into ≤1000-character pieces). The page shares one budget of about 40
+  updates a second, so the host spaces its links accordingly (`LinkPump`). The
+  platform marks a player's other tabs and devices as `isMe`; those are real
+  partners, so only the current page (`sameTab`) and agent peers are ignored.
+  Partners missing for less than 15 s (routine reconnects) are kept.
+* **Background tabs:** browsers throttle main-thread timers in hidden tabs, so the
+  link pump, peer polling and the joiner's keep-alive run off a tick from a tiny
+  blob-URL worker (`client/net/ticker.ts`). The host's own player is exempt from
+  the idle timeout.
+* **Identity:** a signed-in player's account id becomes the survivor identity and
+  is remembered locally. Each page load also sends a tab id: a reconnect from the
+  same page takes over the stale connection, while the same account in another tab
+  or on another device gets its own survivor (`token#2`, …) instead of kicking the
+  first one.
+* **Consent:** the hosted page asks for all of its capabilities in one dialog after
+  start-up (`client/net/permissions.ts`). If online play is declined, the
+  multiplayer screen says so and opens the Permissions panel.
 * **Trust:** ads are clamped and stripped of control characters. A private room binds
   to the first peer that published link state, and everyone else is ignored. Frames
   go through the same validation, rate limits and dedupe as any client.

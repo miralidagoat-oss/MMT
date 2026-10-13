@@ -69,6 +69,7 @@ self.onmessage = async (ev: MessageEvent) => {
           handle(p, msg);
         };
         peer = host.connect((msg) => { const d = encode(msg); self.postMessage({ type: 'frame', data: d }, [d.buffer as ArrayBuffer]); }, () => {});
+        peer.noTimeout = true; // the host's own player: its tab may be hidden for a long time
         host.start();
         if (m.mode !== 'load') await save();
         autosave = setInterval(() => void save(), SIM.autosaveSeconds * 1000);

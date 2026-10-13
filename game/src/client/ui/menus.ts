@@ -20,6 +20,9 @@ export interface MenuActions {
   /** online co-op through the hosted page; null when unavailable in this view */
   coop(): Promise<{ watch(cb: (games: OpenGameInfo[]) => void): () => void; join(code: string): void } | null>;
   hosted: boolean;
+  /** the viewer's consent state for online play, and a way to change it */
+  roomPermission(): Promise<string>;
+  openPermissions(): Promise<boolean>;
   settingsChanged(s: Settings, what: 'graphics' | 'audio' | 'controls' | 'gameplay'): void;
   click(): void;
   hover(): void;
@@ -172,7 +175,7 @@ export class Menus {
       h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' },
         this.btn('Host a New World', () => leave(() => this.newGame(true)), 'primary'),
         this.btn('Host a Saved World', () => leave(() => void this.load(true)))),
-      h('p', { style: 'color:var(--muted);font-size:13px;line-height:1.6;margin-top:12px', html: 'Up to <b>4 players</b>. The host runs the world in their browser and keeps the game tab open; it saves to the host\'s worlds. To invite friends, share <b>this page\'s link</b> with them from the page\'s Share menu. They open it signed in, choose <b>Play with Friends</b>, and pick your game or type your code. You can also invite friends from the pause menu during any game.' }));
+      h('p', { style: 'color:var(--muted);font-size:13px;line-height:1.6;margin-top:12px', html: 'Up to <b>4 players</b>. The host runs the world in their browser and keeps the game open (it keeps working in a background tab); it saves to the host\'s worlds.<br><b>Inviting friends:</b> open this page\'s <b>Share</b> menu and invite each friend <b>by email</b> (people who arrive through a public link can only play single-player). They sign in, open the link, choose <b>Play with Friends</b>, and pick your game or type your code. You can also open any world to friends from the pause menu, and test with a second tab of your own.' }));
     this.show(h('div', { class: 'panel dialog' },
       h('div', { class: 'dialog-head' }, h('h2', { text: 'Play with Friends' })), body,
       h('div', { class: 'dialog-foot' }, this.btn('Back', () => leave(() => void this.main())))));
@@ -180,7 +183,16 @@ export class Menus {
       if (!this.root.contains(games)) return;
       if (!net) {
         clear(games);
-        games.append(h('div', { style: 'color:var(--muted);line-height:1.6', text: 'Online play is not available in this view. Open the game from its claude.ai link while signed in. Single-player works everywhere.' }));
+        void this.actions.roomPermission().then((st) => {
+          if (st === 'denied') {
+            const note = h('div', { class: 'meta', style: 'color:var(--muted);font-size:13px' });
+            games.append(
+              h('div', { style: 'color:var(--muted);line-height:1.6', text: 'Online play is switched off for this page. Turn it on in the page\'s Permissions settings, then reload.' }),
+              h('div', { style: 'display:flex;gap:8px;align-items:center;margin-top:8px' }, this.btn('Open Permissions', async () => { if (!(await this.actions.openPermissions())) note.textContent = 'Open the page\'s Permissions menu from the top of the page.'; }, 'small'), note));
+          } else {
+            games.append(h('div', { style: 'color:var(--muted);line-height:1.6', text: 'Online play is not available in this view. Sign in to claude.ai and open the game from the link the host invited you with. Friends must be invited by email from the Share menu: a public link only allows single-player.' }));
+          }
+        });
         return;
       }
       stop = net.watch((list) => {

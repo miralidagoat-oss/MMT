@@ -18,6 +18,10 @@ export interface Peer {
   snapCache: SnapshotCache;
   /** slow links: only build a snapshot when the previous one has gone out */
   wantsSnapshot?: () => boolean;
+  /** the client's per-page id: tells a reconnect apart from the same account in another tab */
+  tab?: string;
+  /** in-process peers (the host's own player) never time out */
+  noTimeout?: boolean;
 }
 
 export interface HostOptions {
@@ -66,8 +70,18 @@ export class GameHost {
     switch (msg.t) {
       case 'hello': {
         if (msg.protocol !== PROTOCOL_VERSION) { peer.send({ t: 'reject', reason: `Version mismatch (server ${PROTOCOL_VERSION}, client ${msg.protocol})` }); peer.close('version'); return; }
-        const token = String(msg.token ?? '').slice(0, 64);
-        if (token.length < 8) { peer.send({ t: 'reject', reason: 'Bad identity token' }); peer.close('token'); return; }
+        const baseToken = String(msg.token ?? '').slice(0, 64);
+        if (baseToken.length < 8) { peer.send({ t: 'reject', reason: 'Bad identity token' }); peer.close('token'); return; }
+        peer.tab = typeof msg.tab === 'string' ? msg.tab.slice(0, 32) : undefined;
+        // The same account already playing from another tab or device gets its own survivor
+        // (a reconnect from the same tab replaces the stale connection instead).
+        let token = baseToken;
+        for (let n = 2; n <= 8; n++) {
+          const pidN = 'p' + hashTok(token);
+          const holder = [...this.peers.values()].find((o) => o !== peer && o.playerId === pidN);
+          if (!holder || holder.tab === peer.tab) break;
+          token = `${baseToken}#${n}`;
+        }
         const online = Object.values(this.sim.world.players).filter((p) => p.connected);
         const pid = 'p' + hashTok(token);
         const already = online.find((p) => p.id === pid);
@@ -138,7 +152,7 @@ export class GameHost {
     // timeouts
     const now = this.now();
     for (const peer of [...this.peers.values()]) {
-      if (now - peer.lastSeen > NET.timeoutMs) { this.disconnect(peer, 'timed out'); peer.close('timeout'); }
+      if (!peer.noTimeout && now - peer.lastSeen > NET.timeoutMs) { this.disconnect(peer, 'timed out'); peer.close('timeout'); }
     }
     const ms = this.now() - t0;
     this.stats.ticks++;

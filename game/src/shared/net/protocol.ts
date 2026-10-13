@@ -53,7 +53,7 @@ export type ActionName = Action['a'];
 
 // ------------------------------------------------------------------ client -> server
 export type ClientMsg =
-  | { t: 'hello'; protocol: number; name: string; token: string; color?: string }
+  | { t: 'hello'; protocol: number; name: string; token: string; color?: string; tab?: string }
   | { t: 'input'; frames: InputFrame[] }
   | { t: 'act'; id: number; action: Action }
   | { t: 'ping'; c: number }

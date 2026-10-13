@@ -147,6 +147,11 @@ export function saveSettings(s: Settings): void {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* storage unavailable */ }
 }
 
+/** Keep the signed-in account's identity as this browser's identity, so it is used even when the account answers late. */
+export function rememberIdentity(token: string): void {
+  try { localStorage.setItem('tidewake.identity', token); } catch { /* storage unavailable */ }
+}
+
 /** Stable per-browser identity used to rejoin as the same survivor. */
 export function identityToken(): string {
   const k = 'tidewake.identity';

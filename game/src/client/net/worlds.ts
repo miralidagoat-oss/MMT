@@ -11,7 +11,9 @@ import { LocalHost, type LocalWorld } from './local';
 export interface WorldEntry extends LocalWorld { where: 'device' | 'cloud' | 'both' }
 
 export async function listAllWorlds(): Promise<WorldEntry[]> {
-  const [local, cloud] = await Promise.all([LocalHost.listWorlds().catch(() => []), getCloud().then((c) => c?.list() ?? []).catch(() => [])]);
+  // the cloud answers late (or waits on the viewer's consent): never hold the menu for it
+  const cloudList = getCloud().then((c) => c?.list() ?? []).catch(() => []);
+  const [local, cloud] = await Promise.all([LocalHost.listWorlds().catch(() => []), Promise.race([cloudList, new Promise<[]>((r) => setTimeout(() => r([]), 2500))])]);
   const map = new Map<string, WorldEntry>();
   for (const w of local) map.set(w.slot, { ...w, where: 'device' });
   for (const c of cloud) {

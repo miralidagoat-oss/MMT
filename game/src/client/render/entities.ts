@@ -268,7 +268,8 @@ export class EntityRenderer {
       const r = v.h.root;
       r.visible = !(p.f & FLAG.dead);
       r.position.set(p.x, p.y, p.z);
-      r.rotation.y = p.yaw;
+      // player yaw faces -z (camera convention); the avatar model faces +z
+      r.rotation.y = p.yaw + Math.PI;
       const moved = vtx.set(p.x, p.y, p.z).distanceTo(v.last);
       v.last.set(p.x, p.y, p.z);
       v.speed = v.speed * 0.85 + (dt > 0 ? moved / dt : 0) * 0.15;

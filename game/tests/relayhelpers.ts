@@ -1,7 +1,11 @@
 import { GameHost } from '../src/shared/net/host';
 import { encode, decode } from '../src/shared/net/codec';
 import { ClientSession } from '../src/client/net/session';
-import { RelayTransport, RelayPeerLink, type PresencePipe } from '../src/client/net/relay';
+import { RelayTransport, RelayPeerLink, LinkPump, type PresencePipe } from '../src/client/net/relay';
+import { DEFAULT_LINK } from '../src/shared/net/presence-link';
+
+/** one pump per simulated page: the host page shares its budget between all its links */
+const hostPumps = new WeakMap<GameHost, LinkPump>();
 import type { ClientMsg } from '../src/shared/net/protocol';
 
 /**
@@ -30,6 +34,8 @@ export function pipePair(cfg: { latencyMs: number; jitterMs: number; hz?: number
       const bytes = new TextEncoder().encode(text).length;
       sides[i]!.maxBytes = Math.max(sides[i]!.maxBytes, bytes);
       if (bytes > 4096) throw new Error(`presence over 4 KiB: ${bytes}`);
+      const longest = longestString(state);
+      if (longest > 1024) throw new Error(`presence string over 1 KiB: ${longest}`);
       sides[i]!.latest = text;
     },
     onRemote(cb) { sides[i]!.remote = cb; },
@@ -44,13 +50,22 @@ export function pipePair(cfg: { latencyMs: number; jitterMs: number; hz?: number
   return { host: make(0), client: make(1), sides, stop: () => clearInterval(timer) };
 }
 
+function longestString(v: unknown): number {
+  if (typeof v === 'string') return new TextEncoder().encode(v).length;
+  if (Array.isArray(v)) return Math.max(0, ...v.map(longestString));
+  if (v && typeof v === 'object') return Math.max(0, ...Object.values(v).map(longestString));
+  return 0;
+}
+
 /** Connect a client session to the host over a simulated presence relay. */
 export function connectRelayClient(host: GameHost, name: string, token: string, cfg = { latencyMs: 60, jitterMs: 40 }) {
   const pair = pipePair(cfg);
   const peer = host.connect((msg) => peerLink.send(encode(msg), msg.t === 'snap'), () => peerLink.end('kicked'));
-  const peerLink: RelayPeerLink = new RelayPeerLink(pair.host, (frame) => host.handle(peer, decode<ClientMsg>(frame)), () => host.disconnect(peer, 'relay closed'));
+  let hp = hostPumps.get(host);
+  if (!hp) { hp = new LinkPump(); hostPumps.set(host, hp); }
+  const peerLink: RelayPeerLink = new RelayPeerLink(pair.host, (frame) => host.handle(peer, decode<ClientMsg>(frame)), () => host.disconnect(peer, 'relay closed'), DEFAULT_LINK, hp);
   peer.wantsSnapshot = () => peerLink.wantsSnapshot;
-  const transport = new RelayTransport(pair.client);
+  const transport = new RelayTransport(pair.client, DEFAULT_LINK, new LinkPump());
   const session = new ClientSession(transport, { name, token });
   return { session, transport, peerLink, peer, pair };
 }

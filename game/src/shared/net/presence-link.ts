@@ -23,8 +23,8 @@ export interface LinkState {
   s: number;
   /** reliable chunks; first char '!' = last chunk of a frame, '.' = more follows */
   r: string[];
-  /** latest unreliable frame (base64) */
-  u?: string;
+  /** latest unreliable frame (base64, split into strings of at most MAX_STR chars) */
+  u?: string[];
   /** unreliable frame counter */
   n: number;
 }
@@ -40,7 +40,17 @@ export interface LinkOptions {
   maxBacklogChunks: number;
 }
 
-export const DEFAULT_LINK: LinkOptions = { maxBytes: 3800, chunkBytes: 1100, minIntervalMs: 80, maxBacklogChunks: 4000 };
+/** every string in a published state stays under 1 KiB (the platform's per-string bound) */
+export const MAX_STR = 1000;
+
+// 720 raw bytes -> 960 base64 chars + 1 marker char
+export const DEFAULT_LINK: LinkOptions = { maxBytes: 3800, chunkBytes: 720, minIntervalMs: 80, maxBacklogChunks: 6000 };
+
+function splitStr(s: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < s.length; i += MAX_STR) out.push(s.slice(i, i + MAX_STR));
+  return out.length ? out : [''];
+}
 
 export function toB64(data: Uint8Array): string {
   let s = '';
@@ -83,7 +93,10 @@ export class PresenceLink {
   ) {}
 
   /** Largest unreliable frame (raw bytes) that can travel alongside the state header. */
-  get maxUnreliableBytes(): number { return Math.floor((this.opts.maxBytes - 120) * 3 / 4); }
+  get maxUnreliableBytes(): number { return Math.floor((this.opts.maxBytes - 160) * 3 / 4 * 0.97); }
+
+  /** Change the publish rate (the host shares one budget between several links). */
+  setMinInterval(ms: number) { this.opts = { ...this.opts, minIntervalMs: ms }; }
 
   /** True when the last unreliable frame has been published (the lane is free). */
   get unreliableIdle(): boolean { return this.pendingU === null; }
@@ -148,7 +161,7 @@ export class PresenceLink {
     if (st.u !== undefined && st.n !== this.lastRemoteN) {
       this.lastRemoteN = st.n;
       this.stats.unreliableIn++;
-      this.deliver(fromB64(st.u), false);
+      this.deliver(fromB64(st.u.join('')), false);
     }
   }
 
@@ -163,11 +176,12 @@ export class PresenceLink {
       bytes += c.data.length + 3;
     }
     const u = this.pendingU ?? this.lastU;
-    if (u !== null && bytes + u.length + 16 <= this.opts.maxBytes) {
+    const uCost = u === null ? 0 : u.length + 6 * Math.ceil(u.length / MAX_STR) + 16;
+    if (u !== null && bytes + uCost <= this.opts.maxBytes) {
       if (this.pendingU !== null) { this.n++; this.lastU = this.pendingU; this.pendingU = null; }
       st.n = this.n;
-      st.u = this.lastU!;
-      bytes += u.length + 16;
+      st.u = splitStr(this.lastU!);
+      bytes += uCost;
     }
     this.lastPublish = now;
     this.lastPublishedAck = this.recvSeq;
@@ -200,7 +214,12 @@ export function parseState(raw: unknown): LinkState | null {
   if (typeof o.e !== 'string' || o.e.length > 16) return null;
   if (!Number.isSafeInteger(o.a) || !Number.isSafeInteger(o.s) || !Number.isSafeInteger(o.n)) return null;
   if (!Array.isArray(o.r) || o.r.length > 64) return null;
-  for (const c of o.r) if (typeof c !== 'string' || (c[0] !== '!' && c[0] !== '.') || !B64_RE.test(c.slice(1))) return null;
-  if (o.u !== undefined && (typeof o.u !== 'string' || !B64_RE.test(o.u))) return null;
+  for (const c of o.r) if (typeof c !== 'string' || c.length > MAX_STR + 1 || (c[0] !== '!' && c[0] !== '.') || !B64_RE.test(c.slice(1))) return null;
+  if (o.u !== undefined) {
+    if (!Array.isArray(o.u) || o.u.length > 8) return null;
+    for (const c of o.u) if (typeof c !== 'string' || c.length > MAX_STR || !B64_RE.test(c)) return null;
+    // the base64 padding may only appear at the very end of the joined string
+    if (o.u.slice(0, -1).some((c: string) => c.includes('='))) return null;
+  }
   return o as unknown as LinkState;
 }

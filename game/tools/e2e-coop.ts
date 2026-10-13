@@ -164,6 +164,31 @@ async function main() {
     assert((await state(D.page))!.id === deeId, 'Dee rejoined as the same survivor');
     step('Dee rejoined as the same survivor');
 
+    // ------------------------------------------------ the host's own account joins from a second tab
+    await D.page.keyboard.press('Escape');
+    await click(D.page, 'Save & Quit to Menu');
+    await D.page.waitForSelector('.title', { timeout: 30000 });
+    await A.page.waitForFunction(() => (window as any).tidewake.game.session.roster.filter((r: any) => r.connected).length === 3, null, { timeout: 30000 });
+    const hostId = (await state(A.page))!.id;
+    const A2tab = await player('Ana', 'u-ana');
+    all.push(A2tab.browser);
+    await click(A2tab.page, 'Play with Friends');
+    // the host's game shows up in the second tab's list (it is not this tab's own game)
+    await A2tab.page.waitForSelector(`text=Ana's game`, { timeout: 20000 });
+    await click(A2tab.page, /^Join$/);
+    await ready(A2tab.page);
+    const tab2 = (await state(A2tab.page))!;
+    assert(tab2.id !== hostId, 'second tab of the host account has its own survivor');
+    await A.page.waitForFunction(() => (window as any).tidewake.game.session.roster.filter((r: any) => r.connected).length === 4, null, { timeout: 30000 });
+    const hostAfter = (await state(A.page))!;
+    assert(hostAfter.connected && hostAfter.id === hostId, 'host keeps its own survivor');
+    step('host account joined from a second tab as a separate survivor');
+    await A2tab.page.keyboard.press('Escape');
+    await click(A2tab.page, 'Save & Quit to Menu');
+    await A2tab.page.waitForSelector('.title', { timeout: 30000 });
+    await A2tab.browser.close();
+    all.splice(all.indexOf(A2tab.browser), 1);
+
     // ------------------------------------------------ host saves: browser + cloud copy + file export
     await A.page.keyboard.press('Escape');
     await A.page.waitForSelector('text=Menu (game keeps running)', { timeout: 10000 });
@@ -206,7 +231,7 @@ async function main() {
     const roster2 = (await state(A2.page))!;
     assert(roster2.connected, 'cloud world loads on another device');
     step('cloud save loaded on a fresh browser');
-    console.log(`presence max ${platform.stats.maxPresence} bytes, rejected ${platform.stats.presenceRejected}`);
+    console.log(`presence max ${platform.stats.maxPresence} bytes, rejected ${platform.stats.presenceRejected}${platform.stats.lastRejection ? ` (${platform.stats.lastRejection})` : ''}, sent ${platform.stats.presenceSent}`);
     assert(platform.stats.presenceRejected === 0, 'no presence update over the 4 KiB limit');
   } finally {
     for (const b of all) await b.close().catch(() => {});

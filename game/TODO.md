@@ -32,7 +32,6 @@ pass their acceptance criteria (see PROJECT_STATUS.md).
 - [ ] Skinned character models and animation blending (current avatars use
       procedural limb animation).
 - [ ] Volumetric clouds; currently a 2-layer animated cloud dome.
-- [ ] Footprints in sand.
 - [ ] Localisation (all UI strings are English and inline).
 
 ## Engineering

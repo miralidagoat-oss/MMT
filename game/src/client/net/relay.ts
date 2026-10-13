@@ -7,6 +7,7 @@ import { encode, decode } from '../../shared/net/codec';
 import { PresenceLink, DEFAULT_LINK, type LinkState, type LinkOptions } from '../../shared/net/presence-link';
 import type { ClientMsg, ServerMsg } from '../../shared/net/protocol';
 import type { Transport, TransportTuning } from './transport';
+import { onTick } from './ticker';
 
 export interface PresencePipe {
   publish(state: LinkState): void;
@@ -19,12 +20,17 @@ export interface PresencePipe {
 
 export const RELAY_TUNING: TransportTuning = { inputHz: 12, inputRedundancy: 10, interpDelayMs: 280 };
 
-/** Runs flushes for a set of links on one timer. */
+/**
+ * Runs flushes for a set of links on one background-safe tick, and shares the
+ * page's presence budget (about 40 updates a second across all rooms) between
+ * them: one link may publish every 80 ms, three links every 95 ms each.
+ */
 export class LinkPump {
   private links = new Set<PresenceLink>();
-  private timer: ReturnType<typeof setInterval> | null = null;
-  add(l: PresenceLink) { this.links.add(l); if (!this.timer) this.timer = setInterval(() => this.pump(), 15); }
-  remove(l: PresenceLink) { this.links.delete(l); if (!this.links.size && this.timer) { clearInterval(this.timer); this.timer = null; } }
+  private off: (() => void) | null = null;
+  add(l: PresenceLink) { this.links.add(l); this.rebalance(); if (!this.off) this.off = onTick(() => this.pump()); }
+  remove(l: PresenceLink) { this.links.delete(l); this.rebalance(); if (!this.links.size && this.off) { this.off(); this.off = null; } }
+  private rebalance() { const ms = Math.max(DEFAULT_LINK.minIntervalMs, Math.ceil((1000 * this.links.size) / 32)); for (const l of this.links) l.setMinInterval(ms); }
   pump() { const now = performance.now(); for (const l of this.links) if (l.wantsFlush) l.flush(now); }
 }
 export const pump = new LinkPump();
@@ -39,8 +45,10 @@ export class RelayTransport implements Transport {
   readonly link: PresenceLink;
   private opened = false;
   private closed = false;
+  private lastSend = 0;
+  private stopBeat: (() => void) | null = null;
 
-  constructor(private pipe: PresencePipe, opts: LinkOptions = DEFAULT_LINK) {
+  constructor(private pipe: PresencePipe, opts: LinkOptions = DEFAULT_LINK, private pumper: LinkPump = pump) {
     this.link = new PresenceLink((s) => pipe.publish(s), (frame) => {
       try { this.onMessage(decode<ServerMsg>(frame)); } catch (e) { console.warn('bad relay packet', e); }
     }, opts, () => this.shut('The host restarted the game'));
@@ -51,12 +59,19 @@ export class RelayTransport implements Transport {
       if (this.link.broken) this.shut(`Connection failed: ${this.link.broken}`);
     });
     pipe.onGone((r) => this.shut(r));
-    pump.add(this.link);
+    this.pumper.add(this.link);
     this.link.flush(performance.now()); // announce ourselves so the host can answer
+    // keep-alive that survives background-tab timer throttling (the session's own
+    // heartbeat slows to once a minute in a long-hidden tab and the host would drop us)
+    this.stopBeat = onTick(() => {
+      const now = performance.now();
+      if (this.opened && !this.closed && now - this.lastSend > 2500) this.send({ t: 'ping', c: now });
+    });
   }
 
   send(msg: ClientMsg): void {
     if (this.closed) return;
+    this.lastSend = performance.now();
     const d = encode(msg);
     if (msg.t !== 'input' || !this.link.sendUnreliable(d)) this.link.sendReliable(d);
   }
@@ -64,7 +79,8 @@ export class RelayTransport implements Transport {
   private shut(reason: string) {
     if (this.closed) return;
     this.closed = true;
-    pump.remove(this.link);
+    this.stopBeat?.();
+    this.pumper.remove(this.link);
     this.pipe.close();
     this.onClose(reason);
   }
@@ -74,7 +90,8 @@ export class RelayTransport implements Transport {
     // let a final 'bye' go out before leaving the room
     this.link.flush(performance.now() + 1e6);
     this.closed = true;
-    pump.remove(this.link);
+    this.stopBeat?.();
+    this.pumper.remove(this.link);
     setTimeout(() => this.pipe.close(), 300);
   }
 }
@@ -90,14 +107,14 @@ export class RelayPeerLink {
   private awaitingIdle = false;
   /** called when the snapshot lane frees up after a snapshot was queued */
   onSnapshotIdle: () => void = () => {};
-  constructor(private pipe: PresencePipe, toHost: (frame: Uint8Array) => void, private onEnd: (reason: string) => void, opts: LinkOptions = DEFAULT_LINK) {
+  constructor(private pipe: PresencePipe, toHost: (frame: Uint8Array) => void, private onEnd: (reason: string) => void, opts: LinkOptions = DEFAULT_LINK, private pumper: LinkPump = pump) {
     this.link = new PresenceLink((s) => {
       pipe.publish(s);
       if (this.awaitingIdle && this.link.unreliableIdle) { this.awaitingIdle = false; this.onSnapshotIdle(); }
     }, (frame) => toHost(frame), opts, () => this.end('player reloaded'));
     pipe.onRemote((st) => { if (!this.closed) { this.link.receive(st); if (this.link.broken) this.end(this.link.broken); } });
     pipe.onGone((r) => this.end(r));
-    pump.add(this.link);
+    this.pumper.add(this.link);
   }
   get wantsSnapshot(): boolean { return this.link.unreliableIdle; }
   /** frame: encoded ServerMsg; snap: whether it is a snapshot */
@@ -110,7 +127,7 @@ export class RelayPeerLink {
   end(reason: string) {
     if (this.closed) return;
     this.closed = true;
-    pump.remove(this.link);
+    this.pumper.remove(this.link);
     this.link.flush(performance.now() + 1e6);
     setTimeout(() => this.pipe.close(), 300);
     this.onEnd(reason);

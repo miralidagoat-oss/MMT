@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { PresenceLink, parseState, DEFAULT_LINK } from '../src/shared/net/presence-link';
 import { makeHost, run, waitFor, idle } from './nethelpers';
 import { connectRelayClient } from './relayhelpers';
+import { GameHost } from '../src/shared/net/host';
+import { PROTOCOL_VERSION } from '../src/shared/config';
 
 describe('presence link', () => {
   it('delivers every reliable frame in order and the latest unreliable frame through a lossy latest-wins relay', () => {
@@ -25,6 +27,9 @@ describe('presence link', () => {
       if (Math.random() < 0.6 && aState) B.receive(aState);
       if (Math.random() < 0.6 && bState) A.receive(bState);
       expect(JSON.stringify(aState ?? {}).length).toBeLessThanOrEqual(DEFAULT_LINK.maxBytes);
+      // the platform bounds every string in presence to 1 KiB
+      const st = aState as { r?: string[]; u?: string[] } | null;
+      for (const c of [...(st?.r ?? []), ...(st?.u ?? [])]) expect(c.length).toBeLessThanOrEqual(1001);
     }
     expect(got.b).toEqual([...Array(60).keys()]);
     expect(got.bu.length).toBeGreaterThan(10);
@@ -38,6 +43,10 @@ describe('presence link', () => {
     expect(parseState({ e: 'x', a: 0, s: 1, r: ['!<script>'], n: 0 })).toBeNull();
     expect(parseState({ e: 'x', a: 0.5, s: 1, r: [], n: 0 })).toBeNull();
     expect(parseState({ e: 'x', a: 0, s: 1, r: ['!AAAA'], n: 0 })).not.toBeNull();
+    expect(parseState({ e: 'x', a: 0, s: 1, r: [], n: 1, u: ['AAAA', 'AA=='] })).not.toBeNull();
+    expect(parseState({ e: 'x', a: 0, s: 1, r: [], n: 1, u: 'AAAA' })).toBeNull();
+    expect(parseState({ e: 'x', a: 0, s: 1, r: [], n: 1, u: ['AA==', 'AAAA'] })).toBeNull();
+    expect(parseState({ e: 'x', a: 0, s: 1, r: ['!' + 'A'.repeat(1200)], n: 0 })).toBeNull();
   });
 
   it('detects a restarted peer', () => {
@@ -96,4 +105,50 @@ describe('online co-op over the room relay', () => {
       host.stop();
     }
   }, 60000);
+});
+
+describe('same account in two tabs', () => {
+  it('a second tab of the same account gets its own survivor; a reconnect from the same tab keeps it', async () => {
+    const { sim, host } = makeHost(4141);
+    const msgs: { id: number; t: string; reason?: string; pid?: string }[] = [];
+    const connect = (tag: number) => host.connect((m) => msgs.push({ id: tag, t: m.t, reason: (m as { reason?: string }).reason, pid: (m as { playerId?: string }).playerId }), () => {});
+    const hello = (tab: string) => ({ t: 'hello' as const, protocol: PROTOCOL_VERSION, name: 'Ana', token: 'account-token-ana', tab });
+    const a = connect(1);
+    host.handle(a, hello('tab-one'));
+    const b = connect(2);
+    host.handle(b, hello('tab-two'));
+    const pidA = a.playerId, pidB = b.playerId;
+    expect(pidA).toBeTruthy();
+    expect(pidB).toBeTruthy();
+    expect(pidB).not.toBe(pidA);
+    expect(host.peers.has(a.id)).toBe(true); // the first tab was not kicked
+    expect(Object.values(sim.world.players).filter((p) => p.connected).length).toBe(2);
+    // the second tab drops and reconnects from the same page: same survivor, stale link replaced
+    const b2 = connect(3);
+    host.handle(b2, hello('tab-two'));
+    expect(b2.playerId).toBe(pidB);
+    expect(host.peers.has(b.id)).toBe(false);
+    expect(host.peers.has(a.id)).toBe(true);
+    // once the second tab is gone, it comes back as the same second survivor
+    host.disconnect(b2, 'left');
+    const b3 = connect(4);
+    host.handle(b3, hello('tab-two'));
+    expect(b3.playerId).toBe(pidB);
+    expect(a.playerId).toBe(pidA);
+  });
+
+  it('the host player never times out while its tab is hidden', () => {
+    let now = 0;
+    const { sim } = makeHost(4242);
+    const host = new GameHost(sim, { log: () => {}, now: () => now });
+    const local = host.connect(() => {}, () => {});
+    local.noTimeout = true;
+    host.handle(local, { t: 'hello', protocol: PROTOCOL_VERSION, name: 'Host', token: 'host-token-123', tab: 'h' });
+    const remote = host.connect(() => {}, () => {});
+    host.handle(remote, { t: 'hello', protocol: PROTOCOL_VERSION, name: 'Guest', token: 'guest-token-123', tab: 'g' });
+    now = 60_000;
+    host.step();
+    expect(host.peers.has(local.id)).toBe(true);
+    expect(host.peers.has(remote.id)).toBe(false);
+  });
 });

@@ -38,7 +38,7 @@
       const list = m.peers.map((p) => {
         const old = prev.get(p.peer);
         const same = old && JSON.stringify(old.presence) === JSON.stringify(p.presence);
-        const v = same ? old : Object.freeze({ peer: p.peer, by: p.by, isMe: p.peer === peerId, sameTab: p.peer === peerId, kind: 'viewer', guest: false, presence: Object.freeze(p.presence || {}), updatedAt: Date.now() });
+        const v = same ? old : Object.freeze({ peer: p.peer, by: p.by, isMe: p.by === user, sameTab: p.peer === peerId, kind: 'viewer', guest: false, presence: Object.freeze(p.presence || {}), updatedAt: Date.now() });
         next.set(p.peer, v);
         return v;
       });
@@ -65,6 +65,11 @@
   const userApi = { id: async () => user, isOwner: async () => true, canEdit: async () => true, can: async () => true };
   window.__mockDownloads = [];
   const downloads = { save: async ({ filename, data }) => { const text = typeof data === 'string' ? data : await data.text(); window.__mockDownloads.push({ filename, size: text.length, text }); return { ok: true }; } };
-  const caps = { room: lobby, db, user: userApi, downloads };
+  const permissions = {
+    state: async (name) => name ? 'granted' : { room: 'granted', db: 'granted', user: 'granted', downloads: 'granted' },
+    request: async () => ({ room: 'granted', db: 'granted', user: 'granted', downloads: 'granted' }),
+    manage: async () => {},
+  };
+  const caps = { room: lobby, db, user: userApi, downloads, permissions };
   window.claude = { use: (name) => new Promise((r) => setTimeout(() => r(caps[name] ?? null), 30)) };
 })();

@@ -5,7 +5,8 @@
 import { WorldRenderer } from './render/renderer';
 import { AudioEngine } from './audio/audio';
 import { Input } from './input/input';
-import { loadSettings, saveSettings, identityToken, type Settings } from './settings';
+import { loadSettings, saveSettings, identityToken, rememberIdentity, type Settings } from './settings';
+import { requestAllOnce, permissionState, openPermissions } from './net/permissions';
 import { Menus } from './ui/menus';
 import { Game } from './game/game';
 import { LocalHost } from './net/local';
@@ -40,6 +41,12 @@ class App {
   private coop: { lobby: CoopLobby; code: string; links: Map<number, RelayPeerLink>; nextId: number; adTimer: ReturnType<typeof setInterval> } | null = null;
   private slot = '';
   private userToken: string | null = null;
+  private userTokenP: Promise<string | null> = Promise.resolve(null);
+
+  /** Wait (briefly) for the account identity so a world never sees two tokens for one player. */
+  private async identityReady() {
+    await Promise.race([this.userTokenP, new Promise((r) => setTimeout(r, 6000))]);
+  }
   private padPrev: boolean[] = [];
 
   constructor() {
@@ -62,6 +69,8 @@ class App {
         };
       },
       hosted: isHostedPage(),
+      roomPermission: () => permissionState('room'),
+      openPermissions: () => openPermissions(),
       settingsChanged: (s, what) => this.applySettings(s, what),
       click: () => { this.audio.unlock(); this.audio.play('ui_click', {}, undefined, 'ui'); },
       hover: () => this.audio.play('ui_hover', {}, undefined, 'ui'),
@@ -84,8 +93,12 @@ class App {
       return;
     }
     this.renderer = new WorldRenderer(this.canvas, this.settings.graphics);
-    this.userToken = await accountToken();
     this.applySettings(this.settings, 'gameplay');
+    // one batched consent dialog (hosted page), then the account identity; never blocks the menu
+    this.userTokenP = requestAllOnce().then(() => accountToken()).then((t) => {
+      if (t) { this.userToken = t; rememberIdentity(t); }
+      return t;
+    });
     await this.menus.main();
     this.schedule();
     // handy for automated tests / debugging
@@ -122,6 +135,7 @@ class App {
     this.mode = 'loading';
     this.menus.loading(opts.mode === 'new' ? 'Generating islands…' : 'Loading world…', 0.05);
     try {
+      await this.identityReady();
       if (opts.mode === 'load') await ensureLocal(opts.slot).catch((e) => console.warn('cloud copy unavailable', e));
       this.slot = opts.slot;
       this.local = new LocalHost();
@@ -160,7 +174,7 @@ class App {
     const local = this.local;
     if (!local) throw new Error('Only the host of a world can invite friends.');
     const lobby = await getLobby();
-    if (!lobby) throw new Error('Online play needs the game opened from its claude.ai link while signed in.');
+    if (!lobby) throw new Error('Online play needs you signed in to claude.ai, with the game opened from its link (owner, or invited by email).');
     const code = randomId(6);
     const coop = { lobby, code, links: new Map<number, RelayPeerLink>(), nextId: 1, adTimer: setInterval(() => lobby.advertise(code, this.adInfo()), 4000) };
     this.coop = coop;
@@ -172,6 +186,7 @@ class App {
       if (m.type === 'peer-out' && m.data) link.send(m.data, !!m.snap);
       else if (m.type === 'peer-kick') link.end('kicked');
     };
+    if (this.game) this.game.hud.inviteCode = code;
     lobby.host(code, this.adInfo(), (pipe) => {
       const id = coop.nextId++;
       const link = new RelayPeerLink(pipe, (frame) => this.local?.peerFrame(id, frame), () => { coop.links.delete(id); this.local?.peerClose(id); });
@@ -187,6 +202,7 @@ class App {
     if (!c) return;
     this.coop = null;
     clearInterval(c.adTimer);
+    if (this.game) this.game.hud.inviteCode = null;
     // the worker tells each friend the world closed; give that a moment to go out
     this.local?.setOpen(false);
     c.lobby.stopHosting(false);
@@ -207,8 +223,9 @@ class App {
     this.audio.unlock();
     this.mode = 'loading';
     this.menus.loading('Finding the host…', 0.1);
+    await this.identityReady();
     const lobby = await getLobby();
-    if (!lobby) { this.mode = 'menu'; this.menus.error('Online play unavailable', 'Open the game from its claude.ai link while signed in to play with friends.', () => void this.menus.main()); return; }
+    if (!lobby) { this.mode = 'menu'; this.menus.error('Online play unavailable', 'Sign in to claude.ai and open the game from the link the host invited you with. The host invites friends by email from the page\'s Share menu; a public link only allows single-player.', () => void this.menus.main()); return; }
     try {
       const pipe = await lobby.connect(code);
       if (this.mode !== 'loading') { pipe.close(); return; }

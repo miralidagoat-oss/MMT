@@ -11,9 +11,10 @@
 import type { LinkState } from '../../shared/net/presence-link';
 import type { PresencePipe } from './relay';
 import { PROTOCOL_VERSION, SIM } from '../../shared/config';
+import { onTick } from './ticker';
 
 // Minimal structural types for the platform API (only what we use).
-interface Peer { peer: string; isMe: boolean; sameTab: boolean; presence: Readonly<Record<string, unknown>> }
+interface Peer { peer: string; isMe: boolean; sameTab: boolean; kind?: string; presence: Readonly<Record<string, unknown>> }
 interface PeersChange { peers: readonly Peer[]; joined: readonly Peer[]; left: readonly Peer[] }
 interface RoomLike {
   presence(patch: Record<string, unknown>): Promise<void>;
@@ -48,7 +49,7 @@ export interface OpenGame extends GameAd { peer: string; mine: boolean }
 
 const CODE_RE = /^[a-z0-9]{6}$/;
 const RID_RE = /^[a-z0-9]{8}$/;
-const clean = (s: unknown, n: number) => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯]/g, '').slice(0, n);
+const clean = (s: unknown, n: number) => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '').slice(0, n);
 export const randomId = (n: number) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
 
 function readAd(p: Peer): OpenGame | null {
@@ -67,8 +68,8 @@ function watchPeers(room: RoomLike, fn: (peers: readonly Peer[]) => void, onErro
   let last: readonly Peer[] | null = null;
   const check = () => { const ps = room.peers(); if (ps !== last) { last = ps; fn(ps); } };
   const off = room.onPeers(() => check(), (e) => onError?.(e.code));
-  const timer = setInterval(check, 25);
-  return () => { off(); clearInterval(timer); };
+  const stop = onTick(check);
+  return () => { off(); stop(); };
 }
 
 /** One side of a private two-party room. */
@@ -87,7 +88,10 @@ class RoomPipe implements PresencePipe {
   }
 
   private onPeers(peers: readonly Peer[]) {
-    const others = peers.filter((p) => !p.sameTab && !p.isMe);
+    // `isMe` is also true for this player's OTHER tabs and devices, which are real
+    // co-op partners (testing alone in two tabs, or the same account on a laptop
+    // and a phone); only this very page and agent peers are excluded.
+    const others = peers.filter((p) => !p.sameTab && p.kind !== 'agent');
     if (!this.bound) {
       // bind to the first peer that publishes link state
       const first = others.find((p) => p.presence && typeof p.presence.l === 'object');
@@ -140,7 +144,8 @@ export class CoopLobby {
 
   constructor(private room: LobbyRoom) {
     this.stops.push(watchPeers(room, (peers) => this.onPeers(peers)));
-    this.janitor = setInterval(() => { for (const p of this.pipes) p.checkGone(6000); }, 1000);
+    // the platform refreshes its connection now and then: allow a generous gap before calling a partner gone
+    this.janitor = setInterval(() => { for (const p of this.pipes) p.checkGone(15000); }, 1000);
   }
 
   get connected(): boolean { return this.room.connected(); }
@@ -162,7 +167,7 @@ export class CoopLobby {
       const rid = tw.rid;
       if (h.seen.has(rid)) continue;
       h.seen.set(rid, { pipe: null, at: Date.now() });
-      void this.room.join(`tw-${h.code}-${rid}`).then((named) => {
+      void joinRoom(this.room, `tw-${h.code}-${rid}`).then((named) => {
         if (this.hosting !== h) { void named.leave(); return; }
         const pipe = new RoomPipe(named, p.peer);
         this.pipes.add(pipe);
@@ -207,7 +212,7 @@ export class CoopLobby {
     code = code.trim().toLowerCase();
     if (!CODE_RE.test(code)) throw new Error('Game codes are 6 letters or digits.');
     const rid = randomId(8);
-    const named = await this.room.join(`tw-${code}-${rid}`);
+    const named = await joinRoom(this.room, `tw-${code}-${rid}`);
     await this.room.presence({ tw: { join: code, rid } });
     const pipe = new RoomPipe(named, null);
     this.pipes.add(pipe);
@@ -221,6 +226,24 @@ export class CoopLobby {
     for (const s of this.stops) s();
     clearInterval(this.janitor);
   }
+}
+
+/** Join a named room, retrying transient failures, with errors a player can act on. */
+async function joinRoom(room: LobbyRoom, name: string): Promise<NamedRoom> {
+  let last: { code?: string } | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await room.join(name); } catch (e) {
+      last = e as { code?: string };
+      if (last?.code !== 'upstream_error' && last?.code !== 'limit_reached') break;
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    }
+  }
+  const code = last?.code ?? 'unknown';
+  throw new Error(code === 'not_permitted'
+    ? 'Your access to this page does not include online play. Ask the host to invite you by email from the Share menu, then reload.'
+    : code === 'limit_reached' ? 'Too many game rooms are open on this page. Reload the page and try again.'
+    : code === 'not_granted' || code === 'revoked' ? 'Online play is not available in this view. Open the game from its claude.ai link while signed in.'
+    : 'Could not reach the game room. Check your connection and try again.');
 }
 
 let lobby: CoopLobby | null = null;

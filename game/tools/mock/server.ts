@@ -28,21 +28,37 @@ export function startMockPlatform(port: number, opts: { latencyMs?: number; root
     res.end(readFileSync(p));
   });
 
-  type Conn = { ws: WebSocket; peer: string; user: string; rooms: Map<string, Record<string, unknown>>; dirty: Set<string> };
+  type Conn = { ws: WebSocket; peer: string; user: string; rooms: Map<string, Record<string, unknown>>; dirty: Set<string>; pending: Set<string>; tokens: number };
+  const checkJson = (v: unknown, depth: number): string | null => {
+    if (depth > 8) return 'nested deeper than 8';
+    if (typeof v === 'string') return Buffer.byteLength(v) > 1024 ? `string over 1 KiB (${Buffer.byteLength(v)})` : /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v) ? 'control character' : null;
+    if (Array.isArray(v)) { for (const x of v) { const e = checkJson(x, depth + 1); if (e) return e; } return null; }
+    if (v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) { if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k)) return `bad key ${k}`; const e = checkJson(x, depth + 1); if (e) return e; }
+    }
+    return null;
+  };
   const conns = new Set<Conn>();
   const db = new Map<string, Record<string, unknown>>();
-  const stats = { presenceRejected: 0, maxPresence: 0 };
+  const stats = { presenceRejected: 0, maxPresence: 0, presenceSent: 0, lastRejection: '' };
   const sendLater = (c: Conn, msg: unknown) => setTimeout(() => { if (c.ws.readyState === 1) c.ws.send(JSON.stringify(msg)); }, lat);
   const roomPeers = (room: string) => [...conns].filter((c) => c.rooms.has(room)).map((c) => ({ peer: c.peer, by: c.user, presence: c.rooms.get(room) }));
   const broadcastRoom = (room: string) => { const peers = roomPeers(room); for (const c of conns) if (c.rooms.has(room)) sendLater(c, { op: 'peers', room, peers }); };
   // presence is coalesced: dirty rooms are broadcast at ~30 Hz
   const dirtyRooms = new Set<string>();
-  const tick = setInterval(() => { for (const r of dirtyRooms) broadcastRoom(r); dirtyRooms.clear(); }, 33);
+  const tick = setInterval(() => {
+    for (const c of conns) {
+      c.tokens = Math.min(80, c.tokens + 40 * 0.033);
+      for (const r of [...c.pending]) { if (c.tokens < 1) break; c.tokens -= 1; c.pending.delete(r); dirtyRooms.add(r); stats.presenceSent++; }
+    }
+    for (const r of dirtyRooms) broadcastRoom(r);
+    dirtyRooms.clear();
+  }, 33);
 
   const wss = new WebSocketServer({ server: http, path: '/mock-room' });
   wss.on('connection', (ws, req) => {
     const q = new URL(req.url ?? '', 'http://x').searchParams;
-    const c: Conn = { ws, peer: q.get('peer') ?? Math.random().toString(36).slice(2), user: q.get('user') ?? 'u-anon', rooms: new Map([['', {}]]), dirty: new Set() };
+    const c: Conn = { ws, peer: q.get('peer') ?? Math.random().toString(36).slice(2), user: q.get('user') ?? 'u-anon', rooms: new Map([['', {}]]), dirty: new Set(), pending: new Set(), tokens: 40 };
     conns.add(c);
     sendLater(c, { op: 'hello', peer: c.peer, user: c.user });
     dirtyRooms.add('');
@@ -59,10 +75,13 @@ export function startMockPlatform(port: number, opts: { latencyMs?: number; root
           for (const [k, v] of Object.entries(m.patch ?? {})) { if (v === null) delete cur[k]; else cur[k] = v; }
           const size = Buffer.byteLength(JSON.stringify(cur));
           stats.maxPresence = Math.max(stats.maxPresence, size);
-          if (size > 4096) { stats.presenceRejected++; reply({ error: { code: 'invalid_argument', message: `presence over 4 KiB (${size})` } }); return; }
+          // the platform's bounds: 4 KiB in all, every string at most 1 KiB, keys like identifiers, nesting <= 8
+          const bad = size > 4096 ? `presence over 4 KiB (${size})` : checkJson(cur, 0);
+          if (bad) { stats.presenceRejected++; stats.lastRejection = bad; reply({ error: { code: 'invalid_argument', message: bad } }); return; }
           if (!c.rooms.has(room)) { reply({ error: { code: 'invalid_argument', message: 'not in room' } }); return; }
           c.rooms.set(room, cur);
-          dirtyRooms.add(room);
+          // per-page budget (~40 updates/s across all rooms): over it, updates wait and coalesce
+          c.pending.add(room);
           reply({ ok: true });
         } else if (m.op === 'db') {
           const p = String(m.path);
