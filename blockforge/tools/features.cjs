@@ -17,15 +17,34 @@ const assert = (c, m) => { if (!c) { console.log('FAIL:', m); process.exitCode =
   const G = (fn, a) => page.evaluate(fn, a);
   const shot = (n) => page.screenshot({ path: `${out}/${n}.png` });
   const waitReady = async (ms = 1500) => {
-    await page.waitForFunction(() => {
-      const g = window.__blockforge.game, p = g.player;
-      return g.state !== 'loading' && g.world.loadProgress(p.x, p.z, 3) >= 1 && g.world.pool.pending === 0;
-    }, null, { timeout: 180000 });
+    try {
+      await page.waitForFunction(() => {
+        const g = window.__blockforge.game, p = g.player;
+        return g.state !== 'loading' && g.world.loadProgress(p.x, p.z, 3) >= 1 && g.world.pool.pending === 0;
+      }, null, { timeout: 180000 });
+    } catch (e) {
+      // say what is stuck before giving up
+      console.log('STALL', JSON.stringify(await page.evaluate(() => {
+        const g = window.__blockforge.game, w = g.world, p = g.player, pool = w.pool;
+        const pcx = Math.floor(p.x / 16), pcz = Math.floor(p.z / 16), near = [];
+        for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
+          if (dx * dx + dz * dz > 9.5) continue;
+          const c = w.getChunk(pcx + dx, pcz + dz);
+          if (!c || c.state !== 2 || c.meshedVersion < 0) near.push([dx, dz, c ? c.state : 'none', c ? c.meshing : null, c ? c.meshedVersion : null]);
+        }
+        return { state: g.state, dim: g.dim, pos: [p.x, p.y, p.z], prog: w.loadProgress(p.x, p.z, 3), pending: pool.pending, inflight: pool.inflight, fallback: pool.fallback, results: w.results.length, spawnKnown: g.spawnKnown, loadingText: (document.querySelector('#ld-text') || {}).textContent, near };
+      })));
+      console.log('frames in 5s', await page.evaluate(() => new Promise((res) => { let n = 0; const f = () => { n++; requestAnimationFrame(f); }; requestAnimationFrame(f); setTimeout(() => res(n), 5000); })));
+      console.log('page errors so far', errors.length, errors.slice(0, 3).join(' | ').slice(0, 600));
+      await shot('99-stall');
+      throw e;
+    }
     await page.waitForTimeout(ms);
   };
 
   // these checks expect the default view distance, whatever preset this machine picked
-  await page.evaluate(() => { const b = window.__blockforge; b.settings.renderDistance = 8; b.ui.app.applySettings(); });
+  // software-rendered here (well under 1 frame a second at distance 8 now), so keep the view modest
+  await page.evaluate(() => { const b = window.__blockforge; b.settings.renderDistance = 5; b.ui.app.applySettings(); });
   await page.click('#b-play'); await page.waitForTimeout(300);
   await page.click('#b-new'); await page.waitForTimeout(200);
   await page.fill('#w-name', 'Feature Test');

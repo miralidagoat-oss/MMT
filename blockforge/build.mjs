@@ -8,7 +8,8 @@ import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const common = {
-  bundle: true, minify: true, format: 'iife', target: ['es2020'], write: false, legalComments: 'none',
+  // BF_MINIFY=0 keeps names readable (for profiling)
+  bundle: true, minify: process.env.BF_MINIFY !== '0', format: 'iife', target: ['es2020'], write: false, legalComments: 'none',
   define: { 'import.meta.url': '"about:blank"' }, logLevel: 'warning',
 };
 
