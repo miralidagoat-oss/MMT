@@ -60,14 +60,19 @@ const click = async (page: Page, text: string | RegExp) => {
   await loc.click();
 };
 /** Open the pause menu (Esc). Software rendering is slow, so re-press if the menu has not appeared. */
-async function quitToMenu(page: Page) {
+async function openPause(page: Page) {
+  const btn = page.locator('#ui button', { hasText: 'Save & Quit to Menu' }).first();
   for (let i = 0; i < 4; i++) {
+    if (await btn.isVisible()) return;
     await page.keyboard.press('Escape');
-    const btn = page.locator('#ui button', { hasText: 'Save & Quit to Menu' }).first();
-    if (await btn.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) { await btn.click(); return; }
+    if (await btn.waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false)) return;
   }
   await page.screenshot({ path: path.join(OUT, 'web-fail-pause.png') });
   throw new Error('pause menu did not open');
+}
+async function quitToMenu(page: Page) {
+  await openPause(page);
+  await page.locator('#ui button', { hasText: 'Save & Quit to Menu' }).first().click();
 }
 const ready = (page: Page, ms = 180000) => page.waitForFunction(() => (window as any).tidewake?.game?.isReady === true, null, { timeout: ms, polling: 500 });
 const state = (page: Page) => page.evaluate(() => {
@@ -222,7 +227,7 @@ async function main() {
     all.splice(all.indexOf(A2tab.browser), 1);
 
     // ------------------------------------------------ host saves: browser + cloud copy + file export
-    await A.page.keyboard.press('Escape');
+    await openPause(A.page);
     await A.page.waitForSelector('text=Menu (game keeps running)', { timeout: 10000 });
     await A.page.screenshot({ path: path.join(OUT, 'web-06-host-menu.png') });
     // the world keeps running for friends while the host is in the menu
@@ -310,7 +315,7 @@ async function main() {
     await D.page.screenshot({ path: path.join(OUT, 'web-10-drop-takeover.png') });
 
     // ------------------------------------------------ the host closes the world to friends: the friend is told
-    await D.page.keyboard.press('Escape');
+    await openPause(D.page);
     await click(D.page, 'Close to Friends');
     await C.page.waitForSelector('text=closed the world', { timeout: 60000 });
     step('friends told the host closed the world');
