@@ -45,6 +45,7 @@ export type Action =
   | { a: 'plant'; id: string; plot: number; from: SlotRef }
   | { a: 'harvest_crop'; id: string; plot: number }
   | { a: 'water_crop'; id: string; from: SlotRef }
+  | { a: 'fertilize'; id: string; from: SlotRef }
   | { a: 'ignite'; id: string }
   | { a: 'beacon'; id: string }
   | { a: 'chat'; text: string };
@@ -157,7 +158,23 @@ export type ServerMsg =
   | { t: 'pong'; c: number; s: number }
   | { t: 'reject'; reason: string }
   | { t: 'saved'; ok: boolean; at: number }
+  | RelayMsg;
+
+/**
+ * Messages of the hosted page's co-op relay itself (not the game host): they keep
+ * a world alive when its host leaves, whether by Save & Quit or by closing the tab.
+ */
+export type RelayMsg =
   /** the host is leaving and hands the world to this player, who becomes the new host (same game code) */
-  | { t: 'handoff'; code: string; host: string; gz: boolean; save: Uint8Array | string };
+  | { t: 'handoff'; code: string; host: string; gz: boolean; save: Uint8Array | string; gen?: number }
+  /** one part of the host's rolling world backup (parts arrive in order; a new id starts a new backup) */
+  | { t: 'backup'; id: number; i: number; n: number; gz: boolean; d: Uint8Array }
+  /**
+   * who carries the world on if the host vanishes: `names` lists the players holding a
+   * complete backup in takeover order, `rank` is this player's place in it (null: none)
+   */
+  | { t: 'succession'; code: string; gen: number; host: string; rank: number | null; names: string[] }
+  /** best effort, sent as the host's page closes: no need to wait to notice */
+  | { t: 'host-gone'; host: string };
 
 export const FLAG = { ground: 1, crouch: 2, sprint: 4, swim: 8, underwater: 16, downed: 32, dead: 64, sleeping: 128, using: 256 } as const;

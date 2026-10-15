@@ -147,7 +147,36 @@ page's live **room** channel. The host still runs the authoritative `GameHost`
   to 90 s for the new host. Survivors carry over because identities are tokens, not
   hosts. The departing host waits until everything has been acknowledged (or its
   partners have left, at most 30 s), and links linger 1.5 s on close so final acks
-  get through. Closing the tab instead of quitting cannot hand anything over.
+  get through.
+* **Tab-close takeover** (`client/net/succession.ts`): a host can also vanish without
+  warning (tab closed, browser crashed, network gone). While friends play, the host
+  keeps a **rolling backup** with each of them: about every 30 s (and a few seconds
+  after someone joins) the worker serializes the world without storing it, the page
+  gzips it (about 30 KB) and streams it in 1380-byte `backup` parts, at most four
+  relay chunks in flight (`PresenceLink.sentSeq/ackedSeq`), so gameplay traffic is
+  never crowded out. A friend's backup counts once every part was acknowledged. The
+  host then sends each friend a `succession` message: the takeover order (friends
+  holding a complete backup, earliest joiner first) and the friend's own rank.
+  When the host's link goes quiet (its page left the room for 15 s, or the
+  best-effort `host-gone` sent on `pagehide` arrives), the friend at rank *r* waits
+  *r* × 30 s, then checks the lobby (`checkHost`): an ad for the code with a newer
+  generation means someone already took over (join them); the old host's ad still
+  being refreshed (its `beat` changes) means the friend's own connection was the
+  problem (reconnect); otherwise the friend claims the code at once (an ad with
+  generation + 1), reopens the backup as its own world and opens it to friends under
+  the same code. Everyone else keeps reconnecting by code and lands on the new host.
+  The decision is never made on a lobby the friend is not connected to.
+* **Generations:** every hosting of a code carries `gen` (0 for the first host, +1
+  per handoff or takeover). A host that sees a newer hosting of its own code (it was
+  away while a friend took over) **yields**: it tells any remaining friends the world
+  moved, saves its own copy to its saves, and joins the new host as a player. Two
+  hosts of the same generation agree on the lexicographically smaller peer id. The
+  open-games list shows only the newest hosting of each code.
+* **Priorities on the link:** reliable chunks normally go first, but a snapshot that
+  already missed one publish gets its room first in the next, so a long reliable
+  transfer delays snapshots by at most one publish. While more than 12 reliable
+  chunks are queued (a joiner's welcome state), the host holds new snapshots back so
+  the transfer finishes sooner.
 * **Consent:** the hosted page asks for all of its capabilities in one dialog after
   start-up (`client/net/permissions.ts`). If online play is declined, the
   multiplayer screen says so and opens the Permissions panel.
@@ -156,8 +185,11 @@ page's live **room** channel. The host still runs the authoritative `GameHost`
   go through the same validation, rate limits and dedupe as any client.
 * **Tests:** `tests/relay.test.ts` covers the link over a simulated latest-wins
   relay, and 4 players plus a refused 5th through a 4 KiB, 30 Hz presence model.
-  `tools/e2e-coop.ts` runs 4 or 5 real browsers against `tools/mock` (a local
-  stand-in for the platform).
+  `tests/succession.test.ts` covers backup streaming while the game runs, the
+  takeover order, the takeover decision and generation yielding.
+  `tools/e2e-coop.ts` runs up to 6 real browsers against `tools/mock` (a local
+  stand-in for the platform, with a hook that drops a page's connection), including
+  a host closing its tab and a host whose connection drops and comes back.
 
 ### Saves on the web
 
@@ -198,6 +230,14 @@ export/import (the CRC-checked envelope is the file format).
   them up. Generation is lazy and cached.
 * Shipwrecks (shallow and deep; deep wrecks always contain the beacon electronics),
   sea caves built from overlapping rock spheres, and creature spawn zones.
+* **Caves** on rocky, volcanic and jungle islands are a 14 m tunnel with a closed
+  roof. Each holds six glowcap clusters along the walls, a guano heap under the
+  roost, a smuggler's cache (`cave_cache` loot) and a bat colony (spawn zone
+  `zb<island>`). Cave life is listed in the chunk each node stands in and looked up by
+  its `cave<island>.*` id. It is drawn from a separate random stream, so the rocks of
+  older worlds keep their places; procedural nodes inside a tunnel are skipped but
+  still use up their id, so every other node keeps its id. `caveDepth(x, y, z)` tells
+  how deep inside a cave a point is (0 at the mouth, 1 about 4 m in).
 
 ## 5. Player architecture
 
@@ -245,6 +285,11 @@ scaled by player noise (sprinting / crouching / swimming), night modifiers and
 terrain line of sight. Habitat constraints keep fish and sharks in water and crabs on
 beaches. Carcasses are butchered with cutting tools. Zones respawn creatures when no
 player is watching. Sharks circle swimmers before striking and harass rafts.
+Bats have their own small machine (`tickBat`): each hangs at its own spot under the
+roof by day, the colony streams out through the mouth at dusk to hunt over the shore
+and returns at dawn, and anyone right under them, or a light carried within 7 m,
+sends them into a few seconds of frantic flight around the tunnel. Dead fliers drop
+to the ground.
 
 ## 10. UI architecture (`client/ui`)
 
@@ -272,9 +317,15 @@ mouse and gamepad are supported; menus can be navigated with a controller.
   subsurface scattering and a Snell's-window underside.
 * `vegetation.ts` — instanced nodes (bark / triplanar rock / foliage materials) with
   wind sway, plus dense instanced grass around the camera.
-* `entities.ts` — structures, items, containers, wrecks, caves, animated remote
-  players with name tags, creatures, boats, projectiles, and a pooled point-light
-  budget for fires and torches.
+* `entities.ts` — structures, items, containers, wrecks, caves (rock shell plus a
+  rocky floor that fades out at the mouth), animated remote players with name tags,
+  creatures (hanging bats fold their wings), boats, projectiles, and a pooled
+  point-light budget for fires, torches, lamps and cold blue glow (each nearby cave's
+  remaining glowcaps, held glowcap jars).
+* Caves are dark: as the camera goes in, the sky's hemisphere light and environment
+  intensity fade (`EnvState.enclosed`, smoothed like eyes adjusting), so torches,
+  jars and the glowcaps (a self-lit, slowly pulsing material that blooms) carry the
+  scene.
 * `particles.ts` — pooled particle system (fire, smoke, sparks, splashes, chips,
   blood, bubbles) and rain.
 * `post.ts` — HDR scene target → optional GTAO → bloom → grading (god rays, underwater

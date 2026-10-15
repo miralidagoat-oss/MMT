@@ -2,7 +2,8 @@
 
 An original 1–4 player co-op ocean-island survival game. You wash up on a scatter
 of procedurally generated islands. Find water, make fire, build a home, hunt and farm,
-then sail out to salvage deep wrecks for the parts to call a ship home.
+explore sea caves lit by glowing mushrooms where bats roost, then sail out to salvage
+deep wrecks for the parts to call a ship home.
 
 Runs in any modern desktop browser with WebGL2.
 
@@ -19,12 +20,17 @@ The game is published as a web page (built with `npm run build:web`, output in
   (or **Host a Saved World**), or press Esc in any game and choose **Invite
   Friends**. Share the page link with your friends. They open it signed in, choose
   **Play with Friends**, and pick your game from **Open games** or type your
-  6-character code. If the host quits (Save & Quit), the friend who joined first
-  takes the world over under the same code and everyone else reconnects to them. Invite friends **by email** from the page's Share menu: people
+  6-character code. Invite friends **by email** from the page's Share menu: people
   who arrive through a public link can only play single-player. You can also try
-  co-op alone with a second tab, which joins as a second survivor. The host's browser runs the world (keep the tab open), and the
-  world is saved in the host's worlds. Players who drop out can rejoin as the same
-  survivor.
+  co-op alone with a second tab, which joins as a second survivor. The host's
+  browser runs the world and saves it in the host's worlds. Players who drop out can
+  rejoin as the same survivor.
+* **The world outlives its host:** if the host uses Save & Quit, the friend who
+  joined first takes the world over under the same code and everyone else follows.
+  If the host just closes the tab (or loses their connection), friends hold a
+  rolling backup of the world (refreshed about every 30 s), so the first of them
+  reopens it from there and the others follow automatically. A host who comes back
+  after being replaced joins the friend's game.
 
 Online play travels over the page's live room channel (see ARCHITECTURE.md,
 "Web co-op relay"). The Node server below remains available for self-hosting.

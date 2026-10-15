@@ -108,7 +108,11 @@ export interface StructureState {
   containerId?: string;
 }
 
-export interface CropState { crop: string; growth: number; water: number; dryHours: number; withered: boolean }
+export interface CropState {
+  crop: string; growth: number; water: number; dryHours: number; withered: boolean;
+  /** fertilized: in-game hours of faster growth left */
+  fert?: number;
+}
 
 export interface ContainerState {
   id: string;

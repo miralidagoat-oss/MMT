@@ -27,6 +27,22 @@ export const LOOT_TABLES: Record<string, { rolls: [number, number]; entries: Loo
       { item: 'chart', min: 1, max: 1, chance: 0.1 },
     ],
   },
+  /** what smugglers stashed at the back of a sea cave: supplies for a long stay in the dark */
+  cave_cache: {
+    rolls: [3, 5],
+    entries: [
+      { item: 'ration_can', min: 1, max: 2, chance: 0.6 },
+      { item: 'rope', min: 2, max: 4, chance: 0.5 },
+      { item: 'animal_fat', min: 1, max: 3, chance: 0.45 },
+      { item: 'resin', min: 1, max: 3, chance: 0.4 },
+      { item: 'bandage', min: 1, max: 2, chance: 0.4 },
+      { item: 'metal_ingot', min: 1, max: 2, chance: 0.3 },
+      { item: 'glow_jar', min: 1, max: 1, chance: 0.2 },
+      { item: 'flint_striker', min: 1, max: 1, chance: 0.15 },
+      { item: 'lantern', min: 1, max: 1, chance: 0.12 },
+      { item: 'compass', min: 1, max: 1, chance: 0.1 },
+    ],
+  },
   supply_drop: {
     rolls: [3, 4],
     entries: [

@@ -72,7 +72,7 @@ export class VegetationSystem {
   private barkMat: THREE.MeshStandardMaterial;
   private rockMat: THREE.MeshStandardMaterial;
   private reefMat: THREE.MeshStandardMaterial;
-  private leafMats: Record<string, THREE.MeshStandardMaterial>;
+  private leafMats: Record<string, THREE.Material>;
   instanceCount = 0;
   // grass
   private grass: THREE.InstancedMesh;
@@ -94,7 +94,25 @@ export class VegetationSystem {
       windify(m, this.wind, strength, k, false, true);
       return m;
     };
-    this.leafMats = { palm: leaf(t.palmLeaf, 'palm', 0.0026), broad: leaf(t.broadLeaf, 'broad', 0.0022), grass: leaf(t.grassBlade, 'bush', 0.08) };
+    // glowcaps: self-lit (bright enough to bloom), breathing slowly
+    const glow = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(2.6, 2.6, 2.6) });
+    glow.onBeforeCompile = (shader) => {
+      shader.uniforms.time = this.wind.time;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float time; varying float vPulse;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            vec3 gp = instanceMatrix[3].xyz;
+          #else
+            vec3 gp = vec3(0.0);
+          #endif
+          vPulse = 0.82 + 0.18 * sin(time * 0.9 + gp.x * 1.7 + gp.z * 1.3 + position.y * 9.0);`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vPulse;')
+        .replace('#include <opaque_fragment>', 'outgoingLight *= vPulse;\n#include <opaque_fragment>');
+    };
+    glow.customProgramCacheKey = () => 'glowcap';
+    this.leafMats = { palm: leaf(t.palmLeaf, 'palm', 0.0026), broad: leaf(t.broadLeaf, 'broad', 0.0022), grass: leaf(t.grassBlade, 'bush', 0.08), glow };
 
     // build per-type variant geometry
     for (const type of Object.keys(NODES)) {
@@ -239,6 +257,8 @@ export class VegetationSystem {
     const tint = new THREE.Color();
     let count = 0;
     const max = this.grass.instanceMatrix.count;
+    // no grass on cave floors
+    const caves = this.gen.caves.some((c) => Math.hypot(c.x - cam.x, c.z - cam.z) < R + c.len + 8);
     for (let j = 0; j < n && count < max; j++) for (let i = 0; i < n && count < max; i++) {
       const gx = x0 + i * step, gz = z0 + j * step;
       const r1 = hashN(gx * 13.1 + gz * 7.7), r2 = hashN(gx * 3.3 - gz * 11.9);
@@ -247,6 +267,7 @@ export class VegetationSystem {
       if (dx * dx + dz * dz > R * R) continue;
       const { h, slope } = H(x, z);
       if (h < 2.0 + r1 * 0.8 || slope > 0.5) continue;
+      if (caves && this.gen.inCave(x, z)) continue;
       // patchiness
       const patch = hashN(Math.floor(x / 7) * 31.7 + Math.floor(z / 7) * 17.3);
       if (patch < 0.14) continue;

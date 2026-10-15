@@ -61,6 +61,15 @@ export interface Cave {
   /** collision spheres forming the rock shell */
   rocks: { x: number; y: number; z: number; r: number }[];
   crate: { id: string; x: number; y: number; z: number };
+  /** tunnel depth from the mouth and the half-width of its open floor (m) */
+  len: number;
+  width: number;
+  /** cave life: glowcap clusters along the walls and a guano heap under the roost */
+  life: NodeSpawn[];
+  /** where bats hang by day (under the roof, toward the back) */
+  roost: { x: number; y: number; z: number };
+  /** just outside the mouth: bats leave and return through here */
+  mouth: { x: number; y: number; z: number };
 }
 
 export interface SpawnZone {
@@ -71,6 +80,8 @@ export interface SpawnZone {
   radius: number;
   count: number;
   islandId: number;
+  /** cave dwellers: the cave they roost in */
+  cave?: string;
 }
 
 interface ArchetypeProfile {
@@ -394,6 +405,8 @@ export class WorldGen {
             const def = NODES[type]!;
             if (def.underwater && h > -0.8) break;
             if (!def.underwater && h < 0.15) break;
+            // nothing grows inside a cave tunnel (the id is still used up, so others keep theirs)
+            if (this.inCave(x, z)) { idx++; break; }
             out.push({ id: `${cx}.${cz}.${idx++}`, type, x, y: h, z, rot: hash01(hseed, 4) * Math.PI * 2, scale: 0.8 + hash01(hseed, 5) * 0.45 });
             break;
           }
@@ -411,6 +424,8 @@ export class WorldGen {
         out.push({ id: `${w.id}.d${k}`, type: 'scrap_pile', x, y: this.heightAt(x, z), z, rot: rr.range(0, 6.28), scale: rr.range(0.8, 1.2) });
       }
     }
+    // cave life, listed in the chunk each node stands in
+    for (const c of this.caves) for (const n of c.life) if (Math.floor(n.x / cs) === cx && Math.floor(n.z / cs) === cz) out.push(n);
     this.nodeCache.set(key, out);
     return out;
   }
@@ -432,6 +447,7 @@ export class WorldGen {
   /** Lookup node by id (id encodes its chunk). */
   nodeById(id: string): NodeSpawn | undefined {
     const parts = id.split('.');
+    if (parts[0]!.startsWith('cave')) return this.caves.find((c) => c.id === parts[0])?.life.find((n) => n.id === id);
     if (parts[0] === 'wreck') {
       const w = this.wrecks.find((wr) => id.startsWith(wr.id + '.'));
       if (!w) return undefined;
@@ -508,9 +524,26 @@ export class WorldGen {
       }
       rocks.push(this.caveRock(p, yaw, -len - 2.4, 0, 3.4, 1.6)); // back wall
       const back = this.caveLocal(p, yaw, -len + 1.5, 0);
+      // cave life uses its own random stream so the rock layout of older worlds is unchanged
+      const lr = new Rng(hashInts(this.seed, 301, isl.id));
+      // close the gaps between the roof and the walls, so daylight only comes in at the mouth
+      for (let s = 1.1; s <= len; s += 2.2) for (const side of [-1, 1]) rocks.push(this.caveRock(p, yaw, -s, side * 2.4, 2.1 + lr.range(0, 0.3), 4.6));
+      const id = `cave${isl.id}`;
+      const at = (lx: number, lz: number, up = 0) => { const w = this.caveLocal(p, yaw, lx, lz); return { x: w.x, y: this.heightAt(w.x, w.z) + up, z: w.z }; };
+      const life: NodeSpawn[] = [];
+      for (let k = 0; k < 6; k++) {
+        const side = k % 2 ? 1 : -1;
+        const q = at(-3 - (k / 5) * (len - 4.5) + lr.range(-0.6, 0.6), side * lr.range(1.9, 2.4));
+        life.push({ id: `${id}.g${k}`, type: 'glowcap', ...q, rot: lr.range(0, 6.28), scale: lr.range(0.8, 1.25) });
+      }
+      const heap = at(-len * 0.7, lr.range(-0.5, 0.5));
+      life.push({ id: `${id}.u0`, type: 'guano_pile', ...heap, rot: lr.range(0, 6.28), scale: 1 });
       this.caves.push({
-        id: `cave${isl.id}`, islandId: isl.id, x: p.x, y: p.h, z: p.z, yaw, rocks,
+        id, islandId: isl.id, x: p.x, y: p.h, z: p.z, yaw, rocks,
         crate: { id: `cave${isl.id}.crate`, x: back.x, y: this.heightAt(back.x, back.z) + 0.5, z: back.z },
+        len, width: 2.6, life,
+        roost: at(-len * 0.7, 0, 2.1),
+        mouth: at(3, 0, 1.6),
       });
     }
   }
@@ -547,6 +580,38 @@ export class WorldGen {
     // the start island's outer reef gets a single shark (danger beyond the shelf)
     const start = this.islands[0]!;
     add('shark', start, -32, -16, 50, 1);
+    // a bat colony in every cave
+    for (const c of this.caves) this.spawnZones.push({ id: `zb${c.islandId}`, kind: 'bat', x: c.roost.x, z: c.roost.z, radius: 3, count: 5, islandId: c.islandId, cave: c.id });
+  }
+
+  /**
+   * How deep inside a cave the point is: 0 outside or at the mouth, 1 a few
+   * metres in (where daylight no longer reaches). Also returns the cave.
+   */
+  caveDepth(x: number, y: number, z: number): { depth: number; cave: Cave | null } {
+    for (const c of this.caves) {
+      const dx = x - c.x, dz = z - c.z;
+      if (dx * dx + dz * dz > (c.len + 6) ** 2) continue;
+      const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+      const lx = cs * dx + sn * dz, lz = -sn * dx + cs * dz;
+      if (lx > 0.5 || lx < -c.len - 1.5 || Math.abs(lz) > c.width + 0.6) continue;
+      if (y > this.heightAt(x, z) + 4) continue;
+      const t = Math.min(1, Math.max(0, (0.5 - lx) / 4.5));
+      return { depth: t * t * (3 - 2 * t), cave: c };
+    }
+    return { depth: 0, cave: null };
+  }
+
+  /** inside a cave's tunnel, mouth included (no trees, rocks or grass grow there) */
+  inCave(x: number, z: number): boolean {
+    for (const c of this.caves) {
+      const dx = x - c.x, dz = z - c.z;
+      if (dx * dx + dz * dz > (c.len + 6) ** 2) continue;
+      const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+      const lx = cs * dx + sn * dz, lz = -sn * dx + cs * dz;
+      if (lx < 1.5 && lx > -c.len - 3 && Math.abs(lz) < c.width + 1.5) return true;
+    }
+    return false;
   }
 
   // ------------------------------------------------------------------ helpers

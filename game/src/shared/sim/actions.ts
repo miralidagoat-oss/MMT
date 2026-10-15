@@ -2,7 +2,7 @@
  * Authoritative handlers for every client intent. Each handler validates range,
  * possession, tool requirements, cooldowns and state before mutating anything.
  */
-import { BUILD, PLAYER, SURVIVAL, TIME, VEHICLE } from '../config';
+import { BUILD, FARM, PLAYER, SURVIVAL, TIME, VEHICLE } from '../config';
 import { ITEMS } from '../defs/items';
 import { NODES } from '../defs/nodes';
 import { STRUCTURES } from '../defs/structures';
@@ -105,6 +105,7 @@ export function handleAction(sim: Simulation, p: PlayerState, act: Action): R {
     case 'plant': return plant(sim, p, String(act.id), Math.floor(Number(act.plot)), act.from);
     case 'harvest_crop': return harvestCrop(sim, p, String(act.id), Math.floor(Number(act.plot)));
     case 'water_crop': return waterCrop(sim, p, String(act.id), act.from);
+    case 'fertilize': return fertilize(sim, p, String(act.id), act.from);
     case 'ignite': {
       const s = sim.world.structures[String(act.id)];
       if (!s || !inRange(p, s, 4)) return fail('Too far');
@@ -954,6 +955,29 @@ function harvestCrop(sim: Simulation, p: PlayerState, id: string, plot: number):
   sim.markStructure(s.id);
   sim.fx('harvest_crop', s.x, s.y, s.z, c.crop, undefined, p.id);
   sim.milestone(p, 'harvested_crop');
+  return OK;
+}
+
+/** Work a handful of fertilizer (bat guano) into a plot: its crops grow much faster for a day. */
+function fertilize(sim: Simulation, p: PlayerState, id: string, from: SlotRef): R {
+  const s = planter(sim, p, id);
+  if ('ok' in s) return s;
+  const a = resolve(sim, p, from);
+  const st = a ? a.slots[a.i] : null;
+  if (!a || !st || !ITEMS[st.id]?.tags?.includes('fertilizer')) return fail('You need fertilizer (bat guano from a cave)');
+  let used = 0;
+  for (const c of s.crops!) {
+    if (!c || c.withered || c.growth >= 1) continue;
+    c.fert = FARM.fertilizerHours;
+    used++;
+  }
+  if (!used) return fail('Nothing growing here needs it');
+  st.qty--;
+  if (st.qty <= 0) a.slots[a.i] = null;
+  sim.markStructure(s.id);
+  sim.markPlayer(p.id);
+  sim.fx('plant', s.x, s.y, s.z, undefined, undefined, p.id);
+  sim.milestone(p, 'fertilized', 'Fertilized. These crops will grow much faster for a day.');
   return OK;
 }
 

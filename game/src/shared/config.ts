@@ -4,7 +4,7 @@
  */
 export const GAME_NAME = 'Tidewake';
 export const PROTOCOL_VERSION = 3;
-export const WORLDGEN_VERSION = 2;
+export const WORLDGEN_VERSION = 3;
 export const SAVE_VERSION = 3;
 
 export const SIM = {
@@ -147,6 +147,9 @@ export const FARM = {
   waterDrainPerHour: 6,
   rainWaterPerSec: 0.05,
   witherHoursDry: 36,
+  /** one handful of guano speeds every crop in a plot up for this many in-game hours */
+  fertilizerHours: 24,
+  fertilizerGrowthMul: 1.8,
 };
 
 export const VEHICLE = {

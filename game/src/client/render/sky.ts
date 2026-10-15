@@ -19,6 +19,8 @@ export interface EnvState {
   underwater: boolean;
   lightning: number; // 0..1 flash intensity
   time: number;
+  /** 0 in the open .. 1 deep inside a cave: the sky's ambient light hardly reaches there */
+  enclosed?: number;
 }
 
 /** Palette keyframes by sun elevation (sunDir.y). Linear-space colours. */
@@ -305,6 +307,9 @@ export class SkySystem {
     this.hemi.color.copy(ambSky).lerp(ambNight, nightK);
     this.hemi.groundColor.setRGB(0.28, 0.24, 0.18).multiplyScalar(0.25 + day * 0.75);
     this.hemi.intensity = 0.25 + day * 0.3 + nightK * 0.35 + e.lightning * 0.9;
+    const enc = e.enclosed ?? 0;
+    this.hemi.intensity *= 1 - 0.86 * enc;
+    this.scene.environmentIntensity = 1 - 0.82 * enc;
 
     // stars & moon
     const starsVis = THREE.MathUtils.smoothstep(-elev, 0.06, 0.25) * (1 - overcast);

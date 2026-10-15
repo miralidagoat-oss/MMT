@@ -249,9 +249,62 @@ async function main() {
     await B.page.screenshot({ path: path.join(OUT, 'web-08-new-host.png') });
     step('host left: Ben took the world over, Cy followed');
 
-    // ------------------------------------------------ the new host closes the world to friends: Cy is told
-    await B.page.keyboard.press('Escape');
-    await click(B.page, 'Close to Friends');
+    // ------------------------------------------------ Dee joins Ben's game; both get backups and a takeover rank
+    await click(D.page, 'Play with Friends');
+    await D.page.locator('#ui input[placeholder^="e.g."]').fill(code);
+    await click(D.page, /^Join$/);
+    await ready(D.page);
+    await B.page.waitForFunction(() => (window as any).tidewake.game.session.roster.filter((r: any) => r.connected).length === 3, null, { timeout: 60000 });
+    const succOf = (p: Page) => p.evaluate(() => { const t = (window as any).tidewake; return { rank: t.succ?.rank ?? null, gen: t.succ?.gen ?? null, names: t.succ?.names ?? [], backup: t.backups?.latest?.id ?? null, bytes: t.backups?.latest?.data?.length ?? 0 }; });
+    const ranked = async (p: Page, rank: number) => { for (let i = 0; i < 90; i++) { const s = await succOf(p); if (s.rank === rank && s.backup !== null) return s; await sleep(1000); } throw new Error(`no takeover rank ${rank}: ${JSON.stringify(await succOf(p))}`); };
+    await ranked(C.page, 0);
+    await ranked(D.page, 1);
+    // (Cy may have been told the order before Dee's copy completed: read it again)
+    let cySucc = await succOf(C.page);
+    for (let i = 0; i < 20 && cySucc.names.length < 2; i++) { await sleep(1000); cySucc = await succOf(C.page); }
+    assert(cySucc.gen === 1 && JSON.stringify(cySucc.names) === JSON.stringify(['Cy', 'Dee']), `takeover order ${JSON.stringify(cySucc)}`);
+    step(`backups held: Cy rank 0 (${(cySucc.bytes / 1024).toFixed(0)} KiB), Dee rank 1`);
+    // the host marks the map; the next backup carries it
+    const mark = await B.page.evaluate(() => (window as any).tidewake.game.act({ a: 'waypoint_add', x: 12, z: 34, label: 'Before the tab closed' }));
+    assert(mark?.ok, 'waypoint added');
+    const backupBefore = cySucc.backup;
+    for (let i = 0; i < 90; i++) { const s = await succOf(C.page); if (s.backup !== backupBefore) break; await sleep(1000); }
+    assert((await succOf(C.page)).backup !== backupBefore, 'a newer backup arrived');
+    const deeId2 = (await state(D.page))!.id;
+
+    // ------------------------------------------------ the host closes the tab (no Save & Quit): Cy takes over, Dee follows
+    const tClose = Date.now();
+    await B.page.close();
+    all.splice(all.indexOf(B.browser), 1);
+    await B.browser.close().catch(() => {});
+    await C.page.waitForFunction((c) => { const t = (window as any).tidewake; return t?.coop?.code === c && t.coop.gen === 2 && t.game?.isReady === true && t.local; }, code, { timeout: 180000, polling: 1000 });
+    step(`Ben's tab closed: Cy hosts the world after ${((Date.now() - tClose) / 1000).toFixed(0)} s`);
+    const marks = await C.page.evaluate(() => (window as any).tidewake.game.session.waypoints.map((w: any) => w.label));
+    assert(marks.includes('Before the tab closed'), `the backup carried the latest world (${JSON.stringify(marks)})`);
+    const cyHost = (await state(C.page))!;
+    assert(cyHost.id === cyId, 'Cy hosts as the same survivor');
+    await D.page.waitForFunction(() => { const t = (window as any).tidewake; const s = t?.game?.session; return s?.connected && t.game.isReady && s.transport?.kind === 'relay' && s.roster.filter((r: any) => r.connected).length === 2; }, null, { timeout: 180000, polling: 1000 });
+    assert((await state(D.page))!.id === deeId2, 'Dee rejoined as the same survivor');
+    step(`Dee followed Cy after ${((Date.now() - tClose) / 1000).toFixed(0)} s`);
+    await C.page.screenshot({ path: path.join(OUT, 'web-09-tab-closed-takeover.png') });
+
+    // ------------------------------------------------ the host's connection drops for a while: Dee takes over; Cy comes back and joins Dee
+    await ranked(D.page, 0);
+    step('Dee holds a backup from Cy');
+    const tDrop = Date.now();
+    await C.page.evaluate(() => (window as any).__mockDrop(30000));
+    await D.page.waitForFunction((c) => { const t = (window as any).tidewake; return t?.coop?.code === c && t.coop.gen === 3 && t.game?.isReady === true && t.local; }, code, { timeout: 180000, polling: 1000 });
+    step(`Cy's connection dropped: Dee hosts after ${((Date.now() - tDrop) / 1000).toFixed(0)} s`);
+    await C.page.waitForFunction(() => { const t = (window as any).tidewake; const s = t?.game?.session; return !t.local && s?.connected && t.game.isReady && s.transport?.kind === 'relay'; }, null, { timeout: 240000, polling: 1000 });
+    const cyBack = (await state(C.page))!;
+    assert(cyBack.id === cyId, `Cy rejoined the world as the same survivor (${JSON.stringify(cyBack)})`);
+    await D.page.waitForFunction(() => (window as any).tidewake.game.session.roster.filter((r: any) => r.connected).length === 2, null, { timeout: 60000 });
+    step(`Cy came back, saw Dee's newer hosting and joined it (${((Date.now() - tDrop) / 1000).toFixed(0)} s)`);
+    await D.page.screenshot({ path: path.join(OUT, 'web-10-drop-takeover.png') });
+
+    // ------------------------------------------------ the host closes the world to friends: the friend is told
+    await D.page.keyboard.press('Escape');
+    await click(D.page, 'Close to Friends');
     await C.page.waitForSelector('text=closed the world', { timeout: 60000 });
     step('friends told the host closed the world');
 
@@ -277,7 +330,7 @@ async function main() {
     assert(roster2.connected, 'cloud world loads on another device');
     step('cloud save loaded on a fresh browser');
     console.log(`host connection log: ${hostLog.join(' | ') || '(nothing unusual)'}`);
-    for (const [n, p] of [['A', A.page], ['B', B.page], ['C', C.page]] as const) {
+    for (const [n, p] of [['A', A.page], ['C', C.page], ['D', D.page]] as const) {
       const st = await p.evaluate(() => (window as any).__stall).catch(() => null);
       console.log(`longest main-thread freeze ${n}: ${st ? (st.max / 1000).toFixed(1) + ' s at ' + (st.at / 1000).toFixed(0) + ' s' : '?'}`);
     }

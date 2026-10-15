@@ -20,6 +20,9 @@ export interface PresencePipe {
 
 export const RELAY_TUNING: TransportTuning = { inputHz: 12, inputRedundancy: 10, interpDelayMs: 280 };
 
+/** reliable chunks queued (about 8 KiB) above which the host holds back new snapshots */
+const SNAPSHOT_HOLD_CHUNKS = 12;
+
 /**
  * Runs flushes for a set of links on one background-safe tick, and shares the
  * page's presence budget (about 40 updates a second across all rooms) between
@@ -111,13 +114,15 @@ export class RelayPeerLink {
   constructor(private pipe: PresencePipe, toHost: (frame: Uint8Array) => void, private onEnd: (reason: string) => void, opts: LinkOptions = DEFAULT_LINK, private pumper: LinkPump = pump) {
     this.link = new PresenceLink((s) => {
       pipe.publish(s);
-      if (this.awaitingIdle && this.link.unreliableIdle) { this.awaitingIdle = false; this.onSnapshotIdle(); }
+      // the next snapshot is built only once this one went out, and not while a big
+      // reliable transfer (the welcome world state) is still queued: it would only slow that down
+      if (this.awaitingIdle && this.link.unreliableIdle && this.link.backlog < SNAPSHOT_HOLD_CHUNKS) { this.awaitingIdle = false; this.onSnapshotIdle(); }
     }, (frame) => toHost(frame), opts, () => this.end('player reloaded'));
     pipe.onRemote((st) => { if (!this.closed) { this.link.receive(st); if (this.link.broken) this.end(this.link.broken); } });
     pipe.onGone((r) => this.end(r));
     this.pumper.add(this.link);
   }
-  get wantsSnapshot(): boolean { return this.link.unreliableIdle; }
+  get wantsSnapshot(): boolean { return this.link.unreliableIdle && this.link.backlog < SNAPSHOT_HOLD_CHUNKS; }
   /** frame: encoded ServerMsg; snap: whether it is a snapshot */
   send(frame: Uint8Array, snap: boolean): void {
     if (this.closed) return;
@@ -125,6 +130,13 @@ export class RelayPeerLink {
     this.link.sendReliable(frame);
     if (snap) this.onSnapshotIdle();
   }
+  /** A last message as the page closes: rides the unreliable lane ahead of any reliable backlog, published at once. */
+  urgent(frame: Uint8Array): void {
+    if (this.closed) return;
+    if (!this.link.sendUnreliable(frame)) this.link.sendReliable(frame);
+    this.link.flush(performance.now() + 1e6, true);
+  }
+
   /** true once this link has ended (either side) */
   get ended(): boolean { return this.closed; }
 

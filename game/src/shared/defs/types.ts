@@ -156,12 +156,12 @@ export interface StructureDef {
   needsHammer?: boolean;
 }
 
-export type CreatureKind = 'crab' | 'boar' | 'snake' | 'fish' | 'shark' | 'ray' | 'gull';
+export type CreatureKind = 'crab' | 'boar' | 'snake' | 'fish' | 'shark' | 'ray' | 'gull' | 'bat';
 
 export interface CreatureDef {
   id: CreatureKind;
   name: string;
-  habitat: 'beach' | 'land' | 'jungle' | 'shallows' | 'deep' | 'air';
+  habitat: 'beach' | 'land' | 'jungle' | 'shallows' | 'deep' | 'air' | 'cave';
   maxHp: number;
   speed: number;
   runSpeed: number;

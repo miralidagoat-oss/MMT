@@ -10,15 +10,16 @@ pass their acceptance criteria (see PROJECT_STATUS.md).
 - [ ] Hunger/thirst UI feedback when eating (nutrition preview in tooltips exists).
 - [ ] More late-game content after rescue: a second boat tier with an engine, metal
       buildings, map table with shared annotations.
-- [ ] Caves: interior loot and creatures (bats, eels); currently a rock arch shell with
-      one cache crate.
+- [ ] Deeper caves: branching tunnels, underwater cave mouths with eels (caves now
+      have bats, glowcaps, guano and a cache, in a single tunnel).
 - [ ] Taming or animal husbandry (chickens/goats) for renewable food.
 
 ## Multiplayer
-- [ ] Host migration (out of scope for the dedicated/listen-server architecture; the
-      portable save lets any player re-host instead).
-- [ ] Keep a rolling copy of the world with the next host, so a host who closes the
-      tab (rather than using Save & Quit) can also be taken over.
+- [ ] Host migration for the self-hosted Node server (the hosted web page already
+      hands worlds over and recovers from a closed host tab; the portable save lets
+      any player re-host a server world).
+- [ ] Merge a returning host's solo progress into the world a friend took over
+      (today it stays in the host's own saves).
 - [ ] Bit-packed snapshots so the web relay can carry 20 Hz updates (it runs at
       about 10–12 Hz to stay inside the room channel's message budget).
 - [ ] Optional server password and kick/ban commands.

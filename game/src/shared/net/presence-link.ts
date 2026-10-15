@@ -81,6 +81,10 @@ export class PresenceLink {
   private dirty = true;
   private lastPublish = -Infinity;
   private lastPublishedAck = -1;
+  /** highest of our reliable chunks the other side has acknowledged */
+  private remoteAck = 0;
+  /** the pending unreliable frame already missed a publish (it gets room first next time) */
+  private uStarved = false;
   broken: string | null = null;
   stats = { publishes: 0, reliableIn: 0, unreliableIn: 0, bytesOut: 0 };
 
@@ -102,6 +106,12 @@ export class PresenceLink {
   get unreliableIdle(): boolean { return this.pendingU === null; }
 
   get backlog(): number { return this.out.length; }
+
+  /** seq of the last reliable chunk queued so far */
+  get sentSeq(): number { return this.nextSeq - 1; }
+
+  /** seq of the last reliable chunk the other side confirmed (everything up to it was delivered) */
+  get ackedSeq(): number { return this.remoteAck; }
 
   sendReliable(frame: Uint8Array): void {
     if (this.broken) return;
@@ -136,6 +146,7 @@ export class PresenceLink {
       if (had) { this.onReset(); return; }
     }
     // acks free our window
+    if (st.a > this.remoteAck) this.remoteAck = Math.min(st.a, this.nextSeq - 1);
     if (st.a > 0) {
       let k = 0;
       while (k < this.out.length && this.out[k]!.seq <= st.a) k++;
@@ -165,24 +176,33 @@ export class PresenceLink {
     }
   }
 
-  /** Publish the current state if anything changed and the rate limit allows. Returns true if published. */
-  flush(now: number): boolean {
+  /**
+   * Publish the current state if anything changed and the rate limit allows.
+   * `urgent`: the pending unreliable frame goes first (a last word as the page closes).
+   * Returns true if published.
+   */
+  flush(now: number, urgent = false): boolean {
     if (this.broken || !this.dirty || now - this.lastPublish < this.opts.minIntervalMs) return false;
     const st: LinkState = { e: this.epoch, a: this.recvSeq, s: this.out[0]?.seq ?? this.nextSeq, r: [], n: this.n };
     let bytes = JSON.stringify(st).length + 16;
+    const u = this.pendingU ?? this.lastU;
+    const uCost = u === null ? 0 : u.length + 6 * Math.ceil(u.length / MAX_STR) + 16;
+    // reliable chunks go first, except that a newer unreliable frame which already
+    // missed a publish gets its room before them: a long reliable transfer (a world
+    // backup, a big delta) never starves snapshots for more than one publish
+    const reserve = this.pendingU !== null && (this.uStarved || urgent) && bytes + uCost <= this.opts.maxBytes ? uCost : 0;
     for (const c of this.out) {
-      if (bytes + c.data.length + 3 > this.opts.maxBytes) break;
+      if (bytes + reserve + c.data.length + 3 > this.opts.maxBytes) break;
       st.r.push(c.data);
       bytes += c.data.length + 3;
     }
-    const u = this.pendingU ?? this.lastU;
-    const uCost = u === null ? 0 : u.length + 6 * Math.ceil(u.length / MAX_STR) + 16;
     if (u !== null && bytes + uCost <= this.opts.maxBytes) {
       if (this.pendingU !== null) { this.n++; this.lastU = this.pendingU; this.pendingU = null; }
       st.n = this.n;
       st.u = splitStr(this.lastU!);
       bytes += uCost;
     }
+    this.uStarved = this.pendingU !== null;
     this.lastPublish = now;
     this.lastPublishedAck = this.recvSeq;
     // stays dirty while a newer unreliable frame is still waiting for room

@@ -69,6 +69,16 @@ function draw(shape: string, color: string, accent?: string): string {
     case 'compass': g.fillStyle = color; g.beginPath(); g.arc(32, 32, 22, 0, 7); g.fill(); g.strokeStyle = '#555'; g.lineWidth = 2; g.stroke(); g.fillStyle = accent ?? '#d64545'; g.beginPath(); g.moveTo(32, 14); g.lineTo(37, 32); g.lineTo(27, 32); g.fill(); g.fillStyle = '#333'; g.beginPath(); g.moveTo(32, 50); g.lineTo(37, 32); g.lineTo(27, 32); g.fill(); break;
     case 'spyglass': g.strokeStyle = color; g.lineWidth = 10; g.beginPath(); g.moveTo(14, 48); g.lineTo(50, 16); g.stroke(); g.strokeStyle = accent ?? '#6b4527'; g.lineWidth = 6; g.beginPath(); g.moveTo(28, 36); g.lineTo(36, 29); g.stroke(); break;
     case 'berry': for (const [x, y] of [[26, 30], [38, 28], [32, 40], [22, 42], [42, 40]] as const) { g.fillStyle = (() => { const r = g.createRadialGradient(x! - 3, y! - 3, 1, x!, y!, 8); r.addColorStop(0, shade(color, 1.6)); r.addColorStop(1, color); return r; })(); g.beginPath(); g.arc(x!, y!, 7, 0, 7); g.fill(); } g.fillStyle = '#3f7a2a'; g.beginPath(); g.ellipse(32, 18, 10, 4, -0.3, 0, 7); g.fill(); break;
+    case 'mushroom': {
+      // two glowing caps on pale stems
+      for (const [x, y, r] of [[24, 30, 13], [42, 38, 10]] as const) {
+        g.fillStyle = '#d9d4c4'; g.fillRect(x - 3, y, 6, 52 - y);
+        const cap = g.createRadialGradient(x, y - 2, 1, x, y, r + 4);
+        cap.addColorStop(0, '#ffffff'); cap.addColorStop(0.35, color); cap.addColorStop(1, shade(color, 0.45));
+        g.fillStyle = cap; g.beginPath(); g.ellipse(x, y, r, r * 0.62, 0, Math.PI, 0); g.fill();
+      }
+      break;
+    }
     case 'root': case 'seed': g.fillStyle = fillGrad(0, 0, 64, 64, color); g.beginPath(); g.ellipse(32, 36, shape === 'seed' ? 10 : 16, shape === 'seed' ? 13 : 19, 0.4, 0, 7); g.fill(); g.strokeStyle = '#4a7a2a'; g.lineWidth = 3; g.beginPath(); g.moveTo(32, 20); g.quadraticCurveTo(36, 10, 44, 8); g.stroke(); break;
     case 'meat': case 'fish': g.fillStyle = fillGrad(0, 0, 64, 64, color); g.beginPath(); if (shape === 'fish') { g.ellipse(30, 32, 20, 11, 0, 0, 7); g.moveTo(48, 32); g.lineTo(60, 22); g.lineTo(60, 42); } else { g.moveTo(14, 36); g.quadraticCurveTo(16, 14, 40, 16); g.quadraticCurveTo(56, 22, 50, 40); g.quadraticCurveTo(34, 56, 14, 36); } g.fill(); if (shape === 'meat') { g.fillStyle = '#f1e6d0'; g.beginPath(); g.ellipse(46, 44, 5, 4, 0, 0, 7); g.fill(); } else { g.fillStyle = '#111'; g.beginPath(); g.arc(18, 29, 2, 0, 7); g.fill(); } break;
     case 'can': g.fillStyle = fillGrad(0, 0, 64, 0, color); g.fillRect(18, 16, 28, 36); g.fillStyle = '#c94'; g.fillRect(18, 26, 28, 14); g.fillStyle = shade(color, 1.3); g.beginPath(); g.ellipse(32, 16, 14, 4, 0, 0, 7); g.fill(); break;

@@ -65,8 +65,11 @@ self.onmessage = async (ev: MessageEvent) => {
         // the cap is enforced here so a world can be opened to friends mid-game
         const handle = host.handle.bind(host);
         host.handle = (p, msg) => {
-          if (msg && (msg as { t?: string }).t === 'hello' && p !== peer && [...remote.values()].filter((r) => r.peer !== p && r.peer.playerId).length >= maxPlayers - 1) { host!.reject(p, maxPlayers > 1 ? 'Server is full' : 'This world is not open to friends right now', 'full'); return; }
+          const hello = !!msg && (msg as { t?: string }).t === 'hello' && p !== peer;
+          if (hello && [...remote.values()].filter((r) => r.peer !== p && r.peer.playerId).length >= maxPlayers - 1) { host!.reject(p, maxPlayers > 1 ? 'Server is full' : 'This world is not open to friends right now', 'full'); return; }
           handle(p, msg);
+          // tell the page which player a relayed friend is (for the takeover order)
+          if (hello && p.playerId) for (const [id, r] of remote) if (r.peer === p) self.postMessage({ type: 'peer-named', id, name: host!.sim.world.players[p.playerId]?.name ?? 'Castaway' });
         };
         peer = host.connect((msg) => { const d = encode(msg); self.postMessage({ type: 'frame', data: d }, [d.buffer as ArrayBuffer]); }, () => {});
         peer.noTimeout = true; // the host's own player: its tab may be hidden for a long time
@@ -111,7 +114,13 @@ self.onmessage = async (ev: MessageEvent) => {
       }
       case 'save': {
         const ok = await save();
-        self.postMessage({ type: 'saved', ok });
+        self.postMessage({ type: 'saved', ok, rid: m.rid });
+        break;
+      }
+      case 'snapshot': {
+        let text: string | null = null;
+        try { if (host) text = serializeWorld(host.sim.world, dayNumber(host.sim.world)); } catch (e) { self.postMessage({ type: 'log', text: `snapshot failed: ${(e as Error).message}` }); }
+        self.postMessage({ type: 'snapshot-text', text, rid: m.rid });
         break;
       }
       case 'pause':
@@ -121,7 +130,7 @@ self.onmessage = async (ev: MessageEvent) => {
         if (autosave) clearInterval(autosave);
         host?.stop();
         await save();
-        self.postMessage({ type: 'quit-done' });
+        self.postMessage({ type: 'quit-done', rid: m.rid });
         break;
     }
   } catch (e) {

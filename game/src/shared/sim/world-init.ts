@@ -9,6 +9,6 @@ export function initWorldContainers(sim: Simulation): void {
   }
   for (const cave of sim.gen.caves) {
     const c = cave.crate;
-    sim.createContainer('crate', 8, c.x, c.y, c.z, { id: c.id, loot: 'wreck_shallow', label: 'Smuggler\'s Cache' });
+    sim.createContainer('crate', 8, c.x, c.y, c.z, { id: c.id, loot: 'cave_cache', label: 'Smuggler\'s Cache' });
   }
 }

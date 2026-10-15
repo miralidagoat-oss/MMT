@@ -263,10 +263,11 @@ export class InventoryScreen {
         ...containers.map(([s, i]) => h('button', { class: 'btn small', text: `Fill ${ITEMS[s!.id]!.name}`, on: { click: () => void this.send({ a: 'fill', from: { c: 'inv', i }, source: 'structure', id }) } }))));
   }
 
-  private planterUI(id: string, crops: ({ crop: string; growth: number; water: number; withered: boolean } | null)[]): HTMLElement {
+  private planterUI(id: string, crops: ({ crop: string; growth: number; water: number; withered: boolean; fert?: number } | null)[]): HTMLElement {
     const me = this.ctx.session.me!;
     const seeds = me.inventory.slots.map((s, i) => [s, i] as const).filter(([s]) => s && ITEMS[s.id]?.seedOf);
     const can = me.inventory.slots.findIndex((s) => s && ITEMS[s.id]?.water && (s.water ?? 0) > 0);
+    const fert = me.inventory.slots.findIndex((s) => s && ITEMS[s.id]?.tags?.includes('fertilizer'));
     const wrap = h('div', { style: 'display:flex;flex-direction:column;gap:6px' });
     crops.forEach((c, plot) => {
       if (!c) {
@@ -276,10 +277,13 @@ export class InventoryScreen {
       }
       const def = CROPS[c.crop];
       wrap.append(h('div', { class: 'list-item' },
-        h('div', {}, h('div', { text: `${def?.name ?? c.crop} — ${c.withered ? 'withered' : c.growth >= 1 ? 'ready!' : `${Math.floor(c.growth * 100)}%`}` }), h('div', { class: 'meta', text: `Soil moisture ${Math.round(c.water * 100)}%` })),
+        h('div', {}, h('div', { text: `${def?.name ?? c.crop} — ${c.withered ? 'withered' : c.growth >= 1 ? 'ready!' : `${Math.floor(c.growth * 100)}%`}` }), h('div', { class: 'meta', text: `Soil moisture ${Math.round(c.water * 100)}%${c.fert ? ' · fertilized' : ''}` })),
         h('button', { class: 'btn small', text: c.withered ? 'Clear' : 'Harvest', disabled: !c.withered && c.growth < 1, on: { click: () => void this.send({ a: 'harvest_crop', id, plot }) } })));
     });
     wrap.append(h('button', { class: 'btn small', text: can >= 0 ? 'Water all plots' : 'Water (need a container with fresh water)', disabled: can < 0, on: { click: () => void this.send({ a: 'water_crop', id, from: { c: 'inv', i: can } }) } }));
+    if (crops.some((c) => c && !c.withered && c.growth < 1)) {
+      wrap.append(h('button', { class: 'btn small', text: fert >= 0 ? 'Fertilize with guano (grows much faster for a day)' : 'Fertilize (bat guano, found in caves)', disabled: fert < 0, on: { click: () => void this.send({ a: 'fertilize', id, from: { c: 'inv', i: fert } }) } }));
+    }
     return wrap;
   }
 

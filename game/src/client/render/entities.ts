@@ -57,7 +57,12 @@ export class EntityRenderer {
     m.position.copy(pos);
     m.scale.setScalar(size);
   }
-  private fireSpots: { pos: THREE.Vector3; strength: number; color: number; kind: 'fire' | 'torch' | 'lamp' | 'beacon' }[] = [];
+  private fireSpots: { pos: THREE.Vector3; strength: number; color: number; kind: 'fire' | 'torch' | 'lamp' | 'beacon' | 'glow' }[] = [];
+  /** soft light from each nearby cave's glowcaps (the more are left, the brighter) */
+  private caveGlow: { pos: THREE.Vector3; ids: string[] }[] = [];
+  /** self-lit caps shown inside held glow jars */
+  private glowOrbMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 3.2, 3.8) });
+  private glowOrbGeo = new THREE.SphereGeometry(0.045, 8, 6);
   private time = 0;
   lightBudget = 6;
 
@@ -74,6 +79,37 @@ export class EntityRenderer {
     this.buildStatic();
   }
 
+  private caveFloor(c: WorldGen['caves'][number], mat: THREE.Material): THREE.Mesh {
+    const cs = Math.cos(c.yaw), sn = Math.sin(c.yaw);
+    const nx = Math.ceil(c.len + 3.5), nz = 8;
+    const pos: number[] = [], col: number[] = [], uv: number[] = [], idx: number[] = [];
+    for (let i = 0; i <= nx; i++) for (let j = 0; j <= nz; j++) {
+      const lx = 1.5 - i, lz = -3.4 + (j / nz) * 6.8;
+      const x = c.x + cs * lx - sn * lz, z = c.z + sn * lx + cs * lz;
+      pos.push(x - c.x, this.gen.heightAt(x, z) + 0.09 - c.y, z - c.z);
+      // fade in from the mouth and toward the walls (the rocks hide the rest)
+      const a = Math.min(1, Math.max(0, (1.5 - lx) / 3)) * Math.min(1, (3.4 - Math.abs(lz)) / 1.2);
+      const g = 0.75 + 0.25 * Math.sin(x * 1.7 + z * 2.3);
+      col.push(g, g, g, a);
+      uv.push(x * 0.35, z * 0.35);
+    }
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const a = i * (nz + 1) + j, b = a + nz + 1;
+      idx.push(a, b, a + 1, b, b + 1, a + 1); // wound so the normals face up
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(c.x, c.y, c.z);
+    m.receiveShadow = true;
+    m.renderOrder = 1;
+    return m;
+  }
+
   /** Wrecks and caves are part of the pristine world (from the seed). */
   private buildStatic() {
     const hullMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, map: textures().wood });
@@ -86,6 +122,9 @@ export class EntityRenderer {
       this.group.add(m);
     }
     const rockMat = new THREE.MeshStandardMaterial({ map: textures().rock, roughness: 0.95, color: 0x9a948a });
+    // cave floors: damp packed earth and grit over the terrain, fading out at the mouth
+    const floorMat = new THREE.MeshStandardMaterial({ map: textures().rock, roughness: 1, color: 0x6a6157, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    for (const c of this.gen.caves) this.group.add(this.caveFloor(c, floorMat));
     for (const c of this.gen.caves) {
       const geos = c.rocks.map((r, i) => part(new THREE.IcosahedronGeometry(r.r, 1), '#ffffff', [r.x - c.x, r.y - c.y, r.z - c.z], [i * 0.7, i * 1.3, 0], [1, 0.9, 1]));
       const m = new THREE.Mesh(merge(geos), rockMat);
@@ -228,9 +267,26 @@ export class EntityRenderer {
     return v;
   }
 
-  update(dt: number, session: ClientSession, cam: THREE.Camera, localTorch: { on: boolean; pos: THREE.Vector3; radius: number }) {
+  update(dt: number, session: ClientSession, cam: THREE.Camera, localTorch: { on: boolean; pos: THREE.Vector3; radius: number; color?: number }) {
     this.time += dt;
     this.fireSpots.length = 0;
+    // caves: their glowcaps light the tunnel
+    if (!this.caveGlow.length && this.gen.caves.length) {
+      for (const c of this.gen.caves) {
+        const caps = c.life.filter((n) => n.type === 'glowcap');
+        if (!caps.length) continue;
+        const pos = new THREE.Vector3();
+        for (const n of caps) pos.add(new THREE.Vector3(n.x, n.y, n.z));
+        pos.multiplyScalar(1 / caps.length).setY(pos.y + 0.9);
+        this.caveGlow.push({ pos, ids: caps.map((n) => n.id) });
+      }
+    }
+    const camP = (cam as THREE.PerspectiveCamera).position;
+    for (const g of this.caveGlow) {
+      if (g.pos.distanceToSquared(camP) > 80 * 80) continue;
+      const left = g.ids.filter((id) => !session.isNodeDepleted(id)).length;
+      if (left) this.fireSpots.push({ pos: g.pos, strength: 0.35 + 0.65 * (left / g.ids.length), color: 0x56dcff, kind: 'glow' });
+    }
     this.flameCount = 0;
     this.flameMat.uniforms.time!.value = this.time;
     // structures with fire/light
@@ -279,7 +335,17 @@ export class EntityRenderer {
         if (v.held) v.h.hand.remove(v.held);
         v.held = null;
         v.heldId = p.it;
-        if (p.it) { v.held = new THREE.Mesh(this.geoForItem(p.it), this.propMat); v.held.rotation.x = Math.PI / 2; v.h.hand.add(v.held); }
+        if (p.it) {
+          v.held = new THREE.Mesh(this.geoForItem(p.it), this.propMat);
+          v.held.rotation.x = Math.PI / 2;
+          if (p.it === 'glow_jar') { const orb = new THREE.Mesh(this.glowOrbGeo, this.glowOrbMat); orb.position.y = 0.09; v.held.add(orb); }
+          v.h.hand.add(v.held);
+        }
+      }
+      if (p.it === 'glow_jar' && r.visible) {
+        v.h.hand.getWorldPosition(vtx);
+        vtx.y += 0.3;
+        this.fireSpots.push({ pos: vtx.clone(), strength: 0.8, color: 0x7fe6ff, kind: 'glow' });
       }
       const torch = p.it === 'torch' || p.it === 'lantern';
       if (torch && r.visible) {
@@ -317,6 +383,7 @@ export class EntityRenderer {
       }
       m.position.set(c.x, c.y, c.z);
       m.rotation.set(0, c.yaw, 0);
+      m.scale.set(1, 1, 1);
       if (c.m === 'dead') {
         m.rotation.z = Math.PI / 2 * (c.k === 'fish' || c.k === 'shark' || c.k === 'ray' ? 1 : 0.9);
         if (c.k !== 'ray') m.position.y += 0.2;
@@ -330,6 +397,17 @@ export class EntityRenderer {
         case 'shark': m.rotation.y += Math.sin(e.phase * 1.2) * 0.04; m.rotation.z = Math.sin(e.phase * 0.6) * 0.05; break;
         case 'ray': m.rotation.z = Math.sin(e.phase * 1.5) * 0.05; break;
         case 'gull': m.position.y += Math.sin(e.phase) * 0.3; m.rotation.z = Math.sin(e.phase * 0.5) * 0.3; break;
+        case 'bat':
+          if (c.m === 'idle') {
+            // hanging from the roof, wings wrapped around the body, swaying a little
+            m.rotation.set(Math.sin(this.time * 0.7 + e.phase) * 0.06, c.yaw, Math.PI);
+            m.scale.set(0.32, 1, 1);
+            if (e.anim) e.anim.move.value = 0;
+          } else {
+            m.rotation.z = Math.sin(e.phase * 0.9) * 0.35;
+            m.rotation.x = -0.15;
+          }
+          break;
       }
     }
     for (const [id, e] of this.creatures) if (!cs.has(id)) { this.removeObj(e.mesh); e.anim?.mat.dispose(); this.creatures.delete(id); }
@@ -398,7 +476,7 @@ export class EntityRenderer {
 
     for (let i = this.flameCount; i < this.flames.length; i++) this.flames[i]!.visible = false;
     // assign point lights to nearest light sources
-    if (localTorch.on) this.fireSpots.push({ pos: localTorch.pos, strength: 1, color: 0xffa050, kind: 'torch' });
+    if (localTorch.on) this.fireSpots.push({ pos: localTorch.pos, strength: 1, color: localTorch.color ?? 0xffa050, kind: localTorch.color === undefined ? 'torch' : 'glow' });
     const camPos = (cam as THREE.PerspectiveCamera).position;
     this.fireSpots.sort((a, b) => a.pos.distanceToSquared(camPos) - b.pos.distanceToSquared(camPos));
     for (let i = 0; i < this.lights.length; i++) {
@@ -409,8 +487,9 @@ export class EntityRenderer {
       l.position.copy(f.pos);
       l.color.setHex(f.color);
       const flicker = f.kind === 'fire' || f.kind === 'torch' ? 0.85 + Math.sin(this.time * 17 + i) * 0.08 + Math.sin(this.time * 7.3 + i * 2) * 0.07 : 1;
-      l.intensity = (f.kind === 'beacon' ? 30 : f.kind === 'lamp' ? 22 : 18) * f.strength * flicker;
-      l.distance = f.kind === 'fire' ? 16 : f.kind === 'beacon' ? 30 : 13;
+      const pulse = f.kind === 'glow' ? 0.9 + Math.sin(this.time * 0.9 + i) * 0.1 : 1;
+      l.intensity = (f.kind === 'beacon' ? 30 : f.kind === 'lamp' ? 22 : f.kind === 'glow' ? 12 : 18) * f.strength * flicker * pulse;
+      l.distance = f.kind === 'fire' ? 16 : f.kind === 'beacon' ? 30 : f.kind === 'glow' ? 11 : 13;
     }
   }
 

@@ -13,7 +13,9 @@ export class LocalHost {
   /** every save the worker makes (for cloud copies) */
   onSaved: (slot: string, text: string, stored: boolean) => void = () => {};
   /** messages for relayed co-op players */
-  onPeer: (m: { type: string; id: number; data?: Uint8Array; snap?: boolean }) => void = () => {};
+  onPeer: (m: { type: string; id: number; data?: Uint8Array; snap?: boolean; name?: string }) => void = () => {};
+  private replies = new Map<number, (m: Record<string, unknown>) => void>();
+  private nextReq = 1;
 
   constructor() {
     this.worker = new Worker(new URL('./local-worker.ts', import.meta.url), { type: 'module' });
@@ -21,7 +23,8 @@ export class LocalHost {
     this.worker.onmessage = (ev) => {
       const m = ev.data;
       if (m.type === 'frame') this.transport.receive(m.data);
-      else if (m.type === 'peer-out' || m.type === 'peer-kick') this.onPeer(m);
+      else if (typeof m.rid === 'number' && this.replies.has(m.rid)) { const r = this.replies.get(m.rid)!; this.replies.delete(m.rid); r(m); }
+      else if (m.type === 'peer-out' || m.type === 'peer-kick' || m.type === 'peer-named') this.onPeer(m);
       else if (m.type === 'saved-text') this.onSaved(m.slot, m.text, m.stored);
       else if (m.type === 'log') this.onLog(m.text);
     };
@@ -47,21 +50,29 @@ export class LocalHost {
   peerReady(id: number) { this.worker.postMessage({ type: 'peer-ready', id }); }
   peerClose(id: number) { this.worker.postMessage({ type: 'peer-close', id }); }
 
-  save(): Promise<boolean> {
+  /** one request to the worker and its reply (several may be in flight at once) */
+  private request(msg: Record<string, unknown>, timeoutMs: number): Promise<Record<string, unknown> | null> {
     return new Promise((resolve) => {
-      const prev = this.worker.onmessage;
-      this.worker.onmessage = (ev) => { if (ev.data.type === 'saved') { this.worker.onmessage = prev; resolve(ev.data.ok); } else prev?.call(this.worker, ev); };
-      this.worker.postMessage({ type: 'save' });
+      const rid = this.nextReq++;
+      const t = setTimeout(() => { this.replies.delete(rid); resolve(null); }, timeoutMs);
+      this.replies.set(rid, (m) => { clearTimeout(t); resolve(m); });
+      this.worker.postMessage({ ...msg, rid });
     });
   }
 
+  async save(): Promise<boolean> {
+    const r = await this.request({ type: 'save' }, 20000);
+    return r?.ok === true;
+  }
+
+  /** The world as save text, without storing it (for the rolling co-op backup). */
+  async snapshotText(): Promise<string | null> {
+    const r = await this.request({ type: 'snapshot' }, 20000);
+    return typeof r?.text === 'string' ? r.text : null;
+  }
+
   async quit(): Promise<void> {
-    await new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, 3000);
-      const prev = this.worker.onmessage;
-      this.worker.onmessage = (ev) => { if (ev.data.type === 'quit-done') { clearTimeout(t); resolve(); } else prev?.call(this.worker, ev); };
-      this.worker.postMessage({ type: 'quit' });
-    });
+    await this.request({ type: 'quit' }, 3000);
     this.worker.terminate();
   }
 

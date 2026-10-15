@@ -28,6 +28,7 @@ export const ITEM_LIST: ItemDef[] = [
   R('scrap_metal', 'Scrap Metal', 'Corroded salvage from wrecks. Can be smelted.', 'scrap', '#7c8a91', 1, 20),
   R('iron_ore', 'Iron Ore', 'Rust-red ore found in rocky outcrops.', 'stone', '#8c4a35', 2, 20),
   R('metal_ingot', 'Metal Ingot', 'Smelted metal ready for the forge.', 'ingot', '#b9c4cc', 1.5, 20),
+  R('guano', 'Bat Guano', 'Rich droppings from cave roosts. Spread it on a garden plot and crops grow much faster.', 'powder', '#6b5d4a', 0.3, 30, { tags: ['fertilizer'] }),
   R('copper_wire', 'Copper Wire', 'Salvaged wiring, carefully straightened.', 'rope', '#d27d3a', 0.1, 30),
   R('cloth', 'Cloth', 'Sailcloth and canvas torn from wrecks.', 'cloth', '#d8d2c0', 0.2, 20),
   R('hide', 'Raw Hide', 'An animal hide. Needs drying into leather.', 'hide', '#8a6142', 1, 10),
@@ -129,6 +130,12 @@ export const ITEM_LIST: ItemDef[] = [
     tool: { actions: ['light', 'ignite'], tier: 1, power: 0, cooldown: 0.6, staminaCost: 0, range: 2.5 },
   },
   {
+    id: 'glow_jar', name: 'Glowcap Jar', description: 'Glowcaps sealed in a resin-stoppered shell jar. A cold blue light that never needs fuel and works underwater. It fades after about a day and a half in hand.', category: 'tool',
+    maxStack: 1, weight: 0.4, icon: { shape: 'lantern', color: '#c3c9cf', accent: '#7fe6ff' }, durability: 2400,
+    burnsWhileHeld: true, lightRadius: 9,
+    tool: { actions: ['light'], tier: 0, power: 0, cooldown: 0.6, staminaCost: 0, range: 2.5 },
+  },
+  {
     id: 'watering_can', name: 'Clay Watering Pot', description: 'Carries water to crops. Fill at a rain catcher, still, or the sea (salt water harms crops).', category: 'tool',
     maxStack: 1, weight: 1.4, icon: { shape: 'pot', color: '#b56a45', accent: '#4fa6d8' },
     water: { capacity: 8, hydrationPerUnit: 0 },
@@ -187,6 +194,7 @@ export const ITEM_LIST: ItemDef[] = [
   R('meat_jerky', 'Jerky', 'Tough, salty, eternal.', 'meat', '#5e2d1a', 0.25, 20, { category: 'food', food: { nutrition: 30, hydration: -6 } }),
   R('shark_raw', 'Raw Shark Steak', 'Dense meat. Smells of ammonia raw.', 'meat', '#d7c7c0', 0.8, 10, { category: 'food', food: { nutrition: 12, hydration: 0, poisonChance: 0.7, spoilSeconds: DAY, spoilsTo: 'spoiled_food', cooksTo: 'shark_cooked', cookSeconds: 40 } }),
   R('shark_cooked', 'Seared Shark', 'A feast fit for a castaway king.', 'meat', '#9b6f52', 0.8, 10, { category: 'food', food: { nutrition: 55, hydration: 0, health: 10, spoilSeconds: DAY * 2, spoilsTo: 'spoiled_food', cooksTo: 'burnt_food', cookSeconds: 45 } }),
+  R('glowcap', 'Glowcap', 'A pale cave mushroom that glows a soft blue. Edible, if earthy. Sealed in a jar it gives a cold light.', 'mushroom', '#7fe6ff', 0.05, 30, { category: 'food', food: { nutrition: 4, hydration: 2, spoilSeconds: DAY * 4, spoilsTo: 'spoiled_food' } }),
   R('dried_kelp', 'Toasted Kelp', 'Crispy, salty sheets.', 'leaf', '#1f4a2a', 0.05, 30, { category: 'food', food: { nutrition: 8, hydration: -2 } }),
   R('ration_can', 'Ration Tin', 'A dented tin of preserved stew from a wreck.', 'can', '#9aa6ad', 0.5, 10, { category: 'food', food: { nutrition: 45, hydration: 8, health: 5 } }),
   R('burnt_food', 'Charred Remains', 'You left it on too long. Barely edible.', 'blob', '#1d1a18', 0.2, 20, { category: 'food', food: { nutrition: 2, hydration: -2 }, fuelSeconds: 20 }),

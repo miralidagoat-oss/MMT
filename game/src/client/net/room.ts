@@ -44,8 +44,14 @@ export function getRoom(): Promise<LobbyRoom | null> {
   return roomPromise;
 }
 
-export interface GameAd { v: number; code: string; host: string; world: string; players: number; max: number; day: number }
+/**
+ * A hosted game's ad in the lobby. `gen` counts takeovers of the world under this
+ * code (the newest hosting wins); `beat` changes on every refresh, so a leftover
+ * ad from a page that is no longer there can be told from a live one.
+ */
+export interface GameAd { v: number; code: string; host: string; world: string; players: number; max: number; day: number; gen: number; beat: number }
 export interface OpenGame extends GameAd { peer: string; mine: boolean }
+export type AdInfo = Omit<GameAd, 'v' | 'code' | 'max' | 'gen' | 'beat'>;
 
 const CODE_RE = /^[a-z0-9]{6}$/;
 const RID_RE = /^[a-z0-9]{8}$/;
@@ -59,6 +65,7 @@ function readAd(p: Peer): OpenGame | null {
   return {
     v: Number(ad.v) | 0, code: ad.code, host: clean(ad.host, 24) || 'Castaway', world: clean(ad.world, 40) || 'Island',
     players: Math.max(0, Math.min(SIM.maxPlayers, Number(ad.players) | 0)), max: SIM.maxPlayers, day: Math.max(0, Number(ad.day) | 0),
+    gen: Math.max(0, Math.min(1e6, Number(ad.gen) | 0)), beat: Number(ad.beat) | 0,
     peer: p.peer, mine: p.isMe && p.sameTab,
   };
 }
@@ -138,9 +145,15 @@ class RoomPipe implements PresencePipe {
 export class CoopLobby {
   private stops: (() => void)[] = [];
   private gamesCb: ((g: OpenGame[]) => void) | null = null;
-  private hosting: { code: string; seen: Map<string, { pipe: RoomPipe | null; at: number }>; onPlayer: (pipe: PresencePipe, rid: string) => void } | null = null;
+  private hosting: {
+    code: string; gen: number; seen: Map<string, { pipe: RoomPipe | null; at: number }>;
+    onPlayer: (pipe: PresencePipe, rid: string) => void; onSuperseded: (by: OpenGame) => void; superseded: boolean;
+  } | null = null;
   private pipes = new Set<RoomPipe>();
   private janitor: ReturnType<typeof setInterval>;
+  /** what this page currently publishes under `tw` (an ad or a join request) */
+  private tw: Record<string, unknown> | null = null;
+  private beat = 0;
 
   constructor(private room: LobbyRoom) {
     this.stops.push(watchPeers(room, (peers) => this.onPeers(peers)));
@@ -150,16 +163,33 @@ export class CoopLobby {
 
   get connected(): boolean { return this.room.connected(); }
 
-  games(): OpenGame[] {
+  private setTw(v: Record<string, unknown> | null) {
+    this.tw = v;
+    void this.room.presence({ tw: v }).catch(() => {});
+  }
+
+  /** every ad in the lobby, including leftovers and older generations */
+  ads(): OpenGame[] {
     return this.room.peers().map(readAd).filter((g): g is OpenGame => g !== null);
   }
+
+  /** open games to show players: one per code, the newest hosting */
+  games(): OpenGame[] { return newest(this.ads()); }
 
   onGames(cb: ((g: OpenGame[]) => void) | null) { this.gamesCb = cb; if (cb) cb(this.games()); }
 
   private onPeers(peers: readonly Peer[]) {
-    this.gamesCb?.(peers.map(readAd).filter((g): g is OpenGame => g !== null));
+    const ads = peers.map(readAd).filter((g): g is OpenGame => g !== null);
+    this.gamesCb?.(newest(ads));
     const h = this.hosting;
     if (!h) return;
+    // a newer hosting of this world exists (a friend took over while we were away): yield to it
+    const self = peers.find((p) => p.sameTab)?.peer ?? '';
+    const newer = ads.find((a) => a.code === h.code && !a.mine && (a.gen > h.gen || (a.gen === h.gen && a.peer < self)));
+    if (newer) {
+      if (!h.superseded) { h.superseded = true; h.onSuperseded(newer); }
+      return;
+    }
     for (const p of peers) {
       if (p.sameTab) continue;
       const tw = p.presence?.tw as Record<string, unknown> | undefined;
@@ -180,24 +210,28 @@ export class CoopLobby {
     }
   }
 
-  /** Start hosting: advertise and accept players. */
-  host(code: string, ad: Omit<GameAd, 'v' | 'code' | 'max'>, onPlayer: (pipe: PresencePipe, rid: string) => void) {
-    this.hosting = { code, seen: new Map(), onPlayer };
-    this.advertise(code, ad);
+  /** Start hosting: advertise and accept players. `gen` counts takeovers of this world under this code. */
+  host(code: string, gen: number, ad: AdInfo, onPlayer: (pipe: PresencePipe, rid: string) => void, onSuperseded: (by: OpenGame) => void = () => {}) {
+    this.hosting = { code, gen, seen: new Map(), onPlayer, onSuperseded, superseded: false };
+    this.advertise(code, gen, ad);
     this.onPeers(this.room.peers());
   }
 
-  advertise(code: string, ad: Omit<GameAd, 'v' | 'code' | 'max'>) {
-    const full: GameAd = { v: PROTOCOL_VERSION, code, max: SIM.maxPlayers, host: clean(ad.host, 24), world: clean(ad.world, 40), players: ad.players, day: ad.day };
-    void this.room.presence({ tw: { ad: full } }).catch(() => {});
+  /** Publish (or refresh) a game's ad. Also used to claim a code while a taken-over world loads. */
+  advertise(code: string, gen: number, ad: AdInfo) {
+    const full: GameAd = { v: PROTOCOL_VERSION, code, max: SIM.maxPlayers, host: clean(ad.host, 24), world: clean(ad.world, 40), players: ad.players, day: ad.day, gen, beat: ++this.beat };
+    this.setTw({ ad: full });
   }
+
+  /** take a claim or ad down (e.g. a takeover failed) */
+  withdraw() { if (this.tw && 'ad' in this.tw) this.setTw(null); }
 
   /** Stop advertising and accepting players; `closeNow` also leaves the players' rooms. */
   stopHosting(closeNow = true) {
     if (!this.hosting) return;
     this.closing = [...this.hosting.seen.values()];
     this.hosting = null;
-    void this.room.presence({ tw: null }).catch(() => {});
+    this.withdraw();
     if (closeNow) this.closeRooms();
   }
 
@@ -213,11 +247,13 @@ export class CoopLobby {
     if (!CODE_RE.test(code)) throw new Error('Game codes are 6 letters or digits.');
     const rid = randomId(8);
     const named = await joinRoom(this.room, `tw-${code}-${rid}`);
-    await this.room.presence({ tw: { join: code, rid } });
+    const request = { join: code, rid };
+    this.setTw(request);
     const pipe = new RoomPipe(named, null);
     this.pipes.add(pipe);
     const origClose = pipe.close.bind(pipe);
-    pipe.close = () => { this.pipes.delete(pipe); origClose(); void this.room.presence({ tw: null }).catch(() => {}); };
+    // only take the request down if it is still ours to publish (not replaced by an ad or a newer request)
+    pipe.close = () => { this.pipes.delete(pipe); origClose(); if (this.tw === request) this.setTw(null); };
     return pipe;
   }
 
@@ -226,6 +262,16 @@ export class CoopLobby {
     for (const s of this.stops) s();
     clearInterval(this.janitor);
   }
+}
+
+/** one ad per code: the newest generation (then the most recently refreshed) */
+function newest(ads: OpenGame[]): OpenGame[] {
+  const by = new Map<string, OpenGame>();
+  for (const a of ads) {
+    const cur = by.get(a.code);
+    if (!cur || a.gen > cur.gen) by.set(a.code, a);
+  }
+  return [...by.values()];
 }
 
 /** Join a named room, retrying transient failures, with errors a player can act on. */

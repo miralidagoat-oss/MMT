@@ -17,7 +17,7 @@ import { ITEMS } from '../../shared/defs/items';
 import { STRUCTURES } from '../../shared/defs/structures';
 import { seatPosition } from '../../shared/sim/vehicles';
 import type {
-  Action, ServerMsg, Snapshot, WelcomeMsg, WorldDelta, NetPlayer, NetCreature, NetVehicle, SelfState, FxEvent, PrivatePlayer,
+  Action, ServerMsg, RelayMsg, Snapshot, WelcomeMsg, WorldDelta, NetPlayer, NetCreature, NetVehicle, SelfState, FxEvent, PrivatePlayer,
 } from '../../shared/net/protocol';
 import type { ContainerState, DroppedItem, GameSettings, Progression, StructureState, Waypoint, WorldEvent } from '../../shared/state';
 import type { Transport } from './transport';
@@ -41,7 +41,8 @@ export interface SessionEvents {
   reject?: (reason: string) => void;
   saved?: (ok: boolean) => void;
   snapshot?: (s: Snapshot) => void;
-  handoff?: (m: Extract<ServerMsg, { t: 'handoff' }>) => void;
+  /** co-op relay messages: handoff, rolling backups, succession, host leaving */
+  relay?: (m: RelayMsg) => void;
 }
 
 /** Identifies this page load: a reconnect keeps it, another tab of the same account does not. */
@@ -173,7 +174,7 @@ export class ClientSession {
       case 'pong': this.rtt = this.rtt ? this.rtt * 0.8 + (performance.now() - m.c) * 0.2 : performance.now() - m.c; break;
       case 'reject': this.on.reject?.(m.reason); break;
       case 'saved': this.on.saved?.(m.ok); break;
-      case 'handoff': this.on.handoff?.(m); break;
+      case 'handoff': case 'backup': case 'succession': case 'host-gone': this.on.relay?.(m); break;
     }
   }
 

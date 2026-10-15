@@ -40,6 +40,12 @@ export const CREATURE_LIST: CreatureDef[] = [
     sightRange: 14, hearingRange: 14, attackRange: 0, attackDamage: 0, attackCooldown: 99, fleeHealthFraction: 1,
     loot: [{ item: 'meat_raw', min: 1, max: 1 }], radius: 0.3, aquatic: false, respawnSeconds: GAME_DAY_SECONDS * 0.5,
   },
+  {
+    // roosts under cave roofs by day, streams out to hunt insects at dusk; skittish around lights
+    id: 'bat', name: 'Cave Bat', habitat: 'cave', maxHp: 5, speed: 3.4, runSpeed: 6.5, aggression: 'passive',
+    sightRange: 6, hearingRange: 8, attackRange: 0, attackDamage: 0, attackCooldown: 99, fleeHealthFraction: 1,
+    loot: [{ item: 'meat_raw', min: 0, max: 1 }], radius: 0.2, aquatic: false, respawnSeconds: GAME_DAY_SECONDS * 0.5,
+  },
 ];
 
 export const CREATURES = Object.fromEntries(CREATURE_LIST.map((c) => [c.id, c])) as Record<CreatureKind, CreatureDef>;

@@ -454,6 +454,9 @@ export class Simulation {
       this.notify(null, `${p.name} discovered ${isl.name}.`, 'good');
       this.milestone(p, 'new_island');
     }
+    if (!p.milestones.includes('cave') && this.gen.caveDepth(p.pos.x, p.pos.y, p.pos.z).depth > 0.5) {
+      this.milestone(p, 'cave', 'A cave. Glowcaps light the dark in here, and bats roost under the roof by day. Their guano makes crops grow fast.');
+    }
   }
 
   private tickItems(dt: number): void {

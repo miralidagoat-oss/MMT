@@ -12,14 +12,18 @@ import { Game } from './game/game';
 import { LocalHost } from './net/local';
 import { WsTransport, type Transport } from './net/transport';
 import { RelayTransport, RelayPeerLink } from './net/relay';
-import { getLobby, isHostedPage, randomId, claudeHost, type CoopLobby } from './net/room';
+import { getLobby, isHostedPage, randomId, claudeHost, type CoopLobby, type OpenGame } from './net/room';
+import { HostSuccession, BackupReceiver, checkHost, TAKEOVER_STAGGER_MS, type Backup, type SuccessionInfo } from './net/succession';
+import { onTick } from './net/ticker';
+import { readEnvelope } from '../shared/save';
+import type { RelayMsg } from '../shared/net/protocol';
 import { listAllWorlds, ensureLocal, onWorldSaved, flushCloud, deleteWorldEverywhere, exportWorld, importWorld, importWorldText } from './net/worlds';
 import { saveStore } from './net/idb';
 import { encode } from '../shared/net/codec';
 import { canCompress, gzipText, gunzipText } from './net/compress';
 import { PROTOCOL_VERSION } from '../shared/config';
 import { dayNumber } from '../shared/systems/weather';
-import type { PauseCoop } from './ui/menus';
+import type { PauseCoop, PauseRelay } from './ui/menus';
 import { computePlacement } from '../shared/systems/building';
 
 class App {
@@ -39,9 +43,12 @@ class App {
   private dynTimer = 0;
   private reconnect: { address: string; tries: number } | null = null;
   /** joined a friend's game through the hosted page */
-  private relayJoin: { code: string; tries: number; handoff?: boolean } | null = null;
+  private relayJoin: RelayJoin | null = null;
   /** hosting: this world is open to friends */
-  private coop: { lobby: CoopLobby; code: string; links: Map<number, RelayPeerLink>; nextId: number; adTimer: ReturnType<typeof setInterval> } | null = null;
+  private coop: Coop | null = null;
+  /** as a friend: the takeover order the host last told us, and our copy of the world */
+  private succ: SuccessionInfo | null = null;
+  private backups = new BackupReceiver();
   private slot = '';
   private userToken: string | null = null;
   private userTokenP: Promise<string | null> = Promise.resolve(null);
@@ -68,7 +75,7 @@ class App {
         if (!lobby) return null;
         return {
           watch: (cb) => { lobby.onGames((list) => cb(list.map((g) => ({ ...g, compatible: g.v === PROTOCOL_VERSION })))); return () => lobby.onGames(null); },
-          join: (code) => { this.relayJoin = { code, tries: 0 }; void this.joinCoop(code); },
+          join: (code) => { this.relayJoin = newRelayJoin(code); this.succ = null; this.backups.reset(); void this.joinCoop(code); },
         };
       },
       hosted: isHostedPage(),
@@ -84,6 +91,8 @@ class App {
     window.addEventListener('blur', () => this.audio.setFocused(false));
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: false });
     window.addEventListener('beforeunload', () => { if (this.local) void this.local.save(); });
+    // the page is closing: tell friends right away so one of them takes the world over without waiting
+    window.addEventListener('pagehide', () => this.pageClosing());
     // tab hidden (switching away, closing on mobile): save while we still reliably can
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden' && this.local && this.mode === 'playing') void this.local.save().then(() => flushCloud(this.slot));
@@ -133,7 +142,7 @@ class App {
     return { name: g.name || 'Castaway', token: this.userToken ?? identityToken(), color: g.color };
   }
 
-  async startLocal(opts: { mode: 'new' | 'load'; slot: string; name?: string; seed?: string; settings?: object; coop?: boolean; code?: string; takeoverFrom?: string }) {
+  async startLocal(opts: { mode: 'new' | 'load'; slot: string; name?: string; seed?: string; settings?: object; coop?: boolean; code?: string; gen?: number; note?: (code: string) => string }) {
     this.audio.unlock();
     this.mode = 'loading';
     this.menus.loading(opts.mode === 'new' ? 'Generating islands…' : 'Loading world…', 0.05);
@@ -151,7 +160,7 @@ class App {
           if (this.game !== g || !g) { clearInterval(wait); return; }
           if (!g.isReady) return;
           clearInterval(wait);
-          this.openToFriends(opts.code).then((code) => g.hud.notify(opts.takeoverFrom ? `${opts.takeoverFrom} left and handed you the world. You are the host now (code ${code}).` : `Open to friends. Your game code is ${code}.`, 'good'))
+          this.openToFriends(opts.code, opts.gen).then((code) => g.hud.notify(opts.note ? opts.note(code) : `Open to friends. Your game code is ${code}.`, 'good'))
             .catch((e) => g.hud.notify((e as Error).message, 'bad'));
         }, 250);
       }
@@ -172,14 +181,29 @@ class App {
   }
 
   /** Let friends join the world this browser is hosting. Returns the game code. */
-  async openToFriends(useCode?: string): Promise<string> {
+  async openToFriends(useCode?: string, gen = 0): Promise<string> {
     if (this.coop) return this.coop.code;
     const local = this.local;
     if (!local) throw new Error('Only the host of a world can invite friends.');
     const lobby = await getLobby();
     if (!lobby) throw new Error('Online play needs you signed in to claude.ai, with the game opened from its link (owner, or invited by email).');
     const code = useCode && /^[a-z0-9]{6}$/.test(useCode) ? useCode : randomId(6);
-    const coop = { lobby, code, links: new Map<number, RelayPeerLink>(), nextId: 1, adTimer: setInterval(() => lobby.advertise(code, this.adInfo()), 4000) };
+    const succession = new HostSuccession({
+      code, gen, host: () => this.settings.gameplay.name || 'Castaway',
+      getBackup: async () => {
+        const text = await this.local?.snapshotText();
+        if (!text) return null;
+        return canCompress ? { data: await gzipText(text), gz: true } : { data: new TextEncoder().encode(text), gz: false };
+      },
+    });
+    // driven by the background-safe tick: a hidden host tab keeps its ad fresh and its backups flowing
+    let adAt = performance.now(), succAt = 0;
+    const stopTick = onTick(() => {
+      const now = performance.now();
+      if (now - adAt >= 4000) { adAt = now; lobby.advertise(code, gen, this.adInfo()); }
+      if (now - succAt >= 100) { succAt = now; succession.tick(); }
+    });
+    const coop: Coop = { lobby, code, gen, links: new Map(), nextId: 1, succession, stopTick };
     this.coop = coop;
     local.setOpen(true);
     local.setPaused(false);
@@ -188,16 +212,45 @@ class App {
       if (!link) return;
       if (m.type === 'peer-out' && m.data) link.send(m.data, !!m.snap);
       else if (m.type === 'peer-kick') link.end('kicked');
+      else if (m.type === 'peer-named') succession.named(m.id, String(m.name ?? ''));
     };
     if (this.game) this.game.hud.inviteCode = code;
-    lobby.host(code, this.adInfo(), (pipe) => {
+    lobby.host(code, gen, this.adInfo(), (pipe) => {
       const id = coop.nextId++;
-      const link = new RelayPeerLink(pipe, (frame) => this.local?.peerFrame(id, frame), () => { coop.links.delete(id); this.local?.peerClose(id); });
+      const link = new RelayPeerLink(pipe, (frame) => this.local?.peerFrame(id, frame), () => { coop.links.delete(id); succession.remove(id); this.local?.peerClose(id); });
       link.onSnapshotIdle = () => this.local?.peerReady(id);
       coop.links.set(id, link);
+      succession.add(id, link);
       local.peerOpen(id);
-    });
+    }, (by) => void this.yieldWorld(by));
     return code;
+  }
+
+  /** Stop hosting online. 'close' tells the friends the world closed; 'quiet' leaves them to move on. */
+  private endCoop(c: Coop, how: 'close' | 'quiet') {
+    if (this.coop === c) this.coop = null;
+    c.stopTick();
+    c.succession.dispose();
+    if (this.game) this.game.hud.inviteCode = null;
+    c.lobby.stopHosting(false);
+    if (how === 'close') {
+      // the worker tells each friend the world closed; give that a moment to go out
+      this.local?.setOpen(false);
+      setTimeout(() => { for (const l of [...c.links.values()]) l.end('closed'); c.lobby.closeRooms(); }, 1200);
+    } else {
+      for (const l of [...c.links.values()]) l.end('moved on');
+      setTimeout(() => c.lobby.closeRooms(), 1500);
+      this.local?.setOpen(false);
+    }
+  }
+
+  /** The page is going away (tab closed, reloaded, navigated): best-effort word to the friends. */
+  private pageClosing() {
+    const c = this.coop;
+    if (!c) return;
+    const bye = encode({ t: 'host-gone', host: this.settings.gameplay.name || 'The host' } satisfies RelayMsg);
+    for (const l of c.links.values()) l.urgent(bye);
+    c.lobby.withdraw();
   }
 
   /**
@@ -213,7 +266,8 @@ class App {
     this.mode = 'loading';
     this.menus.loading('Handing the world to a friend…', 0.3);
     // stop advertising and accepting players first, so reconnecting friends find the new host
-    clearInterval(c.adTimer);
+    c.stopTick();
+    c.succession.dispose();
     c.lobby.stopHosting(false);
     local.setPaused(true);
     const ok = await local.save();
@@ -225,7 +279,7 @@ class App {
     const [successorId, successor] = links[0]!;
     const notice = encode({ t: 'notify', text: `${host} is leaving and is handing the world over. Hold on…`, level: 'info' });
     for (const [, l] of links) l.send(notice, false);
-    successor.send(encode({ t: 'handoff', code: c.code, host, gz, save }), false);
+    successor.send(encode({ t: 'handoff', code: c.code, host, gz, save, gen: c.gen } satisfies RelayMsg), false);
     for (const [id, l] of links) if (id !== successorId) l.send(encode({ t: 'reject', reason: `${host} left and handed the world to another player.` }), false);
     // wait until everything has been acknowledged (or give up after a minute)
     const t0 = performance.now();
@@ -234,39 +288,150 @@ class App {
       await new Promise((r) => setTimeout(r, 250));
     }
     // the friends now leave on their own; close quietly (no "world closed" message)
-    this.coop = null;
-    for (const [, l] of links) l.end('handed over');
-    setTimeout(() => c.lobby.closeRooms(), 1500);
-    local.setOpen(false);
+    this.endCoop(c, 'quiet');
   }
 
   /** A friend handed us their world: become its host under the same game code. */
-  private async takeOver(m: { code: string; host: string; gz: boolean; save: Uint8Array | string }) {
+  private async takeOver(m: Extract<RelayMsg, { t: 'handoff' }>) {
     if (!isHostedPage()) return;
     try {
       const text = m.gz && m.save instanceof Uint8Array ? await gunzipText(m.save) : typeof m.save === 'string' ? m.save : '';
-      const slot = await importWorldText(text);
+      const slot = await importWorldText(text, m.code);
+      const from = String(m.host).slice(0, 24);
       this.relayJoin = null;
+      this.succ = null;
+      this.backups.reset();
       this.input.releaseLock();
       this.game?.dispose();
       this.game = null;
-      await this.startLocal({ mode: 'load', slot, coop: true, code: m.code, takeoverFrom: String(m.host).slice(0, 24) });
+      await this.startLocal({ mode: 'load', slot, coop: true, code: m.code, gen: safeGen(m.gen) + 1, note: (code) => `${from} left and handed you the world. You are the host now (code ${code}).` });
     } catch (e) {
       console.warn('could not take over the world', e);
       this.onDisconnect('The host tried to hand you the world, but it could not be loaded.');
     }
   }
 
+  /** co-op relay messages from the host of the game we play in */
+  private onRelay(m: RelayMsg) {
+    const rj = this.relayJoin;
+    if (!rj) return;
+    switch (m.t) {
+      case 'handoff': void this.takeOver(m); break;
+      case 'backup': this.backups.receive(m); break;
+      case 'succession': { const s = cleanSuccession(m); if (s && s.code === rj.code) this.succ = s; break; }
+      case 'host-gone': this.hostLost(rj, true); break;
+    }
+  }
+
+  /**
+   * We lost the host of the game we play in without being told why: its page
+   * may have closed. If we hold a backup and are next in the takeover order we
+   * reopen the world ourselves (after checking the host is really gone);
+   * otherwise we keep reconnecting by code until the new host answers.
+   */
+  private hostLost(rj: RelayJoin, gone: boolean) {
+    if (this.relayJoin !== rj) return;
+    const n = ++rj.losses;
+    const succ = this.succ && this.succ.code === rj.code ? this.succ : null;
+    const backup = this.backups.latest;
+    this.backups.dropPartial();
+    this.succ = null;
+    this.game?.dispose();
+    this.game = null;
+    this.input.releaseLock();
+    this.mode = 'loading';
+    const host = succ?.host || 'the host';
+    const why = gone ? `${cap(host)}'s game closed.` : `Lost the connection to ${host}.`;
+    const next = succ?.names[0] ?? null;
+    const lostGen = succ?.gen ?? 0;
+    // someone may be reopening the world: wait longer for an answer, and say who
+    rj.handoff = !!next;
+    rj.tries = 0;
+    if (succ && succ.rank !== null && backup) {
+      const rank = succ.rank;
+      rj.wait = rank === 0 ? `${why} Taking over the world…` : `${why} Waiting for ${next} to take over…`;
+      this.menus.loading(rj.wait, 0.1);
+      if (rank > 0) { rj.note = `${next} is hosting the world now.`; void this.joinCoop(rj.code); }
+      setTimeout(() => void this.successionCheck(rj, n, backup, lostGen, gone, host), rank * TAKEOVER_STAGGER_MS);
+      return;
+    }
+    rj.wait = next ? `${why} ${next} is taking over the world; joining them…` : `${why} Reconnecting…`;
+    if (next) rj.note = `${next} is hosting the world now.`;
+    this.menus.loading(rj.wait, 0.1);
+    setTimeout(() => { if (this.relayJoin === rj && rj.losses === n && !this.game) void this.joinCoop(rj.code); }, 1500);
+  }
+
+  /** Our turn in the takeover order: take the world over unless someone hosts it. */
+  private async successionCheck(rj: RelayJoin, n: number, backup: Backup, lostGen: number, gone: boolean, host: string) {
+    const current = () => this.relayJoin === rj && rj.losses === n && !this.game?.session.connected;
+    if (!current()) return;
+    const lobby = await getLobby();
+    if (!lobby) return;
+    const verdict = await checkHost({ code: rj.code, lostGen, gone, ads: () => lobby.ads(), connected: () => lobby.connected });
+    if (!current()) return;
+    if (verdict === 'free') { await this.takeOverFromBackup(rj, lobby, backup, lostGen, host); return; }
+    // the old host is still there, or a friend already took over: join whoever hosts the code
+    rj.wait = verdict === 'taken' ? 'Joining the new host…' : `Reconnecting to ${host}…`;
+    if (verdict === 'alive') rj.note = undefined;
+    if (!this.game) void this.joinCoop(rj.code);
+  }
+
+  /** Reopen the world from our backup under the same game code, one generation on. */
+  private async takeOverFromBackup(rj: RelayJoin, lobby: CoopLobby, backup: Backup, lostGen: number, host: string) {
+    const code = rj.code, gen = lostGen + 1;
+    // a join attempt still waiting for an answer is no longer needed
+    this.game?.dispose();
+    this.game = null;
+    this.mode = 'loading';
+    this.menus.loading(`${cap(host)}'s game closed. Reopening the world from your backup…`, 0.2);
+    try {
+      const text = backup.gz ? await gunzipText(backup.data) : new TextDecoder().decode(backup.data);
+      const env = readEnvelope(text);
+      // claim the code at once, so the other friends wait for us instead of taking over too
+      lobby.advertise(code, gen, { host: this.settings.gameplay.name || 'Castaway', world: env.name, players: 1, day: env.day });
+      const slot = await importWorldText(text, code);
+      const age = Math.max(1, Math.round((Date.now() - backup.at) / 1000));
+      this.relayJoin = null;
+      this.backups.reset();
+      await this.startLocal({ mode: 'load', slot, coop: true, code, gen, note: (c) => `${cap(host)}'s game closed, so you are the host now (code ${c}). The world continues from a backup made about ${age} s ago.` });
+      if (!this.local) lobby.withdraw();
+    } catch (e) {
+      console.warn('takeover failed', e);
+      lobby.withdraw();
+      this.relayJoin = rj;
+      this.onDisconnect('The host left and the world could not be reopened from your backup.');
+    }
+  }
+
+  /**
+   * While our connection was down a friend took this world over (a newer hosting
+   * of the same code exists): stop hosting, keep our copy in our saves, and join
+   * them, so everyone plays in one world again.
+   */
+  private async yieldWorld(by: OpenGame) {
+    const c = this.coop, local = this.local;
+    if (!c || !local || this.coop !== c) return;
+    const code = c.code;
+    this.mode = 'loading';
+    this.menus.loading(`${by.host} took the world over while your connection was down. Joining their game…`, 0.2);
+    const moved = encode({ t: 'reject', reason: `The world moved to ${by.host}'s game.` });
+    for (const l of c.links.values()) l.send(moved, false);
+    this.endCoop(c, 'quiet');
+    this.input.releaseLock();
+    this.game?.dispose();
+    this.game = null;
+    this.local = null;
+    await local.quit();
+    await flushCloud(this.slot).catch(() => {});
+    this.relayJoin = newRelayJoin(code);
+    this.relayJoin.handoff = true;
+    this.relayJoin.note = `${by.host} is hosting the world now. Your own copy stays in your saves.`;
+    void this.joinCoop(code);
+  }
+
   closeToFriends() {
     const c = this.coop;
-    if (!c) return;
-    this.coop = null;
-    clearInterval(c.adTimer);
-    if (this.game) this.game.hud.inviteCode = null;
-    // the worker tells each friend the world closed; give that a moment to go out
-    this.local?.setOpen(false);
-    c.lobby.stopHosting(false);
-    setTimeout(() => { for (const l of c.links.values()) l.end('closed'); c.lobby.closeRooms(); }, 1200);
+    if (c) this.endCoop(c, 'close');
   }
 
   private pauseCoop(): PauseCoop | null {
@@ -274,27 +439,35 @@ class App {
     return {
       code: this.coop?.code ?? null,
       players: this.adInfo().players,
+      next: () => this.coop?.succession.order()[0] ?? null,
       open: () => this.openToFriends(),
       close: () => this.closeToFriends(),
     };
   }
 
+  /** what a friend's pause menu says about who carries the world on */
+  private pauseRelay(): PauseRelay | null {
+    const rj = this.relayJoin, s = this.succ;
+    if (!rj || !this.game?.isReady) return null;
+    return { code: rj.code, host: s?.host ?? null, next: s?.names[0] ?? null, you: s?.rank === 0 };
+  }
+
   async joinCoop(code: string) {
     this.audio.unlock();
     this.mode = 'loading';
-    this.menus.loading('Finding the host…', 0.1);
+    this.menus.loading(this.relayJoin?.wait ?? 'Finding the host…', 0.1);
     await this.identityReady();
     const lobby = await getLobby();
     if (!lobby) { this.mode = 'menu'; this.menus.error('Online play unavailable', 'Sign in to claude.ai and open the game from the link the host invited you with. The host invites friends by email from the page\'s Share menu; a public link only allows single-player.', () => void this.menus.main()); return; }
     try {
       const pipe = await lobby.connect(code);
-      if (this.mode !== 'loading') { pipe.close(); return; }
+      if (this.mode !== 'loading' || this.game || (this.relayJoin && this.relayJoin.code !== code)) { pipe.close(); return; }
       const t = new RelayTransport(pipe);
       this.startGame(t, null, false);
-      const g = this.game;
+      const g = this.game as Game | null;
       setTimeout(() => {
         if (this.game === g && g && !g.session.connected && this.mode === 'loading') { t.close(); this.onDisconnect(`No answer from game ${code}. The host may have closed the game or left the page.`); }
-      }, this.relayJoin?.handoff ? 90000 : 25000);
+      }, this.relayJoin?.handoff ? 120000 : 25000);
     } catch (e) {
       this.onDisconnect((e as { message?: string }).message || 'Could not open the game room');
     }
@@ -314,7 +487,7 @@ class App {
     this.game?.dispose();
     this.game = new Game(this.renderer, this.audio, this.input, this.settings, this.ui, transport, this.identity(), {
       onQuit: () => void this.quitToMenu(),
-      onDisconnect: (reason) => this.onDisconnect(reason),
+      onDisconnect: (reason, rejected) => this.onDisconnect(reason, rejected),
       onPause: (p) => {
         if (p) this.menus.pause({
           resume: () => this.game?.setPaused(false),
@@ -329,6 +502,7 @@ class App {
           quit: () => void this.quitToMenu(),
           invite: address,
           coop: this.pauseCoop(),
+          relay: this.pauseRelay(),
         });
         else this.menus.hide();
         // a world open to friends keeps running while the host is in the menu
@@ -336,23 +510,26 @@ class App {
       },
       requestSave: () => (this.local ? this.local.save() : Promise.resolve(false)),
       inviteAddress: address,
-      onHandoff: (m) => void this.takeOver(m),
+      onRelay: (m) => this.onRelay(m),
     });
     if (local) this.game.hello();
   }
 
-  private onDisconnect(reason: string) {
+  private onDisconnect(reason: string, rejected = false) {
     if (this.mode === 'menu') return;
     const rc = this.reconnect;
-    const fatal = /full|Version|mismatch|token|closed the world|No answer/i.test(reason);
+    const fatal = /full|Version|mismatch|token|closed the world|No answer|could not be reopened/i.test(reason);
     const rj = this.relayJoin;
-    if (rj && /handed the world/i.test(reason)) rj.handoff = true;
+    if (rj && /handed the world|moved to/i.test(reason)) rj.handoff = true;
+    // the host went quiet without telling us why: its page may have closed
+    if (rj && !rejected && !fatal && this.game?.isReady) { this.hostLost(rj, false); return; }
     if (rj && !fatal && rj.tries < 5 && this.game?.isReady) {
       rj.tries++;
       this.game?.dispose();
       this.game = null;
       this.mode = 'loading';
-      this.menus.loading(rj.handoff ? 'The host left and handed the world to a friend. Joining the new host…' : `Connection lost (${reason}). Reconnecting… attempt ${rj.tries}/5`, 0.1);
+      rj.wait = rj.handoff ? 'The world moved to another player. Joining the new host…' : `Connection lost (${reason}). Reconnecting… attempt ${rj.tries}/5`;
+      this.menus.loading(rj.wait, 0.1);
       setTimeout(() => { if (this.mode === 'loading' && this.relayJoin === rj) void this.joinCoop(rj.code); }, 1500 * rj.tries);
       return;
     }
@@ -384,6 +561,8 @@ class App {
     this.mode = 'menu';
     this.reconnect = null;
     this.relayJoin = null;
+    this.succ = null;
+    this.backups.reset();
     this.closeToFriends();
     this.input.releaseLock();
     this.game?.dispose();
@@ -428,10 +607,15 @@ class App {
         if (this.game.isReady) {
           this.mode = 'playing';
           if (this.reconnect) this.reconnect.tries = 0;
-          if (this.relayJoin) this.relayJoin.tries = 0;
+          const rj = this.relayJoin;
+          if (rj) {
+            rj.tries = 0;
+            rj.wait = undefined;
+            if (rj.note) { this.game.hud.notify(rj.note, 'info'); rj.note = undefined; }
+          }
           this.menus.hide();
         } else {
-          this.menus.loading(this.game.session.connected ? 'Building the islands…' : 'Waiting for server…', this.game.progress);
+          this.menus.loading(this.game.session.connected ? 'Building the islands…' : this.relayJoin?.wait ?? 'Waiting for server…', this.game.progress);
           // keep the loading screen alive
           if (!this.game.session.connected) this.renderer.renderMenu(dt);
         }
@@ -489,6 +673,37 @@ class App {
     else if (fps > target * 1.08 && before < 1) this.renderer.dynScale = Math.min(1, before + 0.05);
     if (before !== this.renderer.dynScale) this.renderer.resize();
   }
+}
+
+interface RelayJoin {
+  code: string;
+  tries: number;
+  /** the world is moving to another player: wait longer for an answer */
+  handoff?: boolean;
+  /** loading-screen line while waiting for the host to answer */
+  wait?: string;
+  /** shown once we are back in the game */
+  note?: string;
+  /** host losses so far (stale takeover timers check it) */
+  losses: number;
+}
+const newRelayJoin = (code: string): RelayJoin => ({ code, tries: 0, losses: 0 });
+
+interface Coop {
+  lobby: CoopLobby; code: string; gen: number; links: Map<number, RelayPeerLink>; nextId: number;
+  succession: HostSuccession; stopTick: () => void;
+}
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const safeGen = (g: unknown) => (Number.isSafeInteger(g) && (g as number) >= 0 && (g as number) < 1e6 ? (g as number) : 0);
+const cleanName = (s: unknown) => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '').slice(0, 24);
+
+/** validate the host's takeover order (it is still data from another page) */
+function cleanSuccession(m: Extract<RelayMsg, { t: 'succession' }>): SuccessionInfo | null {
+  if (typeof m.code !== 'string' || !/^[a-z0-9]{6}$/.test(m.code) || !Array.isArray(m.names)) return null;
+  const names = m.names.slice(0, 8).map(cleanName);
+  const rank = m.rank === null ? null : Number.isSafeInteger(m.rank) && m.rank >= 0 && m.rank < names.length ? m.rank : null;
+  return { t: 'succession', code: m.code, gen: safeGen(m.gen), host: cleanName(m.host) || 'the host', rank, names };
 }
 
 /** On the hosted page, a signed-in player's account gives a stable identity across devices. */

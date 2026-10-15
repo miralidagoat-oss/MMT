@@ -21,6 +21,7 @@ import { Wakes, type WakeSource } from './wakes';
 import { Footprints, type Walker } from './footprints';
 import { FLAG } from '../../shared/net/protocol';
 import { hourOf } from '../../shared/systems/weather';
+import type { WorldGen } from '../../shared/world/worldgen';
 
 export interface FrameView {
   dt: number;
@@ -36,6 +37,8 @@ export interface FrameView {
   fov: number;
   zoom: number;
   torch: boolean;
+  /** colour of the held light when it is not a flame (a glowcap jar) */
+  torchColor?: number;
 }
 
 export class WorldRenderer {
@@ -72,6 +75,9 @@ export class WorldRenderer {
   private wakeLast = new Map<string, { x: number; z: number; t: number; sp: number }>();
   /** how soaked the ground looks (rain wets it, sun dries it) */
   private wet = -1;
+  /** how far inside a cave the camera is (smoothed, 0..1) */
+  private enclosed = 0;
+  private gen: WorldGen | null = null;
   private menuT = 0;
 
   constructor(public canvas: HTMLCanvasElement, settings: GraphicsSettings) {
@@ -102,6 +108,7 @@ export class WorldRenderer {
   /** Called once a world (seed) is known. */
   initWorld(session: ClientSession) {
     const gen = session.gen!;
+    this.gen = gen;
     this.terrain = new TerrainSystem(gen);
     this.scene.add(this.terrain.group);
     this.ocean = new OceanSystem(this.terrain.heightTex, this.settings.waterQuality);
@@ -121,6 +128,8 @@ export class WorldRenderer {
     this.footprints = null;
     this.terrain = null; this.ocean = null; this.vegetation = null; this.entities = null;
     this.wet = -1;
+    this.gen = null;
+    this.enclosed = 0;
     this.wakes.clear();
     this.wakeLast.clear();
     this.renderer.renderLists.dispose();
@@ -311,7 +320,10 @@ export class WorldRenderer {
     this.lightning = Math.max(0, this.lightning - v.dt * 3.5);
     this.bolt.update(this.lightning);
     const flash = this.lightning > 0 ? this.lightning * (0.6 + Math.random() * 0.4) : 0;
-    this.sky.update({ hour, cloud: w.cloud, rain: w.rain, fog: w.fog, wind: w.wind, windDir: w.windDir, underwater: v.underwater, lightning: flash, time: v.time }, cam);
+    // inside a cave the sky's ambient light fades (eyes adjust slowly), so lights matter there
+    const cave = this.gen ? this.gen.caveDepth(v.camPos.x, v.camPos.y, v.camPos.z).depth : 0;
+    this.enclosed += (cave - this.enclosed) * Math.min(1, v.dt * 1.6);
+    this.sky.update({ hour, cloud: w.cloud, rain: w.rain, fog: w.fog, wind: w.wind, windDir: w.windDir, underwater: v.underwater, lightning: flash, time: v.time, enclosed: this.enclosed }, cam);
     this.sky.updateProbe(v.time);
 
     if (this.terrain) {
@@ -334,7 +346,7 @@ export class WorldRenderer {
       this.entities.syncContainers(session);
       // a little ahead of and above the hand: lights the scene without blowing out the held torch itself
       const torchPos = v.camPos.clone().add(new THREE.Vector3(0.2, 0.3, -0.9).applyEuler(cam.rotation));
-      this.entities.update(v.dt, session, cam, { on: v.torch, pos: torchPos, radius: 11 });
+      this.entities.update(v.dt, session, cam, { on: v.torch, pos: torchPos, radius: 11, color: v.torchColor });
     }
     this.particles.update(v.dt, v.camPos, w.rain, w.wind, w.windDir, v.underwater);
     this.updateWakes(session, v);

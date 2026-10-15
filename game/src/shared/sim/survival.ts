@@ -183,7 +183,7 @@ function tickHeldItems(sim: Simulation, p: PlayerState): void {
     held.dur -= 0.5; // slow tick runs at 2 Hz
     if (held.dur <= 0) {
       p.inventory.slots[p.hotbar] = null;
-      sim.notify(p.id, `Your ${def.name.toLowerCase()} burned out.`, 'warn');
+      sim.notify(p.id, held.id === 'glow_jar' ? 'Your glowcap jar has faded.' : `Your ${def.name.toLowerCase()} burned out.`, 'warn');
     }
     if (Math.floor(held.dur) % 10 === 0) sim.markPlayer(p.id);
   }

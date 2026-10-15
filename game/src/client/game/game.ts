@@ -27,7 +27,7 @@ import { hourOf, dayNumber, daylight } from '../../shared/systems/weather';
 import { countItem } from '../../shared/systems/inventory';
 import { raySphere } from '../../shared/math/vec';
 import type { Action, FxEvent } from '../../shared/net/protocol';
-import { FLAG } from '../../shared/net/protocol';
+import { FLAG, type RelayMsg } from '../../shared/net/protocol';
 import type { CreatureKind } from '../../shared/defs/types';
 import type { Pickable } from '../render/entities';
 
@@ -43,12 +43,13 @@ type Target =
 
 export interface GameHooks {
   onQuit: (reason?: string) => void;
-  onDisconnect: (reason: string) => void;
+  /** `rejected`: the host refused or ended our connection itself (it is still there) */
+  onDisconnect: (reason: string, rejected?: boolean) => void;
   onPause: (paused: boolean) => void;
   requestSave: () => Promise<boolean>;
   inviteAddress: string | null;
-  /** the host handed this world to us: we become the new host */
-  onHandoff?: (m: { code: string; host: string; gz: boolean; save: Uint8Array | string }) => void;
+  /** co-op relay messages (handoff, rolling world backups, succession) */
+  onRelay?: (m: RelayMsg) => void;
 }
 
 const tmpV = new THREE.Vector3();
@@ -102,9 +103,9 @@ export class Game {
       chat: (n, t) => { this.hud.chatLine(n, t); this.audio.play('ui_click', {}, undefined, 'ui'); },
       fx: (list) => this.onFx(list),
       disconnect: (r) => { if (!this.disposed) this.hooks.onDisconnect(r); },
-      reject: (r) => { if (!this.disposed) this.hooks.onDisconnect(r); },
+      reject: (r) => { if (!this.disposed) this.hooks.onDisconnect(r, true); },
       saved: (ok) => this.hud.notify(ok ? 'Game saved.' : 'Save failed!', ok ? 'good' : 'bad'),
-      handoff: (m) => { if (!this.disposed) this.hooks.onHandoff?.(m); },
+      relay: (m) => { if (!this.disposed) this.hooks.onRelay?.(m); },
     });
     this.hud = new Hud(this.uiRoot, settings);
     this.hud.onChat = (t) => void this.act({ a: 'chat', text: t });
@@ -336,6 +337,7 @@ export class Game {
       damageFlash: this.damageFlash, lowHealth, cold: Math.max(0, Math.min(1, (36.4 - self.bodyTemp) / 1.5)), sleep: this.sleepFade,
       fov: this.settings.graphics.fov, zoom: this.zoom,
       torch: !!heldDef?.lightRadius && !(held?.id === 'torch' && underwater),
+      torchColor: held?.id === 'glow_jar' ? 0x7fe6ff : undefined,
     });
     this.lastPos.set(vp.x, vp.y, vp.z);
 
@@ -660,6 +662,7 @@ export class Game {
     this.bowDraw = 0;
     if (consumable && i.pressed('primary')) { void this.act({ a: 'consume', from: { c: 'inv', i: s.me!.hotbar } }); return; }
     if (def?.id === 'watering_can' && i.pressed('primary') && t?.kind === 'structure') { void this.act({ a: 'water_crop', id: t.id, from: { c: 'inv', i: s.me!.hotbar } }); return; }
+    if (def?.tags?.includes('fertilizer') && i.pressed('primary') && t?.kind === 'structure') { void this.act({ a: 'fertilize', id: t.id, from: { c: 'inv', i: s.me!.hotbar } }); return; }
     if (i.held('primary') && !this.holdingHammer()) {
       const cd = def?.tool?.cooldown ?? 0.6;
       if (this.time - this.lastSwing >= cd) {

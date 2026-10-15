@@ -1,16 +1,16 @@
 # Tidewake — Project Status
 
-_Last updated: 2026-10-13 (47/47 tests passing; browser E2E passing for the self-hosted server and for the hosted web page with 4-player co-op)_
+_Last updated: 2026-10-15 (68/68 tests passing; browser E2E passing for the self-hosted server and for the hosted web page with 4-player co-op, host handoff and host-tab-closed takeover)_
 
 ## Build status
 | Check | Command | Result |
 |---|---|---|
 | Typecheck (strict) | `npm run typecheck` | ✅ clean |
 | Production client build | `npx vite build` | ✅ (≈1 MB JS, 300 KB gzip + 180 KB worker) |
-| Unit + integration + acceptance tests | `npm test` | ✅ 47 / 47 passing |
+| Unit + integration + acceptance tests | `npm test` | ✅ 68 / 68 passing |
 | Browser end-to-end (Chromium, SwiftShader WebGL) | `npx tsx tools/e2e-smoke.ts` | ✅ menu, single-player, all UI screens, mouse drag & drop, death screen, 2 browsers in multiplayer; no page or console errors |
 | Hosted web page build | `npm run build:web` | ✅ dist/web: page + 2 scripts, about 1.2 MB |
-| Hosted page E2E, up to 6 Chromium instances against a local platform stand-in that enforces the room rules (own tabs flagged `isMe`, 4 KiB / 1 KiB presence bounds, ~40 updates/s budget) | `npm run test:e2e:web` | ✅ host + 3 friends (list and code), movement sync, chat, 5th refused, leave and rejoin as the same survivor, the host's own account joining from a second tab as a separate survivor, the host quitting and the first friend taking the world over under the same code with the others following, world runs while the host is in the menu, cloud save, friends told when the host closes, export, cloud restore on a fresh browser; largest presence state 3.8 KB, none over the limit |
+| Hosted page E2E, up to 6 Chromium instances against a local platform stand-in that enforces the room rules (own tabs flagged `isMe`, 4 KiB / 1 KiB presence bounds, ~40 updates/s budget) | `npm run test:e2e:web` | ✅ host + 3 friends (list and code), movement sync, chat, 5th refused, leave and rejoin as the same survivor, the host's own account joining from a second tab as a separate survivor, the host quitting and the first friend taking the world over under the same code with the others following, rolling backups and the takeover order, the host closing its tab (the first friend reopens the world from its backup in about 7 s, with the host's last map mark, and the other follows), a host whose connection drops for 30 s (a friend takes over; the returning host sees the newer hosting and joins it), world runs while the host is in the menu, cloud save, friends told when the host closes, export, cloud restore on a fresh browser; largest presence state 3.8 KB, none over the limit |
 | Server profile | `npx tsx tools/profile-sim.ts` | ✅ see Performance |
 
 ## Completed systems (implemented **and** tested)
@@ -27,9 +27,10 @@ _Last updated: 2026-10-13 (47/47 tests passing; browser E2E passing for the self
 | Building | 7 modular pieces × 3 tiers (thatch/timber/brick) plus 21 doors, stations, storage, utilities, defenses, furniture, boats and the beacon; snapping, support, collision, terrain and water rules, upgrade, repair, demolish cascade | gameplay, acceptance |
 | Fire & cooking | fuel, ignition (tool reliability), rain/storm, cook → burn, clay-pot distillation, warmth, light | gameplay, acceptance |
 | Water | coconuts, flasks, waterskins, rain catchers, solar stills, distillation, salt-water penalties | gameplay, acceptance |
-| Farming | 4 crops, garden plots, watering, growth, withering, harvest + seeds, persistence | acceptance |
+| Farming | 4 crops, garden plots, watering, growth, withering, harvest + seeds, persistence, bat-guano fertilizer (1.8× growth for a day) | acceptance, `caves.test.ts` |
 | Drying rack | spoil-proof jerky and dried berries | `systems.test.ts` |
-| Wildlife | crab, boar, snake, fish, ray, shark, gull FSMs; detection, LOS, hearing, attacks, bleed/poison, flee, butchering, respawn, sharks harass rafts, animals batter walls, barricades hurt animals | gameplay, acceptance |
+| Caves | sea caves on rocky, volcanic and jungle islands: glowcap clusters that light the tunnel (edible; sealed into a fuel-free, underwater-safe glowcap jar), a guano heap, a smuggler's cache, a bat colony; the sky's ambient light fades as you walk in, so lights matter | `caves.test.ts`, visual QA (`cave`, `bats` scenes) |
+| Wildlife | bats (roost by day, stream out at dusk, scatter from lights), crab, boar, snake, fish, ray, shark, gull FSMs; detection, LOS, hearing, attacks, bleed/poison, flee, butchering, respawn, sharks harass rafts, animals batter walls, barricades hurt animals | gameplay, acceptance |
 | Ocean | shared analytic waves (sim + shader), buoyancy, oxygen, deep-water danger | acceptance |
 | Boats | log raft and outrigger sailboat: build in water, seats, paddling, wind sailing, anchor, cargo, grounding damage, storms, repair, sinking | acceptance |
 | Navigation | compass strip, map with fog of war, island names, wreck markers, waypoints, teammate markers, spyglass | e2e screenshots |
@@ -37,7 +38,7 @@ _Last updated: 2026-10-13 (47/47 tests passing; browser E2E passing for the self
 | World events | supply drops that drift ashore, storm fronts, shark frenzies, fish runs, rescue | `systems.test.ts` |
 | Progression | 19-step objective chain → distress beacon (must be on high ground) → rescue ship | `systems.test.ts` (beacon → rescue) |
 | Death & respawn | graves hold your gear, respawn at bed or beach, co-op downed/revive state | gameplay, acceptance |
-| Web co-op (hosted page) | host runs the world in the browser; friends join over the page's room channel; open-games list, join codes, 4-player cap, reconnect, cloud + file saves | `relay.test.ts`, `tools/e2e-coop.ts` |
+| Web co-op (hosted page) | host runs the world in the browser; friends join over the page's room channel; open-games list, join codes, 4-player cap, reconnect, cloud + file saves; Save & Quit hands the world to a friend; rolling backups let a friend take over when the host closes the tab or drops, and a returning host joins them | `relay.test.ts`, `succession.test.ts`, `tools/e2e-coop.ts` |
 | Multiplayer | server-authoritative, prediction/reconciliation, interpolation, delta snapshots, late join, reconnect, duplicate-action rejection, input-flood protection, 4-player cap, lag/loss conditioner | `multiplayer.test.ts`, acceptance, e2e |
 | Save/load | versioned, CRC-checked, migrations, atomic writes, rotating backups, corruption fallback, IndexedDB single-player saves | acceptance (save → relaunch → rejoin), `systems.test.ts` (corruption, backups, migration) |
 | UI | main/new/load/multiplayer/settings/pause/death/loading screens, HUD, inventory, crafting, stations, build menu, map, journal, chat, player list, controller navigation | e2e screenshots |
@@ -85,8 +86,14 @@ Multiplayer consistency is additionally tested at 80 ms / 5% loss and
 * Water-quality changes apply on the next world load.
 
 ## Multiplayer issues
-* Host handoff happens when the host uses Save & Quit; closing the tab instead ends
-  the session for everyone (the world stays in the host's saves).
+* When a host closes the tab (instead of Save & Quit), the friend first in the
+  takeover order reopens the world from their rolling backup, so up to about 30 s of
+  play can be lost. A friend who joined in the last few seconds holds no backup yet;
+  if the host leaves in that window with no other friend holding one, the session
+  ends as before (the world stays in the host's saves).
+* If a host's connection drops for more than about 15 s while friends play, a
+  friend takes over; when the host comes back it joins that friend's world, and the
+  progress it made alone in between stays only in its own saves.
 * Web co-op needs every player signed in, with access to the page link. The relay
   runs snapshots at about 10–12 Hz instead of 20 Hz, so remote players and animals
   are shown with a 280 ms interpolation delay.

@@ -29,7 +29,9 @@ export interface MenuActions {
   captureKey(cb: (code: string) => void): void;
 }
 
-export interface PauseCoop { code: string | null; players: number; open(): Promise<string>; close(): void }
+export interface PauseCoop { code: string | null; players: number; next(): string | null; open(): Promise<string>; close(): void }
+/** a friend's view: who hosts, and who carries the world on if the host's page closes */
+export interface PauseRelay { code: string; host: string | null; next: string | null; you: boolean }
 
 const TIPS = [
   'Coconuts are safe to drink. Sea water only makes thirst worse.',
@@ -375,16 +377,21 @@ export class Menus {
   }
 
   // ------------------------------------------------------------------ in-game overlays
-  pause(actions: { resume(): void; save(): void; settings(): void; quit(): void; invite: string | null; coop: PauseCoop | null }) {
+  pause(actions: { resume(): void; save(): void; settings(): void; quit(): void; invite: string | null; coop: PauseCoop | null; relay?: PauseRelay | null }) {
     const coop = actions.coop;
+    const relay = actions.relay ?? null;
     const coopBox = h('div', { class: 'coop-box' });
     const renderCoop = () => {
       clear(coopBox);
       if (!coop) return;
       if (coop.code) {
         const copied = h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;min-height:0' });
+        const next = coop.next();
+        const carry = next
+          ? ` If you quit or close this tab, ${next} takes the world over and everyone carries on.`
+          : coop.players > 1 ? ' Backing the world up to your friends…' : '';
         coopBox.append(
-          h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;line-height:1.5;padding:4px 2px' }, 'Open to friends · code ', h('b', { class: 'code', text: coop.code }), ` · ${coop.players}/4 players. Friends open this page, choose Play with Friends and pick your game. If you quit, the friend who joined first takes over the world.`),
+          h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;line-height:1.5;padding:4px 2px' }, 'Open to friends · code ', h('b', { class: 'code', text: coop.code }), ` · ${coop.players}/4 players. Friends open this page, choose Play with Friends and pick your game.${carry}`),
           h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap' },
             this.btn('Copy Code', () => {
               const code = coop.code ?? '';
@@ -401,12 +408,17 @@ export class Menus {
       }
     };
     renderCoop();
+    const relayNote = relay ? h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;line-height:1.5;padding:4px 2px' },
+      'Online game · code ', h('b', { class: 'code', text: relay.code }),
+      relay.you ? ` · If ${relay.host ?? 'the host'} leaves or closes their tab, you take the world over and the others join you.`
+        : relay.next ? ` · If ${relay.host ?? 'the host'} leaves or closes their tab, ${relay.next} takes the world over.` : '') : null;
     this.show(h('div', { class: 'panel dialog', style: 'width:min(380px,92vw)' },
       h('div', { class: 'dialog-head' }, h('h2', { text: coop?.code ? 'Menu (game keeps running)' : 'Paused' })),
       h('div', { class: 'dialog-body menu-col' },
         this.btn('Resume', actions.resume, 'primary'),
         this.btn('Save Game', actions.save),
         coopBox,
+        relayNote,
         this.btn('Settings', actions.settings),
         actions.invite ? h('div', { class: 'meta', style: 'color:var(--muted);font-size:12px;padding:6px 2px', text: `Friends can join at ${actions.invite}` }) : null,
         this.btn('Save & Quit to Menu', actions.quit, 'danger'))));

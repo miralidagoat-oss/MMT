@@ -6,13 +6,14 @@
 import { SIM, TIME } from '../config';
 import { CREATURES } from '../defs/creatures';
 import { STRUCTURES } from '../defs/structures';
+import { ITEMS } from '../defs/items';
 import { hashInts, hash01 } from '../math/rng';
 import { wrapAngle, clamp } from '../math/vec';
 import { isNight } from '../systems/weather';
 import type { CreatureDef, CreatureKind } from '../defs/types';
 import type { CreatureMode, CreatureState, PlayerState, StructureState } from '../state';
 import { findUnsupported } from '../systems/building';
-import type { SpawnZone } from '../world/worldgen';
+import type { Cave, SpawnZone } from '../world/worldgen';
 import type { Simulation } from './simulation';
 import { applyDamage } from './survival';
 import { damageVehicle } from './vehicles';
@@ -39,6 +40,8 @@ function spawnCreature(sim: Simulation, z: SpawnZone, salt: number): CreatureSta
       id, kind: z.kind, zone: z.id, x, y: initialY(def, ground), z: zz, yaw: a, speed: 0, hp: def.maxHp, mode: 'idle', target: null,
       tx: x, tz: zz, ty: 0, modeUntil: 0, nextAttackAt: 0, rng: h, diedAt: 0, butchered: false, lastHitBy: null, bleed: 0,
     };
+    const cave = caveOf(sim, z);
+    if (cave) { const r = roostSlot(sim, c, cave); c.x = r.x; c.y = r.y; c.z = r.z; c.yaw = cave.yaw; }
     sim.world.creatures[id] = c;
     return c;
   }
@@ -70,7 +73,7 @@ function habitatOk(def: CreatureDef, ground: number): boolean {
     case 'land': case 'jungle': return ground > 1.5;
     case 'shallows': return ground < -1.4 && ground > -12;
     case 'deep': return ground < -6;
-    case 'air': return true;
+    case 'air': case 'cave': return true;
   }
 }
 
@@ -112,6 +115,7 @@ export function tickWildlife(sim: Simulation, dt: number): void {
     if (!near) continue;
     const def = CREATURES[c.kind];
     if (c.bleed > 0) { c.bleed -= dt; c.hp -= 1.2 * dt; if (c.hp <= 0) { killCreature(sim, c, c.lastHitBy); continue; } }
+    if (def.habitat === 'cave') { tickBat(sim, c, def, players, dt, (tick + (c.rng & 3)) % SIM.creatureThinkInterval === 0); continue; }
     if ((tick + (c.rng & 3)) % SIM.creatureThinkInterval === 0) think(sim, c, def, players, night);
     move(sim, c, def, dt);
     if (c.mode === 'attack' || c.mode === 'chase') tryAttack(sim, c, def);
@@ -358,6 +362,8 @@ export function killCreature(sim: Simulation, c: CreatureState, by: string | nul
   c.diedAt = sim.now;
   c.speed = 0;
   c.hp = 0;
+  // fliers drop to the ground (or float on the water)
+  if (def.habitat === 'air' || def.habitat === 'cave') c.y = Math.max(0, sim.gen.heightAt(c.x, c.z)) + 0.05;
   sim.fx('creature_die', c.x, c.y, c.z, c.kind);
   const killer = by ? sim.world.players[by] : undefined;
   if (killer) sim.milestone(killer, `kill_${c.kind}`, c.kind === 'shark' ? 'You killed a shark. The sea fears you a little more.' : undefined);
@@ -408,6 +414,108 @@ export function damageStructure(sim: Simulation, s: StructureState, amount: numb
   sim.removeStructure(s.id);
   for (const f of fallen) sim.removeStructure(f);
   sim.notify(null, `A ${STRUCTURES[s.type]?.name ?? 'structure'} was destroyed by a ${cause}!`, 'warn');
+}
+
+// ------------------------------------------------------------------ bats
+function caveOf(sim: Simulation, z: SpawnZone | undefined): Cave | undefined {
+  return z?.cave ? sim.gen.caves.find((k) => k.id === z.cave) : undefined;
+}
+
+/** a point in the cave's own frame: lx < 0 runs into the tunnel, lz across it */
+function caveAt(sim: Simulation, cave: Cave, lx: number, lz: number, up: number) {
+  const cs = Math.cos(cave.yaw), sn = Math.sin(cave.yaw);
+  const x = cave.x + cs * lx - sn * lz, z = cave.z + sn * lx + cs * lz;
+  return { x, y: Math.max(0, sim.gen.heightAt(x, z)) + up, z };
+}
+
+function caveLocal(cave: Cave, x: number, z: number) {
+  const dx = x - cave.x, dz = z - cave.z, cs = Math.cos(cave.yaw), sn = Math.sin(cave.yaw);
+  return { lx: cs * dx + sn * dz, lz: -sn * dx + cs * dz };
+}
+
+/** each bat's own spot under the roof */
+function roostSlot(sim: Simulation, c: CreatureState, cave: Cave) {
+  const a = hash01(c.rng, 1, 1), b = hash01(c.rng, 2, 2);
+  return caveAt(sim, cave, -cave.len * (0.5 + a * 0.35), (b - 0.5) * 1.8, 2.05);
+}
+
+function holdsLight(p: PlayerState): boolean {
+  const it = p.inventory.slots[p.hotbar];
+  return !!it && !!ITEMS[it.id]?.lightRadius;
+}
+
+/**
+ * Bats hang under the cave roof by day and stream out at dusk to hunt over the
+ * shore until dawn. Anyone right under them, or a light carried close, scatters
+ * the colony into a few seconds of frantic flight around the tunnel.
+ */
+function tickBat(sim: Simulation, c: CreatureState, def: CreatureDef, players: PlayerState[], dt: number, think: boolean): void {
+  const cave = caveOf(sim, zoneOf(sim, c));
+  if (!cave) return;
+  const now = sim.now, tick = sim.world.tick, h = sim.hour;
+  const out = h >= 18.8 || h < 5.6; // dusk till dawn
+  const here = caveLocal(cave, c.x, c.z);
+  const inside = here.lx < 0.5;
+  if (think) {
+    const disturbed = c.mode !== 'flee' && players.some((p) => {
+      const d = Math.hypot(p.pos.x - c.x, p.pos.y + 1.4 - c.y, p.pos.z - c.z);
+      return d < 2.4 || (d < 7 && holdsLight(p));
+    });
+    if (disturbed) setMode(c, 'flee', now + 5 + rand(c, tick, 5) * 3, null);
+    switch (c.mode) {
+      case 'flee':
+        if (now >= c.modeUntil) { setMode(c, out ? 'wander' : 'return', now + 60, null); break; }
+        // frantic loops through the tunnel and just outside the mouth
+        if (rand(c, tick, 6) < 0.6) {
+          const p = caveAt(sim, cave, 2 - rand(c, tick, 7) * (cave.len - 1), (rand(c, tick, 8) - 0.5) * 3.2, 0.9 + rand(c, tick, 9) * 1.2);
+          c.tx = p.x; c.tz = p.z; c.ty = p.y;
+        }
+        break;
+      case 'wander':
+        if (!out) { setMode(c, 'return', now + 60, null); break; }
+        if (now >= c.modeUntil || Math.hypot(c.tx - c.x, c.tz - c.z) < 1.5) {
+          // hunting flights in front of the cave, over the shore
+          const p = caveAt(sim, cave, 5 + rand(c, tick, 10) * 26, (rand(c, tick, 11) - 0.5) * 40, 2.5 + rand(c, tick, 12) * 6);
+          c.tx = p.x; c.tz = p.z; c.ty = p.y;
+          c.modeUntil = now + 1.5 + rand(c, tick, 13) * 2;
+        }
+        break;
+      case 'return': {
+        if (out) { setMode(c, 'wander', now, null); break; }
+        const r = roostSlot(sim, c, cave);
+        c.tx = r.x; c.tz = r.z; c.ty = r.y;
+        if (Math.hypot(r.x - c.x, r.y - c.y, r.z - c.z) < 0.4) { c.x = r.x; c.y = r.y; c.z = r.z; c.yaw = cave.yaw; setMode(c, 'idle', now + 1e9, null); }
+        break;
+      }
+      default: { // roosting
+        if (out) { setMode(c, 'wander', now, null); break; }
+        const r = roostSlot(sim, c, cave);
+        if (Math.hypot(r.x - c.x, r.y - c.y, r.z - c.z) > 0.5) setMode(c, 'return', now + 60, null);
+      }
+    }
+  }
+  if (c.mode === 'idle') { c.speed = 0; return; }
+  // the tunnel is entered and left through the mouth
+  let tx = c.tx, ty = c.ty, tz = c.tz;
+  const goal = caveLocal(cave, tx, tz);
+  const goalInside = goal.lx < 0.5;
+  if (inside !== goalInside && (Math.abs(here.lz) > 1.6 || (!inside && here.lx > 4))) {
+    const m = cave.mouth;
+    tx = m.x; ty = m.y; tz = m.z;
+  }
+  const speed = c.mode === 'flee' ? def.runSpeed : def.speed;
+  const dx = tx - c.x, dy = ty - c.y, dz = tz - c.z;
+  const dist = Math.hypot(dx, dy, dz);
+  if (dist < 0.05) { c.speed = 0; return; }
+  const want = Math.atan2(dx, dz);
+  c.yaw = wrapAngle(c.yaw + clamp(wrapAngle(want - c.yaw), -9 * dt, 9 * dt));
+  const step = Math.min(dist, speed * dt);
+  c.x += (dx / dist) * step;
+  c.z += (dz / dist) * step;
+  // fluttery, never through the floor
+  c.y += (dy / dist) * step + Math.sin(now * 9 + (c.rng & 63)) * 0.6 * dt;
+  c.y = Math.max(c.y, Math.max(0, sim.gen.heightAt(c.x, c.z)) + 0.6);
+  c.speed = speed;
 }
 
 export function creatureKinds(): CreatureKind[] { return Object.keys(CREATURES) as CreatureKind[]; }

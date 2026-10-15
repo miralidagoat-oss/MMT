@@ -28,6 +28,14 @@ const DEFORM: Record<string, string> = {
     float wing = smoothstep(0.08, 0.75, ax);
     transformed.y += sin(animT * 7.0) * 0.36 * wing * ax;
   }`,
+  bat: `{
+    float ax = abs(transformed.x);
+    float wing = smoothstep(0.03, 0.3, ax);
+    // fast, deep strokes with a little fold on the upstroke
+    float beat = sin(animT * 16.0);
+    transformed.y += beat * 0.55 * wing * ax;
+    transformed.x *= 1.0 - 0.25 * wing * max(0.0, beat);
+  }`,
   crab: `{
     float leg = step(0.18, abs(transformed.x)) * step(transformed.y, 0.16);
     float side = sign(transformed.x);
@@ -52,7 +60,7 @@ export interface CreatureAnim { mat: THREE.MeshStandardMaterial; t: { value: num
 /** A per-creature material (shared shader program per species, own uniforms). */
 export function creatureMaterial(kind: string): CreatureAnim {
   const t = { value: 0 }, move = { value: 0 };
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: kind === 'shark' || kind === 'fish' || kind === 'ray' ? 0.45 : 0.8 });
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: kind === 'shark' || kind === 'fish' || kind === 'ray' ? 0.45 : 0.8, side: kind === 'bat' ? THREE.DoubleSide : THREE.FrontSide });
   const code = DEFORM[kind];
   if (code) {
     mat.onBeforeCompile = (shader) => {

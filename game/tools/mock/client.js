@@ -4,30 +4,50 @@
   const params = new URLSearchParams(location.search);
   const user = params.get('mockuser') || ('u-' + Math.random().toString(36).slice(2, 8));
   const peerId = 'p' + Math.random().toString(36).slice(2, 12);
-  const ws = new WebSocket(`ws://${location.host}/mock-room?peer=${peerId}&user=${user}`);
+  let ws = null;
   let nextId = 1;
   const waiting = new Map();
   const queue = [];
   let open = false;
-  ws.onopen = () => { open = true; for (const q of queue.splice(0)) ws.send(q); };
+  /** what this page publishes in each room (re-sent after a reconnect) */
+  const published = new Map();
+  const connect = () => {
+    ws = new WebSocket(`ws://${location.host}/mock-room?peer=${peerId}&user=${user}`);
+    ws.onopen = () => {
+      open = true;
+      // a reconnect: rejoin the rooms and restore this page's presence in them
+      for (const name of rooms.keys()) if (name !== '') ws.send(JSON.stringify({ op: 'join', room: name, id: nextId++ }));
+      for (const [name, patch] of published) ws.send(JSON.stringify({ op: 'presence', room: name, patch, id: nextId++ }));
+      for (const q of queue.splice(0)) ws.send(q);
+    };
+    ws.onmessage = onMessage;
+    ws.onclose = () => { open = false; };
+  };
   const send = (m) => new Promise((resolve, reject) => { m.id = nextId++; waiting.set(m.id, { resolve, reject }); const s = JSON.stringify(m); if (open) ws.send(s); else queue.push(s); });
+  /** test hook: lose the connection for `ms` (the platform drops this page from every room meanwhile) */
+  window.__mockDrop = (ms) => { if (!open) return; ws.onclose = null; ws.close(); open = false; setTimeout(connect, ms); };
   const rooms = new Map(); // name -> state
   const mkRoom = (name) => {
     const st = { peers: Object.freeze([]), listeners: new Set(), byPeer: new Map() };
     rooms.set(name, st);
     const api = {
       name,
-      presence: (patch) => send({ op: 'presence', room: name, patch }).then((r) => { if (r.error) throw r.error; }),
+      presence: (patch) => {
+        const cur = { ...(published.get(name) ?? {}) };
+        for (const [k, v] of Object.entries(patch)) { if (v === null) delete cur[k]; else cur[k] = v; }
+        published.set(name, cur);
+        return send({ op: 'presence', room: name, patch }).then((r) => { if (r.error) throw r.error; });
+      },
       peers: () => st.peers,
       onPeers: (h) => { st.listeners.add(h); queueMicrotask(() => h({ peers: st.peers, joined: st.peers, left: [], updated: [] })); return () => st.listeners.delete(h); },
       connected: () => open,
       onConnection: (h) => { setTimeout(() => h(open)); return () => {}; },
       emit: async () => {}, on: () => () => {},
-      leave: () => send({ op: 'leave', room: name }).then(() => { rooms.delete(name); }),
+      leave: () => { published.delete(name); return send({ op: 'leave', room: name }).then(() => { rooms.delete(name); }); },
     };
     return api;
   };
-  ws.onmessage = (ev) => {
+  const onMessage = (ev) => {
     const m = JSON.parse(ev.data);
     if (m.op === 'reply') { const w = waiting.get(m.id); waiting.delete(m.id); w?.resolve(m); return; }
     if (m.op === 'peers') {
@@ -48,6 +68,7 @@
       for (const h of st.listeners) h(change);
     }
   };
+  connect();
   const lobby = mkRoom('');
   lobby.join = (name) => { const api = mkRoom(name); return send({ op: 'join', room: name }).then(() => api); };
   const snap = (id, r) => ({ id, exists: !!r.exists, data: () => r.data, metadata: { fromCache: false, hasPendingWrites: false } });

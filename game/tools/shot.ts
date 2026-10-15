@@ -47,6 +47,14 @@ const SCENES: Record<string, Step[]> = {
       s.remotePlayers=()=>{ const t=performance.now()/1000; return people.map(q=>{ const a=at(q.d+Math.sin(t*0.8)*0.6*(q.move?1:0), q.side); const ph=t*q.move; const x=a.x+rx*Math.sin(ph)*0.0+fx*ph%1*0, z=a.z; const walkYaw=yaw+Math.PI; return {id:q.id,n:q.n,c:q.c,x:a.x + (q.move? -fx*((t*q.move)%2):0), y:H(a.x,a.z), z:a.z + (q.move? -fz*((t*q.move)%2):0), yaw: q.move? walkYaw: yaw+Math.PI*0.85, pitch:0, f:q.f, h:100, it:q.it, v:null}; }); };
     })()` },
     { wait: 4000 }],
+  // inside the first cave by day: glowcaps, the guano heap, bats hanging under the roof, a glowcap jar in hand
+  cave: [{ cmd: '/time 13' }, { cmd: '/give glow_jar' },
+    { eval: `(async()=>{ const c=g.session.gen.caves[0]; const cs=Math.cos(c.yaw), sn=Math.sin(c.yaw); const lx=-3.2; const x=c.x+cs*lx, z=c.z+sn*lx; await g.act({a:'chat',text:'/tp '+x.toFixed(2)+' '+z.toFixed(2)}); g.yaw=Math.atan2(cs, sn); g.pitch=0.05; await g.act({a:'hotbar', index: g.session.me.inventory.slots.findIndex(s=>s&&s.id==='glow_jar')}); })()` },
+    { wait: 5000 }],
+  // the colony streaming out of the mouth at dusk
+  bats: [{ cmd: '/time 18.95' },
+    { eval: `(async()=>{ const c=g.session.gen.caves[0]; const cs=Math.cos(c.yaw), sn=Math.sin(c.yaw); const lx=9; const x=c.x+cs*lx+sn*1.5, z=c.z+sn*lx-cs*1.5; await g.act({a:'chat',text:'/tp '+x.toFixed(2)+' '+z.toFixed(2)}); g.yaw=Math.atan2(cs, sn); g.pitch=0.12; })()` },
+    { wait: 9000 }],
   storm: [{ cmd: '/time 14' }, { cmd: '/weather storm' }, { yaw: 2.6, pitch: 0.0, wait: 4000 }],
   underwater: [{ cmd: '/time 12' }, { eval: `(async()=>{ const gen=g.session.gen; for (let r=60;r<400;r+=5) for (let a=0;a<6.28;a+=0.1) { const x=Math.cos(a)*r, z=Math.sin(a)*r, h=gen.heightAt(x,z); if (h<-5&&h>-8&&gen.heightAt(x,z+12)>-6) { await g.act({a:'chat',text:'/tp '+x.toFixed(1)+' '+z.toFixed(1)}); return; } } })()` }, { wait: 1500 }, { yaw: 0, pitch: -0.25 }, { cmd: '/spawn fish 6' }, { cmd: '/spawn ray 1' }, { hold: 'KeyC', holdMs: 14000 }, { wait: 1500 }],
   fire: [{ cmd: '/time 20' }, { cmd: '/give stick 10' }, { cmd: '/give stone 10' }, { cmd: '/give log 4' }, { cmd: '/give torch' },

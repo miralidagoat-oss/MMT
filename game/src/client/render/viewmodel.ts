@@ -11,6 +11,10 @@ const SCALE = 0.22;
 
 const FLAME_MAT = makeFlameMaterial();
 
+/** the glowing caps inside a held glowcap jar */
+const ORB_GEO = new THREE.SphereGeometry(0.045, 10, 8);
+const ORB_MAT = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 3.2, 3.8) });
+
 export class ViewModel {
   root = new THREE.Group();
   private pivot = new THREE.Group();
@@ -63,6 +67,13 @@ export class ViewModel {
     if (id === 'bow') { this.item.rotation.set(0, Math.PI / 2, 0.15); this.item.position.set(-0.05, -0.4, -0.1); }
     if (id === 'chart') { this.item.rotation.set(-1.0, 0, 0); this.item.position.set(-0.15, 0.05, -0.05); }
     this.pivot.add(this.item);
+    if (id === 'glow_jar') {
+      // the caps inside glow on their own
+      const orb = new THREE.Mesh(ORB_GEO, ORB_MAT);
+      orb.position.y = 0.09;
+      orb.frustumCulled = false;
+      this.item.add(orb);
+    }
     const lit = id === 'torch' || id === 'lantern';
     this.flameLit = lit;
     this.flame.visible = lit;

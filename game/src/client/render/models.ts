@@ -102,7 +102,7 @@ function lumpy(g: THREE.BufferGeometry, amount: number, seed: number, flatBottom
 }
 
 // ============================================================ vegetation
-export interface PlantModel { solid: THREE.BufferGeometry; leaves?: THREE.BufferGeometry; leafTex?: 'palm' | 'broad' | 'grass' }
+export interface PlantModel { solid: THREE.BufferGeometry; leaves?: THREE.BufferGeometry; leafTex?: 'palm' | 'broad' | 'grass' | 'glow' }
 
 export function palmTree(seed: number): PlantModel {
   const parts: Part[] = [];
@@ -273,6 +273,26 @@ export function plantModel(type: string, seed: number): PlantModel {
       p.push(part(new THREE.CylinderGeometry(0.25, 0.25, 0.7, 8), '#4d5a60', [0.3, 0.3, -0.2], [0, 0, 1.4]));
       return { solid: merge(p) };
     }
+    case 'glowcap': {
+      // a cluster of slender pale stems under glowing caps (the caps get the self-lit material)
+      const stems: Part[] = [], caps: Part[] = [];
+      const n = 5 + Math.floor(rand(seed) * 4);
+      for (let i = 0; i < n; i++) {
+        const a = rand(seed + i * 3) * Math.PI * 2, d = 0.04 + rand(seed + i * 5) * 0.2;
+        const hgt = 0.08 + rand(seed + i * 7) * 0.22, r = 0.03 + rand(seed + i * 11) * 0.05 + hgt * 0.12;
+        const x = Math.cos(a) * d, z = Math.sin(a) * d, tilt = (rand(seed + i * 13) - 0.5) * 0.5;
+        stems.push(part(new THREE.CylinderGeometry(r * 0.22, r * 0.3, hgt, 5), '#cfd2c4', [x, hgt / 2, z], [tilt, 0, tilt]));
+        caps.push(part(new THREE.SphereGeometry(r, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), i % 3 ? '#7fe6ff' : '#a8ffd8', [x + tilt * hgt * 0.5, hgt, z - tilt * hgt * 0.5], [tilt, 0, tilt], [1, 0.55, 1]));
+        caps.push(part(new THREE.CircleGeometry(r * 0.96, 9), '#2f8fa8', [x + tilt * hgt * 0.5, hgt + 0.002, z - tilt * hgt * 0.5], [Math.PI / 2 + tilt, 0, tilt]));
+      }
+      return { solid: merge(stems), leaves: merge(caps), leafTex: 'glow' };
+    }
+    case 'guano_pile': {
+      const p: Part[] = [];
+      p.push(part(lumpy(new THREE.SphereGeometry(0.7, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0.2, seed), '#5d5244', [0, -0.05, 0], [0, 0, 0], [1.2, 0.32, 1], 0.1, seed));
+      for (let i = 0; i < 9; i++) p.push(part(new THREE.SphereGeometry(0.05 + rand(seed + i) * 0.05, 5, 4), i % 2 ? '#e6e0cf' : '#3f362c', [(rand(seed + i * 3) - 0.5) * 1.3, 0.12 + rand(seed + i * 9) * 0.06, (rand(seed + i * 5) - 0.5) * 1.1]));
+      return { solid: merge(p) };
+    }
   }
   return { solid: merge([part(new THREE.BoxGeometry(0.5, 0.5, 0.5), '#ff00ff', [0, 0.25, 0])]) };
 }
@@ -335,6 +355,24 @@ export function creatureModel(kind: string): THREE.BufferGeometry {
         p.push(part(new THREE.SphereGeometry(0.05, 5, 4), '#050505', [s * 0.3, 0.08, 1.45]));
       }
       p.push(part(new THREE.BoxGeometry(0.5, 0.04, 0.2), '#2a1d1d', [0, -0.25, 1.55]));
+      break;
+    case 'bat':
+      // furry body, big ears, and leathery wings stretched over finger bones
+      p.push(part(new THREE.SphereGeometry(0.07, 7, 5), '#3b2e27', [0, 0, 0], [0, 0, 0], [0.9, 0.85, 1.5]));
+      p.push(part(new THREE.SphereGeometry(0.05, 7, 5), '#45362d', [0, 0.02, 0.1]));
+      for (const s of [-1, 1]) {
+        p.push(part(new THREE.ConeGeometry(0.02, 0.06, 4), '#2a201b', [s * 0.025, 0.07, 0.1], [0, 0, -s * 0.3]));
+        p.push(part(new THREE.SphereGeometry(0.008, 4, 3), '#d8c060', [s * 0.02, 0.03, 0.145]));
+        // wing membrane: a fan of thin triangles from the shoulder out to the tip
+        for (let k = 0; k < 3; k++) {
+          const w = new THREE.BufferGeometry();
+          const tipX = s * (0.16 + k * 0.08), tipZ = 0.05 - k * 0.09;
+          w.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.04, s * 0.04, 0, -0.06, tipX, 0.01, tipZ], 3));
+          w.computeVertexNormals();
+          p.push(part(w, k === 1 ? '#2e2420' : '#3a2d27'));
+        }
+        p.push(part(new THREE.CylinderGeometry(0.004, 0.004, 0.3, 3), '#1e1714', [s * 0.15, 0.005, 0.0], [0, 0, Math.PI / 2]));
+      }
       break;
     case 'gull':
       p.push(part(new THREE.SphereGeometry(0.15, 7, 5), '#f4f4f0', [0, 0, 0], [0, 0, 0], [0.8, 0.8, 1.8]));
@@ -493,6 +531,9 @@ export function itemModel(id: string, iconColor: string): THREE.BufferGeometry {
         part(new THREE.TorusGeometry(0.041, 0.008, 4, 10), '#a88a55', [0, 0.55, 0], [Math.PI / 2, 0, 0]),
         part(new THREE.CylinderGeometry(0.03, 0.043, 0.04, 8), '#1d140c', [0, 0.61, 0]),
       ]);
+    case 'glow_jar':
+      // a shell jar with a resin stopper and a cord loop (the glowing caps inside are added by the viewer)
+      return merge([part(new THREE.CylinderGeometry(0.055, 0.06, 0.15, 9), '#dfe9ec', [0, 0.09, 0]), part(new THREE.CylinderGeometry(0.035, 0.04, 0.03, 8), '#c98a2b', [0, 0.18, 0]), part(new THREE.TorusGeometry(0.03, 0.005, 4, 8), '#d1b277', [0, 0.22, 0])]);
     case 'lantern':
       return merge([part(new THREE.CylinderGeometry(0.06, 0.07, 0.16, 8), '#ffe9a8', [0, 0.1, 0]), part(new THREE.ConeGeometry(0.07, 0.06, 8), metal, [0, 0.21, 0]), part(new THREE.TorusGeometry(0.04, 0.006, 4, 8), metal, [0, 0.27, 0])]);
     case 'fishing_rod':

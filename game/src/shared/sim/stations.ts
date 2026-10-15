@@ -171,11 +171,13 @@ function tickPlanter(sim: Simulation, s: StructureState, dt: number, hour: numbe
       c.water = Math.max(0, c.water - (def.waterNeed / 100) * hours * (temp > 30 ? 1.4 : 1));
       c.dryHours = 0;
       const tempOk = temp >= def.minTemp && temp <= def.maxTemp;
-      if (c.growth < 1) c.growth = Math.min(1, c.growth + (hours / def.growHours) * (tempOk ? 1 : 0.35));
+      const fert = c.fert && c.fert > 0 ? FARM.fertilizerGrowthMul : 1;
+      if (c.growth < 1) c.growth = Math.min(1, c.growth + (hours / def.growHours) * (tempOk ? 1 : 0.35) * fert);
     } else {
       c.dryHours += hours;
       if (c.dryHours > FARM.witherHoursDry) { c.withered = true; changed = true; }
     }
+    if (c.fert) { c.fert = Math.max(0, c.fert - hours); if (!c.fert) { delete c.fert; changed = true; } }
     if (Math.floor(c.growth * def.stages) !== before) changed = true;
   }
   if (changed || sim.world.tick % 200 === 0) sim.markStructure(s.id);

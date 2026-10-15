@@ -25,6 +25,7 @@ export const RECIPE_LIST: RecipeDef[] = [
   r('kelp_rope', ['rope', 1], [['kelp', 2]], null, 2, 'basics'),
   r('splint', ['splint', 1], [['stick', 2], ['fiber', 2]], null, 3, 'medical'),
   r('poultice', ['poultice', 1], [['aloe', 2], ['fiber', 1]], null, 3, 'medical'),
+  r('glow_jar', ['glow_jar', 1], [['glowcap', 4], ['shell', 1], ['resin', 1]], null, 4, 'survival', { unlockBy: ['glowcap'] }),
   r('sandals', ['sandals', 1], [['palm_frond', 2], ['rope', 1], ['plank', 1]], null, 5, 'equipment'),
   // --- workbench
   r('plank', ['plank', 2], [['log', 1]], 'workbench', 3, 'materials'),

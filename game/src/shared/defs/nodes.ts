@@ -43,6 +43,11 @@ export const NODE_LIST: ResourceNodeDef[] = [
     yields: [{ item: 'shell', min: 1, max: 2 }, { item: 'pearl', min: 1, max: 1, chance: 0.12 }] },
   { id: 'scrap_pile', name: 'Wreck Debris', action: 'mine', minTier: 1, hp: 60, radius: 1.0, height: 0.8, solid: true, respawnSeconds: DAY * 4,
     yields: [{ item: 'scrap_metal', min: 1, max: 3 }, { item: 'cloth', min: 0, max: 2 }, { item: 'copper_wire', min: 0, max: 1, chance: 0.3 }] },
+  // cave life
+  { id: 'glowcap', name: 'Glowcap Cluster', action: 'gather', minTier: 0, hp: 1, radius: 0.3, height: 0.35, solid: false, respawnSeconds: DAY * 2,
+    yields: [{ item: 'glowcap', min: 1, max: 3 }] },
+  { id: 'guano_pile', name: 'Guano Heap', action: 'gather', minTier: 0, hp: 1, radius: 0.6, height: 0.3, solid: false, respawnSeconds: DAY * 1.5,
+    yields: [{ item: 'guano', min: 2, max: 3 }] },
 ];
 
 export const NODES: Readonly<Record<string, ResourceNodeDef>> = Object.fromEntries(NODE_LIST.map((n) => [n.id, n]));

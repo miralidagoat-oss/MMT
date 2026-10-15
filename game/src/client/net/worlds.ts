@@ -85,10 +85,16 @@ export async function exportWorld(slot: string): Promise<string> {
   return 'Save file downloaded.';
 }
 
-/** Store a world received from another player (host handoff). Returns the new slot. */
-export async function importWorldText(text: string): Promise<string> {
+/**
+ * Store a world received from another player (handoff or takeover). Returns the
+ * slot. Copies of one shared world (one game code) reuse one slot, so taking a
+ * world over again replaces the older copy instead of piling up duplicates.
+ */
+export async function importWorldText(text: string, code?: string): Promise<string> {
   readEnvelope(text); // validates JSON, version and checksum
-  const slot = `h${Date.now().toString(36)}`;
+  const slot = code && /^[a-z0-9]{6}$/.test(code) ? `h${code}` : `h${Date.now().toString(36)}`;
+  const prev = await saveStore.get(`world:${slot}`);
+  if (prev) await saveStore.put(`backup:${slot}`, prev);
   await saveStore.put(`world:${slot}`, text);
   return slot;
 }
