@@ -142,18 +142,25 @@ async function main() {
     const before = await A.page.evaluate((id) => { const p = (window as any).tidewake.game.session.remotePlayers().find((r: any) => r.id === id); return p ? { x: p.x, z: p.z } : null; }, (await state(B.page))!.id);
     assert(before, 'host sees Ben');
     await B.page.evaluate(() => { const g = (window as any).tidewake.game; g.yaw = 0.3; });
-    // software rendering with 4 browsers runs at a few fps, so walk until Ben has really moved
-    const start = (await state(B.page))!.pos;
+    const benPid = (await state(B.page))!.id;
+    const hostView = () => A.page.evaluate((id) => { const p = (window as any).tidewake.game.session.remotePlayers().find((r: any) => r.id === id); return p ? { x: p.x, z: p.z } : null; }, benPid);
+    // software rendering with 4 browsers runs at a few fps and pages freeze for seconds
+    // at a time, so walk until the HOST has seen Ben really move
     await B.page.keyboard.down('KeyW');
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 60; i++) {
       await sleep(1000);
-      const p = (await state(B.page))!.pos;
-      if (Math.hypot(p.x - start.x, p.z - start.z) > 4) break;
+      const p = await hostView();
+      if (p && Math.hypot(p.x - before.x, p.z - before.z) > 3) break;
     }
     await B.page.keyboard.up('KeyW');
-    await sleep(3000);
-    const benServer = await A.page.evaluate((id) => { const p = (window as any).tidewake.game.session.remotePlayers().find((r: any) => r.id === id); return p ? { x: p.x, z: p.z } : null; }, (await state(B.page))!.id);
-    const benLocal = (await state(B.page))!.pos;
+    // then both views settle on the same spot (the server corrects Ben's prediction)
+    let benServer = await hostView(), benLocal = (await state(B.page))!.pos;
+    for (let i = 0; i < 60; i++) {
+      await sleep(1000);
+      benServer = await hostView();
+      benLocal = (await state(B.page))!.pos;
+      if (benServer && Math.hypot(benServer.x - benLocal.x, benServer.z - benLocal.z) < 0.3) break;
+    }
     const moved = Math.hypot(benServer!.x - before.x, benServer!.z - before.z);
     const err = Math.hypot(benServer!.x - benLocal.x, benServer!.z - benLocal.z);
     step(`Ben moved ${moved.toFixed(1)} m; host view vs Ben's own view: ${err.toFixed(2)} m`);
