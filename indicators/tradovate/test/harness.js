@@ -67,10 +67,13 @@ function makeCalc(overrides) {
 }
 
 // ── synthetic footprint data ──────────────────────────────────────────────
+// mulberry32: integer-exact, so it never degrades into a short cycle
 let seed = 7;
 function rand() {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    return seed / 2147483648;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 const onTick = p => Math.round(p / TICK) * TICK;
 
@@ -312,9 +315,10 @@ check("graphics: global level container only on the last bar, valid shapes", () 
     assert.ok(cont, "last bar draws levels");
     checkGraphics(last.graphics.items);
     const texts = cont.children.filter(c => c.tag === "Text").map(c => c.text);
-    assert.ok(texts.some(t => /^S1 21000\.\d\d \| .*bids filled \| held \dx/.test(t)), "S1 label: " + texts.join(" / "));
-    assert.ok(texts.some(t => /^R1 21020\.00 \| .*offers filled/.test(t)), "R1 label: " + texts.join(" / "));
+    assert.ok(texts.some(t => /^S1 21000\.\d\d \| reversal odds: collecting \(n=\d+\) \| .*bid fills \| held \dx/.test(t)), "S1 label: " + texts.join(" / "));
+    assert.ok(texts.some(t => /^R1 21020\.00 \| .* \| .*offer fills/.test(t)), "R1 label: " + texts.join(" / "));
     assert.ok(texts.some(t => t.startsWith("Resting Order Levels: footprint")), "status text");
+    assert.ok(texts.some(t => /^Reversal = \d+\.\d\d in favor before \d+\.\d\d against, within 60 bars {2}\| {2}zones .* {2}vs {2}random prices \d+% ±\d+ \(n=\d+\)$/.test(t)), "odds status: " + texts.join(" / "));
     outputs.forEach(o => o.graphics && checkGraphics(o.graphics.items));
 });
 
@@ -370,6 +374,8 @@ check("live ticks are idempotent (no state restore between calls)", () => {
     const b = liveRun(true);
     assert.strictEqual(a.calc.committed, b.calc.committed);
     assert.deepStrictEqual(JSON.parse(JSON.stringify(a.calc.levels)), JSON.parse(JSON.stringify(b.calc.levels)));
+    ["zoneStats", "controlStats", "openTests", "openControl"].forEach(k =>
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(a.calc[k])), JSON.parse(JSON.stringify(b.calc[k])), k));
     assert.ok(globalContainer(a.out), "levels drawn on the new last bar");
 });
 
@@ -378,16 +384,16 @@ check("bar-level fallback when the chart has no per-price profile", () => {
     const s = calc.levels.find(l => l.side === "S" && Math.abs(l.price - 21000) <= 0.25);
     assert.ok(s && s.estimated, "estimated support at the absorption bar low");
     const cont = globalContainer(outputs[outputs.length - 1]);
-    const status = cont.children.find(c => c.key === "status").text;
+    const status = cont.children.find(c => c.key === "status0").text;
     assert.ok(/bar-level estimate/.test(status), status);
-    const lbl = cont.children.find(c => c.tag === "Text" && c.key !== "status").text;
+    const lbl = cont.children.find(c => c.tag === "Text" && !c.key.startsWith("status")).text;
     assert.ok(/\| ~\d/.test(lbl), "estimated fills marked with ~: " + lbl);
 });
 
 check("no bid/ask data: draws nothing and says so", () => {
     const { calc, outputs } = runHistory(bars, {}, { noProfile: true, noBidAsk: true });
     assert.strictEqual(calc.levels.length, 0);
-    const status = globalContainer(outputs[outputs.length - 1]).children.find(c => c.key === "status").text;
+    const status = globalContainer(outputs[outputs.length - 1]).children.find(c => c.key === "status0").text;
     assert.ok(/NO bid\/ask volume/.test(status), status);
 });
 
@@ -421,6 +427,320 @@ check("random tape: bounded state, finite output, no throw", () => {
     checkGraphics(outputs[outputs.length - 1].graphics.items);
     const shown = globalContainer(outputs[outputs.length - 1]).children.filter(x => x.tag === "LineSegments");
     assert.ok(shown.length <= 2 * calc.props.levelsPerSide, "levelsPerSide respected");
+});
+
+// ── reversal statistics ─────────────────────────────────────────────────────
+// Zones are placed by hand on bars without profile data and with a huge volume
+// baseline (so nothing is auto-detected); distances are fixed: touch 1 tick,
+// break 4 ticks, bounce 8 ticks = 2.00 points. Support zone at 100.00, so a
+// bounce is a later high >= 102.00 and a fail is a low <= 98.00.
+function statCalc(overrides) {
+    const c = makeCalc(Object.assign({ bounceTicks: 8, touchTicks: 1, breakTicks: 4, horizonBars: 60 }, overrides));
+    c.baseCount = 1000;
+    c.baseRange = 10;
+    c.baseLevel = 1e12;
+    c.baseBar = 1e12;
+    c.prevClose = 101;
+    return c;
+}
+function zone(c, side, price) {
+    const lvl = { id: c.nextId++, side, price, born: 0, lastTest: 0, filled: 100, strength: 100, holds: 0, tests: 0, flipped: false, estimated: false };
+    c.levels.push(lvl);
+    return lvl;
+}
+const ohlc = (o, h, l, cl) => ({ open: o, high: h, low: l, close: cl, volume: 100, bidVol: 50, askVol: 50, profile: null });
+function feed(c, list, from) {
+    let k = from || 1;
+    list.forEach(b => c.commit(b, k++));
+    return k;
+}
+const zs = c => c.zoneStats.map(x => x.w + "/" + x.n).join(" ");
+const TOUCH = ohlc(101, 101, 100, 100.5);
+
+check("odds: bounce 2.00 up before 2.00 down = reversal", () => {
+    const c = statCalc();
+    zone(c, "S", 100);
+    feed(c, [TOUCH, ohlc(100.5, 102, 100.5, 101.75)]);
+    assert.strictEqual(zs(c), "1/1 0/0 0/0");
+});
+
+check("odds: 2.00 through first = no reversal", () => {
+    const c = statCalc();
+    zone(c, "S", 100);
+    feed(c, [TOUCH, ohlc(100.5, 100.5, 98, 98.25)]);
+    assert.strictEqual(zs(c), "0/1 0/0 0/0");
+});
+
+check("odds: one bar reaching both sides counts as no reversal", () => {
+    const c = statCalc();
+    zone(c, "S", 100);
+    feed(c, [TOUCH, ohlc(100.5, 102, 98, 101)]);
+    assert.strictEqual(zs(c), "0/1 0/0 0/0");
+});
+
+check("odds: the touch bar's own high is never credited (its order is unknown)", () => {
+    const c = statCalc();
+    zone(c, "S", 100);
+    const k = feed(c, [ohlc(101, 102.5, 100, 101), ohlc(101, 101.5, 100.5, 101)]);
+    assert.strictEqual(zs(c), "0/0 0/0 0/0", "still open");
+    feed(c, [ohlc(101, 102, 100.75, 101.5)], k);
+    assert.strictEqual(zs(c), "1/1 0/0 0/0");
+});
+
+check("odds: a touch bar that wicks 2.00 through is a no-reversal at once", () => {
+    const c = statCalc();
+    zone(c, "S", 100);
+    feed(c, [ohlc(101, 101, 98, 98.5)]);
+    assert.strictEqual(zs(c), "0/1 0/0 0/0");
+    assert.strictEqual(c.levels.length, 0, "the zone itself broke on that close");
+});
+
+check("odds: zones broken on the touch bar still count (no survivorship bias)", () => {
+    const c = statCalc();
+    zone(c, "S", 100);
+    const k = feed(c, [ohlc(101, 101, 99, 98.75)]);
+    assert.strictEqual(c.levels.length, 0, "closed 5 ticks through: zone removed");
+    assert.strictEqual(c.openTests.length, 1, "but its test is still running");
+    feed(c, [ohlc(98.75, 102, 98.5, 101.5)], k);
+    assert.strictEqual(zs(c), "1/1 0/0 0/0");
+});
+
+check("odds: undecided after horizonBars counts as no reversal", () => {
+    const c = statCalc({ horizonBars: 5 });
+    zone(c, "S", 100);
+    const quiet = ohlc(100.5, 101, 100.5, 100.75);
+    const k = feed(c, [TOUCH, quiet, quiet, quiet, quiet]);
+    assert.strictEqual(zs(c), "0/0 0/0 0/0", "4 bars after the touch: still open");
+    feed(c, [quiet], k);
+    assert.strictEqual(zs(c), "0/1 0/0 0/0", "5th bar: horizon reached");
+});
+
+check("odds: one test per zone at a time, numbered 1st / 2nd / 3rd+", () => {
+    const c = statCalc();
+    const z = zone(c, "S", 100);
+    feed(c, [
+        TOUCH,                              // 1: test #1 starts
+        ohlc(100.5, 100.8, 100.1, 100.6),   // 2: touches again while #1 is open: no new test
+        ohlc(100.6, 102, 100.5, 101.75),    // 3: #1 bounces
+        ohlc(101.75, 101.75, 100, 100.4),   // 4: back from above: test #2
+        ohlc(100.4, 100.4, 97.75, 99.5),    // 5: #2 fails (zone survives: close 99.50)
+        ohlc(99.5, 101, 99.5, 100.8),       // 6: touched from BELOW: not a test
+        ohlc(100.8, 101.5, 100.5, 101.2),   // 7: no touch
+        ohlc(101.2, 101.2, 100, 100.5),     // 8: test #3
+        ohlc(100.5, 102.5, 100.5, 102),     // 9: #3 bounces
+        ohlc(102, 102, 100.1, 100.6),       // 10: test #4 (3rd+ bucket)
+        ohlc(100.6, 100.6, 97, 97.5)        // 11: #4 fails
+    ]);
+    assert.strictEqual(zs(c), "1/1 0/1 1/2");
+    assert.strictEqual(z.tests, 4);
+});
+
+check("odds: resistance mirrors support", () => {
+    const c = statCalc();
+    c.prevClose = 104;
+    zone(c, "R", 105);
+    feed(c, [ohlc(104, 105, 104, 104.5), ohlc(104.5, 104.5, 102.75, 103)]);
+    assert.strictEqual(zs(c), "1/1 0/0 0/0");
+    const d = statCalc();
+    d.prevClose = 104;
+    zone(d, "R", 105);
+    feed(d, [ohlc(104, 105, 104, 104.5), ohlc(104.5, 107, 104.5, 106.5)]);
+    assert.strictEqual(zs(d), "0/1 0/0 0/0");
+});
+
+// independent check of the Wilson interval: invert the score test numerically
+function scoreInterval(w, n) {
+    const z = 1.96;
+    const p = w / n;
+    const inside = q => Math.abs(p - q) <= z * Math.sqrt(q * (1 - q) / n);
+    const edge = (a, b) => {          // a inside, b outside
+        for (let i = 0; i < 200; ++i) {
+            const m = (a + b) / 2;
+            if (inside(m)) { a = m; } else { b = m; }
+        }
+        return a;
+    };
+    return { lo: w === 0 ? 0 : edge(p, 0), hi: w === n ? 1 : edge(p, 1) };
+}
+
+check("odds: label shows the measured rate, 95% margin and sample size", () => {
+    const c = statCalc({ minSamples: 20 });
+    const z1 = zone(c, "S", 100);
+    const z2 = zone(c, "S", 99);
+    z2.tests = 1;
+    c.zoneStats = [{ w: 15, n: 25 }, { w: 3, n: 5 }, { w: 0, n: 0 }];
+    assert.strictEqual(c.oddsText(z1), "60% reversal ±18 (1st test, n=25)", "no random comparison until it has minSamples");
+    c.controlStats = { w: 540, n: 1000 };
+    assert.strictEqual(c.oddsText(z1), "60% reversal ±18 vs 54% random (1st test, n=25)");
+    assert.strictEqual(c.oddsText(z2), "60% reversal ±17 vs 54% random (all tests, n=30)", "2nd-test bucket too small: all tests");
+    c.zoneStats = [{ w: 5, n: 9 }, { w: 3, n: 5 }, { w: 0, n: 0 }];
+    assert.strictEqual(c.oddsText(z1), "reversal odds: collecting (n=14)");
+    c.props.minSamples = 1;
+    [[15, 25], [3, 5], [0, 20], [20, 20], [137, 412]].forEach(([w, n]) => {
+        c.zoneStats = [{ w, n }, { w: 0, n: 0 }, { w: 0, n: 0 }];
+        const o = c.odds(z1);
+        const ref = scoreInterval(w, n);
+        assert.ok(Math.abs(o.lo - ref.lo) < 1e-6 && Math.abs(o.hi - ref.hi) < 1e-6,
+            w + "/" + n + ": " + o.lo + "-" + o.hi + " vs " + ref.lo + "-" + ref.hi);
+    });
+});
+
+check("odds: control prices are fixed before the bar, tested only when traded to", () => {
+    const c = statCalc();   // bounce 8 ticks: control prices 1..8 ticks from the last close
+    const started = [];
+    const orig = c.startTest.bind(c);
+    c.startTest = (t, b, k, isZone) => { if (!isZone) { started.push([t.side, t.price]); } orig(t, b, k, isZone); };
+    let prev = 101;
+    let k = 1;
+    for (let i = 0; i < 400; ++i) {
+        const cl = onTick(prev + (Math.round((rand() - 0.5) * 8)) * TICK);
+        const b = ohlc(prev, onTick(Math.max(prev, cl) + TICK), onTick(Math.min(prev, cl) - TICK), cl);
+        const before = started.length;
+        c.commit(b, k++);
+        started.slice(before).forEach(([side, price]) => {
+            assert.ok(Math.abs(price / TICK - Math.round(price / TICK)) < 1e-6, "on tick grid");
+            const ticksAway = Math.round(Math.abs(price - prev) / TICK);
+            assert.ok(ticksAway >= 1 && ticksAway <= 8, "1-8 ticks from the last close: " + ticksAway);
+            if (side === "S") {
+                assert.ok(price < prev && b.low <= price + TICK, "support control below the close, traded to");
+            }
+            else {
+                assert.ok(price > prev && b.high >= price - TICK, "resistance control above the close, traded to");
+            }
+        });
+        prev = cl;
+    }
+    assert.ok(started.length > 150, "control tests start only when traded to: " + started.length);
+
+    // the price picked for bar k depends only on the last close and k — not on the bar
+    const pick = (b) => {
+        const d = statCalc();
+        const seen = [];
+        const o2 = d.startTest.bind(d);
+        d.startTest = (t, bb, kk, isZone) => { if (!isZone) { seen.push(t.side + "@" + t.price); } o2(t, bb, kk, isZone); };
+        d.commit(b, 77);
+        return seen;
+    };
+    const wide = pick(ohlc(101, 104, 98, 103));
+    const other = pick(ohlc(101, 103.75, 98.25, 98.5));
+    assert.strictEqual(wide.length, 2);
+    assert.deepStrictEqual(wide, other, "same prices whatever the bar did");
+});
+
+check("odds: no lookahead — results up to bar K never depend on later bars", () => {
+    seed = 4321;
+    const tape = martingaleTape(3000);
+    const K = 2000;
+    const short = runHistory(tape.slice(0, K)).calc;
+    // the long run, frozen right after it maps bar K-1 (the last bar of the short run)
+    const calc = makeCalc();
+    const ents = [];
+    const cursor = { i: 0 };
+    const hist = series(ents, cursor);
+    tape.forEach((b, idx) => ents.push(entity(b, idx, () => idx === ents.length - 1, {})));
+    let frozen = null;
+    for (let i = 0; i < ents.length; ++i) {
+        cursor.i = i;
+        calc.map(ents[i], i, hist);
+        if (i === K - 1) {
+            frozen = JSON.stringify([calc.zoneStats, calc.controlStats, calc.openTests, calc.openControl]);
+        }
+    }
+    assert.strictEqual(frozen, JSON.stringify([short.zoneStats, short.controlStats, short.openTests, short.openControl]));
+    assert.ok(short.zoneTotals().n > 20, "the prefix has zone tests: " + short.zoneTotals().n);
+});
+
+function rates(calc) {
+    const z = calc.zoneTotals();
+    const r = calc.controlStats;
+    return { z: z.w / z.n, zn: z.n, r: r.w / r.n, rn: r.n };
+}
+
+// Bars cut from a tick-by-tick random walk (30 ticks per bar): OHLC and the
+// per-price volume come from the actual path, so price has no memory at all.
+function martingaleTape(nBars) {
+    const out = [];
+    let t = Math.round(21000 / TICK);
+    for (let i = 0; i < nBars; ++i) {
+        const o = t;
+        let h = t;
+        let l = t;
+        const visits = new Map();
+        for (let j = 0; j < 30; ++j) {
+            t += rand() < 0.5 ? -1 : 1;
+            h = Math.max(h, t);
+            l = Math.min(l, t);
+            visits.set(t, (visits.get(t) || 0) + 1);
+        }
+        const profile = [];
+        for (let q = l; q <= h; ++q) {
+            const vol = 5 * (visits.get(q) || 1);
+            const bidVol = Math.round(vol * (0.3 + 0.4 * rand()));
+            profile.push({ price: q * TICK, vol, bidVol, askVol: vol - bidVol });
+        }
+        // resting-order absorption printed at 3% of bar lows/highs — with no
+        // effect at all on where price goes next
+        if (rand() < 0.03) {
+            if (rand() < 0.5 && t - l >= 3) {
+                profile[0].bidVol += 600; profile[0].vol += 600;
+            }
+            else if (h - t >= 3) {
+                const top = profile[profile.length - 1];
+                top.askVol += 600; top.vol += 600;
+            }
+        }
+        out.push({ o: o * TICK, h: h * TICK, l: l * TICK, c: t * TICK, profile });
+    }
+    return out;
+}
+
+check("odds: on a random walk, zones show NO edge over random prices (3 seeds)", () => {
+    [2468, 1111, 9001].forEach(sd => {
+        seed = sd;
+        const s = rates(runHistory(martingaleTape(20000)).calc);
+        const se = Math.sqrt(s.z * (1 - s.z) / s.zn + s.r * (1 - s.r) / s.rn);
+        console.log("      random walk (seed " + sd + "): zones " + (100 * s.z).toFixed(1) + "% (n=" + s.zn +
+            ") vs random prices " + (100 * s.r).toFixed(1) + "% (n=" + s.rn + ")");
+        assert.ok(s.zn >= 300, "enough zone tests: " + s.zn);
+        assert.ok(s.rn >= 5000, "enough control tests: " + s.rn);
+        assert.ok(Math.abs(s.z - s.r) <= 2.58 * se, "difference within 99% noise band: " + (s.z - s.r).toFixed(3) + " vs " + (2.58 * se).toFixed(3));
+    });
+});
+
+check("odds: when zones really hold, the measured edge shows up", () => {
+    seed = 1357;
+    const tape = [];
+    const zonesAt = [];
+    let c0 = 21000;
+    let rally = 0;
+    for (let i = 0; i < 8000; ++i) {
+        let b;
+        if (rally > 0) {
+            const cl = onTick(c0 + 5 * TICK);
+            b = bar(c0, onTick(cl + TICK), c0, cl, 40);
+            rally--;
+        }
+        else {
+            b = randomBar(c0);
+            const z = zonesAt.find(p => c0 > p && b.l <= p + TICK && b.l >= p - 4 * TICK);
+            if (z !== undefined) {
+                // buyers defend the zone: the bar holds at it and the market rallies
+                b = bar(b.o, Math.max(b.o, onTick(z + 2 * TICK)), z, onTick(z + 2 * TICK), 40);
+                rally = 3;
+            }
+            else if (rand() < 0.03 && b.c - b.l >= 3 * TICK) {
+                b.profile[0].bidVol += 600; b.profile[0].vol += 600;
+                zonesAt.push(b.l);
+            }
+        }
+        tape.push(b);
+        c0 = b.c;
+    }
+    const s = rates(runHistory(tape).calc);
+    console.log("      defended zones: zones " + (100 * s.z).toFixed(1) + "% (n=" + s.zn + ") vs random prices " +
+        (100 * s.r).toFixed(1) + "% (n=" + s.rn + ")");
+    assert.ok(s.zn >= 100, "enough zone tests: " + s.zn);
+    assert.ok(s.z - s.r >= 0.2, "edge detected");
 });
 
 console.log(passed + " checks passed");

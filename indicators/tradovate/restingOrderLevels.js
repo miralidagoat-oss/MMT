@@ -1,4 +1,5 @@
-// Resting Order Levels — support/resistance from filled resting limit orders
+// Resting Order Levels — support/resistance from filled resting limit orders,
+// with the measured odds that each zone makes price reverse.
 //
 // Tradovate custom indicators cannot read the DOM (Level 2 book). What they CAN
 // read is the bar's volume profile: for every price, how many contracts traded
@@ -14,6 +15,13 @@
 // Levels gain strength every time they hold a retest, decay with age, and are
 // removed (or flipped) once a bar CLOSES through them.
 //
+// Reversal odds are MEASURED on this chart, not assumed: every time price
+// comes back to a zone, the indicator records whether price then bounced
+// `bounce` away from the zone before going `bounce` through it. The label shows
+// that hit rate for the zone's next test, with its sample size and 95% margin,
+// and the status line compares all zones against random prices tested the
+// same way.
+//
 // Paste into Tradovate: Code Explorer → New → Indicator, save, then add it to a
 // chart from Indicators → (tag) "Order Flow". See README for settings.
 
@@ -25,6 +33,7 @@ const SUPPORT = "S";
 const RESISTANCE = "R";
 const MAX_TRACKED_PER_SIDE = 40;
 const FALLBACK_MIN_WICK = 0.4; // bar-level mode: rejection wick ≥ 40% of range
+const TEST_BUCKETS = ["1st test", "2nd test", "3rd+ test"];
 
 // Distance settings set to 0 scale to the average bar range, so one default
 // works on ES (≈5-tick 1m bars) and NQ (≈20-tick 1m bars) alike:
@@ -34,7 +43,8 @@ const AUTO_DISTANCE = {
     rejectionTicks: [0.25, 2],
     touchTicks: [0.1, 1],
     mergeTicks: [0.25, 2],
-    breakTicks: [0.3, 2]
+    breakTicks: [0.3, 2],
+    bounceTicks: [1.5, 4]
 };
 
 function decimalsOf(tick) {
@@ -54,6 +64,47 @@ function fmtVol(v) {
         return (v / 1000).toFixed(1) + "k";
     }
     return String(Math.round(v));
+}
+
+// Wilson score interval (95%) for w wins out of n tests.
+function wilson(w, n) {
+    const z = 1.96;
+    const z2 = z * z;
+    const p = w / n;
+    const denom = 1 + z2 / n;
+    const center = (p + z2 / (2 * n)) / denom;
+    const half = z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / denom;
+    return { p, lo: Math.max(0, center - half), hi: Math.min(1, center + half) };
+}
+
+// Deterministic [0, 1) from a bar index, so the random-price control group is
+// identical on every reload instead of changing each time.
+function unitHash(k, salt) {
+    let h = (Math.imul(k + 1, 0x9e3779b1) ^ Math.imul(salt + 1, 0x85ebca6b)) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// One test = price returned to a price level on bar `start`. It is decided by
+// whichever comes first on later CLOSED bars: price `dist` away in the level's
+// favor (bounce = 1) or `dist` through it (fail = 0). Bar data can't show what
+// happened first inside a bar, so: on the touch bar only a fail can count, and a
+// bar that reaches both sides counts as a fail. No decision within `horizon`
+// bars counts as a fail. Returns -1 while undecided.
+function decide(t, bar, k, horizon, eps) {
+    const up = t.side === SUPPORT;
+    const failed = up ? bar.low <= t.price - t.dist + eps : bar.high >= t.price + t.dist - eps;
+    if (failed) {
+        return 0;
+    }
+    if (k > t.start) {
+        const bounced = up ? bar.high >= t.price + t.dist - eps : bar.low <= t.price - t.dist + eps;
+        if (bounced) {
+            return 1;
+        }
+    }
+    return k - t.start >= horizon ? 0 : -1;
 }
 
 // Snapshot of one bar as plain data (the profile array is kept by reference).
@@ -82,6 +133,12 @@ class restingOrderLevels {
         this.nextId = 1;
         this.profileBars = 0;
         this.barLevelBars = 0;
+        // reversal statistics, all from closed bars
+        this.openTests = [];      // retests of zones still waiting for an outcome
+        this.openControl = [];    // the same test at random prices (control group)
+        this.zoneStats = TEST_BUCKETS.map(() => ({ w: 0, n: 0 }));
+        this.controlStats = { w: 0, n: 0 };
+        this.prevClose = null;
     }
 
     tick() {
@@ -98,6 +155,10 @@ class restingOrderLevels {
         return Math.max(auto[1], Math.round(auto[0] * this.baseRange));
     }
 
+    warmedUp() {
+        return this.baseCount >= this.props.baselineBars / 2;
+    }
+
     // Pure: where did unusually large resting orders fill and hold on this bar?
     // Uses only the baseline from bars BEFORE this one, so a huge bar cannot
     // inflate its own threshold.
@@ -107,7 +168,7 @@ class restingOrderLevels {
         const eps = tick * 0.25;
         const reject = this.ticks("rejectionTicks") * tick - eps;
         const out = { support: null, resistance: null };
-        if (this.baseCount < p.baselineBars / 2 || bar.high - bar.low < tick - eps) {
+        if (!this.warmedUp() || bar.high - bar.low < tick - eps) {
             return out;
         }
 
@@ -178,7 +239,44 @@ class restingOrderLevels {
         return sum;
     }
 
-    // Fold one CLOSED bar into the level state.
+    // Advance open tests by one closed bar; tally the ones that got decided and
+    // note their zones in `decided` (that bar can't also start their next test).
+    settleTests(list, bar, k, isZone, decided) {
+        const eps = this.tick() * 0.25;
+        const horizon = this.props.horizonBars;
+        const open = [];
+        for (let j = 0; j < list.length; ++j) {
+            const t = list[j];
+            const result = decide(t, bar, k, horizon, eps);
+            if (result < 0) {
+                open.push(t);
+            }
+            else {
+                this.tally(t, result, isZone);
+                decided[t.id] = true;
+            }
+        }
+        return open;
+    }
+
+    tally(t, won, isZone) {
+        const s = isZone ? this.zoneStats[t.bucket] : this.controlStats;
+        s.n++;
+        s.w += won;
+    }
+
+    // Start a test on bar k; it may already fail on that bar (deep wick through).
+    startTest(t, bar, k, isZone) {
+        const result = decide(t, bar, k, this.props.horizonBars, this.tick() * 0.25);
+        if (result < 0) {
+            (isZone ? this.openTests : this.openControl).push(t);
+        }
+        else {
+            this.tally(t, result, isZone);
+        }
+    }
+
+    // Fold one CLOSED bar into the level state and the reversal statistics.
     commit(bar, k) {
         const p = this.props;
         const tick = this.tick();
@@ -186,6 +284,7 @@ class restingOrderLevels {
         const breakDist = this.ticks("breakTicks") * tick;
         const touch = this.ticks("touchTicks") * tick + eps;
         const merge = this.ticks("mergeTicks") * tick + eps;
+        const bounce = this.ticks("bounceTicks") * tick;
         const decay = p.halfLifeBars > 0 ? Math.pow(0.5, 1 / p.halfLifeBars) : 1;
 
         if (bar.profile) {
@@ -194,6 +293,13 @@ class restingOrderLevels {
         else {
             this.barLevelBars++;
         }
+
+        // 0) decide earlier tests with this bar, then remember which zones were
+        //    live coming into it (a zone this bar breaks still counts as tested)
+        const decided = {};
+        this.openTests = this.settleTests(this.openTests, bar, k, true, decided);
+        this.openControl = this.settleTests(this.openControl, bar, k, false, {});
+        const liveAtOpen = this.levels.map(lvl => ({ id: lvl.id, side: lvl.side, price: lvl.price, tests: lvl.tests || 0 }));
 
         // levels already updated by this bar (skip them in the retest pass)
         const handled = {};
@@ -213,6 +319,7 @@ class restingOrderLevels {
                 lvl.side = lvl.side === SUPPORT ? RESISTANCE : SUPPORT;
                 lvl.flipped = true;
                 lvl.holds = 0;
+                lvl.tests = 0;
                 lvl.strength *= 0.5;
                 lvl.lastTest = k;
                 handled[lvl.id] = true; // the breaking bar is not a retest of the new side
@@ -259,6 +366,7 @@ class restingOrderLevels {
                     filled: cand.vol,
                     strength: cand.vol,
                     holds: 0,
+                    tests: 0,
                     flipped: false,
                     estimated: cand.estimated
                 });
@@ -284,7 +392,50 @@ class restingOrderLevels {
             }
         }
 
-        // 4) prune idle levels and cap each side, weakest first
+        // 4) reversal tests: every zone that was live when this bar opened, that price
+        //    came into from the zone's side and that this bar touched starts a test
+        //    (one open test per zone at a time; never on the bar that decided its last
+        //    one, so a single price move is never counted twice)
+        liveAtOpen.forEach(z => {
+            const touched = z.side === SUPPORT ? bar.low <= z.price + touch : bar.high >= z.price - touch;
+            const approached = this.prevClose !== null &&
+                (z.side === SUPPORT ? z.price < this.prevClose - eps : z.price > this.prevClose + eps);
+            if (!touched || !approached || decided[z.id] || this.openTests.some(t => t.id === z.id && t.side === z.side)) {
+                return;
+            }
+            const testNo = z.tests + 1;
+            const lvl = this.levels.find(l => l.id === z.id);
+            if (lvl && lvl.side === z.side) {
+                lvl.tests = testNo;    // a level flipped by this bar restarts its count
+            }
+            this.startTest({
+                id: z.id,
+                side: z.side,
+                price: z.price,
+                dist: bounce,
+                start: k,
+                bucket: Math.min(testNo, TEST_BUCKETS.length) - 1
+            }, bar, k, true);
+        });
+
+        // 5) control group: two random prices fixed BEFORE this bar opens (up to one
+        //    bounce distance below and above the last close). Like a zone, each
+        //    starts a test only if this bar trades to it. Picking prices after
+        //    seeing the bar would favor bars that already bounced, so don't.
+        if (this.warmedUp() && this.prevClose !== null) {
+            const steps = Math.max(1, Math.round(bounce / tick));
+            const below = this.prevClose - (1 + Math.floor(unitHash(k, 1) * steps)) * tick;
+            const above = this.prevClose + (1 + Math.floor(unitHash(k, 2) * steps)) * tick;
+            if (bar.low <= below + touch) {
+                this.startTest({ id: 0, side: SUPPORT, price: below, dist: bounce, start: k, bucket: 0 }, bar, k, false);
+            }
+            if (bar.high >= above - touch) {
+                this.startTest({ id: 0, side: RESISTANCE, price: above, dist: bounce, start: k, bucket: 0 }, bar, k, false);
+            }
+        }
+        this.prevClose = bar.close;
+
+        // 6) prune idle levels and cap each side, weakest first
         const keep = this.levels.filter(lvl => k - lvl.lastTest <= p.maxIdleBars);
         const capped = [];
         [SUPPORT, RESISTANCE].forEach(side => {
@@ -295,7 +446,7 @@ class restingOrderLevels {
         });
         this.levels = capped;
 
-        // 5) baselines update AFTER detection
+        // 7) baselines update AFTER detection
         const alpha = 2 / (p.baselineBars + 1);
         const priceLevels = bar.profile
             ? bar.profile.length
@@ -314,6 +465,27 @@ class restingOrderLevels {
             this.baseRange += alpha * (rangeTicks - this.baseRange);
         }
         this.baseCount++;
+    }
+
+    // Measured bounce odds for this zone's next (or current) test.
+    odds(lvl) {
+        const open = this.openTests.some(t => t.id === lvl.id && t.side === lvl.side);
+        const testNo = Math.max(1, (lvl.tests || 0) + (open ? 0 : 1));
+        const b = Math.min(testNo, TEST_BUCKETS.length) - 1;
+        const min = this.props.minSamples;
+        const bucket = this.zoneStats[b];
+        if (bucket.n >= min) {
+            return Object.assign(wilson(bucket.w, bucket.n), { n: bucket.n, scope: TEST_BUCKETS[b] });
+        }
+        const all = this.zoneTotals();
+        if (all.n >= min) {
+            return Object.assign(wilson(all.w, all.n), { n: all.n, scope: "all tests" });
+        }
+        return { collecting: true, n: all.n };
+    }
+
+    zoneTotals() {
+        return this.zoneStats.reduce((a, s) => ({ w: a.w + s.w, n: a.n + s.n }), { w: 0, n: 0 });
     }
 
     // Which levels to draw, numbered nearest-first (S1 = closest support).
@@ -349,17 +521,50 @@ class restingOrderLevels {
         return supports.map(tag).concat(resistances.map(tag));
     }
 
+    oddsText(lvl) {
+        const o = this.odds(lvl);
+        if (o.collecting) {
+            return "reversal odds: collecting (n=" + o.n + ")";
+        }
+        const margin = Math.round(100 * (o.hi - o.lo) / 2);
+        const ctrl = this.controlStats;
+        // the same measurement at random prices: a zone only matters by how much it beats this
+        const vs = ctrl.n >= this.props.minSamples ? " vs " + Math.round(100 * ctrl.w / ctrl.n) + "% random" : "";
+        return Math.round(100 * o.p) + "% reversal ±" + margin + vs + " (" + o.scope + ", n=" + o.n + ")";
+    }
+
     label(entry, decimals) {
         const lvl = entry.lvl;
-        const parts = [
-            entry.name + " " + lvl.price.toFixed(decimals) + (lvl.flipped ? " (flipped)" : ""),
-            (lvl.estimated ? "~" : "") + fmtVol(lvl.filled) + (lvl.side === SUPPORT ? " bids filled" : " offers filled"),
-            lvl.holds > 0 ? "held " + lvl.holds + "x" : "new"
-        ];
+        const parts = [entry.name + " " + lvl.price.toFixed(decimals) + (lvl.flipped ? " (flipped)" : "")];
+        if (this.props.showOdds) {
+            parts.push(this.oddsText(lvl));
+        }
+        parts.push((lvl.estimated ? "~" : "") + fmtVol(lvl.filled) + (lvl.side === SUPPORT ? " bid fills" : " offer fills"));
+        parts.push(lvl.holds > 0 ? "held " + lvl.holds + "x" : "new");
         if (entry.status) {
             parts.push("<< " + entry.status);
         }
         return parts.join(" | ");
+    }
+
+    statusLines(shown, live, decimals) {
+        let mode = "footprint (per-price bid/ask fills)";
+        if (this.profileBars === 0 && this.barLevelBars > 0) {
+            mode = live.bidVol + live.askVol > 0
+                ? "bar-level estimate - no per-price data on this chart"
+                : "NO bid/ask volume on this chart";
+        }
+        const nS = shown.filter(e => e.lvl.side === SUPPORT).length;
+        const lines = ["Resting Order Levels: " + mode + "  |  " + nS + " S / " + (shown.length - nS) + " R  |  edge " +
+            this.ticks("edgeTicks") + "t, touch " + this.ticks("touchTicks") + "t, break " + this.ticks("breakTicks") + "t"];
+        if (this.props.showOdds) {
+            const rate = s => s.n ? Math.round(100 * s.w / s.n) + "% ±" +
+                Math.round(100 * (wilson(s.w, s.n).hi - wilson(s.w, s.n).lo) / 2) + " (n=" + s.n + ")" : "no tests yet";
+            const move = (this.ticks("bounceTicks") * this.tick()).toFixed(decimals);
+            lines.push("Reversal = " + move + " in favor before " + move + " against, within " + this.props.horizonBars +
+                " bars  |  zones " + rate(this.zoneTotals()) + "  vs  random prices " + rate(this.controlStats));
+        }
+        return lines;
     }
 
     graphicsFor(live, i, xOff, found) {
@@ -422,24 +627,15 @@ class restingOrderLevels {
         });
 
         if (p.showStatus) {
-            let mode = "footprint (per-price bid/ask fills)";
-            if (this.profileBars === 0 && this.barLevelBars > 0) {
-                mode = live.bidVol + live.askVol > 0
-                    ? "bar-level estimate - no per-price data on this chart"
-                    : "NO bid/ask volume on this chart";
-            }
-            const nS = shown.filter(e => e.lvl.side === SUPPORT).length;
-            const dists = "edge " + this.ticks("edgeTicks") + "t, touch " + this.ticks("touchTicks") +
-                "t, break " + this.ticks("breakTicks") + "t";
-            children.push({
+            this.statusLines(shown, live, decimals).forEach((text, n) => children.push({
                 tag: "Text",
-                key: "status",
-                point: { x: px(10), y: px(14) },
-                text: "Resting Order Levels: " + mode + "  |  " + nS + " S / " + (shown.length - nS) + " R  |  " + dists,
+                key: "status" + n,
+                point: { x: px(10), y: px(14 + 16 * n) },
+                text,
                 style: { fontSize: 11, fill: "#9aa4b2" },
                 // follow the user's alignment fix so the corner text stays on-screen
                 textAlignment: p.labelAlignment === "leftAbove" ? "leftBelow" : "rightBelow"
-            });
+            }));
         }
 
         items.push({ tag: "Container", key: "restingOrderLevels", children, global: true });
@@ -448,7 +644,8 @@ class restingOrderLevels {
 
     map(d, i, history) {
         // Fold every closed bar we have not seen yet. Guarding by index makes
-        // repeated calls on the live bar (one per tick) idempotent.
+        // repeated calls on the live bar (one per tick) idempotent, and keeps the
+        // live bar out of the statistics until it closes.
         for (let k = this.committed + 1; k < i; ++k) {
             const e = k === i - 1 ? history.prior() : history.get(k);
             this.commit(readBar(e), k);
@@ -490,6 +687,11 @@ module.exports = {
         levelsPerSide: predef.paramSpecs.number(5, 1, 1),
         baselineBars: predef.paramSpecs.period(50),
         barModeMultiple: predef.paramSpecs.number(1.8, 0.1, 0.5),
+        // reversal odds: bounce distance in ticks (0 = auto, 1.5× average bar range)
+        showOdds: predef.paramSpecs.bool(true),
+        bounceTicks: predef.paramSpecs.number(0, 1, 0),
+        horizonBars: predef.paramSpecs.number(60, 5, 5),
+        minSamples: predef.paramSpecs.number(20, 5, 5),
         showLabels: predef.paramSpecs.bool(true),
         showAbsorptionDots: predef.paramSpecs.bool(true),
         showStatus: predef.paramSpecs.bool(true),

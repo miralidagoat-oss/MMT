@@ -167,8 +167,9 @@ camelCase (`wallMultiple`, `persistSec`, and so on).
 node --test tradovate-dom/test/domLevels.test.js
 ```
 
-There are 38 tests covering:
+There are 40 tests covering:
 - the level rules (persist, flash, pull, fill with late prints, hold, break,
+  pulled-then-run-through,
   out of view, reconnect gaps);
 - the WebSocket protocol (authorize handshake, request framing, heartbeats,
   watchdog, time-penalty retries, error replies);

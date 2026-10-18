@@ -238,19 +238,40 @@ test("engine: a level gone during a disconnect is EXPIRED, not called pulled", (
     assert.deepStrictEqual(types().slice(-1), ["pulled@20999.00"]);
 });
 
-test("simulator: real wall holds, thin offer fills, spoof is pulled", () => {
-    const sim = new m.Simulator({ tick: 0.25, start: T0 });
-    const { e, events } = engine();
-    for (let i = 0; i < 1400; ++i) {
-        const out = sim.step();
-        e.onDom(out.dom);
-        e.onQuote(out.quote);
-    }
-    const kinds = new Set(events.map(ev => ev.type + ":" + ev.side));
-    assert.ok(kinds.has("held:bid"), [...kinds].join(","));
-    assert.ok(kinds.has("filled:ask"), [...kinds].join(","));
-    assert.ok(kinds.has("pulled:ask"), [...kinds].join(","));
-    assert.ok(e.flashes > 10, "flashes filtered: " + e.flashes);
+test("engine: a pulled wall that price then runs through is PULLED, not BROKEN", () => {
+    const { e, types } = engine();
+    let vol = 1000;
+    e.onQuote(quote(0, 21000, vol));
+    hold(e, 0, 12000, 21000, { 21001: 300 });
+    e.onDom(book(12500, 21000, {}));                    // wall vanishes, nothing traded there
+    e.onQuote(quote(12800, 21001.75, vol += 20));       // 300ms later price runs 3 ticks through
+    assert.deepStrictEqual(types(), ["born@21001.00", "pulled@21001.00"]);
+});
+
+test("engine: a consumed wall that price then runs through is FILLED, not BROKEN", () => {
+    const { e, types } = engine();
+    let vol = 1000;
+    e.onQuote(quote(0, 21000, vol));
+    hold(e, 0, 12000, 21000, { 21001: 300 });
+    e.onQuote(quote(12100, 21001, vol += 280));         // 280 lots trade at the wall
+    e.onDom(book(12500, 21000, {}));                    // and it is gone from the book
+    e.onQuote(quote(12800, 21001.75, vol += 20));
+    assert.deepStrictEqual(types(), ["born@21001.00", "filled@21001.00"]);
+});
+
+test("simulator: real wall holds, thin offer fills, spoof is pulled (8 seeds)", () => {
+    [42, 7, 99, 123, 2024, 5, 6, 8].forEach(seed => {
+        const sim = new m.Simulator({ tick: 0.25, start: T0, seed });
+        const { e, events } = engine();
+        for (let i = 0; i < 1400; ++i) {
+            const out = sim.step();
+            e.onDom(out.dom);
+            e.onQuote(out.quote);
+        }
+        const kinds = new Set(events.map(ev => ev.type + ":" + ev.side));
+        ["held:bid", "filled:ask", "pulled:ask"].forEach(k => assert.ok(kinds.has(k), "seed " + seed + ": " + [...kinds].join(",")));
+        assert.ok(e.flashes > 10, "flashes filtered: " + e.flashes);
+    });
 });
 
 // ── fake Tradovate transport ─────────────────────────────────────────────────

@@ -412,10 +412,18 @@ class LevelEngine {
             if (!level.pendingSince || t - level.pendingSince < wait) {
                 return;
             }
-            const drop = Math.max(0, level.peak - level.size);
-            const reason = level.gap ? "stale" : level.filled >= this.s.fillShare * drop ? "filled" : "pulled";
-            this.end(level, reason);
+            this.end(level, this.verdict(level));
         });
+    }
+
+    // Why a level that left the book is gone: its size traded (filled), it was
+    // cancelled (pulled), or we can't know because the feed was down (stale).
+    verdict(level) {
+        if (level.gap) {
+            return "stale";
+        }
+        const drop = Math.max(0, level.peak - level.size);
+        return level.filled >= this.s.fillShare * drop ? "filled" : "pulled";
     }
 
     end(level, reason) {
@@ -467,9 +475,12 @@ class LevelEngine {
                 level.lastFillAt = t;
             }
             const P = level.ticks;
+            // trading through a level that had already left the book says nothing
+            // new: judge why it left; "broken" is for size still showing in the book
+            const through = reason => this.end(level, level.pendingSince ? this.verdict(level) : reason);
             if (level.side === "bid") {
                 if (ticks <= P - s.breakTicks) {
-                    this.end(level, "broken");
+                    through("broken");
                     return;
                 }
                 if (ticks <= P + s.touchTicks) {
@@ -483,7 +494,7 @@ class LevelEngine {
             }
             else {
                 if (ticks >= P + s.breakTicks) {
-                    this.end(level, "broken");
+                    through("broken");
                     return;
                 }
                 if (ticks >= P - s.touchTicks) {
@@ -1032,7 +1043,7 @@ class TradovateSocket {
 class Simulator {
     constructor(opts) {
         this.tick = (opts && opts.tick) || 0.25;
-        this.depth = (opts && opts.depth) || 10;
+        this.depth = (opts && opts.depth) || 20;   // deep enough that the demo walls stay in view
         this.seed = (opts && opts.seed) || 42;
         this.t = (opts && opts.start) || Date.now();
         this.stepMs = (opts && opts.stepMs) || 100;
@@ -1046,9 +1057,12 @@ class Simulator {
         this.drift = 0;
     }
 
+    // mulberry32: integer-exact, so the feed never falls into a short repeat
     rand() {
-        this.seed = (this.seed * 1103515245 + 12345) % 2147483648;
-        return this.seed / 2147483648;
+        this.seed = (this.seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(this.seed ^ (this.seed >>> 15), 1 | this.seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     }
 
     baseSize(ticks) {

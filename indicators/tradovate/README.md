@@ -1,7 +1,9 @@
 # Resting Order Levels — Tradovate indicator
 
 `restingOrderLevels.js` draws labeled **support and resistance at prices where
-real resting limit orders got filled and held price**.
+real resting limit orders got filled and held price**. Each zone shows the
+**measured** chance that price reverses there, counted from what actually
+happened at these zones on your own chart.
 
 ## Why it uses fills and not the DOM
 
@@ -47,8 +49,8 @@ but filled size cannot.
 ## Reading the chart
 
 ```
-S1 21000.00 | 1.5k bids filled | held 2x
-R1 21020.00 | 862 offers filled | new  << TESTING
+S1 21000.00 | 65% reversal ±13 vs 54% random (1st test, n=48) | 1.5k bid fills | held 2x
+R1 21020.00 | 58% reversal ±7 vs 54% random (all tests, n=212) | 862 offer fills | new  << TESTING
 ```
 
 - **S1/R1** are the nearest support/resistance to price, then S2, S3, and so
@@ -60,6 +62,61 @@ R1 21020.00 | 862 offers filled | new  << TESTING
 - **Dashed lines** are flipped levels: broken support now acting as
   resistance, or the reverse.
 - **Small dots** mark the bars and prices where an absorption happened.
+
+## Reversal odds — what the percentage means
+
+The percentage is **counted, not modeled or assumed**. Every time price comes
+back to a zone on your chart, the indicator starts a **test**:
+
+- **Reversal**: price moves `bounce` **away** from the zone, in the zone's
+  favor, before it moves `bounce` **through** it, within `horizonBars` bars.
+- Anything else counts as **no reversal**. That includes going `bounce`
+  through first, both happening in one bar, or neither happening in time.
+- `bounce` is shown on the status line. By default it is 1.5 × the average bar
+  range, for example about 7.50 points on 1-minute NQ.
+
+`65% reversal ±13 (1st test, n=48)` means: of the 48 times price came back to a
+zone for the first time on this chart, 31 (65%) reversed by that definition.
+The true rate is likely between 50% and 77% (a 95% Wilson interval).
+
+- **Test buckets.** Zones are grouped by **1st, 2nd, and 3rd+ test**, because
+  how often a zone has already been hit can matter. If a bucket has fewer than
+  `minSamples` (20) tests, the label uses all tests together and says so. If
+  there are fewer than 20 tests in total, it shows
+  `reversal odds: collecting (n=7)` instead of a number.
+- **"vs 54% random".** The indicator runs the exact same test at random prices
+  near the market. Each one is chosen before the bar opens and tested only if
+  the bar trades to it, exactly like a zone. **A zone only matters by how much
+  it beats this number.** On data where zones mean nothing, both numbers come
+  out the same, which is checked in the tests below. If your zones show 55% vs
+  54% random, they have no real edge on this chart.
+- **Status line.** It shows the totals: all zone tests against all random
+  tests, each with its sample size.
+
+### Rules that keep the number honest
+
+- **Only closed bars are counted.** The live bar never feeds the statistics,
+  so the number never uses future data.
+- **Every return to a zone counts**, including returns where the zone broke on
+  that same bar. Counting only zones that survived would inflate the rate.
+- **Bar data can't show which came first inside one bar.** So the touch bar's
+  own high or low is never counted as a reversal, and a bar that reaches both
+  sides counts as **no reversal**. This makes the number conservative.
+- **One open test per zone at a time.** A new test can't start on the bar that
+  decided the previous one, so a single price move is never counted twice.
+- **Deterministic.** The random prices are fixed by bar number, so reloading
+  the chart gives the same statistics.
+
+### Limits
+
+- **It describes the past on the history loaded on your chart.** More loaded
+  history means more tests and a smaller ±. A different market, timeframe or
+  period can give a different rate, so check `n` and the ± before trusting a
+  number.
+- **The ± is a minimum.** Two nearby zones hit by the same move are partly the
+  same event, so the real uncertainty is a bit wider than the ± shown.
+- **This is not a prediction.** A zone at 65% still fails about a third of the
+  time.
 
 ## Settings
 
@@ -83,6 +140,10 @@ in use. Enter a number to fix a distance in ticks.
 | `levelsPerSide` | 5 | How many levels to draw per side |
 | `baselineBars` | 50 | Lookback for "normal" volume |
 | `barModeMultiple` | 1.8 | Threshold used only in bar-level fallback mode |
+| `showOdds` | on | Show the measured reversal odds on labels and the status line |
+| `bounceTicks` | auto (1.5 × range, min 4) | The move that counts as a reversal, and the same move the other way counts as a failure |
+| `horizonBars` | 60 | A test not decided within this many bars counts as no reversal |
+| `minSamples` | 20 | Fewest tests before a percentage is shown (per test-number bucket, otherwise for all tests together) |
 | `labelAlignment` | Right of last bar | If labels sit on top of the candles, switch to "Left of last bar" (Tradovate's docs don't say which way these values point) |
 | `labelOffsetPx` | 8 | Gap between the last bar and the labels. Increase the chart's right margin if labels are cut off |
 
@@ -91,8 +152,9 @@ in use. Enter a number to fix a distance in ticks.
 - **Past fills are not guaranteed future orders.** A level shows where size
   defended before. The same participants may not be there next time, which is
   why levels fade and break.
-- **Not backtested yet**, unlike the Pine indicator in this repo. Treat the
-  levels as context for your read of the tape, not as signals.
+- **The odds come from your chart's own history.** No result from other data
+  is built in. There is no fixed claim of an edge; the "vs random" number
+  tells you whether there is one on your market and timeframe.
 - **Not run inside Tradovate yet.** The code follows Tradovate's official
   indicator typings and community indicators that use the same calls
   (`d.profile()`, graphics `LineSegments`/`Text`). It was exercised with the
@@ -107,9 +169,28 @@ node indicators/tradovate/test/harness.js
 ```
 
 The harness runs the indicator on synthetic footprint bars with planted
-absorption events. It checks that levels are created, held, broken and
-flipped correctly, that the graphics are valid, that results do not change
-with how many live ticks arrive, and that the fallback modes behave.
+absorption events. It checks that:
+
+- levels are created, held, broken and flipped correctly;
+- the graphics are valid;
+- results do not change with how many live ticks arrive;
+- the fallback modes behave.
+
+For the reversal odds it checks:
+
+- each outcome rule on hand-built bars (reversal, failure, both in one bar,
+  touch-bar wick, timeout, zones broken on the touch bar, test numbering);
+- the ± margin against an independent computation;
+- that results up to any bar never change when later bars are added (no
+  lookahead).
+
+Two statistical checks guard the comparison itself:
+
+- **On bars cut from a pure random walk**, with resting-order prints that have
+  no effect on price, zones and random prices come out the same in three
+  seeds: 53.8% vs 54.4%, 55.2% vs 54.6%, 53.4% vs 54.3%. The comparison does
+  not invent an edge.
+- **When zones really do make price bounce**, the edge shows up: 100% vs 63%.
 
 ## Wanting the actual DOM?
 
