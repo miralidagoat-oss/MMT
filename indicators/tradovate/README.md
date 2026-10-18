@@ -114,8 +114,8 @@ with how many live ticks arrive, and that the fallback modes behave.
 ## Wanting the actual DOM?
 
 Live book data, meaning resting orders that have **not** traded yet, is only
-available outside the chart. Tradovate's API (`md/subscribeDOM`) provides it
-and needs API access on the account. A separate tool could track large
-resting orders that persist (filtering out flashed and pulled size) and list
-those levels. Tradovate's API cannot draw them on its charts, so they would
-show in their own window.
+available outside the chart, through Tradovate's API. The companion tool
+[`tradovate-dom/`](../../tradovate-dom) uses it. It tracks large resting
+orders that persist, ignores flashes, flags pulled (spoofed) size, and shows
+the levels in a terminal and a local dashboard. It needs API access on the
+account. You can try it without an account using `--simulate`.

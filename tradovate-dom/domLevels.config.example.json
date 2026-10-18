@@ -1,0 +1,15 @@
+{
+    "username": "your Tradovate username",
+    "password": "your Tradovate password",
+    "cid": 0,
+    "secret": "your API key secret",
+    "appId": "domLevels",
+    "appVersion": "1.0",
+    "env": "demo",
+    "symbol": "MNQZ6",
+
+    "wallMultiple": 3,
+    "minSize": 0,
+    "persistSec": 10,
+    "levelsPerSide": 5
+}

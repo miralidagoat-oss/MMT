@@ -10,6 +10,9 @@ the results in an on-chart dashboard.
 - **Tradovate:** `indicators/tradovate/restingOrderLevels.js` — support/resistance
   from filled resting limit orders (footprint absorption), labeled on chart.
   See [`indicators/tradovate/README.md`](indicators/tradovate/README.md).
+- **Tradovate DOM tool:** `tradovate-dom/domLevels.js` — live support/resistance
+  from large resting orders in the order book (API access required; try it
+  with `--simulate`). See [`tradovate-dom/README.md`](tradovate-dom/README.md).
 
 ## Audit findings (why v1's "backtest" was fiction)
 

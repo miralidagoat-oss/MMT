@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+
+# domLevels (Tradovate DOM tool): credentials, device id, event logs
+tradovate-dom/domLevels.config.json
+tradovate-dom/.domLevels-device-id
+*.jsonl
