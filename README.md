@@ -7,6 +7,9 @@ the results in an on-chart dashboard.
 
 - **Maintained script:** `indicators/alpha_predictive_limit_matrix.pine` (v2)
 - **Original submission:** `indicators/legacy/alpha_predictive_limit_matrix_v1.pine` — kept for reference only
+- **Tradovate:** `indicators/tradovate/restingOrderLevels.js` — support/resistance
+  from filled resting limit orders (footprint absorption), labeled on chart.
+  See [`indicators/tradovate/README.md`](indicators/tradovate/README.md).
 
 ## Audit findings (why v1's "backtest" was fiction)
 
