@@ -10,6 +10,10 @@ the results in an on-chart dashboard.
 - **Tradovate:** `indicators/tradovate/restingOrderLevels.js` — support/resistance
   from filled resting limit orders (footprint absorption), labeled on chart.
   See [`indicators/tradovate/README.md`](indicators/tradovate/README.md).
+- **Tradovate Liquidity Regime Meter:** `indicators/tradovate/liquidityRegimeMeter.js`
+  — DEEP/THIN order-flow state ranked against the same clock time in earlier
+  sessions, and your zones' measured reversal rate in each state.
+  See [`indicators/tradovate/liquidityRegimeMeter.md`](indicators/tradovate/liquidityRegimeMeter.md).
 - **Tradovate DOM tool:** `tradovate-dom/domLevels.js` — live support/resistance
   from large resting orders in the order book (API access required; try it
   with `--simulate`). See [`tradovate-dom/README.md`](tradovate-dom/README.md).

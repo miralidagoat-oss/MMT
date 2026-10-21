@@ -318,7 +318,7 @@ check("graphics: global level container only on the last bar, valid shapes", () 
     assert.ok(texts.some(t => /^S1 21000\.\d\d \| reversal odds: collecting \(n=\d+\) \| .*bid fills \| held \dx/.test(t)), "S1 label: " + texts.join(" / "));
     assert.ok(texts.some(t => /^R1 21020\.00 \| .* \| .*offer fills/.test(t)), "R1 label: " + texts.join(" / "));
     assert.ok(texts.some(t => t.startsWith("Resting Order Levels: footprint")), "status text");
-    assert.ok(texts.some(t => /^Reversal = \d+\.\d\d in favor before \d+\.\d\d against, within 60 bars {2}\| {2}zones .* {2}vs {2}random prices \d+% ±\d+ \(n=\d+\)$/.test(t)), "odds status: " + texts.join(" / "));
+    assert.ok(texts.some(t => /^Reversal = 1\.5x avg bar range \(now \d+\.\d\d, \d+\.\d\d-\d+\.\d\d in the counted tests\) in favor before the same against, within 60 bars {2}\| {2}zones .* {2}vs {2}random prices \d+% ±\d+ \(n=\d+\)$/.test(t)), "odds status: " + texts.join(" / "));
     outputs.forEach(o => o.graphics && checkGraphics(o.graphics.items));
 });
 

@@ -4,11 +4,13 @@
 //
 // IMPACT. Over the last `impactWindow` closed bars of this session, the meter
 // regresses each bar's price change (ticks) on its net aggressive volume
-// (volume at the ask minus volume at the bid). The slope is how many ticks
-// price moved per contract of net aggression (Kyle's lambda), shown per 100
-// contracts; R² is how much of the price change that net flow explains. The
-// slope is ranked against the same time of day in prior sessions, because the
-// market is naturally thinner overnight than at the open:
+// (volume at the ask minus volume at the bid), after clipping outliers at
+// ±4 robust standard deviations of that same window. The slope is how many
+// ticks price moved per contract of net aggression (Kyle's lambda), shown per
+// 100 contracts; R² is how much of the price change that net flow explains.
+// The slope is ranked against readings taken at the same clock time (±10
+// minutes, New York time) in prior sessions, because liquidity follows the
+// clock (thin overnight, deep after the open):
 //   DEEP   = bottom third: aggression is getting absorbed
 //   NORMAL = middle third
 //   THIN   = top third: aggression moves price further than usual
@@ -20,10 +22,9 @@
 // that was in force when price came back, so you see your REAL zones' reversal
 // rate per state, with a 95% margin that treats each session as one unit. The
 // same test at random prices is shown next to it as the baseline, and the
-// DEEP-minus-THIN gap is checked twice: with volatility held equal, and
-// against a volume-only liquidity measure (Amihud) that ignores the bid/ask
-// split. The verdict line says whether the order-flow state actually matters
-// on this chart.
+// DEEP-minus-THIN gap is checked at equal volatility and against a volume-only
+// liquidity measure (Amihud) that ignores the bid/ask split. The verdict says
+// what predicts zone reversals on this chart — never why.
 //
 // Paste into Tradovate: Code Explorer → New → Indicator, save, then add it to a
 // chart from Indicators → (tag) "Order Flow". It opens in its own panel.
@@ -49,12 +50,13 @@ const AUTO_DISTANCE = {
 };
 
 const STATES = ["DEEP", "NORMAL", "THIN"];
-const SEGMENTS = ["overnight", "pre-market", "RTH open", "midday", "afternoon"];
-const POOL_STRIDE = 5;        // pool every 5th bar's reading (neighbours share 29 of 30 window bars)
-const MIN_POOL_VALUES = 10;   // a prior session counts for warm-up with ≥ 10 readings in that segment
-const CLIP_EVERY = 20;        // refresh the outlier bounds every 20 valid bars...
-const CLIP_LOOKBACK = 200;    // ...from the last 200 raw values
-const CLIP_MADS = 4;          // clip at median ± 4 robust standard deviations
+const VOL_THIRDS = ["calm", "mid", "volatile"];
+const SLOT_MINUTES = 5;       // clock slots of 5 minutes, New York time
+const SLOTS = 288;
+const SLOT_REACH = 2;         // rank against prior sessions' readings within ±2 slots (±10 min)
+const MIN_POOLED = 9;         // ...and only once at least 9 such readings exist
+const CLIP_MADS = 4;          // clip at median ± 4 robust standard deviations of the window
+const LINE_CHARS = 110;       // wrap text lines so they fit a normal chart panel
 // two-sided 95% Student t quantiles, df = 1..30
 const T95 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
     2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086,
@@ -141,23 +143,20 @@ function etMinutes(ms) {
     return et.getUTCHours() * 60 + et.getUTCMinutes();
 }
 
-// Time-of-day segment (ET): 0 overnight 16:00-02:59, 1 pre-market 03:00-09:29,
-// 2 RTH open 09:30-10:29, 3 midday 10:30-13:59, 4 afternoon 14:00-15:59.
-function segmentOf(ms) {
-    if (!Number.isFinite(ms)) {
-        return 0;
-    }
-    const m = etMinutes(ms);
-    if (m >= 16 * 60 || m < 3 * 60) {
-        return 0;
-    }
-    if (m < 9 * 60 + 30) {
-        return 1;
-    }
-    if (m < 10 * 60 + 30) {
-        return 2;
-    }
-    return m < 14 * 60 ? 3 : 4;
+// 5-minute clock slot (0-287) in New York time.
+function slotOf(ms) {
+    return Number.isFinite(ms) ? Math.floor(etMinutes(ms) / SLOT_MINUTES) : 0;
+}
+
+function clockText(minutes) {
+    const m = ((minutes % 1440) + 1440) % 1440;
+    return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+}
+
+// The clock span ranked against for a slot, e.g. "09:20-09:45 ET".
+function spanText(slot) {
+    return clockText((slot - SLOT_REACH) * SLOT_MINUTES) + "-" +
+        clockText((slot + SLOT_REACH + 1) * SLOT_MINUTES) + " ET";
 }
 
 // CME trade date when the bar has no tradeDate(): the session rolls at 18:00 ET.
@@ -198,6 +197,12 @@ function tercile(pct) {
     return pct < 100 / 3 ? 0 : pct >= 200 / 3 ? 2 : 1;
 }
 
+// Whole-number percentile that never contradicts its third (DEEP ≤ 33, THIN ≥ 67).
+function shownPct(pct, third) {
+    const lim = [[1, 33], [34, 66], [67, 99]][third];
+    return Math.min(lim[1], Math.max(lim[0], Math.round(pct)));
+}
+
 // Two-sided 95% t quantile; Cornish-Fisher expansion beyond the table.
 function tCrit(df) {
     if (!(df >= 1)) {
@@ -210,11 +215,16 @@ function tCrit(df) {
     return z + (z * z * z + z) / (4 * df) + (5 * Math.pow(z, 5) + 16 * z * z * z + 3 * z) / (96 * df * df);
 }
 
-// Robust outlier bounds: median ± CLIP_MADS × 1.4826 × MAD; null = no clipping.
+// Half-width of the Wilson 95% interval for w successes in n.
+function wilsonHalf(w, n) {
+    const z2 = 1.959964 * 1.959964;
+    const p = w / n;
+    const denom = 1 + z2 / n;
+    return 1.959964 * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / denom;
+}
+
+// Robust bounds of a set of values: median ± CLIP_MADS × 1.4826 × MAD; null = no clipping.
 function robustBounds(values) {
-    if (values.length < CLIP_EVERY) {
-        return null;
-    }
     const s = values.slice().sort((a, b) => a - b);
     const med = s[s.length >> 1];
     const dev = s.map(v => Math.abs(v - med)).sort((a, b) => a - b);
@@ -238,20 +248,65 @@ function zeros(n) {
     return a;
 }
 
-// Tally cell for a test: volatility tercile × impact state × volume-only tercile.
+// Tally cell for a test: volatility third × impact state × volume-only third.
 function cellOf(atrT, lamT, illT) {
     return atrT * 9 + lamT * 3 + illT;
 }
 
-function ordinal(p) {
-    const n = Math.max(0, Math.min(100, Math.round(p)));
+const CELLS = [];
+for (let a = 0; a < 3; ++a) {
+    for (let l = 0; l < 3; ++l) {
+        for (let i = 0; i < 3; ++i) {
+            CELLS.push({ a, l, i, c: cellOf(a, l, i) });
+        }
+    }
+}
+
+function ordinal(n) {
     const tens = n % 100;
     const s = tens >= 11 && tens <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th";
     return n + s;
 }
 
 const pct = x => Math.round(100 * x) + "%";
-const pts = x => (x >= 0 ? "+" : "") + Math.round(100 * x);
+const pts = x => {
+    const v = Math.round(100 * x);
+    return (v >= 0 ? "+" : "") + (v === 0 ? 0 : v);   // never "-0"
+};
+
+// Wrap a line to LINE_CHARS, breaking at " | " where possible (the "|" stays at
+// the end of the line) and between words otherwise; continuations are indented.
+function wrap(text) {
+    if (!text) {
+        return [];
+    }
+    const fit = LINE_CHARS - 2;
+    const out = [];
+    let line = "";
+    const add = (piece, sep) => {
+        if (line && (line + sep + piece).length > fit) {
+            out.push(sep === " | " ? line + " |" : line);
+            line = "    " + piece;
+        }
+        else {
+            line = line ? line + sep + piece : piece;
+        }
+    };
+    text.split(" | ").forEach((part, n) => {
+        const sep = n > 0 ? " | " : "";
+        if ((line + sep + part).length <= fit || ("    " + part).length <= fit) {
+            add(part, " | ");
+            return;
+        }
+        part.split(" ").forEach((word, j) => add(word, j === 0 && n > 0 ? " | " : " "));
+    });
+    out.push(line);
+    return out;
+}
+
+function emptyWindow() {
+    return { r: [], q: [], rng: [], vol: [] };
+}
 
 // Snapshot of one bar as plain data (the profile array is kept by reference).
 function readBar(d) {
@@ -297,16 +352,13 @@ class liquidityRegimeMeter {
         // meter
         this.g = 0;               // session ordinal
         this.lastSession = null;
-        this.everStreamed = false;
         this.meterClose = null;   // previous close, for the window's price change
-        this.win = { r: [], q: [], rng: [], vol: [] };
-        this.rawR = [];
-        this.rawQ = [];
-        this.clipR = null;
-        this.clipQ = null;
-        this.validBars = 0;
-        this.pools = SEGMENTS.map(() => ({ sessions: [], lam: [], atr: [], ill: [] }));
-        this.today = SEGMENTS.map(() => ({ lam: [], atr: [], ill: [] }));
+        this.meterTs = NaN;       // previous closed bar's time, to spot halts
+        this.win = emptyWindow();
+        this.prior = [];          // completed sessions: first reading per clock slot
+        this.today = { lam: {}, atr: {}, ill: {} };
+        this.poolVersion = 0;
+        this.refCache = null;
         this.sess = {};           // session ordinal → tallies of tagged tests, by cell
         this.totals = { z: { w: 0, n: 0 }, r: { w: 0, n: 0 } };
         this.excluded = {
@@ -314,6 +366,7 @@ class liquidityRegimeMeter {
             r: { building: 0, warmup: 0, unclear: 0 }
         };
         this.howDecided = STATES.map(() => ({ win: 0, through: 0, both: 0, timeout: 0 }));
+        this.distUsed = null;     // [smallest, largest] reversal distance among tagged zone tests
         this.coverage = { aggressor: 0, volume: 0 };
         this.cache = null;
     }
@@ -436,6 +489,7 @@ class liquidityRegimeMeter {
         const won = result === "win" ? 1 : 0;
         this.totals[fam].n++;
         this.totals[fam].w += won;
+        this.cache = null;
         if (!t.tag) {
             this.excluded[fam][t.why]++;
             return;
@@ -449,8 +503,10 @@ class liquidityRegimeMeter {
         s[fam + "w"][c] += won;
         if (fam === "z") {
             this.howDecided[t.tag[0]][result]++;
+            this.distUsed = this.distUsed
+                ? [Math.min(this.distUsed[0], t.dist), Math.max(this.distUsed[1], t.dist)]
+                : [t.dist, t.dist];
         }
-        this.cache = null;
     }
 
     startTest(t, bar, k, fam) {
@@ -486,33 +542,60 @@ class liquidityRegimeMeter {
         return Math.max(10, Math.round(this.props.impactWindow));
     }
 
-    // Close the day: its time-of-day readings join the pools that later
-    // sessions are ranked against; the impact window starts over.
+    // A pause longer than this inside one trade date (e.g. a holiday halt)
+    // restarts the impact window: the price jump across it is not flow-driven.
+    haltLimitMs() {
+        const c = this.chartDescription;
+        const minutes = c && c.underlyingType === "MinuteBar" ? Math.max(30, 3 * (c.elementSize || 1)) : 60;
+        return minutes * 60000;
+    }
+
+    // Close the day: its first reading in every clock slot joins the history
+    // that later sessions are ranked against; the impact window starts over.
     closeSession() {
-        const cap = Math.max(this.props.poolSessions, this.props.minPriorSessions);
-        for (let s = 0; s < SEGMENTS.length; ++s) {
-            const day = this.today[s];
-            if (!day.lam.length && !day.atr.length && !day.ill.length) {
-                continue;
+        const day = this.today;
+        if (Object.keys(day.lam).length || Object.keys(day.atr).length || Object.keys(day.ill).length) {
+            this.prior.push(day);
+            const cap = Math.max(this.props.poolSessions, this.props.minPriorSessions);
+            while (this.prior.length > cap) {
+                this.prior.shift();
             }
-            const pool = this.pools[s];
-            pool.sessions.push(day);
-            while (pool.sessions.length > cap) {
-                pool.sessions.shift();
-            }
-            ["lam", "atr", "ill"].forEach(m => {
-                pool[m] = pool.sessions.reduce((a, x) => a.concat(x[m]), []).sort((a, b) => a - b);
-            });
+            this.poolVersion++;
         }
-        this.today = SEGMENTS.map(() => ({ lam: [], atr: [], ill: [] }));
-        this.win = { r: [], q: [], rng: [], vol: [] };
+        this.today = { lam: {}, atr: {}, ill: {} };
+        this.win = emptyWindow();
         this.g++;
     }
 
-    // Prior sessions with enough readings in this segment, for the scarcest measure.
-    warmSessions(pool) {
-        return Math.min.apply(null, ["lam", "atr", "ill"].map(m =>
-            pool.sessions.filter(x => x[m].length >= MIN_POOL_VALUES).length));
+    // Prior sessions' readings within ±SLOT_REACH slots of `slot`, sorted, with
+    // how many sessions contributed (cached until the next session closes).
+    reference(slot) {
+        if (!this.refCache || this.refCache.version !== this.poolVersion) {
+            this.refCache = { version: this.poolVersion, slots: {} };
+        }
+        const hit = this.refCache.slots[slot];
+        if (hit) {
+            return hit;
+        }
+        const ref = {};
+        ["lam", "atr", "ill"].forEach(m => {
+            const values = [];
+            let sessions = 0;
+            this.prior.forEach(day => {
+                let any = false;
+                for (let d = -SLOT_REACH; d <= SLOT_REACH; ++d) {
+                    const v = day[m][(slot + d + SLOTS) % SLOTS];
+                    if (v !== undefined) {
+                        values.push(v);
+                        any = true;
+                    }
+                }
+                sessions += any ? 1 : 0;
+            });
+            ref[m] = { sorted: values.sort((a, b) => a - b), sessions };
+        });
+        this.refCache.slots[slot] = ref;
+        return ref;
     }
 
     // The state in force during a bar, from closed bars of its session only.
@@ -522,15 +605,24 @@ class liquidityRegimeMeter {
         if (session !== this.lastSession) {
             return { status: "building", n: 0, W };
         }
+        if (Number.isFinite(ms) && Number.isFinite(this.meterTs) && ms - this.meterTs > this.haltLimitMs()) {
+            return { status: "building", n: 0, W };
+        }
         const n = w.r.length;
         if (n < W) {
             return { status: "building", n, W };
         }
+        // outliers clipped against this window's own spread, so a quiet or wild
+        // earlier period never rescales the current one
+        const br = robustBounds(w.r);
+        const bq = robustBounds(w.q);
+        const r = w.r.map(v => clampTo(v, br));
+        const q = w.q.map(v => clampTo(v, bq));
         let mr = 0, mq = 0, sumAbs = 0, sumVol = 0, sumRange = 0;
         for (let j = 0; j < n; ++j) {
-            mr += w.r[j];
-            mq += w.q[j];
-            sumAbs += Math.abs(w.r[j]);
+            mr += r[j];
+            mq += q[j];
+            sumAbs += Math.abs(r[j]);
             sumVol += w.vol[j];
             sumRange += w.rng[j];
         }
@@ -538,8 +630,8 @@ class liquidityRegimeMeter {
         mq /= n;
         let cov = 0, vq = 0, vr = 0;
         for (let j = 0; j < n; ++j) {
-            const dr = w.r[j] - mr;
-            const dq = w.q[j] - mq;
+            const dr = r[j] - mr;
+            const dq = q[j] - mq;
             cov += dr * dq;
             vq += dq * dq;
             vr += dr * dr;
@@ -549,51 +641,65 @@ class liquidityRegimeMeter {
         vr /= n - 1;
         const lam = vq > 0 ? cov / vq : 0;
         const r2 = vq > 0 && vr > 0 ? cov * cov / (vq * vr) : 0;
-        const seg = segmentOf(ms);
-        const pool = this.pools[seg];
+        const slot = slotOf(ms);
+        const ref = this.reference(slot);
         const st = {
             full: true,
             n,
             W,
-            seg,
+            slot,
             lam,
             r2,
             atr: sumRange / n,
             ill: sumVol > 0 ? sumAbs / sumVol : 0,
             lamValid: vq > 0 && lam > 0 && r2 >= this.props.r2Gate,
-            warm: this.warmSessions(pool)
+            unclear: !(vq > 0) ? "noflow" : !(lam > 0) ? "negative" : "lowr2",
+            haveSessions: Math.min(ref.lam.sessions, ref.atr.sessions, ref.ill.sessions),
+            havePooled: Math.min(ref.lam.sorted.length, ref.atr.sorted.length, ref.ill.sorted.length)
         };
-        if (st.warm < this.props.minPriorSessions) {
+        const warm = ["lam", "atr", "ill"].every(m =>
+            ref[m].sessions >= this.props.minPriorSessions && ref[m].sorted.length >= MIN_POOLED);
+        if (!warm) {
             st.status = "warmup";
             return st;
         }
-        st.atrPct = midrank(pool.atr, st.atr);
-        st.illPct = midrank(pool.ill, st.ill);
+        st.atrPct = midrank(ref.atr.sorted, st.atr);
+        st.illPct = midrank(ref.ill.sorted, st.ill);
         st.atrT = tercile(st.atrPct);
         st.illT = tercile(st.illPct);
         if (!st.lamValid) {
             st.status = "unclear";
             return st;
         }
-        st.lamPct = midrank(pool.lam, lam);
+        st.lamPct = midrank(ref.lam.sorted, lam);
         st.lamT = tercile(st.lamPct);
         st.status = "ok";
         return st;
     }
 
+    // Remember a reading: the first one of each clock slot in this session.
+    remember(st) {
+        const day = this.today;
+        if (day.atr[st.slot] === undefined) {
+            day.atr[st.slot] = st.atr;
+            day.ill[st.slot] = st.ill;
+        }
+        if (st.lamValid && day.lam[st.slot] === undefined) {
+            day.lam[st.slot] = st.lam;
+        }
+    }
+
     // Add a closed bar to the impact window (price change within the session only).
-    pushWindow(bar, newSession) {
+    pushWindow(bar, restart) {
         const prev = this.meterClose;
         this.meterClose = bar.close;
-        if (newSession || prev === null || !(bar.volume > 0)) {
+        if (restart || prev === null || !(bar.volume > 0)) {
             return;
         }
         const tick = this.tick();
-        const rRaw = (bar.close - prev) / tick;
-        const qRaw = bar.askVol - bar.bidVol;
         const w = this.win;
-        w.r.push(clampTo(rRaw, this.clipR));
-        w.q.push(clampTo(qRaw, this.clipQ));
+        w.r.push((bar.close - prev) / tick);
+        w.q.push(bar.askVol - bar.bidVol);
         w.rng.push((bar.high - bar.low) / tick);
         w.vol.push(bar.volume);
         const W = this.windowSize();
@@ -602,17 +708,6 @@ class liquidityRegimeMeter {
             w.q.shift();
             w.rng.shift();
             w.vol.shift();
-        }
-        this.rawR.push(rRaw);
-        this.rawQ.push(qRaw);
-        if (this.rawR.length > CLIP_LOOKBACK) {
-            this.rawR.shift();
-            this.rawQ.shift();
-        }
-        this.validBars++;
-        if (this.validBars % CLIP_EVERY === 0) {
-            this.clipR = robustBounds(this.rawR);
-            this.clipQ = robustBounds(this.rawQ);
         }
     }
 
@@ -627,12 +722,18 @@ class liquidityRegimeMeter {
         const bounce = this.ticks("bounceTicks") * tick;
         const decay = p.halfLifeBars > 0 ? Math.pow(0.5, 1 / p.halfLifeBars) : 1;
 
-        // meter: a new trade date closes the previous session first
+        // meter: a new trade date closes the previous session; a long pause inside
+        // one trade date restarts the window. Then the state in force on this bar.
         const newSession = this.lastSession !== null && bar.session !== this.lastSession;
         if (newSession) {
             this.closeSession();
         }
         this.lastSession = bar.session;
+        const halted = !newSession && Number.isFinite(bar.ts) && Number.isFinite(this.meterTs) &&
+            bar.ts - this.meterTs > this.haltLimitMs();
+        if (halted) {
+            this.win = emptyWindow();
+        }
         const st = this.stateFor(bar.ts, bar.session);
         const tag = st.status === "ok" ? [st.lamT, st.atrT, st.illT] : null;
         const why = st.status;
@@ -802,17 +903,13 @@ class liquidityRegimeMeter {
         }
         this.baseCount++;
 
-        // 8) meter: this bar's reading joins today's time-of-day pool, then the
-        //    bar itself joins the impact window for the next bar's state
-        if (st.full && k % POOL_STRIDE === 0) {
-            const day = this.today[st.seg];
-            day.atr.push(st.atr);
-            day.ill.push(st.ill);
-            if (st.lamValid) {
-                day.lam.push(st.lam);
-            }
+        // 8) meter: remember this bar's reading for later sessions, then add the
+        //    bar to the impact window for the next bar's state
+        if (st.full) {
+            this.remember(st);
         }
-        this.pushWindow(bar, newSession);
+        this.meterTs = bar.ts;
+        this.pushWindow(bar, newSession || halted);
     }
 
     // ── statistics (session-clustered) ──────────────────────────────────────
@@ -823,7 +920,6 @@ class liquidityRegimeMeter {
         const per = Object.keys(this.sess).map(Number).sort((a, b) => a - b)
             .map(g => ({ g, w: this.sess[g][fam + "w"], n: this.sess[g][fam + "n"] }))
             .filter(x => x.n.some(v => v > 0));
-        const G = per.length;
         const W = zeros(27);
         const N = zeros(27);
         per.forEach(x => {
@@ -832,80 +928,87 @@ class liquidityRegimeMeter {
                 N[c] += x.n[c];
             }
         });
-        const loo = per.map(x => ({ w: W.map((v, c) => v - x.w[c]), n: N.map((v, c) => v - x.n[c]) }));
-        // delete-one-session jackknife: each session counts once however many tests it holds
-        const est = stat => {
-            const full = stat(W, N);
-            if (!Number.isFinite(full) || G < 2) {
-                return { est: full, ok: false };
-            }
-            const th = loo.map(l => stat(l.w, l.n));
-            if (th.some(x => !Number.isFinite(x))) {
-                return { est: full, ok: false, unstable: true };
-            }
-            const m = th.reduce((a, x) => a + x, 0) / G;
-            const se = Math.sqrt((G - 1) / G * th.reduce((a, x) => a + (x - m) * (x - m), 0));
-            const half = tCrit(G - 1) * se;
-            return { est: full, half, lo: full - half, hi: full + half, ok: true };
+        const sum = (arr, mask) => CELLS.reduce((s, x) => mask(x.a, x.l, x.i) ? s + arr[x.c] : s, 0);
+        const rate = (w, n, mask) => {
+            const d = sum(n, mask);
+            return d > 0 ? sum(w, mask) / d : NaN;
         };
-        // sums over cells whose `dim` (0 = volatility, 1 = impact, 2 = volume-only) is `val`
-        const pick = (arr, dim, val, atr) => {
-            let s = 0;
-            for (let a = 0; a < 3; ++a) {
-                if (atr !== undefined && a !== atr) {
-                    continue;
-                }
-                for (let l = 0; l < 3; ++l) {
-                    for (let i = 0; i < 3; ++i) {
-                        if ([a, l, i][dim] === val) {
-                            s += arr[cellOf(a, l, i)];
-                        }
-                    }
-                }
-            }
-            return s;
-        };
-        const rate = (w, n, dim, val) => {
-            const d = pick(n, dim, val);
-            return d > 0 ? pick(w, dim, val) / d : NaN;
-        };
-        // Mantel-Haenszel risk difference low-minus-high tercile of `dim`, within volatility terciles
+        // Mantel-Haenszel risk difference, low minus high third of `dim`
+        // (1 = impact state, 2 = volume-only measure), within volatility thirds
+        const third = (dim, val) => (a, l, i) => (dim === 1 ? l : i) === val;
         const mh = (w, n, dim, strata) => {
             let num = 0, den = 0;
             for (let j = 0; j < strata.length; ++j) {
                 const a = strata[j];
-                const nD = pick(n, dim, 0, a);
-                const nT = pick(n, dim, 2, a);
+                const lo = (x, l, i) => x === a && third(dim, 0)(x, l, i);
+                const hi = (x, l, i) => x === a && third(dim, 2)(x, l, i);
+                const nD = sum(n, lo);
+                const nT = sum(n, hi);
                 if (!(nD > 0 && nT > 0)) {
                     return NaN;
                 }
                 const wt = nD * nT / (nD + nT);
-                num += wt * (pick(w, dim, 0, a) / nD - pick(w, dim, 2, a) / nT);
+                num += wt * (sum(w, lo) / nD - sum(w, hi) / nT);
                 den += wt;
             }
             return den > 0 ? num / den : NaN;
         };
-        const strata = dim => [0, 1, 2].filter(a =>
-            pick(N, dim, 0, a) >= p.minStratumN && pick(N, dim, 2, a) >= p.minStratumN);
-        const strataL = strata(1);
-        const strataI = strata(2);
-        const none = { est: NaN, ok: false };
-        const out = {
-            G,
-            n: N.reduce((a, v) => a + v, 0),
-            states: [0, 1, 2].map(s => Object.assign({ n: pick(N, 1, s) }, est((w, n) => rate(w, n, 1, s)))),
-            all: est((w, n) => {
-                const t = n.reduce((a, v) => a + v, 0);
-                return t > 0 ? w.reduce((a, v) => a + v, 0) / t : NaN;
-            }),
-            raw: est((w, n) => rate(w, n, 1, 0) - rate(w, n, 1, 2)),
-            sl: strataL.length ? est((w, n) => mh(w, n, 1, strataL)) : none,
-            si: strataI.length ? est((w, n) => mh(w, n, 2, strataI)) : none,
-            diff: strataL.length && strataI.length
-                ? est((w, n) => mh(w, n, 1, strataL) - mh(w, n, 2, strataI)) : none
+        // delete-one-session jackknife over the sessions that hold the tests the
+        // statistic reads; each session counts once however many tests it holds
+        const est = (stat, mask, proportion) => {
+            const inside = per.filter(x => sum(x.n, mask) > 0);
+            const G = inside.length;
+            const full = stat(W, N);
+            const base = { est: full, ok: false, G };
+            if (!Number.isFinite(full) || G < 2) {
+                return base;
+            }
+            const th = inside.map(x => stat(W.map((v, c) => v - x.w[c]), N.map((v, c) => v - x.n[c])));
+            if (th.some(v => !Number.isFinite(v))) {
+                return Object.assign(base, { unstable: true });
+            }
+            const m = th.reduce((a, v) => a + v, 0) / G;
+            const se = Math.sqrt((G - 1) / G * th.reduce((a, v) => a + (v - m) * (v - m), 0));
+            let half = tCrit(G - 1) * se;
+            if (proportion) {
+                // never narrower than the plain binomial interval of the pooled tests
+                half = Math.max(half, wilsonHalf(sum(W, mask), sum(N, mask)));
+            }
+            else if (!(se > 1e-9)) {     // every session agrees to rounding: no measurable spread
+                return Object.assign(base, { unstable: true });
+            }
+            return { est: full, half, lo: full - half, hi: full + half, ok: true, G };
         };
-        // the within-volatility gap must point the same way in odd and even sessions
-        const half = parity => {
+        const strataFor = (dim, n) => [0, 1, 2].filter(a =>
+            sum(n, (x, l, i) => x === a && third(dim, 0)(x, l, i)) >= p.minStratumN &&
+            sum(n, (x, l, i) => x === a && third(dim, 2)(x, l, i)) >= p.minStratumN);
+        const strataL = strataFor(1, N);
+        const strataI = strataFor(2, N);
+        const common = strataL.filter(a => strataI.indexOf(a) >= 0);
+        const all = () => true;
+        const ends = dim => (a, l, i) => (dim === 1 ? l : i) !== 1;
+        const within = (strata, m) => (a, l, i) => strata.indexOf(a) >= 0 && m(a, l, i);
+        const none = { est: NaN, ok: false, G: 0 };
+        const out = {
+            G: per.length,
+            n: sum(N, all),
+            states: [0, 1, 2].map(s => Object.assign({ n: sum(N, third(1, s)) },
+                est((w, n) => rate(w, n, third(1, s)), third(1, s), true))),
+            all: est((w, n) => rate(w, n, all), all, true),
+            raw: est((w, n) => rate(w, n, third(1, 0)) - rate(w, n, third(1, 2)), ends(1), false),
+            strataL,
+            common,
+            sl: strataL.length ? est((w, n) => mh(w, n, 1, strataL), within(strataL, ends(1)), false) : none,
+            slC: common.length ? est((w, n) => mh(w, n, 1, common), within(common, ends(1)), false) : none,
+            siC: common.length ? est((w, n) => mh(w, n, 2, common), within(common, ends(2)), false) : none,
+            diff: common.length
+                ? est((w, n) => mh(w, n, 1, common) - mh(w, n, 2, common),
+                    within(common, (a, l, i) => l !== 1 || i !== 1), false)
+                : none
+        };
+        // the same-volatility gap must point the same way in odd and even sessions;
+        // null = cannot be checked (a half has no DEEP and THIN tests in a used third)
+        const halfGap = parity => {
             const w = zeros(27);
             const n = zeros(27);
             per.filter(x => x.g % 2 === parity).forEach(x => {
@@ -914,13 +1017,16 @@ class liquidityRegimeMeter {
                     n[c] += x.n[c];
                 }
             });
-            return strataL.length ? mh(w, n, 1, strataL) : NaN;
+            const strata = strataL.filter(a =>
+                sum(n, (x, l, i) => x === a && l === 0) > 0 && sum(n, (x, l, i) => x === a && l === 2) > 0);
+            return strata.length ? mh(w, n, 1, strata) : NaN;
         };
-        const even = half(0);
-        const odd = half(1);
+        const even = halfGap(0);
+        const odd = halfGap(1);
         const sign = Math.sign(out.sl.est);
-        out.agree = sign !== 0 && Number.isFinite(even) && Number.isFinite(odd) &&
-            Math.sign(even) === sign && Math.sign(odd) === sign;
+        out.agree = !out.sl.ok || !Number.isFinite(even) || !Number.isFinite(odd) || sign === 0
+            ? null
+            : Math.sign(even) === sign && Math.sign(odd) === sign;
         return out;
     }
 
@@ -931,54 +1037,83 @@ class liquidityRegimeMeter {
         return this.cache;
     }
 
-    // ── text ────────────────────────────────────────────────────────────────
-
-    nowLine(st, decimals) {
+    // Enough DEEP and THIN tests, from enough sessions, to compare them at all.
+    comparable(z) {
         const p = this.props;
-        const r2 = st.full ? pct(st.r2) : "";
-        if (st.status === "building") {
-            return "NOW: building this session's " + st.W + "-bar impact window (" + st.n + "/" + st.W + " bars)";
-        }
-        if (st.status === "warmup") {
-            return "NOW: warming up - needs " + p.minPriorSessions + " prior sessions for the " + SEGMENTS[st.seg] +
-                " segment (have " + st.warm + ") | impact " + (100 * st.lam).toFixed(2) +
-                " ticks per 100 net contracts, flow explains " + r2 + " of price change";
-        }
-        if (st.status === "unclear") {
-            return "NOW: unclear - net flow explains only " + r2 + " of price change over the last " + st.W +
-                " bars (needs " + pct(p.r2Gate) + ") | volatility " + ordinal(st.atrPct) + " pct";
-        }
-        return "NOW: " + STATES[st.lamT] + " | impact " + (100 * st.lam).toFixed(2) + " ticks per 100 net contracts, " +
-            ordinal(st.lamPct) + " pct vs " + SEGMENTS[st.seg] + " in prior sessions | flow explains " + r2 +
-            " of price change (last " + st.W + " bars) | volatility " + ordinal(st.atrPct) + " pct";
+        const ok = s => s.n >= p.minTests && s.G >= p.minSessions;
+        return ok(z.states[0]) && ok(z.states[2]);
     }
 
-    zoneLine(z, r, decimals) {
+    // ── text ────────────────────────────────────────────────────────────────
+
+    nowLines(st) {
         const p = this.props;
-        const move = (this.ticks("bounceTicks") * this.tick()).toFixed(decimals);
-        const head = "Your zones reversed (" + move + " in favor before " + move + " against, within " +
-            p.horizonBars + " bars): ";
-        if (z.G < p.minSessions) {
-            return head + "collecting - " + z.G + " of " + p.minSessions + " sessions with state-tagged zone tests (" +
-                z.n + " tests so far)";
+        if (st.status === "building") {
+            const c = this.chartDescription;
+            const minutes = c && c.underlyingType === "MinuteBar" ? st.W * (c.elementSize || 1) : 0;
+            return ["NOW: building this session's " + st.W + "-bar impact window (" + st.n + "/" + st.W + " bars)" +
+                (minutes >= 1380 ? " - it can never fill: " + st.W + " bars of " + c.elementSize + " minutes is longer " +
+                    "than a session; use 1-5 minute bars or a smaller impactWindow" : "")];
         }
+        const details = "impact " + (100 * st.lam).toFixed(2) + " ticks per 100 net contracts | flow explains " +
+            (100 * st.r2).toFixed(1) + "% of price change (last " + st.W + " bars)" +
+            (st.atrPct !== undefined ? " | volatility " + ordinal(shownPct(st.atrPct, st.atrT)) + " pct" : "");
+        let head;
+        if (st.status === "warmup") {
+            head = "NOW: warming up - ranking needs " + p.minPriorSessions + " prior sessions with readings near " +
+                spanText(st.slot) + " (have " + st.haveSessions + ") and " + MIN_POOLED +
+                " pooled readings (have " + st.havePooled + ")";
+        }
+        else if (st.status === "unclear") {
+            head = st.unclear === "noflow"
+                ? "NOW: unclear - net aggressive volume did not vary over the last " + st.W + " bars"
+                : st.unclear === "negative"
+                    ? "NOW: unclear - price moved against net aggression over the last " + st.W + " bars"
+                    : "NOW: unclear - net flow explains only " + (100 * st.r2).toFixed(1) + "% of price change (needs " +
+                      (100 * p.r2Gate).toFixed(1) + "%)";
+        }
+        else {
+            head = "NOW: " + STATES[st.lamT] + " - impact in the " + ordinal(shownPct(st.lamPct, st.lamT)) +
+                " percentile vs " + spanText(st.slot) + " in prior sessions";
+        }
+        return [head, details];
+    }
+
+    // The reversal distance, as set; in auto mode also the distances actually used.
+    distText(decimals) {
+        const p = this.props;
+        const tick = this.tick();
+        if (p.bounceTicks > 0) {
+            const d = (p.bounceTicks * tick).toFixed(decimals);
+            return "reversal = " + d + " in favor before " + d + " against, within " + p.horizonBars + " bars";
+        }
+        const used = this.distUsed
+            ? "distances used " + this.distUsed[0].toFixed(decimals) + "-" + this.distUsed[1].toFixed(decimals) + ", "
+            : "";
+        return "reversal = 1.5x avg bar range in favor before the same against, within " + p.horizonBars + " bars | " +
+            used + "now " + (this.ticks("bounceTicks") * tick).toFixed(decimals);
+    }
+
+    zoneLines(z, r, decimals) {
+        const p = this.props;
+        const head = "Your zones' reversal rate by state | " + this.distText(decimals);
         const parts = [0, 1, 2].map(s => {
             const x = z.states[s];
-            if (x.n < p.minTests) {
-                return STATES[s] + " collecting (n=" + x.n + ")";
+            if (x.n < p.minTests || x.G < p.minSessions) {
+                return STATES[s] + " collecting (n=" + x.n + ", " + x.G + " of " + p.minSessions + " sessions)";
             }
             const body = x.ok ? pct(x.est) + " ±" + Math.round(100 * x.half) : pct(x.est) + " (margin unstable)";
             const base = r.states[s].n >= p.minTests ? "; random " + pct(r.states[s].est) : "";
-            return STATES[s] + " " + body + " (n=" + x.n + base + ")";
+            return STATES[s] + " " + body + " (n=" + x.n + ", " + x.G + " sessions" + base + ")";
         });
-        const all = z.all.ok ? " | all " + pct(z.all.est) + " ±" + Math.round(100 * z.all.half) : "";
-        return head + parts.join(" | ") + all;
+        return [head, parts.join(" | ")];
     }
 
-    gapLine(z) {
+    gapLines(z) {
         const p = this.props;
-        if (z.G < p.minSessions) {
-            return "";
+        if (!this.comparable(z)) {
+            return ["DEEP minus THIN: collecting - needs " + p.minTests + " tests from " + p.minSessions +
+                " sessions in both DEEP and THIN"];
         }
         const show = (x, label) => {
             if (x.ok) {
@@ -986,45 +1121,81 @@ class liquidityRegimeMeter {
             }
             return label + (Number.isFinite(x.est) ? " " + pts(x.est) + " (margin unstable)" : " n/a");
         };
-        return "DEEP minus THIN: " + show(z.raw, "raw") +
-            " | " + show(z.sl, "same volatility") +
-            " | " + show(z.si, "volume-only measure, same volatility") +
-            " | " + show(z.diff, "bid/ask split adds") +
-            " | odd/even sessions agree: " + (z.agree ? "yes" : "no");
+        const thirds = s => s.length ? " (" + s.map(a => VOL_THIRDS[a]).join(", ") + ")" : "";
+        const agree = z.agree === null ? "n/a" : z.agree ? "yes" : "no";
+        return [
+            "DEEP minus THIN: " + show(z.raw, "raw") + " | " + show(z.sl, "same volatility" + thirds(z.strataL)) +
+                " | odd/even sessions agree: " + agree,
+            "vs volume-only at equal volatility" + thirds(z.common) + ": " + show(z.slC, "impact gap") +
+                ", " + show(z.siC, "volume-only gap") + ", " + show(z.diff, "bid/ask split adds")
+        ];
     }
 
-    verdict(z) {
+    verdict(z, r) {
         const p = this.props;
         const excl = x => x.ok && (x.lo > 0 || x.hi < 0);
-        if (z.G < p.minSessions) {
-            return "Verdict: collecting - needs " + p.minSessions + " sessions with state-tagged zone tests (have " + z.G + ")";
+        if (!this.comparable(z)) {
+            const s = i => STATES[i] + " n=" + z.states[i].n + " in " + z.states[i].G + " sessions";
+            return "Verdict: collecting - needs " + p.minTests + " tests from " + p.minSessions +
+                " sessions in both DEEP and THIN (" + s(0) + ", " + s(2) + ")";
         }
+        const overall = z.raw.est > 0 ? "more" : "less";
         if (!z.sl.ok) {
             return excl(z.raw)
-                ? "Verdict: zones reverse " + (z.raw.est > 0 ? "more" : "less") +
-                  " in DEEP than THIN, but not enough tests per volatility level yet to tell whether it is just volatility"
+                ? "Verdict: zones reverse " + overall + " in DEEP than THIN overall, but there are too few tests " +
+                  "at equal volatility to tell whether that is just volatility"
                 : "Verdict: no measurable DEEP/THIN difference so far";
         }
-        if (excl(z.sl) && z.agree) {
-            const better = z.sl.est > 0 ? "DEEP (blue)" : "THIN (orange)";
-            if (excl(z.diff) && Math.sign(z.diff.est) === Math.sign(z.sl.est)) {
-                return "Verdict: your zones reverse more in " + better + " conditions - still true at equal measured " +
-                    "volatility, and the bid/ask split predicts it better than a volume-only measure. Favor zone fades in that state";
-            }
-            return "Verdict: your zones reverse more in " + better + " conditions, even at equal measured volatility - " +
-                "but a volume-only measure predicts it as well, so it is liquidity in general, not the bid/ask split";
-        }
         if (excl(z.sl)) {
-            return "Verdict: a DEEP/THIN gap shows at equal volatility, but odd and even sessions disagree - not reliable yet";
+            if (z.agree === null) {
+                return "Verdict: a DEEP/THIN gap shows at equal volatility, but there are too few tests to check " +
+                    "odd vs even sessions yet";
+            }
+            if (!z.agree) {
+                return "Verdict: a DEEP/THIN gap shows at equal volatility, but odd and even sessions disagree - " +
+                    "not reliable yet";
+            }
+            const b = z.sl.est > 0 ? 0 : 2;
+            const o = 2 - b;
+            let text = "Verdict: at equal volatility your zones reverse more in " + STATES[b] + " than in " + STATES[o];
+            if (excl(z.raw) && Math.sign(z.raw.est) !== Math.sign(z.sl.est)) {
+                text += " (overall " + STATES[b] + " shows the lower rate - volatility masks it)";
+            }
+            if (!z.diff.ok) {
+                text += "; the volume-only comparison is not available yet";
+            }
+            else if (excl(z.diff) && Math.sign(z.diff.est) === Math.sign(z.sl.est)) {
+                text += "; the bid/ask split predicts it better than a volume-only measure";
+            }
+            else if (excl(z.diff)) {
+                text += "; a volume-only measure predicts it better than the bid/ask split";
+            }
+            else if (excl(z.siC) && Math.sign(z.siC.est) === Math.sign(z.sl.est)) {
+                text += "; a volume-only measure shows a similar gap, so it may be liquidity in general";
+            }
+            else {
+                text += "; cannot tell yet whether the bid/ask split adds anything beyond volume";
+            }
+            const zs = z.states[b];
+            const rs = r.states[b];
+            // "beat" = the two 95% intervals do not overlap
+            const beats = zs.ok && rs.ok && rs.n >= p.minTests && zs.lo > rs.hi;
+            return text + (beats
+                ? ". Favor zone fades in " + STATES[b]
+                : ". But " + STATES[b] + " zones do not clearly beat random prices yet");
         }
         if (excl(z.raw)) {
-            return "Verdict: the DEEP/THIN gap is explained by volatility - at equal volatility the colors add nothing; " +
-                "watch the volatility percentile instead";
+            const explained = z.raw.est > 0 ? z.sl.hi < z.raw.est : z.sl.lo > z.raw.est;
+            return explained
+                ? "Verdict: the DEEP/THIN gap is explained by volatility - at equal volatility the state adds " +
+                  "nothing; watch the volatility percentile instead"
+                : "Verdict: zones reverse " + overall + " in DEEP than THIN overall, but the same-volatility gap is " +
+                  "too uncertain to tell whether that is just volatility";
         }
-        return "Verdict: no measurable DEEP/THIN difference on this chart - ignore the colors for zone fades";
+        return "Verdict: no measurable DEEP/THIN difference on this chart - ignore the state for zone fades";
     }
 
-    diagLine(z) {
+    diagLines(z, liveSession) {
         const p = this.props;
         const ex = this.excluded.z;
         const share = s => {
@@ -1034,25 +1205,33 @@ class liquidityRegimeMeter {
         };
         const cov = this.coverage.volume > 0 ? pct(this.coverage.aggressor / this.coverage.volume) : "-";
         const changed = Object.keys(DEFAULTS).some(k => p[k] !== DEFAULTS[k]);
-        return "Sessions loaded " + (this.g + 1) + " | zone tests: " + z.n + " state-tagged, excluded " +
-            (ex.building + ex.warmup + ex.unclear) + " (window " + ex.building + ", warm-up " + ex.warmup +
-            ", unclear " + ex.unclear + ") | fails hitting both sides in one bar: DEEP " + share(0) + " NORMAL " +
-            share(1) + " THIN " + share(2) + " | bid/ask volume coverage " + cov + " | " +
-            (changed ? "settings changed from defaults: treat results as in-sample" : "default settings");
+        const sessions = this.g + 1 + (this.lastSession !== null && liveSession !== this.lastSession ? 1 : 0);
+        return [
+            "Sessions loaded " + sessions + " | " +
+                (changed ? "SETTINGS CHANGED from defaults: results are in-sample" : "default settings") +
+                " | bid/ask volume coverage " + cov,
+            "zone tests: " + z.n + " state-tagged, " + (ex.building + ex.warmup + ex.unclear) + " excluded (window building " +
+                ex.building + ", warm-up " + ex.warmup + ", unclear " + ex.unclear + ") | fails hitting both sides " +
+                "in one bar: DEEP " + share(0) + " NORMAL " + share(1) + " THIN " + share(2)
+        ];
     }
 
     textItems(lines) {
         const p = this.props;
+        const rows = [];
+        lines.forEach(line => wrap(line).forEach(row => rows.push({ row, bold: line.indexOf("Verdict") === 0 })));
         return [{
             tag: "Container",
             key: "liquidityRegimeMeter",
             global: true,
-            children: lines.filter(Boolean).map((text, n) => ({
+            children: rows.map((x, n) => ({
                 tag: "Text",
                 key: "line" + n,
-                point: { x: px(10), y: px(14 + 16 * n) },
-                text,
-                style: { fontSize: 11, fill: text.indexOf("Verdict") === 0 ? "#e3e8ef" : "#9aa4b2" },
+                point: { x: px(10), y: px(14 + 15 * n) },
+                text: x.row,
+                style: x.bold
+                    ? { fontSize: 11, fontWeight: "bold", fill: p.textColor }
+                    : { fontSize: 11, fill: p.textColor },
                 textAlignment: p.textAlignment
             }))
         }];
@@ -1064,12 +1243,13 @@ class liquidityRegimeMeter {
         const why = this.unsupportedChart();
         if (why) {
             return isLast && p.showStatus ? { graphics: { items: this.textItems([
-                "Liquidity Regime Meter: unsupported chart (" + why + ") - use time bars (1-minute recommended), volume bars or 100+ tick bars"
+                "Liquidity Regime Meter: unsupported chart (" + why + ") - use time bars (1-minute recommended), " +
+                "volume bars or 100+ tick bars"
             ]) } } : undefined;
         }
 
         // Fold every closed bar not yet seen. The live bar never enters the
-        // window, the pools or the tests until it closes, so nothing repaints.
+        // window, the history or the tests until it closes, so nothing repaints.
         for (let k = this.committed + 1; k < i; ++k) {
             const e = k === i - 1 ? history.prior() : history.get(k);
             this.commit(readBar(e), k);
@@ -1098,13 +1278,11 @@ class liquidityRegimeMeter {
                 lines = ["Liquidity Regime Meter: NO bid/ask volume on this chart - the impact state cannot be measured"];
             }
             else {
-                lines = [
-                    this.nowLine(st, decimals),
-                    this.zoneLine(s.z, s.r, decimals),
-                    this.gapLine(s.z),
-                    this.verdict(s.z),
-                    this.diagLine(s.z)
-                ];
+                lines = this.nowLines(st)
+                    .concat(this.zoneLines(s.z, s.r, decimals))
+                    .concat(p.showDetails ? this.gapLines(s.z) : [])
+                    .concat([this.verdict(s.z, s.r)])
+                    .concat(p.showDetails ? this.diagLines(s.z, live.session) : []);
             }
             out.graphics = { items: this.textItems(lines) };
         }
@@ -1132,10 +1310,12 @@ module.exports = {
         minStratumN: predef.paramSpecs.number(DEFAULTS.minStratumN, 1, 2),
         tintCandles: predef.paramSpecs.bool(false),
         showStatus: predef.paramSpecs.bool(true),
+        showDetails: predef.paramSpecs.bool(true),
         textAlignment: predef.paramSpecs.enum({
             rightBelow: "Right of the corner",
             leftBelow: "Left of the corner"
         }, "rightBelow"),
+        textColor: predef.paramSpecs.color("#78838f"),
         deepColor: predef.paramSpecs.color("#42a5f5"),
         normalColor: predef.paramSpecs.color("#78909c"),
         thinColor: predef.paramSpecs.color("#ffa726"),

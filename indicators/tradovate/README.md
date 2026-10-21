@@ -73,7 +73,9 @@ back to a zone on your chart, the indicator starts a **test**:
 - Anything else counts as **no reversal**. That includes going `bounce`
   through first, both happening in one bar, or neither happening in time.
 - `bounce` is shown on the status line. By default it is 1.5 × the average bar
-  range, for example about 7.50 points on 1-minute NQ.
+  range, for example about 7.50 points on 1-minute NQ. That average moves, so
+  the status line also shows the smallest and largest distance among the
+  counted tests.
 
 `65% reversal ±13 (1st test, n=48)` means: of the 48 times price came back to a
 zone for the first time on this chart, 31 (65%) reversed by that definition.

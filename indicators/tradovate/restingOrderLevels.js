@@ -138,6 +138,7 @@ class restingOrderLevels {
         this.openControl = [];    // the same test at random prices (control group)
         this.zoneStats = TEST_BUCKETS.map(() => ({ w: 0, n: 0 }));
         this.controlStats = { w: 0, n: 0 };
+        this.distUsed = null;     // [smallest, largest] reversal distance among counted zone tests
         this.prevClose = null;
     }
 
@@ -263,6 +264,11 @@ class restingOrderLevels {
         const s = isZone ? this.zoneStats[t.bucket] : this.controlStats;
         s.n++;
         s.w += won;
+        if (isZone) {
+            this.distUsed = this.distUsed
+                ? [Math.min(this.distUsed[0], t.dist), Math.max(this.distUsed[1], t.dist)]
+                : [t.dist, t.dist];
+        }
     }
 
     // Start a test on bar k; it may already fail on that bar (deep wick through).
@@ -560,8 +566,13 @@ class restingOrderLevels {
         if (this.props.showOdds) {
             const rate = s => s.n ? Math.round(100 * s.w / s.n) + "% ±" +
                 Math.round(100 * (wilson(s.w, s.n).hi - wilson(s.w, s.n).lo) / 2) + " (n=" + s.n + ")" : "no tests yet";
-            const move = (this.ticks("bounceTicks") * this.tick()).toFixed(decimals);
-            lines.push("Reversal = " + move + " in favor before " + move + " against, within " + this.props.horizonBars +
+            const now = (this.ticks("bounceTicks") * this.tick()).toFixed(decimals);
+            // in auto mode the distance follows the average bar range, so say which distances the counts used
+            const move = this.props.bounceTicks > 0
+                ? now + " in favor before " + now + " against"
+                : "1.5x avg bar range (now " + now + (this.distUsed ? ", " + this.distUsed[0].toFixed(decimals) + "-" +
+                    this.distUsed[1].toFixed(decimals) + " in the counted tests" : "") + ") in favor before the same against";
+            lines.push("Reversal = " + move + ", within " + this.props.horizonBars +
                 " bars  |  zones " + rate(this.zoneTotals()) + "  vs  random prices " + rate(this.controlStats));
         }
         return lines;
