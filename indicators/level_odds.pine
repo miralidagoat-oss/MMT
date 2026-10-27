@@ -1,0 +1,825 @@
+//@version=6
+indicator("Level Odds", "Level Odds", overlay = true, max_lines_count = 40, max_labels_count = 40)
+
+// ============================================================================
+// Level Odds — the live chance that price trades at each key level before
+// the session close, a "next draw" race between the nearest untouched
+// liquidity above and below, and a track record that grades every call.
+//
+// Model: price is a driftless random walk whose clock runs on volatility,
+// not minutes. Each bar-of-session k has an expected log-variance v[k],
+// learned per time-of-day from past sessions; S scales it to today's regime.
+// After bar j the variance left until the close is V = S * sum(v[k], k > j),
+// and the reflection principle gives the chance of touching a level at log
+// distance d:  P = erfc(d / sqrt(2 c V)). Real intraday volatility is never
+// known exactly, so V is integrated over a mean-one lognormal uncertainty
+// (fat tails; spread validated on real NQ/ES futures). c is fitted to this
+// indicator's own graded history and shrunk toward 1 by its cluster-robust
+// uncertainty. The race uses the two-barrier solution (images / Fourier).
+//
+// Grading: predictions are locked at checkpoint bar closes and graded only
+// after the session ends, by a model fit on earlier sessions only, so every
+// grade on the dashboard is out-of-sample.
+//
+// Reference implementation and known-answer tests: backtest/level_odds.py,
+// backtest/test_level_odds_math.py, backtest/test_level_odds_engine.py.
+// Every formula and update order matches; change one, change both.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+var string G_SESS = "Session"
+var string G_LVL  = "Levels"
+var string G_MOD  = "Model"
+var string G_UI   = "Display"
+
+sessIn  = input.session("0930-1600", "Session", group = G_SESS,
+     tooltip = "The odds count down to this session's close. Default: US cash session, 09:30–16:00 New York. Must start and end on the same day.")
+tzIn    = input.string("America/New_York", "Timezone", group = G_SESS,
+     options = ["America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Asia/Tokyo", "Asia/Hong_Kong", "Australia/Sydney", "Etc/UTC"])
+
+pdSrc   = input.string("Session", "Previous day from", options = ["Session", "Exchange daily bar"], group = G_LVL,
+     tooltip = "Session: high / low / close of the previous session above. Exchange daily bar: the symbol's daily bar (18:00–17:00 ET for CME futures).")
+showPD  = input.bool(true,  "Previous day high / low",       group = G_LVL)
+showPDC = input.bool(true,  "Previous day close (gap fill)", group = G_LVL)
+showON  = input.bool(true,  "Overnight high / low",          group = G_LVL,
+     tooltip = "Extremes printed outside the session since the exchange's trading day began (CME: 18:00 ET). Needs extended-hours bars on the chart.")
+showPW  = input.bool(false, "Previous week high / low",      group = G_LVL)
+lvl1In  = input.price(0.0,  "Custom level 1 (0 = off)",      group = G_LVL)
+lvl2In  = input.price(0.0,  "Custom level 2 (0 = off)",      group = G_LVL)
+
+memIn   = input.int(60, "Volatility memory (sessions)", minval = 10, maxval = 500, group = G_MOD,
+     tooltip = "How many past sessions the time-of-day volatility curve averages over.")
+warmIn  = input.int(10, "Warm-up (sessions)", minval = 3, maxval = 100, group = G_MOD,
+     tooltip = "Completed sessions needed before odds are shown or graded.")
+gradeIn = input.int(30, "Grade every (minutes)", minval = 5, maxval = 120, group = G_MOD,
+     tooltip = "Predictions are locked and graded only at these checkpoints of session time, so one day can't flood the track record.")
+calIn   = input.bool(true, "Self-calibrate from track record", group = G_MOD)
+
+showLbl = input.bool(true, "Level lines and labels", group = G_UI)
+showRec = input.bool(true, "Track record", group = G_UI)
+posIn   = input.string("Top right", "Table position", options = ["Top right", "Bottom right", "Top left", "Bottom left"], group = G_UI)
+upCol   = input.color(#26A69A, "Liquidity above", group = G_UI)
+dnCol   = input.color(#EF5350, "Liquidity below", group = G_UI)
+
+// ─────────────────────────────────────────────────────────────
+// CONSTANTS (identical in backtest/level_odds.py)
+// ─────────────────────────────────────────────────────────────
+float PHI        = 0.5     // regime prior weight, in units of one full session's expected variance
+float LAMBDA_S   = 0.8     // per-session EWMA decay of the volatility regime
+float CAL_H      = 0.1     // half-step in ln c for each session's local Brier quadratic
+float CAL_MEMORY = 250.0   // sessions of memory for the calibration fit
+float PRIOR_SD   = 0.25    // prior sd of ln c: c moves off 1 only as far as the evidence supports
+float LNC_MAX    = 1.2     // |ln c| clamp
+float MIX_SD     = 0.85    // log-sd of the volatility-uncertainty mixture (chosen on NQ 1h, validated on NQ/ES)
+int   N_BUCKETS  = 5       // reliability buckets of 20 points each
+int   MAX_K      = 1440
+int   UP         = 0
+int   DOWN       = 1
+int   NONE       = 2
+int   AMBIG      = 3
+int   EXT        = 0       // event class: external level touch
+int   HL         = 1       // event class: session high / low break
+
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
+type Pred
+    float z        // log distance / sqrt(2 V)
+    float p        // probability shown
+    float lv       // price that must trade
+    bool  above
+    int   cls
+
+type Race
+    float up       // nearest untouched level above (na: none)
+    float dn       // nearest untouched level below (na: none)
+    float pu
+    float pd
+    float pn
+    int   outcome = -1
+
+// ─────────────────────────────────────────────────────────────
+// MATH
+// ─────────────────────────────────────────────────────────────
+// complementary error function, Numerical Recipes erfcc (|rel err| < 1.2e-7)
+erfcc(float x) =>
+    float z = math.abs(x)
+    float t = 1.0 / (1.0 + 0.5 * z)
+    float poly = -0.82215223 + t * 0.17087277
+    poly := 1.48851587 + t * poly
+    poly := -1.13520398 + t * poly
+    poly := 0.27886807 + t * poly
+    poly := -0.18628806 + t * poly
+    poly := 0.09678418 + t * poly
+    poly := 0.37409196 + t * poly
+    poly := 1.00002368 + t * poly
+    float r = t * math.exp(-z * z - 1.26551223 + t * poly)
+    x >= 0 ? r : 2.0 - r
+
+// P(a driftless walk from 0 hits +a before -b within variance-time v); a, b, v > 0
+raceUp(float a, float b, float v) =>
+    float w = a + b
+    float tot = 0.0
+    if v <= 0.25 * w * w
+        // method of images: terms fall off like erfc(2kW / sqrt(2v))
+        float s = math.sqrt(2.0 * v)
+        for k = 0 to 3
+            float x1 = (a + 2.0 * k * w) / s
+            if x1 > 6.5
+                break    // this and every later term < 1e-19
+            tot += erfcc(x1) - erfcc((a + 2.0 * b + 2.0 * k * w) / s)
+    else
+        // Fourier series: terms fall off like exp(-k^2 pi^2 v / 2W^2)
+        tot := b / w
+        for k = 1 to 8
+            float sgn = k % 2 == 1 ? 1.0 : -1.0
+            tot -= 2.0 * sgn / (k * math.pi) * math.sin(k * math.pi * b / w) * math.exp(-k * k * math.pi * math.pi * v / (2.0 * w * w))
+    tot
+
+// [P up first, P down first] before the close; a / b are na when that side has no level
+race(float a, float b, float v) =>
+    float pu = 0.0
+    float pd = 0.0
+    if v > 0
+        if not na(a) and na(b)
+            pu := erfcc(a / math.sqrt(2.0 * v))
+        else if na(a) and not na(b)
+            pd := erfcc(b / math.sqrt(2.0 * v))
+        else if not na(a) and not na(b)
+            pu := math.min(math.max(raceUp(a, b, v), 0.0), 1.0)
+            pd := math.min(math.max(raceUp(b, a, v), 0.0), 1.0)
+    [pu, pd]
+
+bucketOf(float p) =>
+    math.min(int(p * N_BUCKETS), N_BUCKETS - 1)
+
+// P(touch) under the volatility mixture, z = log distance / sqrt(2V), calibration c
+touchMix(float z, float c, array<float> w, array<float> m) =>
+    float tot = 0.0
+    for i = 0 to array.size(w) - 1
+        tot += array.get(w, i) * erfcc(z / math.sqrt(c * array.get(m, i)))
+    tot
+
+// race under the volatility mixture
+raceMix(float a, float b, float v, array<float> w, array<float> m) =>
+    float pu = 0.0
+    float pd = 0.0
+    for i = 0 to array.size(w) - 1
+        [x, y] = race(a, b, v * array.get(m, i))
+        pu += array.get(w, i) * x
+        pd += array.get(w, i) * y
+    [pu, pd]
+
+// calibration factor from the accumulated session quadratics [sum H, sum a,
+// sum a^2, sum aH, sum H^2]: each graded session adds the slope g and
+// curvature H of its own Brier score in ln c at the ln c it used, a = g - H*th.
+// Minimum th_hat = -sum a / sum H; cluster-robust variance = meat / (sum H)^2;
+// th_hat is shrunk toward 0 by that uncertainty against a N(0, PRIOR_SD^2) prior
+fitC(array<float> acc) =>
+    float sumH  = array.get(acc, 0)
+    float sumA  = array.get(acc, 1)
+    float sumAA = array.get(acc, 2)
+    float sumAH = array.get(acc, 3)
+    float sumHH = array.get(acc, 4)
+    float result = 1.0
+    if sumH > 0
+        float th = math.min(math.max(-sumA / sumH, -LNC_MAX), LNC_MAX)
+        float meat = sumAA + 2.0 * th * sumAH + th * th * sumHH
+        if meat > 0
+            float info = sumH * sumH / meat
+            result := math.exp(th * info / (info + 1.0 / (PRIOR_SD * PRIOR_SD)))
+    result
+
+pct(float p) =>
+    na(p) ? "—" : p < 0.005 ? "<1%" : p > 0.995 ? ">99%" : str.tostring(math.round(p * 100)) + "%"
+
+hhmm(int h, int m) =>
+    (h < 10 ? "0" : "") + str.tostring(h) + ":" + (m < 10 ? "0" : "") + str.tostring(m)
+
+// ─────────────────────────────────────────────────────────────
+// VOLATILITY MIXTURE: ln W ~ N(-s^2/2, s^2), 5-node Gauss-Hermite
+// ─────────────────────────────────────────────────────────────
+var array<float> mixW = array.from(0.011257411327721, 0.222075922005613, 0.533333333333333, 0.222075922005613, 0.011257411327721)
+var array<float> mixM = array.new<float>(5, 1.0)
+var float        k68  = 1.0    // half-width of the central 68.27% of the mixture, in sqrt(V) units
+if barstate.isfirst
+    array<float> ghX = array.from(-2.856970013872806, -1.355626179974266, 0.0, 1.355626179974266, 2.856970013872806)
+    for i = 0 to 4
+        array.set(mixM, i, math.exp(MIX_SD * array.get(ghX, i) - 0.5 * MIX_SD * MIX_SD))
+    float lo = 0.0
+    float hi = 4.0
+    for it = 1 to 60
+        float h = 0.5 * (lo + hi)
+        float cover = 0.0
+        for i = 0 to 4
+            cover += array.get(mixW, i) * (1.0 - erfcc(h / math.sqrt(2.0 * array.get(mixM, i))))
+        if cover < 0.682689492
+            lo := h
+        else
+            hi := h
+    k68 := 0.5 * (lo + hi)
+
+// ─────────────────────────────────────────────────────────────
+// SESSION GEOMETRY
+// ─────────────────────────────────────────────────────────────
+int   sH       = int(str.tonumber(str.substring(sessIn, 0, 2)))
+int   sM       = int(str.tonumber(str.substring(sessIn, 2, 4)))
+int   eH       = int(str.tonumber(str.substring(sessIn, 5, 7)))
+int   eM       = int(str.tonumber(str.substring(sessIn, 7, 9)))
+int   startMin = sH * 60 + sM
+int   endMin   = eH * 60 + eM
+int   lenMin   = endMin - startMin
+int   tfSec    = timeframe.in_seconds(timeframe.period)
+float tfMin    = tfSec / 60.0
+bool  tfOk     = timeframe.isminutes and tfSec <= 3600
+bool  sessOk   = not na(lenMin) and lenMin > 0
+int   K        = tfOk and sessOk ? math.ceil(lenMin * 60.0 / tfSec) : 1
+bool  setupOk  = tfOk and sessOk and K <= MAX_K
+float tick     = syminfo.mintick
+float eps      = tick * 1e-3
+
+int  todMin     = hour(time, tzIn) * 60 + minute(time, tzIn)
+int  tSessStart = setupOk ? timestamp(tzIn, year(time, tzIn), month(time, tzIn), dayofmonth(time, tzIn), sH, sM, 0) : na
+int  tSessEnd   = setupOk ? timestamp(tzIn, year(time, tzIn), month(time, tzIn), dayofmonth(time, tzIn), eH, eM, 0) : na
+bool inSess     = setupOk and todMin >= startMin and todMin < endMin
+
+[exH, exL, exC] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]], lookahead = barmerge.lookahead_on)
+[pwH, pwL]      = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+bool  newExDay  = timeframe.change("D")
+float atr14     = ta.atr(14)
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+// learned model
+var array<float> vhat    = array.new<float>(K, 0.0)    // expected log-variance per bar-of-session
+var array<int>   vcnt    = array.new<int>(K, 0)
+var int          daysLearned = 0
+var float        sPrior  = 1.0
+var array<float> accExt  = array.new<float>(5, 0.0)    // calibration sums: H, a, a^2, aH, H^2
+var array<float> accHL   = array.new<float>(5, 0.0)
+var float        calExt  = 1.0
+var float        calHL   = 1.0
+
+// current session
+var bool         active  = false
+var int          sessId  = na
+var bool         ready   = false
+var float        cExt    = 1.0
+var float        cHL     = 1.0
+var float        sessH   = na
+var float        sessL   = na
+var float        sessC   = na
+var float        prevC   = na
+var float        xSum    = 0.0
+var float        eSum    = 0.0
+var float        eTot    = 0.0
+var int          sessBar = na
+var int          sessT0  = na
+var array<float> todayR2 = array.new<float>(K, na)
+var array<float> suffix  = array.new<float>(K + 1, 0.0)
+var array<Pred>  preds   = array.new<Pred>()
+var array<Race>  races   = array.new<Race>()
+var array<float> cvC     = array.new<float>()
+var array<float> cvS     = array.new<float>()
+
+// levels
+var float pdh  = na
+var float pdl  = na
+var float pdc  = na
+var float onH  = na
+var float onL  = na
+var float onhF = na
+var float onlF = na
+
+// track record
+var array<int>   relN  = array.new<int>(N_BUCKETS, 0)
+var array<int>   relH  = array.new<int>(N_BUCKETS, 0)
+var array<float> relP  = array.new<float>(N_BUCKETS, 0.0)
+var array<int>   relCl = array.new<int>(N_BUCKETS, 0)
+var array<float> relNN = array.new<float>(N_BUCKETS, 0.0)
+var array<float> relHH = array.new<float>(N_BUCKETS, 0.0)
+var array<float> relHN = array.new<float>(N_BUCKETS, 0.0)
+var float brierM     = 0.0
+var float brierB     = 0.0
+var int   baseN      = 0
+var int   baseH      = 0
+var int   gradedDays = 0
+var array<int> raceCnt = array.new<int>(3, 0)
+var int   raceN   = 0
+var int   raceAmb = 0
+var float raceBM  = 0.0
+var float raceBB  = 0.0
+var int   callN   = 0
+var float callP   = 0.0
+var int   callHit = 0
+var int   covN    = 0
+var int   covIn   = 0
+
+// ─────────────────────────────────────────────────────────────
+// SESSION LIFECYCLE
+// ─────────────────────────────────────────────────────────────
+if setupOk and newExDay
+    onH := na
+    onL := na
+
+bool endNow   = setupOk and active and (not inSess or tSessStart != sessId)
+bool startNow = inSess and (not active or tSessStart != sessId)
+
+// grade the finished session, then learn from it
+if endNow
+    float fh = sessH
+    float fl = sessL
+    float fc = sessC
+    int np = array.size(preds)
+    if np > 0
+        array<int> nSb = array.new<int>(N_BUCKETS, 0)
+        array<int> hSb = array.new<int>(N_BUCKETS, 0)
+        array<int> ys  = array.new<int>(np, 0)
+        float baseRate = (baseH + 1.0) / (baseN + 2.0)
+        int hits = 0
+        for i = 0 to np - 1
+            Pred pr = array.get(preds, i)
+            bool hit = pr.above ? fh >= pr.lv - eps : fl <= pr.lv + eps
+            int y = hit ? 1 : 0
+            array.set(ys, i, y)
+            int b = bucketOf(pr.p)
+            array.set(relN, b, array.get(relN, b) + 1)
+            array.set(relH, b, array.get(relH, b) + y)
+            array.set(relP, b, array.get(relP, b) + pr.p)
+            array.set(nSb, b, array.get(nSb, b) + 1)
+            array.set(hSb, b, array.get(hSb, b) + y)
+            brierM += (pr.p - y) * (pr.p - y)
+            brierB += (baseRate - y) * (baseRate - y)
+            hits += y
+        for b = 0 to N_BUCKETS - 1
+            int nb = array.get(nSb, b)
+            if nb > 0
+                int hb = array.get(hSb, b)
+                array.set(relCl, b, array.get(relCl, b) + 1)
+                array.set(relNN, b, array.get(relNN, b) + nb * nb)
+                array.set(relHH, b, array.get(relHH, b) + hb * hb)
+                array.set(relHN, b, array.get(relHN, b) + hb * nb)
+        baseN += np
+        baseH += hits
+        gradedDays += 1
+
+        // calibration: per event class, this session's Brier score as a local
+        // quadratic in ln c around the value it used, accumulated with slow
+        // forgetting (squared terms with squared weights, for the sandwich)
+        float delta = 1.0 - 1.0 / CAL_MEMORY
+        for cls = 0 to 1
+            float th = math.log(cls == EXT ? cExt : cHL)
+            float b0 = 0.0
+            float b1 = 0.0
+            float b2 = 0.0
+            int cnt = 0
+            for i = 0 to np - 1
+                Pred pr = array.get(preds, i)
+                if pr.cls == cls
+                    float yv = array.get(ys, i)
+                    float e0 = touchMix(pr.z, math.exp(th - CAL_H), mixW, mixM) - yv
+                    float e1 = touchMix(pr.z, math.exp(th), mixW, mixM) - yv
+                    float e2 = touchMix(pr.z, math.exp(th + CAL_H), mixW, mixM) - yv
+                    b0 += e0 * e0
+                    b1 += e1 * e1
+                    b2 += e2 * e2
+                    cnt += 1
+            if cnt > 0
+                float g = (b2 - b0) / (2.0 * CAL_H)
+                float hh = (b2 - 2.0 * b1 + b0) / (CAL_H * CAL_H)
+                float a = g - hh * th
+                array<float> acc = cls == EXT ? accExt : accHL
+                array.set(acc, 0, array.get(acc, 0) * delta + hh)
+                array.set(acc, 1, array.get(acc, 1) * delta + a)
+                array.set(acc, 2, array.get(acc, 2) * delta * delta + a * a)
+                array.set(acc, 3, array.get(acc, 3) * delta * delta + a * hh)
+                array.set(acc, 4, array.get(acc, 4) * delta * delta + hh * hh)
+                if cls == EXT
+                    calExt := fitC(accExt)
+                else
+                    calHL := fitC(accHL)
+
+    if array.size(races) > 0
+        // the baseline uses outcomes of earlier sessions only
+        float f0Base = array.get(raceCnt, UP) + 1.0
+        float f1Base = array.get(raceCnt, DOWN) + 1.0
+        float f2Base = array.get(raceCnt, NONE) + 1.0
+        for rc in races
+            if rc.outcome < 0
+                rc.outcome := NONE
+            if rc.outcome == AMBIG
+                raceAmb += 1
+            else
+                float f0 = na(rc.up) ? 0.0 : f0Base
+                float f1 = na(rc.dn) ? 0.0 : f1Base
+                float fs = f0 + f1 + f2Base
+                float y0 = rc.outcome == UP ? 1.0 : 0.0
+                float y1 = rc.outcome == DOWN ? 1.0 : 0.0
+                float y2 = rc.outcome == NONE ? 1.0 : 0.0
+                raceBM += (rc.pu - y0) * (rc.pu - y0)
+                raceBB += (f0 / fs - y0) * (f0 / fs - y0)
+                raceBM += (rc.pd - y1) * (rc.pd - y1)
+                raceBB += (f1 / fs - y1) * (f1 / fs - y1)
+                raceBM += (rc.pn - y2) * (rc.pn - y2)
+                raceBB += (f2Base / fs - y2) * (f2Base / fs - y2)
+                int callIdx = rc.pu >= rc.pd and rc.pu >= rc.pn ? UP : rc.pd >= rc.pn ? DOWN : NONE
+                callN += 1
+                callP += callIdx == UP ? rc.pu : callIdx == DOWN ? rc.pd : rc.pn
+                callHit += callIdx == rc.outcome ? 1 : 0
+                array.set(raceCnt, rc.outcome, array.get(raceCnt, rc.outcome) + 1)
+                raceN += 1
+
+    int nc = array.size(cvC)
+    if nc > 0
+        for i = 0 to nc - 1
+            covN += 1
+            covIn += math.abs(math.log(fc / array.get(cvC, i))) <= array.get(cvS, i) ? 1 : 0
+
+    // learn the time-of-day volatility curve and the regime from this session
+    for k = 0 to K - 1
+        float x = array.get(todayR2, k)
+        if not na(x)
+            int n = array.get(vcnt, k) + 1
+            array.set(vcnt, k, n)
+            float w = math.max(1.0 / n, 1.0 / memIn)
+            float vk = array.get(vhat, k)
+            array.set(vhat, k, vk + w * (x - vk))
+    if ready and eSum > 0
+        sPrior := LAMBDA_S * sPrior + (1.0 - LAMBDA_S) * (xSum / eSum)
+    daysLearned += 1
+    pdh := fh
+    pdl := fl
+    pdc := fc
+    onH := na      // what prints from here on belongs to the next overnight
+    onL := na
+    active := false
+
+if startNow
+    active := true
+    sessId := tSessStart
+    ready := daysLearned >= warmIn
+    cExt := calIn ? calExt : 1.0
+    cHL := calIn ? calHL : 1.0
+    onhF := onH
+    onlF := onL
+    sessH := na
+    sessL := na
+    sessC := na
+    prevC := na
+    array.fill(todayR2, na)
+    xSum := 0.0
+    eSum := 0.0
+    eTot := array.sum(vhat)
+    array.set(suffix, K, 0.0)
+    for k = K - 1 to 0
+        array.set(suffix, k, array.get(suffix, k + 1) + array.get(vhat, k))
+    array.clear(preds)
+    array.clear(races)
+    array.clear(cvC)
+    array.clear(cvS)
+    sessBar := bar_index
+    sessT0 := time
+
+// external levels, slot order PDH PDL PDC ONH ONL PWH PWL L1 L2
+array<float> lvP = array.new<float>(9, na)
+array.set(lvP, 0, showPD ? (pdSrc == "Session" ? pdh : exH) : na)
+array.set(lvP, 1, showPD ? (pdSrc == "Session" ? pdl : exL) : na)
+array.set(lvP, 2, showPDC ? (pdSrc == "Session" ? pdc : exC) : na)
+array.set(lvP, 3, showON ? (active ? onhF : onH) : na)
+array.set(lvP, 4, showON ? (active ? onlF : onL) : na)
+array.set(lvP, 5, showPW ? pwH : na)
+array.set(lvP, 6, showPW ? pwL : na)
+array.set(lvP, 7, lvl1In > 0 ? lvl1In : na)
+array.set(lvP, 8, lvl2In > 0 ? lvl2In : na)
+
+// ─────────────────────────────────────────────────────────────
+// BAR UPDATE + CHECKPOINT PREDICTIONS
+// ─────────────────────────────────────────────────────────────
+int kNow = 0
+if inSess
+    kNow := math.max(0, math.min(K - 1, math.floor((todMin - startMin) / tfMin)))
+    float r = na(prevC) ? math.log(close / open) : math.log(close / prevC)
+    prevC := close
+    float r2 = r * r
+    float prevR2 = array.get(todayR2, kNow)
+    array.set(todayR2, kNow, na(prevR2) ? r2 : prevR2 + r2)
+    xSum += r2
+    eSum += array.get(vhat, kNow)
+    sessH := na(sessH) ? high : math.max(sessH, high)
+    sessL := na(sessL) ? low : math.min(sessL, low)
+    sessC := close
+
+    // resolve earlier "next draw" calls with this bar
+    for rc in races
+        if rc.outcome < 0
+            bool upHit = not na(rc.up) and high >= rc.up - eps
+            bool dnHit = not na(rc.dn) and low <= rc.dn + eps
+            if upHit and dnHit
+                rc.outcome := AMBIG
+            else if upHit
+                rc.outcome := UP
+            else if dnHit
+                rc.outcome := DOWN
+
+    float elOpen  = todMin - startMin
+    float elClose = elOpen + tfMin
+    bool checkpoint = math.floor(elClose / gradeIn) > math.floor(elOpen / gradeIn) and elClose < lenMin
+    if checkpoint and ready
+        float den = PHI * eTot + eSum
+        float sReg = den > 0 ? (sPrior * PHI * eTot + xSum) / den : sPrior
+        float v = sReg * array.get(suffix, kNow + 1)
+        if v > 0
+            float sq = math.sqrt(2.0 * v)
+            // session high / low breaks: price must print one tick beyond the extreme
+            float hiLv = sessH + tick
+            float loLv = sessL - tick
+            float zHi = math.log(hiLv / close) / sq
+            float pHi = touchMix(zHi, cHL, mixW, mixM)
+            array.push(preds, Pred.new(zHi, pHi, hiLv, true, HL))
+            float pLo = 0.0
+            if loLv > 0
+                float zLo = math.log(close / loLv) / sq
+                pLo := touchMix(zLo, cHL, mixW, mixM)
+                array.push(preds, Pred.new(zLo, pLo, loLv, false, HL))
+            // external levels: untouched means beyond the session range; a level
+            // past the high can't be likelier than a new high (same below)
+            float up = na
+            float dn = na
+            float pUp = 0.0
+            float pDn = 0.0
+            array<float> seen = array.from(hiLv, loLv)
+            for i = 0 to 8
+                float L = array.get(lvP, i)
+                if not na(L) and L > 0
+                    bool above = L > sessH + eps
+                    bool below = L < sessL - eps
+                    if above or below
+                        float z = math.abs(math.log(L / close)) / sq
+                        float p = 0.0
+                        if math.abs(L - hiLv) <= eps
+                            p := pHi
+                        else if math.abs(L - loLv) <= eps
+                            p := pLo
+                        else
+                            p := math.min(touchMix(z, cExt, mixW, mixM), above ? pHi : pLo)
+                        bool dup = false
+                        for s in seen
+                            if math.abs(L - s) <= eps
+                                dup := true
+                        if not dup
+                            array.push(seen, L)
+                            array.push(preds, Pred.new(z, p, L, above, EXT))
+                        if above and (na(up) or L < up)
+                            up := L
+                            pUp := p
+                        if below and (na(dn) or L > dn)
+                            dn := L
+                            pDn := p
+            if not na(up) or not na(dn)
+                float a = na(up) ? na : math.log(up / close)
+                float b = na(dn) ? na : math.log(close / dn)
+                [pu, pd] = raceMix(a, b, cExt * v, mixW, mixM)
+                float puC = math.min(pu, pUp)    // first-touch can't beat touch
+                float pdC = math.min(pd, pDn)
+                array.push(races, Race.new(up, dn, puC, pdC, math.max(1.0 - puC - pdC, 0.0)))
+            array.push(cvC, close)
+            array.push(cvS, k68 * math.sqrt(cExt * v))
+else if setupOk
+    onH := na(onH) ? high : math.max(onH, high)
+    onL := na(onL) ? low : math.min(onL, low)
+
+// ─────────────────────────────────────────────────────────────
+// DISPLAY
+// ─────────────────────────────────────────────────────────────
+var array<line>  drawLines  = array.new<line>()
+var array<label> drawLabels = array.new<label>()
+var table tb = na
+string tbPos = posIn == "Top right" ? position.top_right : posIn == "Bottom right" ? position.bottom_right : posIn == "Top left" ? position.top_left : position.bottom_left
+
+if barstate.islast
+    for ln in drawLines
+        line.delete(ln)
+    for lb in drawLabels
+        label.delete(lb)
+    array.clear(drawLines)
+    array.clear(drawLabels)
+    // rebuilt on every update: the layout changes as status rows come and go
+    if not na(tb)
+        table.delete(tb)
+    tb := table.new(tbPos, 3, 20, bgcolor = color.new(chart.bg_color, 6), frame_color = color.new(chart.fg_color, 82),
+         frame_width = 1, border_color = color.new(chart.fg_color, 92), border_width = 1)
+
+    color fg    = chart.fg_color
+    color muted = color.new(chart.fg_color, 40)
+    color faint = color.new(chart.fg_color, 65)
+    color good  = #26A69A
+    color warn  = #FFA726
+    color bad   = #EF5350
+    string closeAt = setupOk ? hhmm(eH, eM) : "—"
+
+    // live odds with the variance left from this instant (mid-bar on realtime ticks)
+    float vLive = na
+    if inSess and active and ready
+        float frac = barstate.isconfirmed ? 0.0 : math.max(0.0, math.min(1.0, (time_close - timenow) / (tfSec * 1000.0)))
+        float vk = array.get(vhat, kNow)
+        float denL = PHI * eTot + eSum - frac * vk
+        float sL = denL > 0 ? (sPrior * PHI * eTot + xSum) / denL : sPrior
+        vLive := sL * (frac * vk + array.get(suffix, kNow + 1))
+    bool live = not na(vLive) and vLive > 0
+
+    float sqL   = live ? math.sqrt(2.0 * vLive) : na
+    float sigPx = live ? close * math.sqrt(cExt * vLive) : na
+    float rng68 = live ? close * k68 * math.sqrt(cExt * vLive) : na
+    float pHiL  = live ? touchMix(math.log((sessH + tick) / close) / sqL, cHL, mixW, mixM) : na
+    float pLoL  = live and sessL - tick > 0 ? touchMix(math.log(close / (sessL - tick)) / sqL, cHL, mixW, mixM) : live ? 0.0 : na
+
+    array<string> nmS = array.from("PDH", "PDL", "PDC", "ONH", "ONL", "PWH", "PWL", "L1", "L2")
+    array<string> nmL = array.from("Previous day high", "Previous day low", "Previous day close", "Overnight high", "Overnight low", "Previous week high", "Previous week low", "Custom level 1", "Custom level 2")
+
+    // odds per slot (na = touched today / not live), nearest untouched each side
+    array<float> slotP = array.new<float>(9, na)
+    float upL = na
+    float dnL = na
+    float pUpL = 0.0
+    float pDnL = 0.0
+    int upI = -1
+    int dnI = -1
+    for i = 0 to 8
+        float L = array.get(lvP, i)
+        if live and not na(L) and L > 0
+            bool above = L > sessH + eps
+            bool below = L < sessL - eps
+            if above or below
+                float p = 0.0
+                if math.abs(L - (sessH + tick)) <= eps
+                    p := pHiL
+                else if math.abs(L - (sessL - tick)) <= eps
+                    p := pLoL
+                else
+                    p := math.min(touchMix(math.abs(math.log(L / close)) / sqL, cExt, mixW, mixM), above ? pHiL : pLoL)
+                array.set(slotP, i, p)
+                if above and (na(upL) or L < upL)
+                    upL := L
+                    pUpL := p
+                    upI := i
+                if below and (na(dnL) or L > dnL)
+                    dnL := L
+                    pDnL := p
+                    dnI := i
+    float puL = na
+    float pdL = na
+    float pnL = na
+    if live and (upI >= 0 or dnI >= 0)
+        float a = upI >= 0 ? math.log(upL / close) : na
+        float b = dnI >= 0 ? math.log(close / dnL) : na
+        [pu, pd] = raceMix(a, b, cExt * vLive, mixW, mixM)
+        puL := math.min(pu, pUpL)
+        pdL := math.min(pd, pDnL)
+        pnL := math.max(1.0 - puL - pdL, 0.0)
+
+    // level lines + labels, staggered where they'd overlap
+    if showLbl and setupOk
+        array<float> visP = array.new<float>()
+        array<int>   visI = array.new<int>()
+        for i = 0 to 8
+            float L = array.get(lvP, i)
+            if not na(L) and L > 0
+                array.push(visP, L)
+                array.push(visI, i)
+        int nv = array.size(visP)
+        if nv > 0
+            array<int> ord = array.sort_indices(visP, order.ascending)
+            float gap = na(atr14) ? 0.0 : 0.3 * atr14
+            float lastL = na
+            int offs = 3
+            for j = 0 to nv - 1
+                int i = array.get(visI, array.get(ord, j))
+                float L = array.get(lvP, i)
+                offs := not na(lastL) and L - lastL < gap ? math.min(offs + 9, 30) : 3
+                lastL := L
+                bool touched = active and not na(sessH) and L <= sessH + eps and L >= sessL - eps
+                float p = array.get(slotP, i)
+                bool isAbove = L > close
+                color base = isAbove ? upCol : dnCol
+                bool inRace = live and (i == upI or i == dnI)
+                color lnCol = touched ? color.new(fg, 78) : na(p) ? color.new(base, 60) : color.new(base, 85 - 60 * p)
+                int x1 = active and not na(sessBar) ? sessBar : math.max(bar_index - 30, 0)
+                array.push(drawLines, line.new(x1, L, bar_index + offs, L, color = lnCol,
+                     style = touched ? line.style_dotted : line.style_solid, width = inRace ? 2 : 1))
+                string txt = array.get(nmS, i) + (touched ? " ✓" : na(p) ? "" : " " + pct(p))
+                string tip = array.get(nmL, i) + "  " + str.tostring(L, format.mintick)
+                if touched
+                    tip += "\nAlready traded this session"
+                else if not na(p)
+                    float dPx = L - close
+                    tip += "\n" + (dPx >= 0 ? "+" : "") + str.tostring(dPx, format.mintick) + " away · " + str.tostring(math.abs(dPx) / sigPx, "#.##") + "σ"
+                    tip += "\nTouch before " + closeAt + ": " + pct(p)
+                    if inRace
+                        tip += "\nFirst of the two nearest levels to trade: " + pct(i == upI ? puL : pdL)
+                array.push(drawLabels, label.new(bar_index + offs, L, txt, style = label.style_label_left, size = size.small,
+                     color = touched ? color.new(fg, 90) : color.new(base, 82), textcolor = touched ? faint : base, tooltip = tip))
+
+    // ── table ──
+    int row = 0
+    string leftTxt = ""
+    if setupOk and inSess and active
+        int msLeft = math.max(tSessEnd - (barstate.isrealtime ? timenow : time_close), 0)
+        int minsLeft = math.floor(msLeft / 60000.0)
+        leftTxt := str.tostring(math.floor(minsLeft / 60.0)) + "h " + str.tostring(minsLeft % 60) + "m left"
+    table.cell(tb, 0, row, "LEVEL ODDS", text_color = fg, text_halign = text.align_left, text_size = size.small,
+         tooltip = "Chance each level trades before the session close. Calibration c: levels " + str.tostring(calExt, "#.###") + " · high/low " + str.tostring(calHL, "#.###"))
+    table.cell(tb, 1, row, leftTxt == "" ? "to " + closeAt : "to " + closeAt + " · " + leftTxt, text_color = muted, text_halign = text.align_right, text_size = size.small)
+    table.merge_cells(tb, 1, row, 2, row)
+    row += 1
+
+    string status = ""
+    if not tfOk
+        status := "Use a 1–60 minute chart"
+    else if not sessOk
+        status := "Session must start and end on the same day"
+    else if not setupOk
+        status := "Session too long for this timeframe"
+    else if daysLearned < warmIn
+        status := "Learning volatility · " + str.tostring(daysLearned) + "/" + str.tostring(warmIn) + " sessions"
+    else if inSess and active and not ready
+        status := "Odds start next session"
+    else if not live
+        status := "Session closed · odds resume " + hhmm(sH, sM)
+    if status != ""
+        table.cell(tb, 0, row, status, text_color = muted, text_halign = text.align_left, text_size = size.small)
+        table.merge_cells(tb, 0, row, 2, row)
+        row += 1
+    if active and not na(sessT0) and sessT0 != sessId
+        table.cell(tb, 0, row, "⚠ Bars don't start at " + hhmm(sH, sM) + " — use a 1–30 min chart", text_color = warn, text_halign = text.align_left, text_size = size.small)
+        table.merge_cells(tb, 0, row, 2, row)
+        row += 1
+
+    if live
+        table.cell(tb, 0, row, "High of day holds", text_color = muted, text_halign = text.align_left, text_size = size.small,
+             tooltip = "Chance no price trades above today's high (" + str.tostring(sessH, format.mintick) + ") before " + closeAt)
+        table.cell(tb, 1, row, pct(1.0 - pHiL), text_color = fg, text_halign = text.align_right, text_size = size.small)
+        table.merge_cells(tb, 1, row, 2, row)
+        row += 1
+        table.cell(tb, 0, row, "Low of day holds", text_color = muted, text_halign = text.align_left, text_size = size.small,
+             tooltip = "Chance no price trades below today's low (" + str.tostring(sessL, format.mintick) + ") before " + closeAt)
+        table.cell(tb, 1, row, pct(1.0 - pLoL), text_color = fg, text_halign = text.align_right, text_size = size.small)
+        table.merge_cells(tb, 1, row, 2, row)
+        row += 1
+        string drawTip = "Which of the nearest untouched levels trades first before " + closeAt + (na(pnL) ? "" : ". Neither: " + pct(pnL))
+        table.cell(tb, 0, row, "Next draw", text_color = muted, text_halign = text.align_left, text_size = size.small, tooltip = drawTip)
+        table.cell(tb, 1, row, upI >= 0 ? "▲ " + array.get(nmS, upI) + " " + pct(puL) : "▲ —", text_color = upI >= 0 ? upCol : faint, text_halign = text.align_right, text_size = size.small, tooltip = drawTip)
+        table.cell(tb, 2, row, dnI >= 0 ? "▼ " + array.get(nmS, dnI) + " " + pct(pdL) : "▼ —", text_color = dnI >= 0 ? dnCol : faint, text_halign = text.align_right, text_size = size.small, tooltip = drawTip)
+        row += 1
+        table.cell(tb, 0, row, "68% close range", text_color = muted, text_halign = text.align_left, text_size = size.small,
+             tooltip = "Two closes in three land within this distance of the current price (1σ = " + str.tostring(sigPx, format.mintick) + ")")
+        table.cell(tb, 1, row, "±" + str.tostring(rng68, format.mintick), text_color = fg, text_halign = text.align_right, text_size = size.small)
+        table.merge_cells(tb, 1, row, 2, row)
+        row += 1
+
+    if showRec and setupOk
+        table.cell(tb, 0, row, "TRACK RECORD", text_color = fg, text_halign = text.align_left, text_size = size.small,
+             tooltip = "Every prediction locked at a checkpoint and graded after its session closed, by a model fit on earlier sessions only")
+        table.cell(tb, 1, row, str.tostring(gradedDays) + " days graded", text_color = muted, text_halign = text.align_right, text_size = size.small)
+        table.merge_cells(tb, 1, row, 2, row)
+        row += 1
+        if baseN > 0
+            table.cell(tb, 0, row, "Said", text_color = faint, text_halign = text.align_left, text_size = size.small)
+            table.cell(tb, 1, row, "Hit ±95%", text_color = faint, text_halign = text.align_right, text_size = size.small)
+            table.cell(tb, 2, row, "n", text_color = faint, text_halign = text.align_right, text_size = size.small)
+            row += 1
+            for b = 0 to N_BUCKETS - 1
+                int n = array.get(relN, b)
+                if n > 0
+                    float said = array.get(relP, b) / n
+                    float hitR = array.get(relH, b) / float(n)
+                    int cl = array.get(relCl, b)
+                    float num = array.get(relHH, b) - 2.0 * hitR * array.get(relHN, b) + hitR * hitR * array.get(relNN, b)
+                    float se = math.sqrt(math.max(num, 0.0) / (n * n * 1.0) * (cl > 1 ? cl / (cl - 1.0) : 1.0))
+                    float ci = 1.96 * se
+                    bool okB = math.abs(hitR - said) <= math.max(ci, 0.02)
+                    table.cell(tb, 0, row, pct(said), text_color = muted, text_halign = text.align_left, text_size = size.small)
+                    table.cell(tb, 1, row, pct(hitR) + " ±" + str.tostring(math.round(ci * 100)), text_color = okB ? fg : warn, text_halign = text.align_right, text_size = size.small,
+                         tooltip = okB ? "Within its error bar of what it said" : "Off by more than its error bar")
+                    table.cell(tb, 2, row, str.tostring(n), text_color = faint, text_halign = text.align_right, text_size = size.small)
+                    row += 1
+            float skill = brierB > 0 ? 1.0 - brierM / brierB : na
+            table.cell(tb, 0, row, "Skill vs base rate", text_color = muted, text_halign = text.align_left, text_size = size.small,
+                 tooltip = "Brier score improvement over always guessing the historical hit rate. Above 0 = more useful than the average")
+            table.cell(tb, 1, row, na(skill) ? "—" : (skill >= 0 ? "+" : "") + str.tostring(math.round(skill * 100)) + "%", text_color = na(skill) ? fg : skill > 0 ? good : bad, text_halign = text.align_right, text_size = size.small)
+            table.merge_cells(tb, 1, row, 2, row)
+            row += 1
+            if callN > 0
+                table.cell(tb, 0, row, "Next-draw calls", text_color = muted, text_halign = text.align_left, text_size = size.small,
+                     tooltip = "Average confidence of the favorite outcome → how often it happened (" + str.tostring(callN) + " calls, " + str.tostring(raceAmb) + " same-bar ties excluded)")
+                table.cell(tb, 1, row, pct(callP / callN) + " → " + pct(callHit / float(callN)), text_color = fg, text_halign = text.align_right, text_size = size.small)
+                table.merge_cells(tb, 1, row, 2, row)
+                row += 1
+            if covN > 0
+                table.cell(tb, 0, row, "Close in 68% range", text_color = muted, text_halign = text.align_left, text_size = size.small,
+                     tooltip = "Share of checkpoints whose session close landed inside the 68% range shown at the time. Ideal: 68%")
+                table.cell(tb, 1, row, pct(covIn / float(covN)) + " (68)", text_color = fg, text_halign = text.align_right, text_size = size.small)
+                table.merge_cells(tb, 1, row, 2, row)
+                row += 1

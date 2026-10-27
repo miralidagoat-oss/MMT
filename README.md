@@ -1,4 +1,169 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Quant Engine
+
+Pine Script v6 indicators, each with a Python reference that reproduces its
+numbers bar for bar:
+
+- **[Level Odds](#level-odds)** — `indicators/level_odds.pine`: the live chance
+  that price trades at each key level before the session close, a "next
+  draw" race between the nearest liquidity above and below, and a track
+  record that grades every call it ever made.
+- **[Alpha Predictive Limit Matrix](#alpha-predictive-limit-matrix)** —
+  `indicators/alpha_predictive_limit_matrix.pine`: liquidity-sweep rejection
+  limit entries that grade their own fills.
+
+---
+
+# Level Odds
+
+On an intraday chart (built for NQ / ES futures, works on any symbol) Level
+Odds marks the previous day's high / low / close, the overnight high / low and
+optional weekly and custom levels, and labels each one with the **chance
+price trades there before the session close**. The table adds:
+
+- **High / low of day holds**: the chance today's extreme survives to the close.
+- **Next draw**: which of the nearest untouched levels above and below trades
+  first. That's the draw-on-liquidity question, answered with numbers instead of
+  a bias.
+- **68% close range**: two closes in three land inside it.
+- **Track record**: every past call, graded against what happened.
+
+## Using it
+
+1. Pine Editor → paste `indicators/level_odds.pine` → *Add to chart*.
+2. NQ1! / ES1! (or MNQ1! / MES1!) on a 1–30 minute chart, extended hours on so
+   the overnight levels exist. Default session: 09:30–16:00 New York.
+3. Odds appear after 10 completed sessions of warm-up; the track record fills
+   in as sessions are graded. Hover a label for price, distance and race odds.
+
+## How the odds are computed
+
+1. **Volatility clock.** Every bar-of-session (09:30, 09:35, …) has its own
+   expected variance, learned from past sessions. The open and close move far
+   more than lunch, so an hour at 09:30 counts for more than an hour at 12:30.
+   Today's regime scales the curve and updates as the session's realized
+   volatility comes in.
+2. **Reflection principle.** For a driftless walk with variance V left before
+   the close, P(touch a level at log distance d) = erfc(d / √(2V)). The next
+   draw race uses the exact two-barrier solution (method of images for short
+   horizons, Fourier series for long ones).
+3. **Volatility uncertainty.** The variance left is never known exactly, so V
+   is integrated over a mean-one lognormal (log-sd 0.85, 5-node Gauss–Hermite).
+   This is what fixes the fat tails real index futures show (below).
+4. **Self-calibration.** One factor c per event type (session high/low breaks,
+   external levels) is fitted to the indicator's own graded history by
+   minimizing the Brier score. It's then shrunk toward 1 by its cluster-robust
+   standard error, so it moves only as far as the evidence supports.
+
+## How the grading works
+
+- Predictions are locked at checkpoint bar closes (default every 30 minutes of
+  session time) for every untouched level plus the session high and low. They
+  are graded only after the session ends, against bars that came later.
+- The model that made them was fitted on earlier sessions only, so every
+  number on the dashboard is out-of-sample.
+- Error bars are cluster-robust by session. Calls inside one day are
+  correlated, so naive binomial error bars would be far too small.
+- Skill is measured against a baseline that always guesses the historical hit
+  rate. That baseline is perfectly calibrated too, so calibration alone proves
+  nothing; the odds have to beat it.
+- "Did price trade X before the close?" is fully answered by bar highs and
+  lows, so unlike a trade backtest there is no guessing about the order of
+  events inside a bar.
+
+## Validation
+
+**Known-answer tests** (`backtest/test_level_odds_math.py`,
+`backtest/test_level_odds_engine.py`): the erfc polynomial; touch, race and
+mixture formulas against Monte Carlo; an oracle given the true variance must
+grade as calibrated (worst bucket 1.6 SE); the full model on synthetic
+random-walk sessions stays calibrated (worst bucket 1.1 points) with c held
+in 0.93–1.16; a mean-reverting control market gets flagged at 7.8 SE and the
+calibration pulls c to 0.75.
+
+**Real futures data**: NQ=F and ES=F bars from Yahoo, committed on branch
+`claude/peaceful-dijkstra-7not0n`. The only constant chosen on real data is the
+mixture spread (0.85), picked on the first 60% of NQ 1h. Everything else was
+fixed before any real data was used. Each table is the engine's own track
+record: exactly what the dashboard shows on those bars.
+
+NQ 1h, Apr 2024 – Sep 2026, 594 graded sessions (session 09:00–16:00, because
+hourly futures bars open on the hour):
+
+| Said | Hit (±95%) | n |
+|---|---|---|
+| 5.3% | 5.9% ± 1.1 | 9,626 |
+| 29.3% | 28.3% ± 2.7 | 2,751 |
+| 49.4% | 50.8% ± 3.3 | 1,656 |
+| 69.8% | 69.2% ± 3.1 | 1,300 |
+| 89.9% | 89.7% ± 1.9 | 1,226 |
+
+Skill vs base rate +41.3% · next-draw calls said 81.4% → right 82.2% (3,444
+calls) · close inside the 68% range 70.2%.
+
+ES 1h, same span, 594 graded sessions (cross-market: nothing tuned on ES):
+
+| Said | Hit (±95%) | n |
+|---|---|---|
+| 6.1% | 6.4% ± 1.2 | 8,675 |
+| 29.3% | 28.4% ± 2.6 | 2,846 |
+| 49.5% | 49.7% ± 3.0 | 2,020 |
+| 69.4% | 67.2% ± 3.0 | 1,608 |
+| 89.6% | 90.6% ± 1.8 | 1,479 |
+
+Skill +40.6% · next-draw calls 78.7% → 77.9% (3,431) · 68% range 72.1%.
+
+NQ 5m, Jul – Sep 2026, default 09:30–16:00 session, 40 graded sessions:
+
+| Said | Hit (±95%) | n |
+|---|---|---|
+| 4.3% | 4.1% ± 3.4 | 1,664 |
+| 29.5% | 26.9% ± 8.5 | 283 |
+| 48.6% | 43.8% ± 10.5 | 162 |
+| 69.3% | 62.0% ± 10.8 | 150 |
+| 90.3% | 82.8% ± 8.1 | 99 |
+
+Skill +39.4% · next-draw calls 86.1% → 86.9% (480) · 68% range 66.5%. Every
+bucket is inside its error bar, but they lean high. With 40 sessions of
+history the calibration is still converging (c = 0.69 for levels), and
+5-minute NQ mean-reverts more than hourly does: the net move to the close was
+0.71× the variance of the path that got there.
+
+What the volatility mixture fixed, on held-out sets (worst bucket gap without →
+with it): NQ 1h last 40% 7.7 → 3.7 points, ES 1h first 60% 5.0 → 1.5, ES 1h
+last 40% 8.7 → 4.0, NQ 5m 12.6 → 7.4, NQ 15m 11.7 → 7.0. The Brier score
+improved on every set.
+
+## Honest caveats
+
+- No ES 5-minute data was available, so ES was validated on 1h only.
+- 40 sessions of 5-minute NQ is a small sample; the 1h results (594 sessions
+  per market) carry the weight.
+- Yahoo futures data is a continuous front month with occasional gaps;
+  TradingView's NQ1! / ES1! will differ slightly.
+- TradingView loads a limited number of bars (plan dependent). On a 5m futures
+  chart the free plan holds about 18 sessions, so the track record there is
+  thin, and its error bars say so. A 15m chart or a bigger plan gives it more.
+- Early-close holidays end the session before the model expects, so the odds
+  run high on those afternoons.
+- It's direction-neutral by design: odds, not a structure bias. It places no
+  trades, so there are no costs to model.
+
+## Reproduce
+
+```bash
+mkdir -p data && B=origin/claude/peaceful-dijkstra-7not0n
+git show $B:data_z1/NQ_1h.csv > data/NQ_1h.csv
+git show $B:data_z1/ES_1h.csv > data/ES_1h.csv
+git show $B:data_nq/NQ_5m.csv > data/NQ_5m.csv
+python3 backtest/test_level_odds_math.py && python3 backtest/test_level_odds_engine.py
+python3 backtest/level_odds.py data/NQ_1h.csv --tf 60 --session 0900-1600
+python3 backtest/level_odds.py data/ES_1h.csv --tf 60 --session 0900-1600
+python3 backtest/level_odds.py data/NQ_5m.csv --tf 5
+```
+
+---
+
+# Alpha Predictive Limit Matrix
 
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
