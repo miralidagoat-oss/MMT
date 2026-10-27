@@ -3,6 +3,10 @@
 Pine Script v6 indicators, each with a Python reference that reproduces its
 numbers bar for bar:
 
+- **[Premium & Discount Zones](#premium--discount-zones)** —
+  `indicators/premium_discount_zones.pine`: where price sits inside its
+  dealing range on every timeframe at once, as a premium / discount
+  percentage, with the zones drawn from any timeframe.
 - **[Level Odds](#level-odds)** — `indicators/level_odds.pine`: the live chance
   that price trades at each key level before the session close, a "next
   draw" race between the nearest liquidity above and below, and a track
@@ -10,6 +14,38 @@ numbers bar for bar:
 - **[Alpha Predictive Limit Matrix](#alpha-predictive-limit-matrix)** —
   `indicators/alpha_predictive_limit_matrix.pine`: liquidity-sweep rejection
   limit entries that grade their own fills.
+
+---
+
+# Premium & Discount Zones
+
+**Dealing range**, per timeframe: the most recent confirmed swing high and
+swing low (pivots N bars each side), each trailing to any new extreme so price
+is always inside the range. A *Lookback* mode uses the highest high and lowest
+low of the last N bars instead. Equilibrium is the 50% level: above it is
+premium, below it is discount, with a ±2.5% equilibrium band by default.
+
+Two numbers per timeframe:
+
+- **Depth**: how far into its zone price is. 0% at equilibrium, 100% at the
+  range high (premium) or the range low (discount). "Discount 72%" means price
+  is 72% of the way from equilibrium down to the low.
+- **In range**: where price sits, 0% = range low, 100% = range high.
+
+On the chart, the premium, equilibrium and discount boxes plus the 50% and
+quarter lines are drawn for the chart's timeframe or any higher one you pick,
+with a live "DISCOUNT 72%" reading at price. The table shows eight
+timeframes at once (default 1m, 5m, 15m, 1H, 4H, D, W, M, each adjustable)
+and a summary ("Discount on 5 of 7 timeframes"). Timeframes below the chart's
+show "—": lower-timeframe data from `request.security()` is unreliable, so
+they're never requested. Alerts fire when the chart timeframe enters
+premium, discount or equilibrium.
+
+Checks: `backtest/test_premium_discount.py` (hand-built swings with known
+ranges and readings, breakouts, lower highs, 120,000 random-walk bars where
+price must never leave its range) and `backtest/premium_discount.py`, which
+reads real NQ / ES futures on every timeframe from 5m to monthly with zero
+closes outside their dealing range.
 
 ---
 
