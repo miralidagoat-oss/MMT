@@ -1,0 +1,379 @@
+//@version=6
+indicator("MNQ Reversal Zones — no-lag, self-audited", shorttitle = "RevZones",
+     overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+// ============================================================================
+// WHAT THIS IS
+//   Reversal ZONES, not buy/sell signals. A zone is drawn the moment its level
+//   becomes known (a session has just closed) and it never moves afterwards.
+//   When price trades into a zone the tap is marked on that same bar, at the
+//   level price - there is no confirmation step and nothing is back-painted.
+//
+// WHAT THIS IS NOT
+//   A top/bottom-tick oracle. See README.md ("Reversal zones: research").
+//   Every reversal idea tested on real 1-minute Nasdaq data (session levels,
+//   sweeps, confluence, shock fades, round numbers, volume climaxes, ES/NQ
+//   divergence, clock windows) reverses at very nearly the rate pure chance
+//   gives for the same zone depth and target:
+//
+//        chance  =  depth / (target + depth)
+//
+//   e.g. a 30-pt zone and a 100-pt reversal -> ~23%. The dashboard prints the
+//   measured hit rate of the zones on YOUR chart next to that number, so the
+//   script can never look better than it is.
+//
+// GRADING (pessimistic, identical to backtest/rz_engine.py)
+//   FAIL  price trades beyond the far edge of the zone
+//   HIT   price travels `target` points away from the tap price first
+//   Inside one bar the far edge is assumed to print first, and a hit is never
+//   credited on the tap bar itself.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+const string G_CORE  = "Reversal definition"
+const string G_ZONES = "Zones (each is known before price gets there)"
+const string G_UI    = "Display"
+
+targetPts  = input.float(100.0, "Reversal target (points)", minval = 1.0, step = 5.0, group = G_CORE,
+     tooltip = "A tap counts as a hit when price travels this far away from the tap price before breaking the far edge of the zone.")
+depthMode  = input.string("Auto (× ADR)", "Zone depth", options = ["Auto (× ADR)", "Fixed points"], group = G_CORE,
+     tooltip = "How far past the level price may run before the zone is called failed. Deeper zones hit more often and are less precise - that trade-off is arithmetic, not skill.")
+depthAdr   = input.float(0.06, "Depth: fraction of ADR", minval = 0.01, maxval = 0.5, step = 0.01, group = G_CORE)
+depthFixed = input.float(30.0, "Depth: fixed points", minval = 1.0, step = 1.0, group = G_CORE)
+adrLen     = input.int(20, "ADR length (sessions)", minval = 5, maxval = 60, group = G_CORE)
+maxMinutes = input.int(600, "Grade a tapped zone for at most (minutes)", minval = 30, group = G_CORE)
+
+showON = input.bool(true,  "Overnight high / low      (18:00 → 09:30 ET, drawn at 09:30)", group = G_ZONES)
+showLO = input.bool(true,  "London high / low         (03:00 → 09:30 ET, drawn at 09:30)", group = G_ZONES)
+showAS = input.bool(true,  "Asia high / low           (18:00 → 03:00 ET, drawn at 03:00)", group = G_ZONES)
+showPD = input.bool(true,  "Prior-day RTH high / low  (drawn at 18:00 ET)",                group = G_ZONES)
+showX5 = input.bool(true,  "5-session high / low      (drawn at 18:00 ET)",                group = G_ZONES)
+showPW = input.bool(true,  "Prior-week high / low     (drawn at 18:00 ET)",                group = G_ZONES)
+
+showDash    = input.bool(true,  "Scorecard", group = G_UI)
+showGraded  = input.bool(true,  "Keep graded zones on the chart", group = G_UI)
+showNames   = input.bool(true,  "Zone name tags", group = G_UI)
+topColor    = input.color(#EF5350, "Top-zone color", group = G_UI)
+botColor    = input.color(#26A69A, "Bottom-zone color", group = G_UI)
+hitColor    = input.color(#FFD54F, "Hit color", group = G_UI)
+
+// ─────────────────────────────────────────────────────────────
+// CLOCK (New York) — hard-wired to the sessions that were tested
+// ─────────────────────────────────────────────────────────────
+string TZ = "America/New_York"
+int GLOBEX_OPEN = 1080   // 18:00
+int ASIA_END    = 180    // 03:00
+int RTH_OPEN    = 570    // 09:30
+int RTH_CLOSE   = 960    // 16:00
+
+int etMin = hour(time, TZ) * 60 + minute(time, TZ)
+// the CME trade date starts at 18:00 ET, so shift the clock 6 hours forward
+int shifted  = time + 6 * 3600000
+int tradeKey = year(shifted, TZ) * 10000 + month(shifted, TZ) * 100 + dayofmonth(shifted, TZ)
+bool newTradeDate = tradeKey != nz(tradeKey[1], tradeKey) or bar_index == 0
+
+bool inAsia   = etMin >= GLOBEX_OPEN or etMin < ASIA_END
+bool inLondon = etMin >= ASIA_END and etMin < RTH_OPEN
+bool inRth    = etMin >= RTH_OPEN and etMin < RTH_CLOSE
+
+int  tfSec    = timeframe.in_seconds()
+bool tfOk     = timeframe.isintraday and tfSec <= 1800 and 1800 % tfSec == 0
+int  maxBars  = math.max(1, math.round(maxMinutes * 60.0 / tfSec))
+
+// ─────────────────────────────────────────────────────────────
+// DAILY / WEEKLY CONTEXT — completed bars only (no repaint)
+// ─────────────────────────────────────────────────────────────
+[dAdr, d5h, d5l] = request.security(syminfo.tickerid, "D",
+     [ta.sma(high - low, adrLen)[1], ta.highest(high, 5)[1], ta.lowest(low, 5)[1]],
+     lookahead = barmerge.lookahead_on)
+[wHigh, wLow] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+// ─────────────────────────────────────────────────────────────
+// TYPES & STATE
+// ─────────────────────────────────────────────────────────────
+// zone states: 0 waiting, 1 tapped (being graded), 2 hit, 3 failed, 4 timed out
+type Zone
+    int    fam          // 0 ON, 1 LO, 2 AS, 3 PD, 4 X5, 5 PW
+    string name
+    int    side         // +1 top zone, -1 bottom zone
+    float  level
+    float  depth
+    float  target
+    int    bornBar
+    int    tapBar
+    float  tapPrice
+    int    state
+    box    bx
+    label  tag
+
+var array<Zone> live = array.new<Zone>()
+
+var array<int> cTaps = array.new<int>(6, 0)
+var array<int> cHit  = array.new<int>(6, 0)
+var array<int> cFail = array.new<int>(6, 0)
+var array<int> cOpen = array.new<int>(6, 0)
+
+var float asH = na
+var float asL = na
+var float loH = na
+var float loL = na
+var float rthH = na
+var float rthL = na
+var float pdH = na
+var float pdL = na
+var float adr = na
+var bool  didAsia = false
+var bool  didOpen = false
+// trade dates whose 18:00 ET start was actually seen on this chart: the first
+// loaded session is partial, so nothing is built from it
+var int   dayCount = 0
+
+bool tappedTop = false
+bool tappedBot = false
+
+f_enabled(int fam) =>
+    fam == 0 ? showON : fam == 1 ? showLO : fam == 2 ? showAS : fam == 3 ? showPD : fam == 4 ? showX5 : showPW
+
+f_newZone(int fam, string name, int side, float level) =>
+    // the level must still be ahead of price: a top zone needs price below it
+    bool ahead = side > 0 ? open < level : open > level
+    // yesterday's RTH range needs one more fully observed session than the rest
+    bool seen  = dayCount >= (fam == 3 ? 2 : 1)
+    if f_enabled(fam) and seen and not na(level) and not na(adr) and ahead
+        float depth = depthMode == "Fixed points" ? depthFixed : depthAdr * adr
+        float far   = level + side * depth
+        color col   = side > 0 ? topColor : botColor
+        box b = box.new(bar_index, math.max(level, far), bar_index + 1, math.min(level, far),
+             bgcolor = color.new(col, 86), border_color = color.new(col, 35), border_width = 1)
+        label t = label.new(bar_index + 1, level, showNames ? name : "", style = label.style_label_left,
+             color = color.new(col, 100), textcolor = color.new(col, 0), size = size.small)
+        live.push(Zone.new(fam, name, side, level, depth, targetPts, bar_index, -1, na, 0, b, t))
+
+f_retire(Zone z, bool keep) =>
+    if not keep
+        box.delete(z.bx)
+        label.delete(z.tag)
+
+// ─────────────────────────────────────────────────────────────
+// 1) NEW TRADE DATE (18:00 ET): prior-day / 5-session / weekly zones
+// ─────────────────────────────────────────────────────────────
+if newTradeDate
+    if live.size() > 0
+        for i = live.size() - 1 to 0
+            Zone z = live.get(i)
+            if z.state == 0
+                // never tapped: the zone dies with its session
+                f_retire(z, false)
+                live.remove(i)
+    if bar_index > 0
+        dayCount += 1
+    pdH := rthH
+    pdL := rthL
+    asH := na
+    asL := na
+    loH := na
+    loL := na
+    rthH := na
+    rthL := na
+    didAsia := false
+    didOpen := false
+    adr := dAdr
+    f_newZone(3, "PDH", 1, pdH)
+    f_newZone(3, "PDL", -1, pdL)
+    f_newZone(4, "5DH", 1, d5h)
+    f_newZone(4, "5DL", -1, d5l)
+    f_newZone(5, "PWH", 1, wHigh)
+    f_newZone(5, "PWL", -1, wLow)
+
+// ─────────────────────────────────────────────────────────────
+// 2) 03:00 ET: the Asia range is complete
+// ─────────────────────────────────────────────────────────────
+if not didAsia and not inAsia
+    didAsia := true
+    f_newZone(2, "ASH", 1, asH)
+    f_newZone(2, "ASL", -1, asL)
+
+// ─────────────────────────────────────────────────────────────
+// 3) 09:30 ET: the overnight and London ranges are complete
+// ─────────────────────────────────────────────────────────────
+if not didOpen and etMin >= RTH_OPEN and etMin < GLOBEX_OPEN
+    didOpen := true
+    float onH = na(asH) ? loH : na(loH) ? asH : math.max(asH, loH)
+    float onL = na(asL) ? loL : na(loL) ? asL : math.min(asL, loL)
+    // an untapped Asia zone sitting on the overnight extreme is the same level:
+    // it is replaced by the overnight zone so the tap is counted once
+    if live.size() > 0
+        for i = live.size() - 1 to 0
+            Zone z = live.get(i)
+            if z.fam == 2 and z.state == 0 and ((z.side > 0 and z.level == onH) or (z.side < 0 and z.level == onL))
+                f_retire(z, false)
+                live.remove(i)
+    f_newZone(0, "ONH", 1, onH)
+    f_newZone(0, "ONL", -1, onL)
+    // the London extreme is its own zone only when it is not the overnight extreme
+    if not na(loH) and loH < onH
+        f_newZone(1, "LOH", 1, loH)
+    if not na(loL) and loL > onL
+        f_newZone(1, "LOL", -1, loL)
+
+// ─────────────────────────────────────────────────────────────
+// 4) ZONE ENGINE: taps (no delay) and pessimistic grading
+// ─────────────────────────────────────────────────────────────
+if live.size() > 0
+    for i = live.size() - 1 to 0
+        Zone z = live.get(i)
+        float far = z.level + z.side * z.depth
+        bool beyondFar = z.side > 0 ? high > far : low < far
+        if z.state == 0
+            // a zone may be tapped on the bar it is born: its level comes
+            // from bars that closed before this bar opened
+            bool touched = z.side > 0 ? high >= z.level : low <= z.level
+            if touched
+                bool gapped = z.side > 0 ? open > z.level : open < z.level
+                z.tapBar   := bar_index
+                z.tapPrice := gapped ? open : z.level
+                z.state    := 1
+                cTaps.set(z.fam, cTaps.get(z.fam) + 1)
+                if z.side > 0
+                    tappedTop := true
+                else
+                    tappedBot := true
+                box.set_right(z.bx, bar_index)
+                box.set_bgcolor(z.bx, color.new(z.side > 0 ? topColor : botColor, 70))
+                label.set_xy(z.tag, bar_index, z.tapPrice)
+                label.set_style(z.tag, z.side > 0 ? label.style_label_down : label.style_label_up)
+                label.set_color(z.tag, color.new(z.side > 0 ? topColor : botColor, 15))
+                label.set_textcolor(z.tag, color.white)
+                label.set_text(z.tag, (z.side > 0 ? "▼ " : "▲ ") + z.name)
+                alert("Reversal zone tapped: " + z.name + " @ " + str.tostring(z.tapPrice, format.mintick) +
+                     (z.side > 0 ? "  (top zone, fails above " : "  (bottom zone, fails below ") +
+                     str.tostring(far, format.mintick) + ")", alert.freq_once_per_bar)
+                // tap bar: only the far edge is graded, a hit is never credited here
+                if beyondFar
+                    z.state := 3
+            else
+                box.set_right(z.bx, bar_index + 1)
+                label.set_x(z.tag, bar_index + 1)
+        else if z.state == 1
+            float fav = z.side > 0 ? z.tapPrice - low : high - z.tapPrice
+            box.set_right(z.bx, bar_index)
+            if beyondFar
+                z.state := 3
+            else if fav >= z.target
+                z.state := 2
+            else if bar_index - z.tapBar >= maxBars
+                z.state := 4
+
+        // resolved this bar → book it, restyle it, stop managing it
+        if z.state >= 2
+            if z.state == 2
+                cHit.set(z.fam, cHit.get(z.fam) + 1)
+                box.set_bgcolor(z.bx, color.new(hitColor, 72))
+                box.set_border_color(z.bx, color.new(hitColor, 0))
+                label.set_text(z.tag, (z.side > 0 ? "▼ " : "▲ ") + z.name + "  ✓ " + str.tostring(z.target, "#") + "+")
+                label.set_color(z.tag, color.new(hitColor, 0))
+                label.set_textcolor(z.tag, color.black)
+            else if z.state == 3
+                cFail.set(z.fam, cFail.get(z.fam) + 1)
+                box.set_bgcolor(z.bx, color.new(color.gray, 90))
+                box.set_border_color(z.bx, color.new(color.gray, 55))
+                label.set_text(z.tag, (z.side > 0 ? "▼ " : "▲ ") + z.name + "  ✗")
+                label.set_color(z.tag, color.new(color.gray, 35))
+            else
+                cOpen.set(z.fam, cOpen.get(z.fam) + 1)
+                box.set_bgcolor(z.bx, color.new(color.gray, 92))
+                box.set_border_color(z.bx, color.new(color.gray, 70))
+            f_retire(z, showGraded)
+            live.remove(i)
+
+// ─────────────────────────────────────────────────────────────
+// 5) SESSION TRACKERS — updated after the zones were born, so a level
+//    never contains the bar it is first tested on
+// ─────────────────────────────────────────────────────────────
+if inAsia
+    asH := na(asH) ? high : math.max(asH, high)
+    asL := na(asL) ? low : math.min(asL, low)
+else if inLondon
+    loH := na(loH) ? high : math.max(loH, high)
+    loL := na(loL) ? low : math.min(loL, low)
+else if inRth
+    rthH := na(rthH) ? high : math.max(rthH, high)
+    rthL := na(rthL) ? low : math.min(rthL, low)
+
+// ─────────────────────────────────────────────────────────────
+// SCORECARD
+// ─────────────────────────────────────────────────────────────
+f_cell(table t, int c, int r, string s, color tc, string al) =>
+    table.cell(t, c, r, s, text_color = tc, text_halign = al, text_size = size.small)
+
+f_famName(int fam) =>
+    fam == 0 ? "Overnight H/L" : fam == 1 ? "London H/L" : fam == 2 ? "Asia H/L" : fam == 3 ? "Prior-day H/L" : fam == 4 ? "5-session H/L" : "Prior-week H/L"
+
+if showDash and barstate.islast
+    var table dash = table.new(position.top_right, 5, 14, bgcolor = color.new(#101418, 12),
+         border_width = 1, border_color = color.new(color.gray, 75), frame_width = 1, frame_color = color.new(color.gray, 55))
+    table.clear(dash, 0, 0, 4, 13)
+    color dim = color.new(color.silver, 0)
+    float depthNow  = depthMode == "Fixed points" ? depthFixed : depthAdr * nz(adr)
+    float chancePct = depthNow + targetPts > 0 ? 100.0 * depthNow / (depthNow + targetPts) : na
+
+    f_cell(dash, 0, 0, "REVERSAL ZONES — SCORECARD", color.white, text.align_left)
+    table.merge_cells(dash, 0, 0, 4, 0)
+    f_cell(dash, 0, 1, "ADR(" + str.tostring(adrLen) + ") " + (na(adr) ? "—" : str.tostring(adr, "#")) +
+         "  ·  depth " + str.tostring(depthNow, "#.#") + "  ·  target " + str.tostring(targetPts, "#"), dim, text.align_left)
+    table.merge_cells(dash, 0, 1, 4, 1)
+
+    f_cell(dash, 0, 2, "zone",  dim, text.align_left)
+    f_cell(dash, 1, 2, "taps",  dim, text.align_right)
+    f_cell(dash, 2, 2, "✓",     dim, text.align_right)
+    f_cell(dash, 3, 2, "✗",     dim, text.align_right)
+    f_cell(dash, 4, 2, "hit %", dim, text.align_right)
+
+    int tT = 0
+    int tH = 0
+    int tF = 0
+    for f = 0 to 5
+        int nT = cTaps.get(f)
+        int nH = cHit.get(f)
+        int nF = cFail.get(f)
+        tT += nT
+        tH += nH
+        tF += nF
+        float hr = nH + nF > 0 ? 100.0 * nH / (nH + nF) : na
+        color rc = f_enabled(f) ? color.white : color.new(color.gray, 30)
+        f_cell(dash, 0, 3 + f, f_famName(f), rc, text.align_left)
+        f_cell(dash, 1, 3 + f, str.tostring(nT), rc, text.align_right)
+        f_cell(dash, 2, 3 + f, str.tostring(nH), rc, text.align_right)
+        f_cell(dash, 3, 3 + f, str.tostring(nF), rc, text.align_right)
+        f_cell(dash, 4, 3 + f, na(hr) ? "—" : str.tostring(hr, "#.#"), rc, text.align_right)
+
+    float hrAll = tH + tF > 0 ? 100.0 * tH / (tH + tF) : na
+    f_cell(dash, 0, 9, "ALL ZONES", color.white, text.align_left)
+    f_cell(dash, 1, 9, str.tostring(tT), color.white, text.align_right)
+    f_cell(dash, 2, 9, str.tostring(tH), color.white, text.align_right)
+    f_cell(dash, 3, 9, str.tostring(tF), color.white, text.align_right)
+    f_cell(dash, 4, 9, na(hrAll) ? "—" : str.tostring(hrAll, "#.#"), color.white, text.align_right)
+
+    f_cell(dash, 0, 10, "Pure-chance hit rate for this depth/target", dim, text.align_left)
+    table.merge_cells(dash, 0, 10, 3, 10)
+    f_cell(dash, 4, 10, na(chancePct) ? "—" : str.tostring(chancePct, "#.#"), color.orange, text.align_right)
+
+    // a hit rate is only evidence once it clears chance by ~2 standard errors
+    float se = tH + tF > 0 and not na(chancePct) ? 100.0 * math.sqrt(chancePct / 100.0 * (1.0 - chancePct / 100.0) / (tH + tF)) : na
+    string verdict = na(hrAll) or na(se) ? "not enough graded taps yet" :
+         hrAll > chancePct + 2.0 * se ? "above chance on this chart" :
+         hrAll < chancePct - 2.0 * se ? "below chance on this chart" : "indistinguishable from chance"
+    f_cell(dash, 0, 11, "Verdict: " + verdict, na(hrAll) or na(se) ? dim : hrAll > chancePct + 2.0 * se ? color.new(color.teal, 0) : color.orange, text.align_left)
+    table.merge_cells(dash, 0, 11, 4, 11)
+
+    f_cell(dash, 0, 12, tfOk ? "Zones are fixed when drawn · taps print on the touch bar" : "⚠ use a 1–30 min chart (sessions end at :00/:30)",
+         tfOk ? dim : color.orange, text.align_left)
+    table.merge_cells(dash, 0, 12, 4, 12)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(tappedTop, "Top zone tapped", "Reversal Zones: price tapped a TOP zone")
+alertcondition(tappedBot, "Bottom zone tapped", "Reversal Zones: price tapped a BOTTOM zone")
