@@ -247,6 +247,11 @@ compiled. If TradingView reports an error on first load it will name a line.
   York, a 1,268-point one-minute "range" no other source shows); it is
   repaired by `rz_data.clean_yahoo` and the repair is reported at run time.
 - No commissions or slippage.
+- On a continuous futures chart the price jumps on contract roll days, so
+  levels carried over from the old contract (prior-day, weekly, 5-session)
+  are offset by the roll gap for that session.
+- If two zones are tapped on the same bar, both are marked but only one
+  `alert()` is sent for that bar.
 - 1,212 sessions cover one bear market (2022) and one long advance. The
   bottom/top asymmetry reversed in the bear market, so it may be a statement
   about the trend rather than about bottoms.
