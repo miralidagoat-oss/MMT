@@ -17,7 +17,6 @@ import math
 import os
 import sys
 
-import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # works under `python3 -I` too
@@ -51,6 +50,7 @@ def pine(df, ctx, tf_sec=60, targetPts=100.0, depthAdr=0.06, maxMinutes=600, rcW
 
     live = []
     sN, sHit, sFail, sCh = [0] * 4, [0] * 4, [0] * 4, [0.0] * 4
+    sDone, sPts = [0] * 4, [0.0] * 4
     asH = asL = loH = loL = rthH = rthL = pdH = pdL = adr = NA
     trend = 0
     didAsia = didOpen = didOr = didIb = didAm = False
@@ -148,64 +148,70 @@ def pine(df, ctx, tf_sec=60, targetPts=100.0, depthAdr=0.06, maxMinutes=600, rcW
             closedIn = (close < z.level) if s > 0 else (close > z.level)     # barstate.isconfirmed on history
             prevState, prevRc = z.state, z.rcState
             drop = False
-            if z.state == 0:
-                if z.fam == 9 and bar_index - z.bornBar > swingAgeBars:
-                    drop = True
-                else:
-                    touched = (high >= z.level) if s > 0 else (low <= z.level)
-                    if touched:
-                        gapped = (open_ > z.level) if s > 0 else (open_ < z.level)
-                        z.tapBar = bar_index
-                        z.tapPrice = open_ if gapped else z.level
-                        z.state = 3 if beyondFar else 1
-                        z.ext = high if s > 0 else low
-                        z.rcState = 6 if (s * (z.ext - z.level) > sweepMaxAdr * z.adr or closedIn) else 1
-                        sN[0 if s > 0 else 1] += 1
-            else:
-                if z.state == 1:
-                    fav = (z.tapPrice - low) if s > 0 else (high - z.tapPrice)
-                    if beyondFar:
-                        z.state = 3
-                    elif fav >= z.target:
-                        z.state = 2
-                    elif bar_index - z.tapBar >= maxBars:
-                        z.state = 4
-                if z.rcState == 1:
-                    z.ext = max(z.ext, high) if s > 0 else min(z.ext, low)
-                    if bar_index - z.tapBar > winBars or s * (z.ext - z.level) > sweepMaxAdr * z.adr:
-                        z.rcState = 6
-                    elif closedIn:
-                        z.rcState = 2
-                        z.rcBar = bar_index
-                        z.rcPrice = close
-                        z.rcStop = z.ext + s * stopBufAdr * z.adr
-                        sN[3 if s > 0 else 2] += 1
-                        events.append(("reclaim", bar_index, z.name, s, z.rcPrice, z.rcStop))
-                elif z.rcState == 2:
-                    stopped = (high >= z.rcStop) if s > 0 else (low <= z.rcStop)
-                    fav2 = (z.rcPrice - low) if s > 0 else (high - z.rcPrice)
-                    if stopped:
-                        z.rcState = 4
-                    elif fav2 >= z.target:
-                        z.rcState = 3
-                    elif bar_index - z.rcBar >= maxBars:
-                        z.rcState = 5
-            if prevState <= 1 and z.state >= 2:
+            waiting = prevState == 0
+            expired = waiting and z.fam == 9 and bar_index - z.bornBar > swingAgeBars
+            touched = waiting and not expired and ((high >= z.level) if s > 0 else (low <= z.level))
+            if expired:
+                drop = True
+            if touched:
+                gapped = (open_ > z.level) if s > 0 else (open_ < z.level)
+                z.tapBar = bar_index
+                z.tapPrice = open_ if gapped else z.level
+                z.state = 3 if beyondFar else 1
+                z.ext = high if s > 0 else low
+                z.rcState = 6 if (s * (z.ext - z.level) > sweepMaxAdr * z.adr or closedIn) else 1
+                sN[0 if s > 0 else 1] += 1
+            if prevState == 1:                                   # tier 1 - the tap
+                fav = (z.tapPrice - low) if s > 0 else (high - z.tapPrice)
+                if beyondFar:
+                    z.state = 3
+                elif fav >= z.target:
+                    z.state = 2
+                elif bar_index - z.tapBar >= maxBars:
+                    z.state = 4
+            if prevRc == 1:                                      # tier 2 - watching for the reclaim
+                z.ext = max(z.ext, high) if s > 0 else min(z.ext, low)
+                lost = bar_index - z.tapBar > winBars or s * (z.ext - z.level) > sweepMaxAdr * z.adr
+                if lost:
+                    z.rcState = 6
+                if not lost and closedIn:
+                    z.rcState = 2
+                    z.rcBar = bar_index
+                    z.rcPrice = close
+                    z.rcStop = z.ext + s * stopBufAdr * z.adr
+                    sN[3 if s > 0 else 2] += 1
+                    events.append(("reclaim", bar_index, z.name, s, z.rcPrice, z.rcStop))
+            if prevRc == 2:                                      # tier 2 - grading the reclaim
+                stopped = (high >= z.rcStop) if s > 0 else (low <= z.rcStop)
+                fav2 = (z.rcPrice - low) if s > 0 else (high - z.rcPrice)
+                if stopped:
+                    z.rcState = 4
+                elif fav2 >= z.target:
+                    z.rcState = 3
+                elif bar_index - z.rcBar >= maxBars:
+                    z.rcState = 5
+            if prevState <= 1 and z.state >= 2:                  # book a graded tap
                 r = 0 if s > 0 else 1
-                if z.state == 2:
+                tapHit, tapFail = z.state == 2, z.state == 3
+                sDone[r] += 1
+                sPts[r] += z.target if tapHit else -abs(far - z.tapPrice) if tapFail else s * (z.tapPrice - close)
+                if tapHit:
                     sHit[r] += 1
-                    sCh[r] += z.depth / (z.target + z.depth)
-                elif z.state == 3:
+                if tapFail:
                     sFail[r] += 1
+                if tapHit or tapFail:
                     sCh[r] += z.depth / (z.target + z.depth)
-            if prevRc == 2 and 3 <= z.rcState <= 5:
+            if prevRc == 2 and 3 <= z.rcState <= 5:              # book a graded reclaim
                 rr = 3 if s > 0 else 2
+                rcHit, rcFail = z.rcState == 3, z.rcState == 4
                 risk = abs(z.rcStop - z.rcPrice)
-                if z.rcState == 3:
+                sDone[rr] += 1
+                sPts[rr] += z.target if rcHit else -risk if rcFail else s * (z.rcPrice - close)
+                if rcHit:
                     sHit[rr] += 1
-                    sCh[rr] += risk / (z.target + risk)
-                elif z.rcState == 4:
+                if rcFail:
                     sFail[rr] += 1
+                if rcHit or rcFail:
                     sCh[rr] += risk / (z.target + risk)
             alive = z.state <= 1 or z.rcState == 1 or z.rcState == 2
             if drop or not alive:
@@ -236,20 +242,22 @@ def pine(df, ctx, tf_sec=60, targetPts=100.0, depthAdr=0.06, maxMinutes=600, rcW
                     pendSide, pendPrice, zzDir, zzLo, zzLoBar = 1, zzHi, -1, low, bar_index
                 elif zzDir <= 0 and zzLoBar < bar_index and high - zzLo >= thr:
                     pendSide, pendPrice, zzDir, zzHi, zzHiBar = -1, zzLo, 1, high, bar_index
-    return {"n": sN, "hit": sHit, "fail": sFail, "chance_sum": sCh, "events": events}
+    return {"n": sN, "hit": sHit, "fail": sFail, "chance_sum": sCh, "done": sDone, "pts": sPts, "events": events}
 
 
 def engine_counts(df, ctx_kwargs, p, tf_min):
     fr = rz_engine.taps_frame(rz_engine.run(df, p, tf_min=tf_min, **ctx_kwargs), df)
-    n, hit, fail = [0] * 4, [0] * 4, [0] * 4
+    n, hit, fail, pts = [0] * 4, [0] * 4, [0] * 4, [0.0] * 4
     for r, (tier, side) in enumerate((("tap", 1), ("tap", -1), ("rc", -1), ("rc", 1))):
         f = fr[fr.side == side]
         if tier == "tap":
             n[r], hit[r], fail[r] = len(f), int((f.tap_result == "win").sum()), int((f.tap_result == "fail").sum())
+            pts[r] = float(f.tap_pnl.sum())
         else:
             f = f[f.rc]
             n[r], hit[r], fail[r] = len(f), int((f.rc_result == "win").sum()), int((f.rc_result == "fail").sum())
-    return {"n": n, "hit": hit, "fail": fail}
+            pts[r] = float(f.rc_pnl.sum())
+    return {"n": n, "hit": hit, "fail": fail, "pts": pts}
 
 
 def main():
@@ -277,13 +285,14 @@ def main():
     e = engine_counts(df, {"daily": daily, "trend": trend}, p, a.tf)
     rows = ["taps top", "taps bottom", "reclaims bottom", "reclaims top"]
     print(f"bars {len(df):,}  trade dates {df.trade_date.nunique()}  tf {a.tf}m")
-    print(f"{'':18s} {'pine n':>8s} {'eng n':>8s} {'pine ✓':>8s} {'eng ✓':>8s} {'pine ✗':>8s} {'eng ✗':>8s}")
+    print(f"{'':18s} {'pine n':>8s} {'eng n':>8s} {'pine ✓':>8s} {'eng ✓':>8s} {'pine ✗':>8s} {'eng ✗':>8s} {'pine pts':>11s} {'eng pts':>11s}")
     ok = True
     for r, name in enumerate(rows):
-        same = m["n"][r] == e["n"][r] and m["hit"][r] == e["hit"][r] and m["fail"][r] == e["fail"][r]
+        same = (m["n"][r] == e["n"][r] and m["hit"][r] == e["hit"][r] and m["fail"][r] == e["fail"][r]
+                and abs(m["pts"][r] - e["pts"][r]) < 1e-6 * max(1.0, abs(e["pts"][r])))
         ok &= same
         print(f"{name:18s} {m['n'][r]:8d} {e['n'][r]:8d} {m['hit'][r]:8d} {e['hit'][r]:8d} {m['fail'][r]:8d} {e['fail'][r]:8d}"
-              f"   {'match' if same else 'MISMATCH'}")
+              f" {m['pts'][r]:11.1f} {e['pts'][r]:11.1f}   {'match' if same else 'MISMATCH'}")
     print("PARITY OK - the Pine logic reproduces the backtested engine exactly" if ok else "PARITY FAILED")
     return 0 if ok else 1
 

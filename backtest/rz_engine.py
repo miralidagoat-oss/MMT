@@ -85,6 +85,7 @@ class Zone:
     tap_price: float = np.nan
     result: str = "untouched"    # untouched | open | win | fail | timeout | void
     end_bar: int = -1
+    tap_pnl: float = np.nan      # points: +target on a hit, -risk on a fail, marked to the close on a timeout
     # tier 2 - reclaim
     ext: float = np.nan          # sweep extreme since the tap
     rc_state: str = "none"       # none | watch | open | win | fail | timeout | off
@@ -92,6 +93,7 @@ class Zone:
     rc_price: float = np.nan
     rc_stop: float = np.nan
     rc_end: int = -1
+    rc_pnl: float = np.nan       # points, same convention as tap_pnl
     rc_trend: int = 0            # long-term trend on the reclaim's trade date: +1 up, -1 down, 0 unknown
 
 
@@ -281,6 +283,7 @@ def run(df, p: Params = None, daily=None, tf_min=1, trend=None):
                     if (h[i] > far) if s > 0 else (l[i] < far):
                         z.result = "fail"
                         z.end_bar = i
+                        z.tap_pnl = -abs(far - z.tap_price)
                     # reclaim watch starts unless the level is already broken, or
                     # the tap bar itself closed back inside (same-bar rejection)
                     closed_in = c[i] < z.level if s > 0 else c[i] > z.level
@@ -296,12 +299,15 @@ def run(df, p: Params = None, daily=None, tf_min=1, trend=None):
                         if (h[i] > far) if s > 0 else (l[i] < far):
                             z.result = "fail"
                             z.end_bar = i
+                            z.tap_pnl = -abs(far - z.tap_price)
                         elif fav >= z.target:
                             z.result = "win"
                             z.end_bar = i
+                            z.tap_pnl = z.target
                         elif i - z.tap_bar >= max_bars:
                             z.result = "timeout"
                             z.end_bar = i
+                            z.tap_pnl = s * (z.tap_price - c[i])
                     # tier 2: reclaim
                     if z.rc_state == "watch":
                         z.ext = max(z.ext, h[i]) if s > 0 else min(z.ext, l[i])
@@ -320,12 +326,15 @@ def run(df, p: Params = None, daily=None, tf_min=1, trend=None):
                         if stopped:
                             z.rc_state = "fail"
                             z.rc_end = i
+                            z.rc_pnl = -abs(z.rc_stop - z.rc_price)
                         elif fav >= z.target:
                             z.rc_state = "win"
                             z.rc_end = i
+                            z.rc_pnl = z.target
                         elif i - z.rc_bar >= max_bars:
                             z.rc_state = "timeout"
                             z.rc_end = i
+                            z.rc_pnl = s * (z.rc_price - c[i])
                 if z.result == "open" or z.rc_state in ("watch", "open"):
                     keep.append(z)
             live = keep
@@ -376,8 +385,8 @@ def taps_frame(zones, df):
             "date": pd.Timestamp(z.trade_date), "fam": z.fam, "name": z.name, "side": z.side,
             "level": z.level, "depth": z.depth, "target": z.target, "adr": z.adr,
             "tap_bar": z.tap_bar, "tap_mins": int(mins[z.tap_bar]), "tap_price": z.tap_price,
-            "tap_result": z.result,
-            "rc": has_rc, "rc_result": z.rc_state if has_rc else "",
+            "tap_result": z.result, "tap_pnl": z.tap_pnl,
+            "rc": has_rc, "rc_result": z.rc_state if has_rc else "", "rc_pnl": z.rc_pnl if has_rc else np.nan,
             "rc_bar": z.rc_bar, "rc_price": z.rc_price,
             "rc_stop_dist": abs(z.rc_stop - z.rc_price) if has_rc else np.nan,
             "rc_lag": z.side * (z.ext - z.rc_price) if has_rc else np.nan,    # points behind the sweep extreme
@@ -393,17 +402,21 @@ def score(frame, tier="tap", by=None):
     """Hit-rate table for one tier. Timeouts / unresolved are counted but kept
     out of the hit-rate denominator (they are neither a reversal nor a failure).
     chance% is the driftless-market probability of the same bet:
-        risk / (target + risk), risk = zone depth (tap) or stop distance (reclaim)."""
+        risk / (target + risk), risk = zone depth (tap) or stop distance (reclaim).
+    pts is the mean result per mark in points (+target on a hit, -risk on a
+    fail, a timeout marked to the close) - before any trading costs."""
     if len(frame) == 0:
         return pd.DataFrame()
     f = frame.copy()
     if tier == "tap":
         f["res"] = f.tap_result
         f["risk"] = f.depth
+        f["pnl"] = f.tap_pnl
     else:
         f = f[f.rc]
         f["res"] = f.rc_result
         f["risk"] = f.rc_stop_dist
+        f["pnl"] = f.rc_pnl
     if len(f) == 0:
         return pd.DataFrame()
     f["chance"] = f.risk / (f.target + f.risk)
@@ -417,4 +430,6 @@ def score(frame, tier="tap", by=None):
     out["other"] = out.n - out.hit - out.fail
     out["hit%"] = 100.0 * out.hit / (out.hit + out.fail).clip(lower=1)
     out["chance%"] = 100.0 * g.apply(lambda x: x.chance[x.res.isin(["win", "fail"])].mean())
+    out["pts"] = g.pnl.mean()                  # marks still open at the end of the data are left out
+    out["pts_se"] = g.pnl.std() / np.sqrt(g.pnl.count().clip(lower=1))
     return out

@@ -14,23 +14,25 @@ indicator("MNQ Reversal Zones — no-lag zones, audited reclaims", shorttitle = 
 //   RECLAIM  after a tap, the first later bar that CLOSES back inside the level
 //            (a failed breakout). Marked on that bar, at its close.
 //
-// WHAT THE BACKTEST SAYS (README.md → "Reversal zones", backtest/rz_*.py)
+// WHAT THE BACKTEST SAYS (README.md → "MNQ Reversal Zones", backtest/rz_*.py)
 //   1,212 sessions of real 1-minute Nasdaq-100 data, 2022-03 → 2026-11, target
-//   100 points, every number set against a direction-scrambled null model:
+//   100 points, pessimistic fills, before trading costs:
 //
-//     taps (first touch)   14.6% reversed   vs 16.1% by pure chance   (worse)
-//     bottom reclaims      23.3%            vs 19.9%                  (+3.5)
-//     top reclaims         18.9%            vs 19.8%                  (none)
+//                          reversed   chance   points per mark
+//     taps (first touch)     14.6%     17.2%        -3.2     reliably WORSE than chance
+//     bottom reclaims        23.3%     22.5%        +2.3     best thing tested, not proven
+//     top reclaims           18.9%     19.8%        -0.4     no edge
 //
-//   So: fading the first touch of a level is slightly worse than a coin-flip
-//   bet. A failed breakDOWN that closes back above the level is the one setup
-//   with a measured edge, and it is small. Tops showed none. Nothing here, and
-//   nothing else that was tested, top-ticks or bottom-ticks reliably - the
-//   scorecard prints the hit rate on YOUR chart next to the chance rate
+//   chance = risk / (target + risk): what a market with no memory gives the
+//   same bet. On real MNQ, markers dropped at random moments reverse 100 points
+//   before 30 points of heat 23.0% of the time; the formula says 23.1%.
 //
-//        chance = risk / (target + risk)
-//
-//   so the script can never look better than it is.
+//   So: fading the first touch of a level loses. Waiting for a failed
+//   breakDOWN to close back above the level is the least-bad reversal setup
+//   and roughly breaks even. Tops showed nothing. Nothing here - and nothing
+//   else that was tested - top-ticks or bottom-ticks reliably. The scorecard
+//   prints the hit rate on YOUR chart next to the chance rate, so the script
+//   can never look better than it is.
 //
 // GRADING (pessimistic, identical to backtest/rz_engine.py)
 //   Tap      FAIL beyond the far edge of the zone · HIT `target` points away
@@ -43,7 +45,7 @@ indicator("MNQ Reversal Zones — no-lag zones, audited reclaims", shorttitle = 
 // INPUTS
 // ─────────────────────────────────────────────────────────────
 const string G_CORE  = "Reversal definition"
-const string G_RC    = "Reclaim tier (the only part with a measured edge)"
+const string G_RC    = "Reclaim tier (bottoms: the best setup tested, still unproven)"
 const string G_ZONES = "Zones — each is known before price gets there"
 const string G_UI    = "Display"
 
@@ -59,9 +61,9 @@ maxMinutes = input.int(600, "Grade a mark for at most (minutes)", minval = 30, g
 rcWindowMin = input.int(30, "Close back inside within (minutes after the tap)", minval = 1, group = G_RC)
 sweepMaxAdr = input.float(0.20, "Level counts as broken beyond (× ADR)", minval = 0.02, step = 0.01, group = G_RC)
 stopBufAdr  = input.float(0.01, "Reclaim fails beyond the sweep extreme by (× ADR)", minval = 0.0, step = 0.005, group = G_RC)
-showTopRc   = input.bool(false, "Also mark TOP reclaims (no measured edge)", group = G_RC)
+showTopRc   = input.bool(false, "Also mark TOP reclaims (tested: no edge)", group = G_RC)
 trendLen    = input.int(200, "Long-term trend average (sessions)", minval = 20, group = G_RC,
-     tooltip = "Context only. Bottom reclaims measured +4.0 points over chance while yesterday's close was above this average, +2.1 while below.")
+     tooltip = "Context only, shown on the scorecard. Before costs, bottom reclaims averaged +2.9 points per mark while yesterday's close was above this average and +0.2 while below it.")
 
 showON = input.bool(true, "Overnight high / low        18:00 → 09:30 ET, drawn at 09:30", group = G_ZONES)
 showLO = input.bool(true, "London high / low           03:00 → 09:30 ET, drawn at 09:30", group = G_ZONES)
@@ -155,6 +157,8 @@ var array<int>   sN    = array.new<int>(4, 0)
 var array<int>   sHit  = array.new<int>(4, 0)
 var array<int>   sFail = array.new<int>(4, 0)
 var array<float> sCh   = array.new<float>(4, 0.0)
+var array<int>   sDone = array.new<int>(4, 0)       // marks fully graded (hit, failed or timed out)
+var array<float> sPts  = array.new<float>(4, 0.0)   // points: +target on a hit, -risk on a fail, timeout marked to the close
 
 var float asH = na
 var float asL = na
@@ -306,128 +310,130 @@ if live.size() > 0
         int   prevRc    = z.rcState
         bool  drop      = false
 
-        if z.state == 0
-            if z.fam == 9 and bar_index - z.bornBar > swingAgeBars
-                box.delete(z.bx)
-                label.delete(z.tag)
-                drop := true
-            else
-                // a zone may be tapped on the bar it is born: its level comes
-                // from bars that closed before this bar opened
-                bool touched = s > 0 ? high >= z.level : low <= z.level
-                if touched
-                    bool gapped = s > 0 ? open > z.level : open < z.level
-                    z.tapBar   := bar_index
-                    z.tapPrice := gapped ? open : z.level
-                    z.state    := beyondFar ? 3 : 1
-                    z.ext      := s > 0 ? high : low
-                    // reclaim watch starts unless the level is already broken or
-                    // the tap bar itself closed back inside (same-bar rejection)
-                    z.rcState  := s * (z.ext - z.level) > sweepMaxAdr * z.adr or closedIn ? 6 : 1
-                    sN.set(s > 0 ? 0 : 1, sN.get(s > 0 ? 0 : 1) + 1)
-                    if s > 0
-                        tapTop := true
-                    else
-                        tapBot := true
-                    box.set_right(z.bx, bar_index)
-                    box.set_bgcolor(z.bx, color.new(zc, 74))
-                    if showTaps
-                        label.set_xy(z.tag, bar_index, z.tapPrice)
-                        label.set_style(z.tag, s > 0 ? label.style_label_down : label.style_label_up)
-                        label.set_color(z.tag, color.new(zc, 45))
-                        label.set_textcolor(z.tag, color.white)
-                        label.set_text(z.tag, (s > 0 ? "▼ " : "▲ ") + z.name)
-                    else
-                        label.delete(z.tag)
-                    alert("Reversal zone tapped: " + z.name + " @ " + str.tostring(z.tapPrice, format.mintick) +
-                         (s > 0 ? "  (top zone, tap fails above " : "  (bottom zone, tap fails below ") +
-                         str.tostring(far, format.mintick) + ")", alert.freq_once_per_bar)
-                else
-                    box.set_right(z.bx, bar_index + 1)
-                    label.set_x(z.tag, bar_index + 1)
-        else
-            // tier 1 — the tap
-            if z.state == 1
-                float fav = s > 0 ? z.tapPrice - low : high - z.tapPrice
-                if beyondFar
-                    z.state := 3
-                else if fav >= z.target
-                    z.state := 2
-                else if bar_index - z.tapBar >= maxBars
-                    z.state := 4
-            // tier 2 — the reclaim
-            if z.rcState == 1
-                z.ext := s > 0 ? math.max(z.ext, high) : math.min(z.ext, low)
-                if bar_index - z.tapBar > winBars or s * (z.ext - z.level) > sweepMaxAdr * z.adr
-                    z.rcState := 6
-                else if closedIn
-                    z.rcState := 2
-                    z.rcBar   := bar_index
-                    z.rcPrice := close
-                    z.rcStop  := z.ext + s * stopBufAdr * z.adr
-                    sN.set(s > 0 ? 3 : 2, sN.get(s > 0 ? 3 : 2) + 1)
-                    if s > 0
-                        rcTop := true
-                    else
-                        rcBot := true
-                    if s < 0 or showTopRc
-                        z.rcTag := label.new(bar_index, close, "⟲ " + z.name,
-                             style = s > 0 ? label.style_label_down : label.style_label_up,
-                             color = s > 0 ? color.new(color.gray, 25) : color.new(botColor, 0),
-                             textcolor = color.white, size = size.small,
-                             tooltip = (s > 0 ? "Top reclaim — no measured edge. Fails above " : "Bottom reclaim. Fails below ") +
-                             str.tostring(z.rcStop, format.mintick))
-                    alert("Reclaim: " + z.name + " closed back " + (s > 0 ? "below" : "above") + " " +
-                         str.tostring(z.level, format.mintick) + " @ " + str.tostring(close, format.mintick) +
-                         (s > 0 ? "  (top — no measured edge; fails above " : "  (bottom; fails below ") +
-                         str.tostring(z.rcStop, format.mintick) + ")", alert.freq_once_per_bar_close)
-            else if z.rcState == 2
-                bool  stopped = s > 0 ? high >= z.rcStop : low <= z.rcStop
-                float fav2    = s > 0 ? z.rcPrice - low : high - z.rcPrice
-                if stopped
-                    z.rcState := 4
-                else if fav2 >= z.target
-                    z.rcState := 3
-                else if bar_index - z.rcBar >= maxBars
-                    z.rcState := 5
+        // every `if` below stands alone (no mixed-type if/else pairs)
+        bool waiting = prevState == 0
+        bool expired = waiting and z.fam == 9 and bar_index - z.bornBar > swingAgeBars
+        // a zone may be tapped on the bar it is born: its level comes from
+        // bars that closed before this bar opened
+        bool touched = waiting and not expired and (s > 0 ? high >= z.level : low <= z.level)
+
+        if expired
+            box.delete(z.bx)
+            label.delete(z.tag)
+            drop := true
+
+        if touched
+            bool gapped = s > 0 ? open > z.level : open < z.level
+            z.tapBar   := bar_index
+            z.tapPrice := gapped ? open : z.level
+            z.state    := beyondFar ? 3 : 1
+            z.ext      := s > 0 ? high : low
+            // reclaim watch starts unless the level is already broken or the
+            // tap bar itself closed back inside (same-bar rejection)
+            z.rcState  := s * (z.ext - z.level) > sweepMaxAdr * z.adr or closedIn ? 6 : 1
+            sN.set(s > 0 ? 0 : 1, sN.get(s > 0 ? 0 : 1) + 1)
+            tapTop := tapTop or s > 0
+            tapBot := tapBot or s < 0
+            box.set_right(z.bx, bar_index)
+            box.set_bgcolor(z.bx, color.new(zc, 74))
+            label.set_xy(z.tag, bar_index, z.tapPrice)
+            label.set_style(z.tag, s > 0 ? label.style_label_down : label.style_label_up)
+            label.set_color(z.tag, color.new(zc, showTaps ? 45 : 100))
+            label.set_textcolor(z.tag, color.new(color.white, showTaps ? 0 : 100))
+            label.set_text(z.tag, (s > 0 ? "▼ " : "▲ ") + z.name)
+            alert("Reversal zone tapped: " + z.name + " @ " + str.tostring(z.tapPrice, format.mintick) +
+                 (s > 0 ? "  (top zone, tap fails above " : "  (bottom zone, tap fails below ") +
+                 str.tostring(far, format.mintick) + ")", alert.freq_once_per_bar)
+
+        if waiting and not expired and not touched
+            box.set_right(z.bx, bar_index + 1)
+            label.set_x(z.tag, bar_index + 1)
+
+        // tier 1 — the tap (graded from the bar after the tap)
+        if prevState == 1
+            float fav = s > 0 ? z.tapPrice - low : high - z.tapPrice
+            if beyondFar
+                z.state := 3
+            else if fav >= z.target
+                z.state := 2
+            else if bar_index - z.tapBar >= maxBars
+                z.state := 4
+
+        // tier 2 — watching for the reclaim
+        if prevRc == 1
+            z.ext := s > 0 ? math.max(z.ext, high) : math.min(z.ext, low)
+            bool lost = bar_index - z.tapBar > winBars or s * (z.ext - z.level) > sweepMaxAdr * z.adr
+            if lost
+                z.rcState := 6
+            if not lost and closedIn
+                z.rcState := 2
+                z.rcBar   := bar_index
+                z.rcPrice := close
+                z.rcStop  := z.ext + s * stopBufAdr * z.adr
+                sN.set(s > 0 ? 3 : 2, sN.get(s > 0 ? 3 : 2) + 1)
+                rcTop := rcTop or s > 0
+                rcBot := rcBot or s < 0
+                if s < 0 or showTopRc
+                    z.rcTag := label.new(bar_index, close, "⟲ " + z.name,
+                         style = s > 0 ? label.style_label_down : label.style_label_up,
+                         color = s > 0 ? color.new(color.gray, 25) : color.new(botColor, 0),
+                         textcolor = color.white, size = size.small,
+                         tooltip = (s > 0 ? "Top reclaim (tested: no edge). Fails above " : "Bottom reclaim. Fails below ") +
+                         str.tostring(z.rcStop, format.mintick))
+                alert("Reclaim: " + z.name + " closed back " + (s > 0 ? "below" : "above") + " " +
+                     str.tostring(z.level, format.mintick) + " @ " + str.tostring(close, format.mintick) +
+                     (s > 0 ? "  (top, tested: no edge; fails above " : "  (bottom; fails below ") +
+                     str.tostring(z.rcStop, format.mintick) + ")", alert.freq_once_per_bar_close)
+
+        // tier 2 — grading the reclaim (from the bar after it)
+        if prevRc == 2
+            bool  stopped = s > 0 ? high >= z.rcStop : low <= z.rcStop
+            float fav2    = s > 0 ? z.rcPrice - low : high - z.rcPrice
+            if stopped
+                z.rcState := 4
+            else if fav2 >= z.target
+                z.rcState := 3
+            else if bar_index - z.rcBar >= maxBars
+                z.rcState := 5
 
         // book a tap that was graded on this bar
         if prevState <= 1 and z.state >= 2
-            int row = s > 0 ? 0 : 1
-            if z.state == 2
+            int  row     = s > 0 ? 0 : 1
+            bool tapHit  = z.state == 2
+            bool tapFail = z.state == 3
+            sDone.set(row, sDone.get(row) + 1)
+            sPts.set(row, sPts.get(row) + (tapHit ? z.target : tapFail ? -math.abs(far - z.tapPrice) : s * (z.tapPrice - close)))
+            if tapHit
                 sHit.set(row, sHit.get(row) + 1)
-                sCh.set(row, sCh.get(row) + z.depth / (z.target + z.depth))
-                box.set_bgcolor(z.bx, color.new(hitColor, 74))
-                box.set_border_color(z.bx, color.new(hitColor, 10))
-                label.set_text(z.tag, (s > 0 ? "▼ " : "▲ ") + z.name + " ✓")
-                label.set_color(z.tag, color.new(hitColor, 15))
-                label.set_textcolor(z.tag, color.black)
-            else if z.state == 3
+            if tapFail
                 sFail.set(row, sFail.get(row) + 1)
+            if tapHit or tapFail
                 sCh.set(row, sCh.get(row) + z.depth / (z.target + z.depth))
-                box.set_bgcolor(z.bx, color.new(color.gray, 90))
-                box.set_border_color(z.bx, color.new(color.gray, 60))
-                label.set_text(z.tag, (s > 0 ? "▼ " : "▲ ") + z.name + " ✗")
-                label.set_color(z.tag, color.new(color.gray, 55))
-            else
-                box.set_bgcolor(z.bx, color.new(color.gray, 92))
-                box.set_border_color(z.bx, color.new(color.gray, 72))
+            color gc = tapHit ? hitColor : color.gray
+            box.set_bgcolor(z.bx, color.new(gc, tapHit ? 74 : tapFail ? 90 : 92))
+            box.set_border_color(z.bx, color.new(gc, tapHit ? 10 : tapFail ? 60 : 72))
+            if showTaps and (tapHit or tapFail)
+                label.set_text(z.tag, (s > 0 ? "▼ " : "▲ ") + z.name + (tapHit ? " ✓" : " ✗"))
+                label.set_color(z.tag, color.new(gc, tapHit ? 15 : 55))
+                label.set_textcolor(z.tag, tapHit ? color.black : color.white)
 
         // book a reclaim that was graded on this bar
         if prevRc == 2 and z.rcState >= 3 and z.rcState <= 5
-            int rrow = s > 0 ? 3 : 2
-            float risk = math.abs(z.rcStop - z.rcPrice)
-            if z.rcState == 3
+            int   rrow   = s > 0 ? 3 : 2
+            bool  rcHit  = z.rcState == 3
+            bool  rcFail = z.rcState == 4
+            float risk   = math.abs(z.rcStop - z.rcPrice)
+            sDone.set(rrow, sDone.get(rrow) + 1)
+            sPts.set(rrow, sPts.get(rrow) + (rcHit ? z.target : rcFail ? -risk : s * (z.rcPrice - close)))
+            if rcHit
                 sHit.set(rrow, sHit.get(rrow) + 1)
-                sCh.set(rrow, sCh.get(rrow) + risk / (z.target + risk))
-                label.set_text(z.rcTag, "⟲ " + z.name + " ✓")
-                label.set_color(z.rcTag, color.new(hitColor, 0))
-                label.set_textcolor(z.rcTag, color.black)
-            else if z.rcState == 4
+            if rcFail
                 sFail.set(rrow, sFail.get(rrow) + 1)
+            if rcHit or rcFail
                 sCh.set(rrow, sCh.get(rrow) + risk / (z.target + risk))
-                label.set_text(z.rcTag, "⟲ " + z.name + " ✗")
-                label.set_color(z.rcTag, color.new(color.gray, 45))
+                label.set_text(z.rcTag, "⟲ " + z.name + (rcHit ? " ✓" : " ✗"))
+                label.set_color(z.rcTag, rcHit ? color.new(hitColor, 0) : color.new(color.gray, 45))
+                label.set_textcolor(z.rcTag, rcHit ? color.black : color.white)
 
         // retire a zone once neither tier is still running
         bool alive = z.state <= 1 or z.rcState == 1 or z.rcState == 2
@@ -455,13 +461,14 @@ else if inRth
 // 5) CAUSAL ZIGZAG — a swing is only known once price has retraced from it
 // ─────────────────────────────────────────────────────────────
 if not na(adr)
-    float thr = swingAdr * adr
-    if zzHiBar < 0
+    float thr   = swingAdr * adr
+    bool  zzNew = zzHiBar < 0
+    if zzNew
         zzHi := high
         zzLo := low
         zzHiBar := bar_index
         zzLoBar := bar_index
-    else
+    if not zzNew
         if zzDir >= 0 and high > zzHi
             zzHi := high
             zzHiBar := bar_index
@@ -491,18 +498,18 @@ f_rowName(int r) =>
     r == 0 ? "Taps · top zones" : r == 1 ? "Taps · bottom zones" : r == 2 ? "Reclaims · bottoms" : "Reclaims · tops"
 
 if showDash and barstate.islast
-    var table dash = table.new(position.top_right, 6, 12, bgcolor = color.new(#101418, 12),
+    var table dash = table.new(position.top_right, 7, 12, bgcolor = color.new(#101418, 12),
          border_width = 1, border_color = color.new(color.gray, 75), frame_width = 1, frame_color = color.new(color.gray, 55))
-    table.clear(dash, 0, 0, 5, 11)
+    table.clear(dash, 0, 0, 6, 11)
     color dim = color.new(color.silver, 0)
     float depthNow = depthMode == "Fixed points" ? depthFixed : depthAdr * nz(adr)
 
     f_cell(dash, 0, 0, "REVERSAL ZONES — SCORECARD (this chart)", color.white, text.align_left)
-    table.merge_cells(dash, 0, 0, 5, 0)
+    table.merge_cells(dash, 0, 0, 6, 0)
     f_cell(dash, 0, 1, "ADR(" + str.tostring(adrLen) + ") " + (na(adr) ? "—" : str.tostring(adr, "#")) +
          " · zone depth " + str.tostring(depthNow, "#.#") + " · target " + str.tostring(targetPts, "#") +
          " · " + str.tostring(trendLen) + "d trend " + (trend > 0 ? "▲" : trend < 0 ? "▼" : "—"), dim, text.align_left)
-    table.merge_cells(dash, 0, 1, 5, 1)
+    table.merge_cells(dash, 0, 1, 6, 1)
 
     f_cell(dash, 0, 2, "",         dim, text.align_left)
     f_cell(dash, 1, 2, "n",        dim, text.align_right)
@@ -510,6 +517,7 @@ if showDash and barstate.islast
     f_cell(dash, 3, 2, "✗",        dim, text.align_right)
     f_cell(dash, 4, 2, "hit %",    dim, text.align_right)
     f_cell(dash, 5, 2, "chance %", dim, text.align_right)
+    f_cell(dash, 6, 2, "pts/mark", dim, text.align_right)
 
     for r = 0 to 3
         int   nH  = sHit.get(r)
@@ -527,19 +535,21 @@ if showDash and barstate.islast
         f_cell(dash, 3, 3 + r, str.tostring(nF), rc, text.align_right)
         f_cell(dash, 4, 3 + r, na(hr) ? "—" : str.tostring(hr, "#.#"), hc, text.align_right)
         f_cell(dash, 5, 3 + r, na(ch) ? "—" : str.tostring(ch, "#.#"), color.orange, text.align_right)
+        float ppm = sDone.get(r) > 0 ? sPts.get(r) / sDone.get(r) : na
+        f_cell(dash, 6, 3 + r, na(ppm) ? "—" : (ppm > 0 ? "+" : "") + str.tostring(ppm, "#.#"), rc, text.align_right)
 
-    f_cell(dash, 0, 7, "hit % is colored only when it differs from chance by 2+ standard errors", dim, text.align_left)
-    table.merge_cells(dash, 0, 7, 5, 7)
-    f_cell(dash, 0, 8, "Backtest: 1-min bars, 1,212 sessions (2022-03 → 2026-11), hit vs chance:", color.white, text.align_left)
-    table.merge_cells(dash, 0, 8, 5, 8)
-    f_cell(dash, 0, 9, "taps 14.6 vs 16.1 · bottom reclaims 23.3 vs 19.9 · top reclaims 18.9 vs 19.8", dim, text.align_left)
-    table.merge_cells(dash, 0, 9, 5, 9)
-    f_cell(dash, 0, 10, "Only bottom reclaims beat chance. Nothing top/bottom-ticks reliably.", color.orange, text.align_left)
-    table.merge_cells(dash, 0, 10, 5, 10)
+    f_cell(dash, 0, 7, "hit % is colored only when it differs from chance by 2+ standard errors · pts before costs", dim, text.align_left)
+    table.merge_cells(dash, 0, 7, 6, 7)
+    f_cell(dash, 0, 8, "Backtest, 1-min bars, 1,212 sessions (2022-03 → 2026-11): hit % vs chance %, pts/mark", color.white, text.align_left)
+    table.merge_cells(dash, 0, 8, 6, 8)
+    f_cell(dash, 0, 9, "taps 14.6 vs 17.2 (−3.2) · bottom reclaims 23.3 vs 22.5 (+2.3) · top reclaims 18.9 vs 19.8 (−0.4)", dim, text.align_left)
+    table.merge_cells(dash, 0, 9, 6, 9)
+    f_cell(dash, 0, 10, "Fading the first touch loses. Bottom reclaims are the best tested and still unproven.", color.orange, text.align_left)
+    table.merge_cells(dash, 0, 10, 6, 10)
     f_cell(dash, 0, 11, tfOk ? "Zones are fixed when drawn · taps print on the touch bar · reclaims on the bar close" :
          "⚠ use a 1–30 min chart (sessions end at :00/:30); backtested on 1 min",
          tfOk ? dim : color.orange, text.align_left)
-    table.merge_cells(dash, 0, 11, 5, 11)
+    table.merge_cells(dash, 0, 11, 6, 11)
 
 // ─────────────────────────────────────────────────────────────
 // ALERTS
@@ -547,4 +557,4 @@ if showDash and barstate.islast
 alertcondition(tapTop, "Top zone tapped", "Reversal Zones: price tapped a TOP zone")
 alertcondition(tapBot, "Bottom zone tapped", "Reversal Zones: price tapped a BOTTOM zone")
 alertcondition(rcBot, "Bottom reclaim", "Reversal Zones: BOTTOM reclaim — a bar closed back above a swept low")
-alertcondition(rcTop, "Top reclaim (no measured edge)", "Reversal Zones: TOP reclaim — a bar closed back below a swept high")
+alertcondition(rcTop, "Top reclaim (tested: no edge)", "Reversal Zones: TOP reclaim — a bar closed back below a swept high")

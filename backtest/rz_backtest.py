@@ -12,6 +12,11 @@ same bars (rz_null.py). Three numbers are printed for every row:
 `lift` = hit% - null% is the only thing that can honestly be called an edge;
 `z` is that lift in binomial standard errors.
 
+`pts` is the mean result per mark in points (+target on a hit, -risk on a
+fail, a timeout marked to the close), `null_pts` the same for the surrogates,
+`edge_pts` their difference and `t` that difference in standard errors. This
+is before commissions and slippage.
+
 Usage:
   python3 rz_backtest.py duka <day_file_dir> [options]
   python3 rz_backtest.py csv  <bars.csv> [options]        (Yahoo-style CSV)
@@ -68,7 +73,10 @@ def table(real, nulls, tier, by=None):
         r["lift"] = r["hit%"] - r["null%"]
         dec = (r.hit + r.fail).clip(lower=1)
         r["z"] = r.lift / (100.0 * np.sqrt((r["null%"] / 100.0) * (1 - r["null%"] / 100.0) / dec))
-    return r
+        r["null_pts"] = pd.concat([rz_engine.score(x, tier, by)["pts"] for x in nulls], axis=1).mean(axis=1)
+        r["edge_pts"] = r.pts - r.null_pts
+        r["t"] = r.edge_pts / r.pts_se
+    return r.drop(columns=["pts_se"])
 
 
 def main():
