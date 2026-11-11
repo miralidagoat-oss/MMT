@@ -131,10 +131,11 @@ def clean_yahoo(df, k=12.0):
 
 
 def load_daily(path):
-    """Daily bars -> frame indexed by trade date with columns h, l (for ADR)."""
+    """Daily bars -> frame indexed by trade date with columns h, l, c."""
     df = pd.read_csv(path)
     idx = pd.to_datetime(df["time"], unit="s", utc=True).dt.tz_convert("America/New_York").dt.normalize().dt.tz_localize(None)
-    return pd.DataFrame({"h": df["high"].values, "l": df["low"].values}, index=idx).groupby(level=0).last()
+    return pd.DataFrame({"h": df["high"].values, "l": df["low"].values, "c": df["close"].values},
+                        index=idx).groupby(level=0).last()
 
 
 # ── Dukascopy ────────────────────────────────────────────────────────────────
