@@ -36,6 +36,8 @@ indicator("MNQ Reversal Blocks — 100-point reversals, graded on candle closes"
 //     OUT OF SAMPLE  2024-11 to 2026-11    72.6% held  (average depth 49)
 //     last 4 years   3,324 touched blocks  69.6% held
 //                    2023 63%, 2024 67%, 2025 71%, 2026 76%
+//     10 years       2016-11 to 2026-11    73.4% held  (10,093 blocks, depth and
+//                    reversal scaled to price; every year between 65% and 79%)
 //
 //   The break candle sets the hold rate (out of sample, same levels):
 //     5 min 52%    15 min 58%    1 hour 68%    2 hours 73%    4 hours 75%

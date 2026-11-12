@@ -46,10 +46,22 @@ candle, calculated depth (`rb_blocks.py run --brk 120 --hold 0.70`):
 | **out of sample, 2024-11 → 2026-11** | 1,899 | | | **72.6%** | |
 | last 4 years, 2022-11 → 2026-11 | 3,324 | 2,310 | 1,011 | **69.6%** | 69.1% |
 | real MNQ futures, last 50 trade days | 205 | 153 | 52 | 74.6% | |
-<!--TENYEAR-->
+| **10 years, 2016-11 → 2026-11** (sizes scaled to price) | 10,093 | 7,407 | 2,679 | **73.4%** | |
+| — of which the last 4 years | 4,076 | 3,014 | 1,061 | 74.0% | |
+| — of which the 6 years before | 6,017 | 4,393 | 1,618 | 73.1% | |
 
-By year: 2023 62.9%, 2024 67.3%, 2025 71.0%, 2026 76.0%. 6.4 blocks are drawn
-a day and 3.2 are touched. The depth averaged 60 points (the cap) in sample
+Ten years by year: 2016 (7 weeks) 65.2%, 2017 67.6%, 2018 72.0%, 2019 68.5%,
+2020 75.0%, 2021 73.0%, 2022 79.1%, 2023 72.9%, 2024 74.2%, 2025 73.0%,
+2026 76.4%. In the ten-year run the depth cap and the reversal are 60 and 100
+points at today's price (27,971) and the same percentage of price earlier: in
+2017 the Nasdaq-100 traded near 6,000, where 100 points was a 1.7% move
+against 0.36% today, so raw points would not be the same test. Over the ten
+years support blocks held 79.7% and resistance blocks 67.4% (a rising
+decade), and the edge trade averaged −5.4 ± 1.3 per block in units where the
+reversal is 100. The first four rows above are in raw points.
+
+Last 4 years in raw points by year: 2023 62.9%, 2024 67.3%, 2025 71.0%, 2026
+76.0%. 6.4 blocks are drawn a day and 3.2 are touched. The depth averaged 60 points (the cap) in sample
 and 49 out of sample.
 
 **What sets the hold rate.** Same levels, out of sample, 100-point reversal:

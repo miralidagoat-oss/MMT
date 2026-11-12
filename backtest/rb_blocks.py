@@ -8,17 +8,16 @@ A BLOCK is a wide zone drawn around a level that is known in advance:
     AS   Asia session high / low, 18:00-03:00 ET (drawn at 03:00)
     LO   London session high / low, 03:00-09:30  (drawn at 09:30)
     OR   opening range high / low, 09:30-10:00   (drawn at 10:00)
-A block is `width` points deep: `front` of it sits in front of the level
-(the side price arrives from) and the rest behind it. A block is only drawn
-if price is still outside it, and not if it would overlap a live block on
-the same side.
+A block starts at the level and extends `width` points beyond it. A block is
+only drawn if price is still outside it, and not if it would overlap a live
+block on the same side.
 
 Grading, on chart candles (default 5-minute):
     TOUCH   a candle trades into the block
     HELD    after the touch, price reverses `target` points (default 100)
             from the extreme it made at the block
-    BROKEN  a candle CLOSES beyond the far side of the block (a wick through
-            the block is not a break)
+    BROKEN  a break candle CLOSES beyond the far side of the block (a wick
+            through the block is not a break)
     OPEN    neither by the end of the next trade day
 Hold rate = HELD / (HELD + BROKEN).
 
@@ -29,9 +28,15 @@ Two more numbers keep the hold rate honest:
             `target` points, exit when a candle closes beyond the far side:
             win rate and average points per block
 
-  python3 rb_blocks.py run   --duka data/nq --start 20161110
-  python3 rb_blocks.py sweep --duka data/nq --start 20161110 --end 20221109
-  python3 rb_blocks.py run   --csv data/yahoo/MNQ_1m.csv
+The shipped configuration: --brk 120 (a block breaks only when a 2-hour
+candle closes beyond it) and --hold 0.70 (depth calculated for a 70% hold
+rate, kept inside 10-60 points). --scale keeps the sizes at the same % of
+price through a long history.
+
+  python3 rb_blocks.py run   --duka data/nq --start 20221109 --brk 120 --hold 0.70 --null 8
+  python3 rb_blocks.py run   --duka data/nq --start 20161110 --brk 120 --hold 0.70 --scale
+  python3 rb_blocks.py sweep --duka data/nq --start 20221109 --tfs 5 15 60
+  python3 rb_blocks.py run   --csv data/yahoo/MNQ_5m.csv --brk 120 --hold 0.70
 """
 import argparse
 import os
