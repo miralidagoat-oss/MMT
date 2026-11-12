@@ -108,6 +108,90 @@ inside 10–60 points) hit 51.0% and 45.1%, because they are shallower.
   reversals while marking blocks held after the chart's own candles had
   closed straight through them. That option is gone from the script.
 
+## What has the highest probability of a reversal
+
+`rb_hunt.py` grades about ninety kinds of level and a dozen conditions around
+the touch by the same strict rules (60-point block, hit = 45 points, 100+,
+a close beyond the block breaks it). No published study tests any of these
+on index futures; the figures that circulate are vendor claims.
+
+**Level types.** Of 85 types with at least 100 graded blocks in the last 4
+years, hit rates run from 72.6% to 82.0% against a scrambled-data chance of
+75–79%. Two are 2 points or more above chance, 25 are 2 points or more below.
+
+| level type | hit rate, last 4 years (chance) | went on to 100+ | hit rate, 10 years |
+|---|---|---|---|
+| 09:30 open ± 1 average daily range | 82.0% (75.3%), 161 blocks | 57.8% | 79.0% |
+| — the same at ± 0.75 / ± 1.25 / ± 1.5 ranges | 73.7% / 75.0% / — | 47.3% / 56.9% | 73.3% / 76.8% / 73.3% |
+| first-hour (initial balance) high / low | 78.7% (78.1%) | 49.5% | 76.2% |
+| initial balance + 0.5 × its range | 78.9% (77.9%) | 52.7% | 77.7% |
+| 09:30-anchored VWAP ± 3σ | 78.9% (76.3%) | 51.2% | 76.4% |
+| session VWAP ± 1σ / 2σ / 3σ | 77.2% / 76.1% / 76.1% (76.6%) | 50.6% / 49.7% / 49.6% | 76.7% / 76.1% / 75.8% |
+| return to VWAP from 1σ away | 77.2% (76.5%) | 51.5% | 76.4% |
+| order block after a sweep of the 24-hour high / low | 77.6% (76.4%) | 52.7% | 77.2% |
+| fair-value gap after such a sweep | 77.6% (77.2%) | 50.4% | 78.0% |
+| order blocks / fair-value gaps, all | 77.3% (76.8%) / 77.0% (77.0%) | 51.3% / 50.8% | 76.7% / 77.3% |
+| Asia / London session high / low | 77.3% (76.7%) / 77.3% (78.3%) | 51.9% / 53.0% | 75.6% / 75.5% |
+| 18:00 open / 09:30 open | 77.8% (77.0%) / 77.7% (77.5%) | 54.8% / 51.8% | 76.5% / 77.2% |
+| floor pivot point | 76.2% (75.7%) | 50.7% | 79.2% |
+| 38.2 / 61.8% retracement of the prior day | 75.1% (77.0%) | 47.6% | 78.3% |
+| value-area high / low (time at price) | 73.1% (76.4%) / 76.7% (76.5%) | 50.3% / 48.2% | 77.3% / 76.2% |
+| point of control (time / volume) | 74.0% (77.4%) / 73.0% (75.6%) | 47.9% / 47.4% | 75.4% / 76.5% |
+| swing highs / lows, ±1 hour / ±4 hours | 75.7% (76.3%) / 74.7% (76.3%) | 50.4% / 51.0% | 74.3% / 73.4% |
+| arbitrary levels | 75.6% (77.8%) | 48.8% | 77.1% |
+| floor pivots R1 / S1 | 73.2% (77.2%) | 48.9% | 73.3% |
+| prior cash-session high / low | 73.1% (76.5%) | 49.6% | — |
+| **prior day high / low** | **73.3% (76.5%)** | 50.1% | **72.4%** |
+| 5 / 10 / 20-day high / low | 76.3% / 77.4% / 76.0% | 51.1% / 51.1% / 53.4% | 72.3% / 72.0% / 70.8% |
+| prior week high / low | 77.2% (77.0%) | 47.8% | 72.4% |
+
+The best figure, the 09:30 open ± one average daily range, is not supported
+by its neighbours at ± 0.75, ± 1.25 and ± 1.5 ranges, so it is treated as
+luck: with 85 types tested, one that good is expected. The consistent finding
+is at the bottom: the prominent highs and lows — prior day, multi-day, prior
+week — are where a block holds LEAST often over ten years, 4–6 points below
+arbitrary levels. Dropping the prior-day blocks from the script lifts it from
+76.4% to 77.3% over the last 4 years; on their own they hit 72.3% over ten.
+
+**Conditions at the touch** (session, day and week extremes and opens; each
+level once per day; `rb_hunt.py conditions`, `combo`). Found in the last 4
+years, then checked on the six years before:
+
+| condition | hit rate / went on to 100+, 2016-11 → 2022-11 | 2022-11 → 2026-11 |
+|---|---|---|
+| all | 74.9% / 51.4% | 76.4% / 51.9% |
+| prominent highs / lows (day, multi-day, week, month) | 72.7% / 49.5% | 74.7% / 49.0% |
+| fading the overnight gap, a fast move (> 2σ in the last hour) or an RSI(14) stretched past 75 | 72.5% / 47.9% | 74.8% / 47.6% |
+| none of those three | 75.7% / 52.5% | 76.9% / 53.2% |
+| **session level, daily trend at your back (support above the 50-day average, resistance below), none of the three** | **76.6% / 54.2%** | **77.1% / 54.5%** |
+| prominent high / low against the trend or with one of the three | 72.4% / 48.1% | 74.5% / 47.1% |
+
+In the last 4 years the favourable group went on to 100+ in 54.4% and 54.0%
+of blocks in the two halves against 49.0% and 52.9% on scrambled data; the
+gap / fast-move / stretched-RSI group hit 73.1% against 77.2% (z = −5.9) in
+the first half and 74.8% against 77.6% in the second. Time of day, weekday,
+volatility, how much of the day's range was used, distance from VWAP and the
+exhaustion-close sessions each moved the hit rate by 2 points or less, and
+not the same way in both samples.
+
+**Result.** The most reliable block found hits 77–79% for 45 points and goes
+on to 100+ about 54% of the time; the least reliable hits 72–73% and 47–48%.
+The market shows mild continuation, not reversal, at the places traders watch
+most and after fast moves. Nothing tested produces a high-probability
+100-point reversal from a 60-point block.
+
+```bash
+python3 backtest/rb_hunt.py levels --duka data/nq --start 20221109 --vxn data/yahoo/VXN_1d.csv --null 6
+```
+
+```bash
+python3 backtest/rb_hunt.py conditions --duka data/nq --start 20221109 --vxn data/yahoo/VXN_1d.csv --null 6
+```
+
+```bash
+python3 backtest/rb_hunt.py combo --duka data/nq --start 20161110 --vxn data/yahoo/VXN_1d.csv --scale --null 0
+```
+
 ```bash
 python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --null 8
 ```

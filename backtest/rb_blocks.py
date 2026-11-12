@@ -80,7 +80,7 @@ def prep(df1m, tf):
         streak[k] = streak[k - 1] + 1 if down[k] else 0
     exh = (r2 < rz_tiers.RSI_STD) | (streak >= rz_tiers.STREAK)              # standard exhaustion close
     bounce = dict(zip(last.index[1:], exh[:-1]))                             # the session after it
-    return dict(o=d.open.values, h=d.high.values, l=d.low.values, c=d.close.values, mod=mod, td=td, wk=wk,
+    return dict(o=d.open.values, h=d.high.values, l=d.low.values, c=d.close.values, v=d.volume.values, mod=mod, td=td, wk=wk,
                 index=d.index, bounce=bounce, tf=tf, target=100.0)
 
 
