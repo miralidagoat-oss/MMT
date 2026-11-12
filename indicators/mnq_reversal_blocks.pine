@@ -1,0 +1,378 @@
+//@version=6
+indicator("MNQ Reversal Blocks — 100-point reversals, graded on candle closes", shorttitle = "RevBlocks",
+     overlay = true, max_boxes_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// WHAT THIS IS
+//   Reversal blocks, drawn BEFORE price gets there and graded by fixed rules.
+//
+//   A BLOCK is a zone 10-60 points deep that starts at a level known in
+//   advance and extends beyond it:
+//     PD  prior day's high / low                (drawn at the 18:00 ET open)
+//     PW  prior week's high / low               (drawn at the 18:00 ET open)
+//     AS  Asia session high / low, 18:00-03:00  (drawn at 03:00 ET)
+//     LO  London session high / low, 03:00-09:30 (drawn at 09:30 ET)
+//     OR  opening range high / low, 09:30-10:00 (drawn at 10:00 ET)
+//   A block is drawn only while price is still outside it, and not on top of
+//   a live block on the same side. Nothing is ever moved or painted backwards.
+//
+//   GRADING (every candle of this chart, at its close)
+//     TOUCH    a candle trades into the block
+//     HELD     price then reverses the set number of points (default 100)
+//              from the extreme it made at the block
+//     BROKEN   a candle CLOSES beyond the far side of the block. A wick
+//              through the block is not a break.
+//     OPEN     neither by the end of the next trade day
+//
+// WHAT THE BACKTEST SAYS (README.md, backtest/rb_blocks.py)
+//   Last 4 years of 1-minute data, 5-minute candles, 3,257 touched blocks:
+//
+//     block depth   reversal that counts   held     same blocks, coin-flip data
+//     60 points     100 points             52.0%    51.5%
+//     60 points      75 points             60.7%
+//     60 points      60 points             69.0%
+//     60 points      50 points             74.1%
+//     40 points     100 points             40.5%
+//     20 points     100 points             27.1%
+//
+//   The hold rate is set by the block depth against the reversal size, not by
+//   the level. A 70% hold rate for 100-point reversals needs blocks about 110
+//   points deep; with 60-point blocks, 70% is what a 60-point reversal gets.
+//   A fixed depth held more often than a volatility-sized one of the same
+//   average depth, so fixed is the default.
+//
+//   The one tilt that is real: SUPPORT blocks touched in the session after an
+//   exhaustion close (daily RSI(2) below 10, or 3 down closes) held 56% and
+//   the trade from their edge averaged +11 points (216 blocks); flagged A+.
+//
+//   The scorecard grades every block on this chart's own history.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+const string G_BLK = "Blocks"
+const string G_LVL = "Levels"
+const string G_UI  = "Display"
+
+sizeMode = input.string("Fixed", "Block depth", options = ["Fixed", "Auto (volatility)"], group = G_BLK,
+     tooltip = "Fixed held more often in testing than a volatility-sized depth of the same average.")
+blockPts = input.float(60.0, "Fixed depth, points", minval = 10.0, maxval = 60.0, step = 5.0, group = G_BLK)
+autoMult = input.float(0.15, "Auto depth: this x the 14-day average daily range (kept inside 10-60)", minval = 0.02,
+     maxval = 1.0, step = 0.01, group = G_BLK)
+revPts   = input.float(100.0, "Reversal that counts, points", minval = 10.0, step = 5.0, group = G_BLK)
+
+usePD = input.bool(true, "PD: prior day high / low", group = G_LVL)
+usePW = input.bool(true, "PW: prior week high / low", group = G_LVL)
+useAS = input.bool(true, "AS: Asia session high / low (18:00-03:00 ET)", group = G_LVL)
+useLO = input.bool(true, "LO: London session high / low (03:00-09:30 ET)", group = G_LVL)
+useOR = input.bool(true, "OR: opening range high / low (09:30-10:00 ET)", group = G_LVL)
+markAplus = input.bool(true, "Flag A+ : support blocks in the session after an exhaustion close", group = G_LVL)
+
+showDash  = input.bool(true, "Scorecard", group = G_UI)
+showTags  = input.bool(true, "Label HELD / BROKEN", group = G_UI)
+topColor  = input.color(#EF5350, "Resistance block", group = G_UI)
+botColor  = input.color(#26A69A, "Support block", group = G_UI)
+aColor    = input.color(#00E676, "A+ support block", group = G_UI)
+deadColor = input.color(#787B86, "Broken / expired block", group = G_UI)
+
+if not timeframe.isintraday
+    runtime.error("Reversal Blocks grades intraday candles: use a 1 to 60 minute chart.")
+
+// ─────────────────────────────────────────────────────────────
+// LEVELS FROM COMPLETED HIGHER-TIMEFRAME BARS (never the bar in progress)
+// ─────────────────────────────────────────────────────────────
+[pdH, pdL, adr] = request.security(syminfo.tickerid, "D", [high[1], low[1], ta.sma(high - low, 14)[1]],
+     lookahead = barmerge.lookahead_on)
+[pwH, pwL] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+// Exhaustion close on the last completed daily bar -> this is a bounce session.
+f_exh() =>
+    float chg = close - close[1]
+    float g   = ta.rma(math.max(chg, 0.0), 2)
+    float l   = ta.rma(math.max(-chg, 0.0), 2)
+    float r   = l == 0.0 ? 100.0 : 100.0 - 100.0 / (1.0 + g / l)
+    var int streak = 0
+    streak := chg < 0 ? streak + 1 : 0
+    bool sig = r < 10.0 or streak >= 3
+    sig[1]
+
+bool bounce = request.security(syminfo.tickerid, "D", f_exh(), lookahead = barmerge.lookahead_on)
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+type Block
+    int    side  = 0        // +1 resistance (top), -1 support (bottom)
+    float  near  = na       // the level: where price enters the block
+    float  far   = na       // a candle close beyond this breaks the block
+    float  tg    = na       // reversal that counts
+    int    state = 0        // 0 waiting, 1 touched, 2 held, 3 broken
+    float  turn  = na       // extreme made at the block so far
+    float  best  = 0.0      // largest reversal from that extreme so far
+    int    days  = 0        // trade-day changes since the touch
+    bool   aplus = false
+    box    bx    = na
+
+type Tally
+    int touched = 0
+    int held    = 0
+    int broken  = 0
+    int expired = 0
+    int tTop    = 0
+    int hTop    = 0
+    int bTop    = 0
+    int tBot    = 0
+    int hBot    = 0
+    int bBot    = 0
+    int tA      = 0
+    int hA      = 0
+    int bA      = 0
+    int half    = 0         // resolved blocks that gave at least 50% of the reversal
+    int threeQ  = 0         // ... at least 75%
+    int drawn   = 0
+
+var array<Block> live = array.new<Block>()
+var Tally tl = Tally.new()
+
+var float asH = na
+var float asL = na
+var float loH = na
+var float loL = na
+var float orH = na
+var float orL = na
+var bool asDone = true
+var bool loDone = true
+var bool orDone = true
+var float wd = blockPts
+var int dayCount = 0
+
+int  mod    = hour(time, "America/New_York") * 60 + minute(time, "America/New_York")
+bool newDay = timeframe.change("D")
+bool rth    = mod >= 570 and mod < 1020
+
+// Draw a block at `level` if price is still outside it and no live block on
+// the same side overlaps it.
+f_add(float level, int side, string name) =>
+    float far = level + side * wd
+    bool  ok  = not na(level) and side * (open - level) < 0
+    if ok and live.size() > 0
+        for b in live
+            if b.side == side and math.min(b.near, b.far) <= math.max(level, far) and math.max(b.near, b.far) >= math.min(level, far)
+                ok := false
+    if ok
+        bool  ap  = side < 0 and bounce and markAplus
+        color col = side > 0 ? topColor : ap ? aColor : botColor
+        box   bx  = box.new(bar_index, math.max(level, far), bar_index + 1, math.min(level, far), border_color = color.new(col, 20),
+             border_width = 1, bgcolor = color.new(col, 85), text = name + (side > 0 ? " high" : " low") + (ap ? "  A+" : ""),
+             text_size = size.small, text_color = color.new(col, 0), text_halign = text.align_right, text_valign = text.align_center)
+        live.push(Block.new(side, level, far, revPts, 0, na, 0.0, 0, ap, bx))
+        tl.drawn += 1
+
+// ─────────────────────────────────────────────────────────────
+// 1. NEW TRADE DAY: retire old blocks, draw the prior day / week blocks
+// ─────────────────────────────────────────────────────────────
+if newDay
+    dayCount += 1
+    if live.size() > 0
+        for i = live.size() - 1 to 0
+            Block b = live.get(i)
+            bool waiting = b.state == 0
+            if not waiting
+                b.days += 1
+            bool expire = not waiting and b.days >= 2
+            if expire
+                tl.expired += 1
+            if waiting or expire
+                b.bx.set_right(bar_index)
+                b.bx.set_border_color(color.new(deadColor, 60))
+                b.bx.set_bgcolor(color.new(deadColor, 93))
+                b.bx.set_text_color(color.new(deadColor, 40))
+                live.remove(i)
+    asH := na
+    asL := na
+    loH := na
+    loL := na
+    orH := na
+    orL := na
+    asDone := false
+    loDone := false
+    orDone := false
+    wd := sizeMode == "Fixed" or na(adr) ? blockPts : math.min(math.max(autoMult * adr, 10.0), 60.0)
+    if usePD
+        f_add(pdH, 1, "PD")
+        f_add(pdL, -1, "PD")
+    if usePW
+        f_add(pwH, 1, "PW")
+        f_add(pwL, -1, "PW")
+
+// ─────────────────────────────────────────────────────────────
+// 2. SESSION BLOCKS, each drawn on the first candle after its range is complete
+// ─────────────────────────────────────────────────────────────
+if mod >= 180 and mod < 1020 and not asDone
+    asDone := true
+    if useAS
+        f_add(asH, 1, "AS")
+        f_add(asL, -1, "AS")
+if rth and not loDone
+    loDone := true
+    if useLO
+        f_add(loH, 1, "LO")
+        f_add(loL, -1, "LO")
+if rth and mod >= 600 and not orDone
+    orDone := true
+    if useOR
+        f_add(orH, 1, "OR")
+        f_add(orL, -1, "OR")
+
+// ─────────────────────────────────────────────────────────────
+// 3. GRADE every live block on this candle
+// ─────────────────────────────────────────────────────────────
+bool touchNow = false     // live: price is inside a block that was waiting
+bool heldNow  = false
+bool brokeNow = false
+
+if live.size() > 0
+    for i = live.size() - 1 to 0
+        Block b   = live.get(i)
+        int   s   = b.side
+        float ext = s > 0 ? high : low
+        float opp = s > 0 ? low : high
+        bool  hit = s * (ext - b.near) >= 0
+        if b.state == 0 and hit
+            touchNow := true
+        b.bx.set_right(bar_index + 1)
+        if barstate.isconfirmed
+            bool first = false
+            if b.state == 0 and hit
+                b.state := 1
+                b.turn  := ext
+                first   := true
+                tl.touched += 1
+                tl.tTop += s > 0 ? 1 : 0
+                tl.tBot += s < 0 ? 1 : 0
+                tl.tA   += b.aplus ? 1 : 0
+            if b.state == 1
+                bool  broke   = s * (close - b.far) > 0
+                float newturn = s * (ext - b.turn) > 0 ? ext : b.turn
+                bool  held    = false
+                bool  dead    = false
+                if not first                       // the extreme was made on an earlier candle
+                    b.best := math.max(b.best, s * (b.turn - opp))
+                if b.best >= b.tg
+                    held := true
+                if not held and broke
+                    dead := true
+                if not held and not dead           // this candle's own extreme, confirmed by its close
+                    b.best := math.max(b.best, s * (newturn - close))
+                if not dead and b.best >= b.tg
+                    held := true
+                b.turn := newturn
+                if held
+                    b.state := 2
+                    heldNow := true
+                    tl.held += 1
+                    tl.hTop += s > 0 ? 1 : 0
+                    tl.hBot += s < 0 ? 1 : 0
+                    tl.hA   += b.aplus ? 1 : 0
+                    b.bx.set_border_color(color.new(s > 0 ? topColor : b.aplus ? aColor : botColor, 0))
+                    b.bx.set_border_width(2)
+                if dead
+                    b.state := 3
+                    brokeNow := true
+                    tl.broken += 1
+                    tl.bTop += s > 0 ? 1 : 0
+                    tl.bBot += s < 0 ? 1 : 0
+                    tl.bA   += b.aplus ? 1 : 0
+                    b.bx.set_border_color(color.new(deadColor, 30))
+                    b.bx.set_bgcolor(color.new(deadColor, 90))
+                    b.bx.set_text_color(color.new(deadColor, 20))
+                if held or dead
+                    tl.half   += b.best >= 0.5 * b.tg ? 1 : 0
+                    tl.threeQ += b.best >= 0.75 * b.tg ? 1 : 0
+                    if showTags
+                        label.new(bar_index, s > 0 ? high : low, held ? "HELD " + str.tostring(b.tg, "#") : "BROKEN",
+                             yloc = s > 0 ? yloc.abovebar : yloc.belowbar,
+                             style = s > 0 ? label.style_label_down : label.style_label_up,
+                             color = held ? color.new(s > 0 ? topColor : botColor, 10) : color.new(deadColor, 20),
+                             textcolor = color.white, size = size.tiny)
+                    live.remove(i)
+
+// ─────────────────────────────────────────────────────────────
+// 4. SESSION RANGES, updated after the candle has been graded
+// ─────────────────────────────────────────────────────────────
+if mod >= 1080 or mod < 180
+    asH := na(asH) ? high : math.max(asH, high)
+    asL := na(asL) ? low : math.min(asL, low)
+if mod >= 180 and mod < 570
+    loH := na(loH) ? high : math.max(loH, high)
+    loL := na(loL) ? low : math.min(loL, low)
+if mod >= 570 and mod < 600
+    orH := na(orH) ? high : math.max(orH, high)
+    orL := na(orL) ? low : math.min(orL, low)
+
+// ─────────────────────────────────────────────────────────────
+// SCORECARD — this chart's own history, graded by the rules above
+// ─────────────────────────────────────────────────────────────
+f_cell(table t, int c, int r, string s, color tc, string al) =>
+    table.cell(t, c, r, s, text_color = tc, text_halign = al, text_size = size.small)
+
+f_rate(int a, int b) =>
+    a + b > 0 ? str.tostring(100.0 * a / (a + b), "#.#") + "%" : "—"
+
+f_row(table t, int r, string name, color nc, int touched, int held, int broken) =>
+    f_cell(t, 0, r, name, nc, text.align_left)
+    f_cell(t, 1, r, str.tostring(touched), color.white, text.align_right)
+    f_cell(t, 2, r, str.tostring(held), color.white, text.align_right)
+    f_cell(t, 3, r, str.tostring(broken), color.white, text.align_right)
+    f_cell(t, 4, r, f_rate(held, broken), color.white, text.align_right)
+
+if showDash and barstate.islast
+    var table dash = table.new(position.top_right, 5, 11, bgcolor = color.new(#101418, 12),
+         border_width = 1, border_color = color.new(color.gray, 75), frame_width = 1, frame_color = color.new(color.gray, 55))
+    table.clear(dash, 0, 0, 4, 10)
+    color dim  = color.new(color.silver, 0)
+    int   done = tl.held + tl.broken
+
+    f_cell(dash, 0, 0, "REVERSAL BLOCKS — SCORECARD (this chart's history)", color.white, text.align_left)
+    table.merge_cells(dash, 0, 0, 4, 0)
+
+    f_cell(dash, 0, 1, "blocks " + str.tostring(wd, "#") + " pts deep · reversal " + str.tostring(revPts, "#") + " pts",
+         dim, text.align_left)
+    f_cell(dash, 1, 1, "touched",   dim, text.align_right)
+    f_cell(dash, 2, 1, "held",      dim, text.align_right)
+    f_cell(dash, 3, 1, "broken",    dim, text.align_right)
+    f_cell(dash, 4, 1, "hold rate", dim, text.align_right)
+
+    f_row(dash, 2, "All blocks",                         color.white, tl.touched, tl.held, tl.broken)
+    f_row(dash, 3, "Resistance blocks (tops)",           topColor,    tl.tTop,    tl.hTop, tl.bTop)
+    f_row(dash, 4, "Support blocks (bottoms)",           botColor,    tl.tBot,    tl.hBot, tl.bBot)
+    f_row(dash, 5, "A+ support (after exhaustion close)", aColor,      tl.tA,      tl.hA,   tl.bA)
+
+    f_cell(dash, 0, 6, "Reversal of at least " + str.tostring(0.5 * revPts, "#") + " / " + str.tostring(0.75 * revPts, "#") +
+         " / " + str.tostring(revPts, "#") + " pts before a close through:  " + f_rate(tl.half, done - tl.half) + " / " +
+         f_rate(tl.threeQ, done - tl.threeQ) + " / " + f_rate(tl.held, tl.broken), color.white, text.align_left)
+    table.merge_cells(dash, 0, 6, 4, 6)
+
+    f_cell(dash, 0, 7, "Drawn " + str.tostring(tl.drawn) + " blocks in " + str.tostring(dayCount) + " days (" +
+         (dayCount > 0 ? str.tostring(1.0 * tl.drawn / dayCount, "#.#") : "—") + " a day) · " + str.tostring(live.size()) +
+         " live now · " + str.tostring(tl.expired) + " still open after two days" +
+         (bounce ? " · TODAY IS A BOUNCE SESSION" : ""), bounce ? aColor : dim, text.align_left)
+    table.merge_cells(dash, 0, 7, 4, 7)
+
+    f_cell(dash, 0, 8, "Backtest, last 4 years, 5-minute candles, 60-pt blocks: held 52% for 100 pts (coin-flip data: 51.5%),",
+         dim, text.align_left)
+    table.merge_cells(dash, 0, 8, 4, 8)
+    f_cell(dash, 0, 9, "61% for 75 pts, 69% for 60 pts, 74% for 50 pts. A+ support blocks: 56% for 100 pts.",
+         dim, text.align_left)
+    table.merge_cells(dash, 0, 9, 4, 9)
+    f_cell(dash, 0, 10, "Hold rate comes from block depth vs reversal size, not from the level · a break = a candle CLOSE through",
+         color.orange, text.align_left)
+    table.merge_cells(dash, 0, 10, 4, 10)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(touchNow, "Price entered a reversal block", "Reversal Blocks: price is inside a block")
+alertcondition(heldNow, "Block held", "Reversal Blocks: a block held — the reversal reached its target")
+alertcondition(brokeNow, "Block broken", "Reversal Blocks: a candle closed through a block")
