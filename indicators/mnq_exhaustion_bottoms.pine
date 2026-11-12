@@ -1,0 +1,231 @@
+//@version=6
+indicator("MNQ Exhaustion Bottoms — daily oversold bounce, self-audited", shorttitle = "ExhBottoms",
+     overlay = true, max_labels_count = 500)
+
+// ============================================================================
+// WHAT THIS IS
+//   A BOTTOM indicator built on the one reversal effect that survived testing.
+//   It does not use prior highs or lows.
+//
+//   EXHAUSTION CLOSE   a daily close with RSI(2) below 10, or the third down
+//                      close in a row. Judged on completed daily bars only.
+//   BOUNCE SESSION     the session that follows it (tinted, with the signal
+//                      close drawn as a line).
+//   EXHAUSTION LINE    the price that TODAY's daily close has to finish below
+//                      to become an exhaustion close. Known when the session
+//                      opens, so it is on the chart before price gets there.
+//
+// WHAT THE BACKTEST SAYS (README.md, backtest/rz_edge_hunt.py)
+//   Next-session return after an exhaustion close vs after every other close:
+//
+//     NQ futures, 2000-2026          +0.24%  vs +0.01%     837 signals, t = 3.1
+//     Nasdaq-100 index, 1985-2026    +0.26%  vs +0.04%   1,365 signals, t = 3.8
+//     QQQ, 1999-2026                 +0.34%  vs +0.01%     866 signals, t = 4.2
+//     MNQ futures, 2019-2026         +0.39%  vs +0.04%     223 signals, t = 2.6
+//
+//   On NQ futures it is positive in each of 2000-12, 2013-20 and 2021-26, in
+//   21 of 27 years, and larger the more oversold the close. It keeps building
+//   for about 5 sessions (+0.76% vs +0.21% for any 5 sessions).
+//
+// WHAT IT IS NOT
+//   - Not a bottom TICK. The session after a signal usually trades 100+ points
+//     both above AND below the signal close; the edge is in the average, not
+//     in the precision. A tight stop at the signal does worse than chance.
+//   - Not a top indicator. Overbought closes (RSI(2) above 90, up streaks)
+//     were followed by normal-to-higher sessions in every period tested.
+//   - Not a promise: about 4 in 10 bounce sessions still close lower.
+//
+//   The scorecard grades every signal in this symbol's own daily history, so
+//   the script can never look better than it is.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+const string G_SIG = "Exhaustion close (completed daily bars only)"
+const string G_UI  = "Display"
+
+useRsi    = input.bool(true, "RSI of daily closes below the threshold", group = G_SIG)
+rsiLen    = input.int(2, "RSI length", minval = 2, maxval = 5, group = G_SIG)
+rsiThr    = input.float(10.0, "RSI threshold", minval = 1.0, maxval = 40.0, step = 1.0, group = G_SIG)
+useStreak = input.bool(true, "Down closes in a row", group = G_SIG)
+streakLen = input.int(3, "How many down closes", minval = 2, maxval = 6, group = G_SIG,
+     tooltip = "Backtested with RSI(2) < 10 OR 3 down closes. Other settings are untested.")
+
+showLine  = input.bool(true, "Exhaustion line (a daily close below it is an exhaustion close)", group = G_UI)
+showTint  = input.bool(true, "Tint bounce sessions", group = G_UI)
+showLabel = input.bool(true, "Label each exhaustion close", group = G_UI)
+showDash  = input.bool(true, "Scorecard", group = G_UI)
+botColor  = input.color(#26A69A, "Bottom color", group = G_UI)
+sigColor  = input.color(#FFD54F, "Signal-close color", group = G_UI)
+
+// ─────────────────────────────────────────────────────────────
+// DAILY ENGINE — runs on the symbol's full daily history
+// ─────────────────────────────────────────────────────────────
+// Everything it returns is the value as of the last COMPLETED daily bar
+// (the trailing [1]), so nothing can change during a session.
+f_daily() =>
+    float chg = close - close[1]
+    float g   = ta.rma(math.max(chg, 0.0), rsiLen)
+    float l   = ta.rma(math.max(-chg, 0.0), rsiLen)
+    float rsi = l == 0.0 ? 100.0 : 100.0 - 100.0 / (1.0 + g / l)
+    var int streak = 0
+    streak := chg < 0 ? streak + 1 : 0
+    bool sig = (useRsi and rsi < rsiThr) or (useStreak and streak >= streakLen)
+
+    // grade the previous close on this close
+    float r1 = close / close[1] - 1.0
+    float r5 = close / close[5] - 1.0
+    var int   nS = 0      // sessions that followed an exhaustion close
+    var float sS = 0.0
+    var float qS = 0.0
+    var int   wS = 0
+    var int   nO = 0      // every other session
+    var float sO = 0.0
+    var float qO = 0.0
+    var int   wO = 0
+    var int   n5 = 0      // 5-session windows that followed an exhaustion close
+    var float s5 = 0.0
+    var int   nA = 0      // all 5-session windows
+    var float sA = 0.0
+    bool sigPrev = sig[1]
+    bool sig5    = sig[5]
+    bool ok1     = not na(r1) and not na(rsi[1])
+    bool ok5     = not na(r5) and not na(rsi[5])
+    if ok1 and sigPrev
+        nS += 1
+        sS += r1
+        qS += r1 * r1
+        wS += r1 > 0 ? 1 : 0
+    if ok1 and not sigPrev
+        nO += 1
+        sO += r1
+        qO += r1 * r1
+        wO += r1 > 0 ? 1 : 0
+    if ok5
+        nA += 1
+        sA += r5
+    if ok5 and sig5
+        n5 += 1
+        s5 += r5
+    [sig[1], rsi[1], streak[1], close[1], g[1], l[1], nS[1], sS[1], qS[1], wS[1], nO[1], sO[1], qO[1], wO[1], n5[1], s5[1], nA[1], sA[1]]
+
+[pSig, pRsi, pStreak, pClose, pG, pL, nS, sS, qS, wS, nO, sO, qO, wO, n5, s5, nA, sA] = request.security(syminfo.tickerid, "D", f_daily(),
+     lookahead = barmerge.lookahead_on)
+
+// ─────────────────────────────────────────────────────────────
+// SESSION STATE
+// ─────────────────────────────────────────────────────────────
+bool newDay = timeframe.change("D")
+bool bounce = pSig        // this session follows an exhaustion close
+
+// The exhaustion line: with RSI = 100 - 100 / (1 + G / L) and Wilder smoothing,
+// RSI < threshold  <=>  G' < q * L',  q = threshold / (100 - threshold).
+// Solving for today's close gives a single price; a close below it qualifies.
+float q    = rsiThr / (100.0 - rsiThr)
+float d0   = pG * (rsiLen - 1) / q - pL * (rsiLen - 1)
+float xRsi = useRsi and not na(pG) and not na(pL) ? (d0 > 0 ? pClose - d0 : pClose - q * d0) : na
+// one more down close completes the streak
+float xStk = useStreak and pStreak >= streakLen - 1 ? pClose : na
+float xLine = na(xRsi) ? xStk : na(xStk) ? xRsi : math.max(xRsi, xStk)
+bool  belowLine = not na(xLine) and close < xLine
+
+// ─────────────────────────────────────────────────────────────
+// DRAWING — nothing here is ever moved or painted backwards
+// ─────────────────────────────────────────────────────────────
+plot(showLine and not newDay ? xLine : na, "Exhaustion line", color = color.new(botColor, 25),
+     style = plot.style_linebr, linewidth = 1)
+plot(bounce and not newDay ? pClose : na, "Signal close", color = color.new(sigColor, 0),
+     style = plot.style_linebr, linewidth = 2)
+bgcolor(showTint and bounce ? color.new(botColor, 90) : na, title = "Bounce session")
+plotshape(newDay and bounce, title = "Exhaustion close", style = shape.triangleup, location = location.belowbar,
+     color = botColor, size = size.small)
+
+if newDay and bounce and showLabel
+    label.new(bar_index, low, "EXHAUSTION CLOSE\nRSI(" + str.tostring(rsiLen) + ") " + str.tostring(pRsi, "#.#") +
+         " · " + str.tostring(pStreak) + " down\nsignal close " + str.tostring(pClose, format.mintick),
+         yloc = yloc.belowbar, style = label.style_label_up, color = color.new(botColor, 10),
+         textcolor = color.white, size = size.small)
+
+if newDay and bounce
+    alert("Exhaustion close confirmed at " + str.tostring(pClose, format.mintick) + " (RSI " +
+         str.tostring(pRsi, "#.#") + ", " + str.tostring(pStreak) + " down closes). This is a bounce session.",
+         alert.freq_once_per_bar)
+
+// ─────────────────────────────────────────────────────────────
+// SCORECARD — this symbol's own daily history, graded
+// ─────────────────────────────────────────────────────────────
+f_cell(table t, int c, int r, string s, color tc, string al) =>
+    table.cell(t, c, r, s, text_color = tc, text_halign = al, text_size = size.small)
+
+f_pct(float x) =>
+    na(x) ? "—" : (x > 0 ? "+" : "") + str.tostring(100.0 * x, "#.###") + "%"
+
+if showDash and barstate.islast
+    var table dash = table.new(position.top_right, 4, 11, bgcolor = color.new(#101418, 12),
+         border_width = 1, border_color = color.new(color.gray, 75), frame_width = 1, frame_color = color.new(color.gray, 55))
+    table.clear(dash, 0, 0, 3, 10)
+    color dim = color.new(color.silver, 0)
+
+    float avgS = nS > 0 ? sS / nS : na
+    float avgO = nO > 0 ? sO / nO : na
+    float varS = nS > 1 ? math.max(qS / nS - avgS * avgS, 0.0) : na
+    float varO = nO > 1 ? math.max(qO / nO - avgO * avgO, 0.0) : na
+    float se   = not na(varS) and not na(varO) ? math.sqrt(varS / nS + varO / nO) : na
+    float tval = not na(se) and se > 0 ? (avgS - avgO) / se : na
+    float avg5 = n5 > 0 ? s5 / n5 : na
+    float avgA = nA > 0 ? sA / nA : na
+    color sc   = na(tval) ? color.white : tval >= 2.0 ? color.new(color.teal, 0) : tval <= -2.0 ? color.new(color.red, 0) : color.white
+
+    f_cell(dash, 0, 0, "EXHAUSTION BOTTOMS — SCORECARD (this symbol, daily history)", color.white, text.align_left)
+    table.merge_cells(dash, 0, 0, 3, 0)
+
+    f_cell(dash, 0, 1, "",                  dim, text.align_left)
+    f_cell(dash, 1, 1, "sessions",          dim, text.align_right)
+    f_cell(dash, 2, 1, "average",           dim, text.align_right)
+    f_cell(dash, 3, 1, "closed higher",     dim, text.align_right)
+
+    f_cell(dash, 0, 2, "After an exhaustion close", color.white, text.align_left)
+    f_cell(dash, 1, 2, str.tostring(nS), color.white, text.align_right)
+    f_cell(dash, 2, 2, f_pct(avgS) + (na(avgS) ? "" : "  ≈ " + str.tostring(avgS * close, "#") + " pts"), sc, text.align_right)
+    f_cell(dash, 3, 2, nS > 0 ? str.tostring(100.0 * wS / nS, "#") + "%" : "—", color.white, text.align_right)
+
+    f_cell(dash, 0, 3, "After every other close", dim, text.align_left)
+    f_cell(dash, 1, 3, str.tostring(nO), dim, text.align_right)
+    f_cell(dash, 2, 3, f_pct(avgO) + (na(avgO) ? "" : "  ≈ " + str.tostring(avgO * close, "#") + " pts"), dim, text.align_right)
+    f_cell(dash, 3, 3, nO > 0 ? str.tostring(100.0 * wO / nO, "#") + "%" : "—", dim, text.align_right)
+
+    f_cell(dash, 0, 4, "Difference: t = " + (na(tval) ? "—" : str.tostring(tval, "#.##")) +
+         "   (2 or more = unlikely to be luck)", sc, text.align_left)
+    table.merge_cells(dash, 0, 4, 3, 4)
+
+    f_cell(dash, 0, 5, "Next 5 sessions: " + f_pct(avg5) + " after a signal vs " + f_pct(avgA) + " for any 5 sessions",
+         dim, text.align_left)
+    table.merge_cells(dash, 0, 5, 3, 5)
+
+    string today = bounce ? "TODAY: BOUNCE SESSION — signal close " + str.tostring(pClose, format.mintick) :
+         "TODAY: no signal from the last close"
+    f_cell(dash, 0, 6, today, bounce ? sigColor : dim, text.align_left)
+    table.merge_cells(dash, 0, 6, 3, 6)
+
+    string lineTxt = na(xLine) ? "Exhaustion line: —" : "Exhaustion line " + str.tostring(xLine, format.mintick) +
+         (belowLine ? "  · price is " + str.tostring(xLine - close, "#") + " pts BELOW it (a close here = signal)" :
+         "  · " + str.tostring(close - xLine, "#") + " pts below price")
+    f_cell(dash, 0, 7, lineTxt, belowLine ? botColor : dim, text.align_left)
+    table.merge_cells(dash, 0, 7, 3, 7)
+
+    f_cell(dash, 0, 8, "Backtest (RSI(2) < 10 or 3 down closes): NQ futures 2000-2026 +0.24% vs +0.01%, 837 signals;",
+         dim, text.align_left)
+    table.merge_cells(dash, 0, 8, 3, 8)
+    f_cell(dash, 0, 9, "MNQ 2019-2026 +0.39% vs +0.04%, 223 signals. NQ: positive in 21 of 27 years.", dim, text.align_left)
+    table.merge_cells(dash, 0, 9, 3, 9)
+    f_cell(dash, 0, 10, "Bottoms only · not a bottom tick · about 4 in 10 bounce sessions still close lower",
+         color.orange, text.align_left)
+    table.merge_cells(dash, 0, 10, 3, 10)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(newDay and bounce, "Bounce session starts", "Exhaustion Bottoms: yesterday closed exhausted — this is a bounce session")
+alertcondition(belowLine and not belowLine[1], "Price below the exhaustion line",
+     "Exhaustion Bottoms: price is below today's exhaustion line — a daily close here is an exhaustion close")

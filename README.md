@@ -5,8 +5,100 @@ backtest that grades it.
 
 | indicator | file | what it is |
 |---|---|---|
-| **MNQ Reversal Zones** | `indicators/mnq_reversal_zones.pine` | no-lag reversal zones with a live scorecard — [details](#mnq-reversal-zones) |
+| **MNQ Exhaustion Bottoms** | `indicators/mnq_exhaustion_bottoms.pine` | the one reversal effect that tested as real: the bounce after an oversold daily close — [details](#mnq-exhaustion-bottoms) |
+| MNQ Reversal Zones | `indicators/mnq_reversal_zones.pine` | no-lag zones on prior highs/lows with a live scorecard; tested at chance — [details](#mnq-reversal-zones) |
 | Alpha Predictive Limit Matrix | `indicators/alpha_predictive_limit_matrix.pine` | sweep-rejection limit setups for the 1H chart — [details](#alpha-predictive-limit-matrix) |
+
+---
+
+# MNQ Exhaustion Bottoms
+
+Built on the only reversal effect that survived testing. It does not use
+prior highs or lows.
+
+**Exhaustion close:** a daily close with RSI(2) below 10, or the third down
+close in a row. **Bounce session:** the session after it.
+
+| next-session return | after an exhaustion close | after every other close | signals | t |
+|---|---|---|---|---|
+| NQ futures, 2000–2026 | **+0.24%** | +0.01% | 837 | 3.1 |
+| Nasdaq-100 index, 1985–2026 | **+0.26%** | +0.04% | 1,365 | 3.8 |
+| QQQ, 1999–2026 | **+0.34%** | +0.01% | 866 | 4.2 |
+| **MNQ futures, 2019–2026** | **+0.39%** (≈ +106 pts at 27,500) | +0.04% (≈ +11 pts) | 223 | 2.6 |
+
+These are the numbers the indicator's own scorecard logic produces on Yahoo
+daily bars (`rz_edge_hunt.py scorecard`).
+
+Why this one is believed and the others were not:
+
+- **It holds in every era.** NQ futures: +0.23% in 2000–12, +0.15% in
+  2013–20, +0.37% in 2021–26; signal days beat all days in 21 of 27 years.
+- **It scales with the cause.** Next-session return by RSI(2) at the close:
+  0–5 → +0.32%, 5–10 → +0.19%, 10–20 → +0.17%, 20–35 → +0.03%, 35–65 → −0.06%.
+- **It keeps building.** Five sessions after a signal: +0.76% against +0.21%
+  for any five sessions.
+- **It works in both trends**: +0.15% above the 200-day average, +0.37%
+  below it.
+- **It shows up on 1-minute data too.** After an oversold 16:00 close the next
+  24 hours averaged +15.9% of the daily range against +4.1% on all sessions
+  (130 signals, 2022–2026), most of it overnight.
+
+What it is not:
+
+- **Not a bottom tick.** Scaled to a 27,500 index, the session after a signal
+  trades a median 283 points above the signal close and a median 231 points
+  below it. The edge is in the average (+67 points on NQ since 2000), not in
+  the precision. Buying the first intraday touch of the exhaustion line earns
+  +13.9% of the daily range by the next close (t = 2.6) with a median
+  drawdown of 37% of the range on the way; a version with a tight stop does
+  worse than chance (31.7% against 35.7%).
+- **Not a top indicator.** Overbought closes do not fall: after RSI(2) above
+  90 the next session averaged +0.02% / +0.05% / +0.12% across the three
+  eras. Up streaks, upper Bollinger closes and low-VXN readings are the same.
+- **Not a promise.** 41–44% of bounce sessions still close lower.
+
+What the indicator draws: a tint over each bounce session with the signal
+close as a line; the **exhaustion line**, the price today's daily close must
+finish below to become an exhaustion close (known when the session opens,
+derived from the RSI formula, so it is on the chart before price gets
+there); and a scorecard that grades every signal in the symbol's own daily
+history against every other day.
+
+## Everything non-level that was tried
+
+`backtest/rz_edge_hunt.py`, same null-model standard, 2022-03 → 2026-11,
+1-minute data. Edges are the move in the fade direction, real minus null, in
+% of the average daily range (0.5% ≈ 2–4 points).
+
+| idea | result |
+|---|---|
+| 142 idea × side cells on 1 / 5 / 15 / 60-minute bars: RSI(14) and RSI(2) extremes, stochastic, Bollinger z-score, stretch from EMA 20/50/200 in ATRs, distance from the session average in sigmas, bar streaks, pin bars and engulfing bars at an extreme, RSI divergence (504,550 markers) | Structure exists (27 cells beyond 2 standard errors against ~6 by chance) but it is tiny. Every one of the strongest fade edges is a **bottom**: price 2–2.5σ below the session average +0.5 to +0.6% over the next hour (t ≈ 3.4), 1-minute Bollinger −2σ to −3σ +0.2 to +0.6%. Fading **overbought** readings loses: RSI(14) above 80 on 1-minute bars −1.3% (t = −4.0). Strongly oversold 5–60 minute readings also continue lower (RSI(14) below 30 on 60-minute bars −3.0%, t = −2.9). |
+| Fade the overnight gap or overnight move at 09:30 (16 cells) | One cell beyond two standard errors (up-gaps over half a daily range: +5.0% in 60 minutes, 136 cases), which is the count chance gives. |
+| Published intraday momentum: first half hour predicts the last | Absent in 2022–2026: correlation −0.016 (t = −0.5). |
+| Follow a confirmed directional change | +0.52% of the daily range at a 0.2 × ADR change (t = 2.8); nothing at 0.3. |
+| Daily exhaustion: RSI(2), down streaks, close in the bottom of the day's range, lower Bollinger, big down days, VXN spikes | Bottoms positive in nearly every cell and era; the indicator uses the two most consistent. |
+
+## Using it
+
+Paste `indicators/mnq_exhaustion_bottoms.pine` into the Pine Editor on MNQ or
+NQ, any timeframe. The signal is judged on completed daily bars only. Like the
+zones script, it has not been run through TradingView's compiler.
+
+```bash
+python3 backtest/rz_edge_hunt.py scorecard --yahoo data/yahoo --file MNQ_1d.csv
+```
+
+```bash
+python3 backtest/rz_edge_hunt.py dose --yahoo data/yahoo
+```
+
+```bash
+python3 backtest/rz_edge_hunt.py intraday --duka data/nq --start 20220301
+```
+
+`rz_edge_hunt.py` also takes `daily`, `path`, `line`, `gap` and `momentum`.
+The daily commands need `NDX_1d.csv`, `QQQ_1d.csv` and `VXN_1d.csv` next to
+the futures files (`rz_data.py yahoo` fetches them).
 
 ---
 
