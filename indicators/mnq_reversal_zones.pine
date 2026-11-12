@@ -431,6 +431,8 @@ if live.size() > 0
                 sFail.set(rrow, sFail.get(rrow) + 1)
             if rcHit or rcFail
                 sCh.set(rrow, sCh.get(rrow) + risk / (z.target + risk))
+            // a hidden top reclaim has no label to restyle
+            if (rcHit or rcFail) and not na(z.rcTag)
                 label.set_text(z.rcTag, "⟲ " + z.name + (rcHit ? " ✓" : " ✗"))
                 label.set_color(z.rcTag, rcHit ? color.new(hitColor, 0) : color.new(color.gray, 45))
                 label.set_textcolor(z.rcTag, rcHit ? color.black : color.white)
