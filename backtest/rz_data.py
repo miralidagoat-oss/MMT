@@ -91,11 +91,12 @@ def fetch_yahoo(out_dir, symbols=("MNQ=F", "NQ=F", "ES=F")):
         print(tag, "1d", _save(os.path.join(out_dir, f"{tag}_1d.csv"),
                                _yahoo_chart(sess, sym, {"interval": "1d", "period1": now - 27 * 365 * 86400,
                                                         "period2": now})))
-    for sym, tag in (("^NDX", "NDX"), ("QQQ", "QQQ"), ("^VXN", "VXN")):      # daily only: cash index, ETF, volatility
+    for sym, tag in (("^NDX", "NDX"), ("QQQ", "QQQ"), ("SPY", "SPY"), ("^VXN", "VXN"), ("^VIX", "VIX")):   # daily only
         print(tag, "1d", _save(os.path.join(out_dir, f"{tag}_1d.csv"),
                                _yahoo_chart(sess, sym, {"interval": "1d", "period1": now - 42 * 365 * 86400,
                                                         "period2": now})))
         time.sleep(0.5)
+    print("VIX", "1h", _save(os.path.join(out_dir, "VIX_1h.csv"), _yahoo_chart(sess, "^VIX", {"interval": "60m", "range": "730d"})))
 
 
 def load_csv(path):

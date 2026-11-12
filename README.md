@@ -1,68 +1,169 @@
 # MMT — MNQ trading research
 
-Two TradingView (Pine Script v6) indicators, each shipped with the real-data
+Four TradingView (Pine Script v6) indicators, each shipped with the real-data
 backtest that grades it.
 
 | indicator | file | what it is |
 |---|---|---|
+| **MNQ Reversal Blocks** | `indicators/mnq_reversal_blocks.pine` | blocks of 10–60 points at levels known in advance, graded by fixed rules: held = a 100-point reversal, broken = a break candle closing through — [details](#mnq-reversal-blocks) |
 | **MNQ Exhaustion Reversals** | `indicators/mnq_exhaustion_reversals.pine` | tiered daily-close reversals that tested as real: oversold bounces (standard / Monday–Tuesday / deep / capitulation) and rare blow-off tops — [details](#mnq-exhaustion-reversals) |
 | MNQ Reversal Zones | `indicators/mnq_reversal_zones.pine` | no-lag zones on prior highs/lows with a live scorecard; tested at chance — [details](#mnq-reversal-zones) |
 | Alpha Predictive Limit Matrix | `indicators/alpha_predictive_limit_matrix.pine` | sweep-rejection limit setups for the 1H chart — [details](#alpha-predictive-limit-matrix) |
 
 ---
 
+# MNQ Reversal Blocks
+
+**The brief:** reversal blocks, 4–10 a day, at most 60 points deep with the
+depth calculated, about 70% holding out of sample. A hold is a reversal of
+100 points or more; a break is a candle closing completely through the block,
+never a wick.
+
+**The rules**
+
+- A block starts at a level known in advance and extends beyond it: prior
+  day high / low, prior week high / low, Asia session high / low
+  (18:00–03:00 ET), London session high / low (03:00–09:30), opening range
+  high / low (09:30–10:00). Each is drawn on the first candle after its range
+  is complete, only while price is still outside it, and never on top of a
+  live block on the same side.
+- **Depth, 10–60 points, calculated each day:**
+  `depth = −reversal × ln(1 − target hold rate) − 0.55 × average range of the break candle`.
+  The first term is what a 70% hold rate needs in total (120 points for a
+  100-point reversal); the second is what wicks absorb without a close, so
+  blocks get shallower when candles get bigger.
+- **Touch:** a candle trades into the block. **Held:** price then reverses
+  100 points from the extreme it made at the block. **Broken:** a break
+  candle (default 2 hours) closes beyond the far side. **Open:** neither by
+  the end of the next trade day.
+
+**Results** — real 1-minute Nasdaq-100 data, 5-minute chart, 2-hour break
+candle, calculated depth (`rb_blocks.py run --brk 120 --hold 0.70`):
+
+| period | touched blocks | held | broken | **hold rate** | same blocks on coin-flip data |
+|---|---|---|---|---|---|
+| in sample, 2022-11 → 2024-11 | 1,424 | | | 65.5% | |
+| **out of sample, 2024-11 → 2026-11** | 1,899 | | | **72.6%** | |
+| last 4 years, 2022-11 → 2026-11 | 3,324 | 2,310 | 1,011 | **69.6%** | 69.1% |
+| real MNQ futures, last 50 trade days | 205 | 153 | 52 | 74.6% | |
+<!--TENYEAR-->
+
+By year: 2023 62.9%, 2024 67.3%, 2025 71.0%, 2026 76.0%. 6.4 blocks are drawn
+a day and 3.2 are touched. The depth averaged 60 points (the cap) in sample
+and 49 out of sample.
+
+**What sets the hold rate.** Same levels, out of sample, 100-point reversal:
+
+| break candle | 5 min | 15 min | 1 hour | **2 hours** | 4 hours |
+|---|---|---|---|---|---|
+| hold rate, calculated depth | 52.6% | 57.7% | 67.9% | **72.6%** | 74.8% |
+
+With the break judged on the chart's own 5-minute candle (last 4 years):
+
+| block depth | 20 | 40 | 60 | 60 | 60 | 110 |
+|---|---|---|---|---|---|---|
+| reversal that counts | 100 | 100 | 100 | 75 | 60 | 100 |
+| hold rate | 27.1% | 40.5% | 52.0% | 60.7% | 69.0% | 70.1% |
+
+A fixed 60-point block and a volatility-proportional block of the same
+average depth hold equally often; the calculated depth above is used because
+it keeps the hold rate near the target as volatility changes.
+
+**What the hold rate does not mean**
+
+- **It is not prediction.** The same blocks on direction-scrambled copies of
+  the data (`rz_null.py`) hold 69.1% against 69.6% real (z = +0.5). The hold
+  rate is produced by the rules — depth, reversal size, break candle — and
+  the levels add nothing to it.
+- **Held and broken are not the same size.** Fading the first touch of a
+  block's edge for 100 points and exiting on the break close won 51.8% of the
+  time and averaged −3.4 ± 2.1 points per block: a broken block costs about
+  115 points. A 70% hold rate is not a 70% win rate.
+- **Side matters with the trend.** Support blocks held 74.7% (chance 69.0%)
+  and resistance blocks 64.4% (chance 69.2%) in four rising years.
+- Support blocks in the session after an exhaustion close held 75.0% over
+  220 blocks (+15.6 ± 7.4 points for the edge trade), but the same test on
+  2020–2026 with the earlier settings showed +1.7 ± 4.3 over 481 blocks, so
+  they are not flagged.
+
+```bash
+python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --brk 120 --hold 0.70 --null 8
+```
+
+```bash
+python3 backtest/rb_blocks.py run --duka data/nq --start 20161110 --brk 120 --hold 0.70 --scale --null 6
+```
+
+```bash
+python3 backtest/rb_blocks.py sweep --duka data/nq --start 20221109 --tfs 5 15 60
+```
+
+Paste `indicators/mnq_reversal_blocks.pine` into the Pine Editor on MNQ or
+NQ, on a 1 to 15 minute chart. It has not been run through TradingView's
+compiler; the grading logic is the one `rb_blocks.py` runs.
+
+---
+
 # MNQ Exhaustion Reversals
 
-Built on the only reversal effect that survived testing. It does not use
-prior highs or lows.
+Built on the reversal effects that survived testing. It does not use prior
+highs or lows. Every signal is decided by a **completed daily close**; the
+session after it is the bounce (or fade) session.
 
-**Exhaustion close:** a daily close with RSI(2) below 10, or the third down
-close in a row. **Bounce session:** the session after it.
+| tier | rule at the daily close | NQ futures 2000–2026, next session | closes | t | MNQ futures 2019–2026 |
+|---|---|---|---|---|---|
+| standard | RSI(2) < 10, or third down close in a row | **+0.24%** (5 sessions: +0.77%) | 836 | 3.0 | +0.39% (219) |
+| prime | a standard close on a Monday or Tuesday | **+0.49%** (+1.10%) | 319 | 3.5 | +0.79% (80) |
+| deep | RSI(5) < 20 | **+0.53%** (+1.07%) | 276 | 3.2 | +0.68% (73) |
+| capitulation | RSI(14) < 30 | **+1.13%** (+1.56%) | 114 | 3.4 | +1.26% (28) |
+| blow-off top | RSI(14) ≥ 80 | **−0.43%** (−0.40%) | 37 | −2.7 | −0.83% (14) |
+| every session | | +0.05% (+0.22%) | 6,587 | | +0.08% |
 
-| next-session return | after an exhaustion close | after every other close | signals | t |
-|---|---|---|---|---|
-| NQ futures, 2000–2026 | **+0.24%** | +0.01% | 837 | 3.1 |
-| Nasdaq-100 index, 1985–2026 | **+0.26%** | +0.04% | 1,365 | 3.8 |
-| QQQ, 1999–2026 | **+0.34%** | +0.01% | 866 | 4.2 |
-| **MNQ futures, 2019–2026** | **+0.39%** (≈ +106 pts at 27,500) | +0.04% (≈ +11 pts) | 223 | 2.6 |
+At 27,700 on MNQ, +0.49% is about 135 points and +1.13% about 310. These are
+the numbers the indicator's own scorecard logic produces on Yahoo daily bars
+(`rz_tiers.py scorecard`).
 
-These are the numbers the indicator's own scorecard logic produces on Yahoo
-daily bars (`rz_edge_hunt.py scorecard`).
+Why the bottom tiers are believed:
 
-Why this one is believed and the others were not:
-
-- **It holds in every era.** NQ futures: +0.23% in 2000–12, +0.15% in
-  2013–20, +0.37% in 2021–26; signal days beat all days in 21 of 27 years.
+- **Every era, every market.** Each bottom tier is positive in 2000–12,
+  2013–20 and 2021–26 on NQ futures, ES futures, QQQ, SPY and the Nasdaq-100
+  index (`rz_tiers.py eras`). Prime closes: +0.40% / +0.53% / +0.70% on NQ,
+  +0.37% / +0.44% / +0.49% on ES.
 - **It scales with the cause.** Next-session return by RSI(2) at the close:
   0–5 → +0.32%, 5–10 → +0.19%, 10–20 → +0.17%, 20–35 → +0.03%, 35–65 → −0.06%.
-- **It keeps building.** Five sessions after a signal: +0.76% against +0.21%
-  for any five sessions.
-- **It works in both trends**: +0.15% above the 200-day average, +0.37%
-  below it.
-- **It shows up on 1-minute data too.** After an oversold 16:00 close the next
-  24 hours averaged +15.9% of the daily range against +4.1% on all sessions
-  (130 signals, 2022–2026), most of it overnight.
+- **Found in a blind sweep, not hand-picked.** `rz_daily_sweep.py` grades
+  about 105 daily conditions: of 50 bottom conditions 29 clear t > 2 and 17
+  have the right sign in all six era × market cells; of 55 top conditions
+  only 5 clear t > 2.
+- **The entry that tested best is the signal close itself.** Waiting for a
+  dip the next session fills 68% / 43% / 16% of the time (0.25 / 0.5 / 1 ATR
+  below) and earns less per signal than buying the close (`rz_tiers.py
+  entry`). On QQQ about half of the bounce arrives overnight and half in the
+  day session (`rz_tiers.py split`).
 
 What it is not:
 
-- **Not a bottom tick.** Scaled to a 27,500 index, the session after a signal
-  trades a median 283 points above the signal close and a median 231 points
-  below it. The edge is in the average (+67 points on NQ since 2000), not in
-  the precision. Buying the first intraday touch of the exhaustion line earns
-  +13.9% of the daily range by the next close (t = 2.6) with a median
-  drawdown of 37% of the range on the way; a version with a tight stop does
-  worse than chance (31.7% against 35.7%).
-- **Not a top indicator.** Overbought closes do not fall: after RSI(2) above
-  90 the next session averaged +0.02% / +0.05% / +0.12% across the three
-  eras. Up streaks, upper Bollinger closes and low-VXN readings are the same.
-- **Not a promise.** 41–44% of bounce sessions still close lower.
+- **Not a bottom or top tick.** The session after a signal still trades a
+  median 0.40 of a daily range below the signal close. The edge is in the
+  average of many signals.
+- **The blow-off top is the weakest tier.** 37 closes in 26 years, bunched
+  into 15 episodes; clear on the Nasdaq (−0.43%, t = −2.7; QQQ −0.43%), faint
+  on the S&P (ES −0.11%, SPY −0.24%). Counted per episode, the five-session
+  move is −0.41% (t = −0.6). Every other top idea tested was followed by
+  normal-to-higher sessions.
+- **Not a promise.** About 4 in 10 bounce sessions still close lower.
+- **Hourly volume and VIX add nothing reliable** (`rz_tiers.py hourly`, real
+  MNQ=F, 2024-06 → 2026-11): the best cell, a 2-range down hour on double
+  volume, is +1.6 hourly ranges over 24 hours at z = 2.2 on 72 cases, which is
+  what 26 tests produce by luck. Highs on heavy volume or with a rising VIX
+  kept rising.
 
-What the indicator draws: a tint over each bounce session with the signal
-close as a line; the **exhaustion line**, the price today's daily close must
-finish below to become an exhaustion close (known when the session opens,
-derived from the RSI formula, so it is on the chart before price gets
-there); and a scorecard that grades every signal in the symbol's own daily
-history against every other day.
+What the indicator draws: a tint over each bounce / fade session with the
+signal close as a line; **trigger lines**, the exact price today's daily close
+must finish beyond to trigger each tier (derived from the RSI formula, known
+when the session opens, verified exact on 100,000 real-bar checks by
+`rz_tiers.py lines`); and a scorecard that grades every tier on the symbol's
+own daily history against every other session.
 
 ## Everything non-level that was tried
 
@@ -76,7 +177,7 @@ history against every other day.
 | Fade the overnight gap or overnight move at 09:30 (16 cells) | One cell beyond two standard errors (up-gaps over half a daily range: +5.0% in 60 minutes, 136 cases), which is the count chance gives. |
 | Published intraday momentum: first half hour predicts the last | Absent in 2022–2026: correlation −0.016 (t = −0.5). |
 | Follow a confirmed directional change | +0.52% of the daily range at a 0.2 × ADR change (t = 2.8); nothing at 0.3. |
-| Daily exhaustion: RSI(2), down streaks, close in the bottom of the day's range, lower Bollinger, big down days, VXN spikes | Bottoms positive in nearly every cell and era; the indicator uses the two most consistent. |
+| Daily exhaustion: RSI(2) / RSI(5) / RSI(14), down streaks, close in the bottom of the day's range, lower Bollinger, big down days, VXN and VIX spikes, weekday (about 105 conditions) | Bottoms positive in nearly every cell and era; the indicator uses the most consistent. Backwards: a hammer at a 10-day low (−0.33%, t = −2.7) and a Friday down more than 1% (−0.26%). Gap signals at the open: nothing. |
 
 ## Using it
 
@@ -85,7 +186,15 @@ NQ, any timeframe. The signal is judged on completed daily bars only. Like the
 zones script, it has not been run through TradingView's compiler.
 
 ```bash
-python3 backtest/rz_edge_hunt.py scorecard --yahoo data/yahoo --file MNQ_1d.csv
+python3 backtest/rz_tiers.py scorecard --yahoo data/yahoo --file MNQ_1d.csv
+```
+
+```bash
+python3 backtest/rz_tiers.py eras --yahoo data/yahoo
+```
+
+```bash
+python3 backtest/rz_daily_sweep.py --yahoo data/yahoo
 ```
 
 ```bash
@@ -97,8 +206,10 @@ python3 backtest/rz_edge_hunt.py intraday --duka data/nq --start 20220301
 ```
 
 `rz_edge_hunt.py` also takes `daily`, `path`, `line`, `gap` and `momentum`.
-The daily commands need `NDX_1d.csv`, `QQQ_1d.csv` and `VXN_1d.csv` next to
-the futures files (`rz_data.py yahoo` fetches them).
+`rz_tiers.py` also takes `split`, `entry`, `lines` and `hourly`. The daily
+commands need `NDX_1d.csv`, `QQQ_1d.csv`, `SPY_1d.csv`, `VXN_1d.csv` and
+`VIX_1d.csv` next to the futures files, and `hourly` needs `VIX_1h.csv`
+(`rz_data.py yahoo` fetches them).
 
 ---
 

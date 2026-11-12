@@ -68,17 +68,30 @@ def prep(df1m, tf):
     exh = (r2 < rz_tiers.RSI_STD) | (streak >= rz_tiers.STREAK)              # standard exhaustion close
     bounce = dict(zip(last.index[1:], exh[:-1]))                             # the session after it
     return dict(o=d.open.values, h=d.high.values, l=d.low.values, c=d.close.values, mod=mod, td=td, wk=wk,
-                index=d.index, bounce=bounce)
+                index=d.index, bounce=bounce, tf=tf)
 
 
-def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0):
+def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk=0, hold=0.0, slack=0.55):
     """Returns one record per TOUCHED block and the number of blocks drawn.
     ref > 0 scales width and target by (prior close / ref): the same move in
     percent of price on every day of the history. dyn > 0 sizes each day's
     blocks from volatility instead: dyn x the 14-day average daily range,
-    kept inside 10-60 points."""
+    kept inside 10-60 points. brk > candle size: a block breaks only when a
+    candle of `brk` minutes closes beyond it (candles counted from the 18:00
+    ET open, as TradingView builds them); everything else stays on the
+    chart candles."""
     o, h, l, c, mod, td, wk = B["o"], B["h"], B["l"], B["c"], B["mod"], B["td"], B["wk"]
     n = len(o)
+    last = np.ones(n, bool)                                 # candles that complete a break-timeframe candle
+    if brk > B["tf"]:
+        bucket = ((mod - 1080) % 1440) // brk
+        last[:-1] = (bucket[1:] != bucket[:-1]) | (td[1:] != td[:-1])
+    vol = {}                                                # average break-candle range, prior 5 trade days
+    if hold > 0:
+        bk = max(brk, B["tf"])
+        g = pd.DataFrame({"td": td, "b": ((mod - 1080) % 1440) // bk, "h": h, "l": l}).groupby(["td", "b"]).agg(h=("h", "max"), l=("l", "min"))
+        d = (g.h - g.l).groupby(level=0).agg(["sum", "count"]).rolling(5).sum().shift(1)
+        vol = (d["sum"] / d["count"]).dropna().to_dict()
     live, out = [], []
     drawn = 0
     dH = dL = pdH = pdL = wH = wL = pwH = pwL = np.nan
@@ -130,6 +143,8 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0):
             wd = width * k
             if dyn > 0 and len(rng) >= 5:
                 wd = min(max(dyn * float(np.mean(rng[-14:])), 10.0 * k), 60.0 * k)
+            if hold > 0 and td[i] in vol:                   # depth needed for the target hold rate, capped
+                wd = min(max(-target * k * np.log(1.0 - hold) - slack * vol[td[i]], 10.0 * k), 60.0 * k)
             dH = dL = np.nan
             asH = asL = loH = loL = orH = orL = np.nan
             as_done = lo_done = or_done = False
@@ -159,7 +174,7 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0):
 
         keep = []
         for b in live:                                      # ── grade
-            s, target = b["side"], b["tg"]
+            s, tgt = b["side"], b["tg"]
             ext, opp = (h[i], l[i]) if s > 0 else (l[i], h[i])
             first = False
             if b["touch"] < 0:
@@ -168,27 +183,24 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0):
                     continue
                 b["touch"], b["turn"], first = i, ext, True
                 b["entry"] = b["near"] if s * (o[i] - b["near"]) < 0 else o[i]
-            broke = s * (c[i] - b["far"]) > 0
+            broke = last[i] and s * (c[i] - b["far"]) > 0
             if not b["res"]:                                # the block itself: reversal from the turn
                 newturn = ext if s * (ext - b["turn"]) > 0 else b["turn"]
                 if not first:                               # the turn was made on an earlier candle
                     b["best"] = max(b["best"], s * (b["turn"] - opp))
-                if b["best"] >= target:
+                b["best"] = max(b["best"], s * (newturn - c[i]))    # this candle's own extreme, confirmed by its close
+                if b["best"] >= tgt:
                     b["res"], b["res_i"] = "held", i
                 elif broke:
                     b["res"], b["res_i"] = "broken", i
-                else:                                       # this candle's own extreme, confirmed by its close
-                    b["best"] = max(b["best"], s * (newturn - c[i]))
-                    if b["best"] >= target:
-                        b["res"], b["res_i"] = "held", i
                 b["turn"] = newturn
-            if not b["tres"]:                               # the edge trade: +target from the front edge
-                if not first and s * (b["entry"] - opp) >= target:
-                    b["tres"], b["pnl"] = "win", target
+            if not b["tres"]:                               # the edge trade: +tgt from the front edge
+                if not first and s * (b["entry"] - opp) >= tgt:
+                    b["tres"], b["pnl"] = "win", tgt
                 elif broke:
                     b["tres"], b["pnl"] = "loss", s * (b["entry"] - c[i])
-                elif s * (b["entry"] - c[i]) >= target:
-                    b["tres"], b["pnl"] = "win", target
+                elif s * (b["entry"] - c[i]) >= tgt:
+                    b["tres"], b["pnl"] = "win", tgt
             if b["res"] and b["tres"]:
                 out.append(b)
             else:
@@ -253,11 +265,21 @@ def load(args):
     return df
 
 
-def null_stats(df, args, width, front, k):
+def groups_of(f, cut):
+    g = [("ALL", f), ("LAST 4 YEARS", f[f.t >= cut]), ("EARLIER", f[f.t < cut]),
+         ("resistance blocks (tops)", f[f.side > 0]), ("support blocks (bottoms)", f[f.side < 0]),
+         ("support, bounce session", f[(f.side < 0) & f.bounce]), ("resistance, bounce session", f[(f.side > 0) & f.bounce])]
+    g += [(f"  {k} blocks", f[f.fam == k]) for k in FAMS] + [(f"  {y}", f[f.year == y]) for y in sorted(f.year.unique())]
+    return g
+
+
+def null_stats(df, args, cut):
+    """The same blocks on direction-scrambled copies: one {group: stats} per copy."""
     rows = []
-    for s in range(k):
+    for s in range(args.null):
         Bn = prep(rz_null.scramble(df, 500 + s), args.tf)
-        rows.append(stats(frame(run(Bn, width, front, args.target, ref=ref_of(Bn, args), dyn=args.dyn)[0], Bn)))
+        fn = frame(run(Bn, args.width, args.front, args.target, ref=ref_of(Bn, args), dyn=args.dyn, brk=args.brk, hold=args.hold, slack=args.slack)[0], Bn)
+        rows.append({name: stats(g) for name, g in groups_of(fn, cut) if len(g)})
     return rows
 
 
@@ -268,39 +290,37 @@ def ref_of(B, args):
 def cmd_run(args):
     df = load(args)
     B = prep(df, args.tf)
-    recs, drawn = run(B, args.width, args.front, args.target, ref=ref_of(B, args), dyn=args.dyn)
+    recs, drawn = run(B, args.width, args.front, args.target, ref=ref_of(B, args), dyn=args.dyn, brk=args.brk, hold=args.hold, slack=args.slack)
     f = frame(recs, B)
     if args.dyn:
         print(f"AUTO SIZE: {args.dyn:.2f} x the 14-day average daily range, kept inside 10-60 points")
+    if args.hold:
+        print(f"CALCULATED DEPTH: -reversal x ln(1 - {args.hold:.2f}) - {args.slack:.2f} x average break-candle range, kept inside 10-60 points")
     if args.scale:
-        print(f"SCALED: width and target are {args.width:.0f} / {args.target:.0f} points at {B['c'][-1]:,.0f} and the same % of price before")
+        print(f"SCALED: depth and reversal are {args.width:.0f} / {args.target:.0f} points at {B['c'][-1]:,.0f} and the same % of price before")
     days = len(np.unique(B["td"]))
-    print(f"{df.index[0].date()} -> {df.index[-1].date()}: {days} trade days, {args.tf}-minute candles, "
-          f"blocks {f.w.mean() if len(recs) else args.width:.0f} pts deep ({args.front:.0%} in front of the level), reversal = {args.target:.0f} pts")
-    print(f"blocks drawn {drawn} ({drawn / days:.1f} a day), touched {len(f)} ({len(f) / days:.1f} a day)")
-    nulls = null_stats(df, args, args.width, args.front, args.null) if args.null else []
     cut = pd.Timestamp(df.index[-1]) - pd.DateOffset(years=4)
-    groups = [("ALL", f), (f"LAST 4 YEARS (from {cut.date()})", f[f.t >= cut]), (f"EARLIER", f[f.t < cut]),
-              ("resistance blocks (tops)", f[f.side > 0]), ("support blocks (bottoms)", f[f.side < 0]),
-              ("support, bounce session", f[(f.side < 0) & f.bounce]), ("resistance, bounce session", f[(f.side > 0) & f.bounce])]
-    groups += [(f"  {k} blocks", f[f.fam == k]) for k in FAMS] + [(f"  {y}", f[f.year == y]) for y in sorted(f.year.unique())]
-    print(f"\n{'':34s} {'touched':>7s} {'held':>6s} {'broken':>6s} {'open':>5s} {'HOLD RATE':>10s}   {'edge trade: win':>15s} {'pts / block':>11s}")
-    for name, g in groups:
+    print(f"{df.index[0].date()} -> {df.index[-1].date()}: {days} trade days, {args.tf}-minute candles, "
+          f"blocks {f.w.mean() if len(recs) else args.width:.0f} pts deep on average, reversal = {args.target:.0f} pts; "
+          f"'last 4 years' starts {cut.date()}")
+    print(f"blocks drawn {drawn} ({drawn / days:.1f} a day), touched {len(f)} ({len(f) / days:.1f} a day); "
+          f"a break = a {max(args.brk, args.tf)}-minute candle closing beyond the block")
+    nulls = null_stats(df, args, cut) if args.null else []
+    print(f"\n{'':30s} {'touched':>7s} {'held':>6s} {'broken':>6s} {'open':>5s} {'HOLD RATE':>10s} {'chance':>8s} {'z':>5s}   {'edge trade: win':>15s} {'pts / block':>12s}")
+    for name, g in groups_of(f, cut):
         if not len(g):
             continue
         s = stats(g)
         se = g.pnl.std(ddof=1) / np.sqrt(len(g)) if len(g) > 1 else np.nan
-        print(f"{name:34s} {s['n']:7d} {s['held']:6d} {s['broken']:6d} {s['open']:5d} {s['rate']:9.1f}%   {s['win']:14.1f}% "
+        r = np.array([x[name]["rate"] for x in nulls if name in x])
+        ch = f"{r.mean():7.1f}% {(s['rate'] - r.mean()) / r.std():+5.1f}" if len(r) > 1 and r.std() > 0 else f"{'':8s} {'':5s}"
+        print(f"{name:30s} {s['n']:7d} {s['held']:6d} {s['broken']:6d} {s['open']:5d} {s['rate']:9.1f}% {ch}   {s['win']:14.1f}% "
               f"{s['pts']:+8.1f} ±{se:4.1f}")
     if nulls:
-        r = np.array([x["rate"] for x in nulls])
-        p = np.array([x["pts"] for x in nulls])
-        w = np.array([x["win"] for x in nulls])
-        s = stats(f)
-        print(f"\nchance (same blocks, {len(nulls)} direction-scrambled copies): hold rate {r.mean():.1f}% ± {r.std():.1f}, "
-              f"edge-trade win {w.mean():.1f}%, {p.mean():+.1f} ± {p.std():.1f} pts / block")
-        print(f"real minus chance: hold rate {s['rate'] - r.mean():+.1f} pts of % (z = {(s['rate'] - r.mean()) / r.std():+.1f}), "
-              f"points {s['pts'] - p.mean():+.1f} (z = {(s['pts'] - p.mean()) / p.std():+.1f})")
+        p = np.array([x["ALL"]["pts"] for x in nulls])
+        w = np.array([x["ALL"]["win"] for x in nulls])
+        print(f"\nchance = the same blocks on {len(nulls)} direction-scrambled copies; edge trade on those: win {w.mean():.1f}%, "
+              f"{p.mean():+.1f} ± {p.std():.1f} pts / block")
     done = f[f.res != "open"]
     if len(done):
         frac = done.best / done.tg
@@ -309,8 +329,8 @@ def cmd_run(args):
     h = f[f.res == "held"]
     b = f[f.res == "broken"]
     if len(h) and len(b):
-        print(f"\nheld blocks resolved in a median {h.mins.median():.0f} minutes; broken blocks in {b.mins.median():.0f}")
-        print(f"a broken block costs the edge trade {-f[f.tres == 'loss'].pnl.mean():.0f} pts on average; a win is {args.target:.0f}")
+        print(f"held blocks resolved in a median {h.mins.median():.0f} minutes; broken blocks in {b.mins.median():.0f}")
+        print(f"a broken block costs the edge trade {-(f[f.tres == 'loss'].pnl).mean():.0f} pts on average (per 100 of target); a win is 100")
     if args.save:
         f.drop(columns=["turn"]).to_csv(args.save, index=False)
 
@@ -325,7 +345,7 @@ def cmd_sweep(args):
         days = len(np.unique(B["td"]))
         cells = [(w, fr, 0.0) for w in args.widths for fr in args.fronts] + [(0.0, fr, d) for d in args.dyns for fr in args.fronts]
         for width, front, dyn in cells:
-            recs, drawn = run(B, width or 60.0, front, args.target, ref=ref_of(B, args), dyn=dyn)
+            recs, drawn = run(B, width or 60.0, front, args.target, ref=ref_of(B, args), dyn=dyn, brk=args.brk, hold=args.hold, slack=args.slack)
             g = frame(recs, B)
             s = stats(g)
             name = f"{width:.0f}" if not dyn else f"auto {dyn:.2f}"
@@ -349,6 +369,9 @@ def main():
     ap.add_argument("--fronts", type=float, nargs="+", default=[0.0, 0.5])
     ap.add_argument("--dyns", type=float, nargs="+", default=[0.10, 0.15, 0.20])
     ap.add_argument("--target", type=float, default=100.0)
+    ap.add_argument("--brk", type=int, default=0, help="break candle in minutes (0 = the chart candle)")
+    ap.add_argument("--hold", type=float, default=0.0, help="calculated depth: target hold rate, e.g. 0.70 (0 = off)")
+    ap.add_argument("--slack", type=float, default=0.55, help="calculated depth: share of the break candle's average range that wicks absorb")
     ap.add_argument("--null", type=int, default=0)
     ap.add_argument("--scale", action="store_true", help="scale width and target with price (same % move all history)")
     ap.add_argument("--save")
