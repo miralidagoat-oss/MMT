@@ -140,7 +140,7 @@ years, hit rates run from 72.6% to 82.0% against a scrambled-data chance of
 | swing highs / lows, ±1 hour / ±4 hours | 75.7% (76.3%) / 74.7% (76.3%) | 50.4% / 51.0% | 74.3% / 73.4% |
 | arbitrary levels | 75.6% (77.8%) | 48.8% | 77.1% |
 | floor pivots R1 / S1 | 73.2% (77.2%) | 48.9% | 73.3% |
-| prior cash-session high / low | 73.1% (76.5%) | 49.6% | — |
+| prior cash-session high / low | 73.1% (76.5%) | 49.6% | 73.5% |
 | **prior day high / low** | **73.3% (76.5%)** | 50.1% | **72.4%** |
 | 5 / 10 / 20-day high / low | 76.3% / 77.4% / 76.0% | 51.1% / 51.1% / 53.4% | 72.3% / 72.0% / 70.8% |
 | prior week high / low | 77.2% (77.0%) | 47.8% | 72.4% |
