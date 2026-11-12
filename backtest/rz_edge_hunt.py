@@ -32,7 +32,7 @@ Commands
              trend, and the MNQ contract itself
   line       the zero-lag version: first intraday touch of the price that
              today's close must finish below to be an exhaustion close
-  scorecard  line-by-line mirror of indicators/mnq_exhaustion_bottoms.pine on
+  scorecard  the standard tier of indicators/mnq_exhaustion_reversals.pine on
              a daily CSV: the numbers its scorecard should show
 
 Usage
@@ -564,7 +564,7 @@ def cmd_line(args):
 
 
 def cmd_scorecard(args):
-    """Transliteration of f_daily() in mnq_exhaustion_bottoms.pine."""
+    """The standard tier of mnq_exhaustion_reversals.pine (rz_tiers.py mirrors every tier)."""
     d = _daily(os.path.join(args.yahoo, args.file))
     close = d.close.values
     n = len(close)

@@ -1,0 +1,346 @@
+//@version=6
+indicator("MNQ Exhaustion Reversals — tiered bottoms + blow-off tops, self-audited", shorttitle = "ExhReversals",
+     overlay = true, max_labels_count = 500)
+
+// ============================================================================
+// WHAT THIS IS
+//   A reversal indicator built only on effects that survived testing on real
+//   data. It does not use prior highs or lows. Every signal is decided by a
+//   COMPLETED daily close, so nothing repaints and nothing is drawn late.
+//
+//   BOTTOM TIERS (the session after the close is the bounce session)
+//     STANDARD       RSI(2) below 10, or the third down close in a row
+//     PRIME          a standard close that falls on a Monday or Tuesday
+//     DEEP           RSI(5) below 20
+//     CAPITULATION   RSI(14) below 30
+//   TOP TIER (the session after the close is the fade session)
+//     BLOW-OFF       RSI(14) at 80 or above
+//
+//   LINES   the exact price today's daily close has to finish beyond to
+//           trigger each tier. They are computed from yesterday's close, so
+//           they are on the chart when the session opens - before price gets
+//           there. A line is drawn only when it is within reach today.
+//
+// WHAT THE BACKTEST SAYS (README.md, backtest/rz_tiers.py)
+//   Average next-session return after each kind of close:
+//
+//                      NQ futures 2000-2026        MNQ futures 2019-2026
+//     standard         +0.24%   836 closes  t 3.0   +0.39%   219 closes
+//     prime            +0.49%   319 closes  t 3.5   +0.79%    80 closes
+//     deep             +0.53%   276 closes  t 3.2   +0.68%    73 closes
+//     capitulation     +1.13%   114 closes  t 3.4   +1.26%    28 closes
+//     blow-off top     -0.43%    37 closes  t -2.7  -0.83%    14 closes
+//     every session    +0.05%                       +0.08%
+//
+//   Each bottom tier is positive in 2000-12, 2013-20 and 2021-26, and on NQ,
+//   ES, QQQ, SPY and the Nasdaq-100 index. The best entry in testing was the
+//   signal close itself: waiting for a dip the next day missed more bounce
+//   than it saved. About half of the bounce arrives overnight.
+//
+// WHAT IT IS NOT
+//   - Not a bottom or top TICK. Nothing tested could call the exact turn;
+//     the edge is in the average of many signals, not in any single one.
+//   - The blow-off top is the weakest tier: 37 closes in 26 years, bunched
+//     into about 15 episodes, clear on the Nasdaq and faint on the S&P.
+//     Treat it as a warning, not as proof.
+//   - About 4 in 10 bounce sessions still close lower.
+//
+//   The scorecard grades every tier on this symbol's own daily history, so
+//   the script can never look better than it is.
+// ============================================================================
+
+// ─────────────────────────────────────────────────────────────
+// TESTED DEFINITIONS (fixed on purpose: other values are untested)
+// ─────────────────────────────────────────────────────────────
+const float RSI_STD  = 10.0
+const float RSI_DEEP = 20.0
+const float RSI_CAP  = 30.0
+const float RSI_TOP  = 80.0
+const int   STREAK   = 3
+
+// ─────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────
+const string G_SIG = "Signals (completed daily closes only)"
+const string G_UI  = "Display"
+
+showBot   = input.bool(true, "Bottom tiers: standard / prime / deep / capitulation", group = G_SIG)
+showTop   = input.bool(true, "Blow-off tops (rare, weaker evidence)", group = G_SIG)
+
+showLines = input.bool(true, "Trigger lines for today's close", group = G_UI)
+lineReach = input.float(2.5, "Draw a line only within this many daily ATRs of the last close", minval = 0.5, maxval = 10.0,
+     step = 0.5, group = G_UI, tooltip = "A line further away than this cannot realistically trigger today and would only squash the chart.")
+showTint  = input.bool(true, "Tint bounce and fade sessions", group = G_UI)
+showLabel = input.bool(true, "Label each signal", group = G_UI)
+showDash  = input.bool(true, "Scorecard", group = G_UI)
+botColor   = input.color(#26A69A, "Bottom color", group = G_UI)
+primeColor = input.color(#00E676, "Prime (Monday / Tuesday) color", group = G_UI)
+capColor   = input.color(#00B0FF, "Capitulation color", group = G_UI)
+topColor   = input.color(#EF5350, "Blow-off top color", group = G_UI)
+sigColor   = input.color(#FFD54F, "Signal-close color", group = G_UI)
+
+if timeframe.in_seconds() > timeframe.in_seconds("D")
+    runtime.error("Exhaustion Reversals reads completed DAILY closes: use a daily or intraday chart.")
+
+// ─────────────────────────────────────────────────────────────
+// DAILY ENGINE — runs on the symbol's full daily history
+// ─────────────────────────────────────────────────────────────
+// Wilder averages of the up and down closes, and the RSI they give.
+f_wilder(simple int len) =>
+    float chg = close - close[1]
+    float g   = ta.rma(math.max(chg, 0.0), len)
+    float l   = ta.rma(math.max(-chg, 0.0), len)
+    float r   = l == 0.0 ? 100.0 : 100.0 - 100.0 / (1.0 + g / l)
+    [g, l, r]
+
+// Tier flags for the current daily bar.
+f_flags() =>
+    [g2, l2, r2]    = f_wilder(2)
+    [g5, l5, r5]    = f_wilder(5)
+    [g14, l14, r14] = f_wilder(14)
+    var int streak = 0
+    streak := close < close[1] ? streak + 1 : 0
+    // time_tradingday is the trading day the bar belongs to (a Monday futures
+    // session opens on Sunday evening and is still Monday here).
+    int  dw    = dayofweek(time_tradingday, "UTC")
+    bool std   = r2 < RSI_STD or streak >= STREAK
+    bool prime = std and (dw == dayofweek.monday or dw == dayofweek.tuesday)
+    bool deep  = r5 < RSI_DEEP
+    bool cap   = r14 < RSI_CAP
+    bool top   = r14 >= RSI_TOP
+    [std, prime, deep, cap, top, r2, r5, r14, streak, g2, l2, g5, l5, g14, l14]
+
+// State as of the last COMPLETED daily bar (the trailing [1]), so nothing
+// here can change during a session.
+f_state() =>
+    [std, prime, deep, cap, top, r2, r5, r14, streak, g2, l2, g5, l5, g14, l14] = f_flags()
+    float atr = ta.atr(14)
+    [std[1], prime[1], deep[1], cap[1], top[1], r2[1], r5[1], r14[1], streak[1], close[1], atr[1], g2[1], l2[1], g5[1], l5[1], g14[1], l14[1]]
+
+// Grades of one tier: every session (and 5-session window) that followed it.
+// id: 1 standard, 2 prime, 3 deep, 4 capitulation, 5 blow-off top, 0 every session.
+f_grade(simple int id) =>
+    [std, prime, deep, cap, top, r2, r5, r14, streak, g2, l2, g5, l5, g14, l14] = f_flags()
+    bool  sig  = id == 1 ? std : id == 2 ? prime : id == 3 ? deep : id == 4 ? cap : id == 5 ? top : true
+    float ret1 = close / close[1] - 1.0
+    float ret5 = close / close[5] - 1.0
+    bool  ok1  = not na(ret1) and not na(r14[1])
+    bool  ok5  = not na(ret5) and not na(r14[5])
+    var int   n  = 0      // sessions that followed the tier
+    var float s  = 0.0    // sum of their returns
+    var float q  = 0.0    // sum of squares
+    var int   w  = 0      // how many closed higher
+    var int   n5 = 0      // 5-session windows that followed the tier
+    var float s5 = 0.0
+    if ok1 and sig[1]
+        n += 1
+        s += ret1
+        q += ret1 * ret1
+        w += ret1 > 0 ? 1 : 0
+    if ok5 and sig[5]
+        n5 += 1
+        s5 += ret5
+    [n[1], s[1], q[1], w[1], n5[1], s5[1]]
+
+[pStd, pPrime, pDeep, pCap, pTop, pR2, pR5, pR14, pStreak, pClose, pAtr, pG2, pL2, pG5, pL5, pG14, pL14] = request.security(syminfo.tickerid, "D", f_state(),
+     lookahead = barmerge.lookahead_on)
+[nA, sA, qA, wA, mA, vA] = request.security(syminfo.tickerid, "D", f_grade(0), lookahead = barmerge.lookahead_on)
+[nS, sS, qS, wS, mS, vS] = request.security(syminfo.tickerid, "D", f_grade(1), lookahead = barmerge.lookahead_on)
+[nP, sP, qP, wP, mP, vP] = request.security(syminfo.tickerid, "D", f_grade(2), lookahead = barmerge.lookahead_on)
+[nD, sD, qD, wD, mD, vD] = request.security(syminfo.tickerid, "D", f_grade(3), lookahead = barmerge.lookahead_on)
+[nC, sC, qC, wC, mC, vC] = request.security(syminfo.tickerid, "D", f_grade(4), lookahead = barmerge.lookahead_on)
+[nT, sT, qT, wT, mT, vT] = request.security(syminfo.tickerid, "D", f_grade(5), lookahead = barmerge.lookahead_on)
+
+// ─────────────────────────────────────────────────────────────
+// SESSION STATE
+// ─────────────────────────────────────────────────────────────
+bool newDay  = timeframe.change("D")
+bool brk     = newDay and timeframe.isintraday        // break the lines between sessions
+bool botSess = showBot and (pStd or pDeep or pCap)     // this session follows a bottom close
+bool topSess = showTop and pTop                        // this session follows a blow-off close
+int  dwNow   = dayofweek(time_tradingday, "UTC")
+bool primeDay = dwNow == dayofweek.monday or dwNow == dayofweek.tuesday
+
+// Trigger lines. With RSI = 100 - 100 / (1 + G / L) and Wilder smoothing,
+// RSI < threshold  <=>  G' < k * L',  k = threshold / (100 - threshold).
+// Solving for today's close gives one price per tier.
+f_lineBelow(float pc, float g, float l, int len, float thr) =>
+    float k  = thr / (100.0 - thr)
+    float d0 = g * (len - 1) / k - l * (len - 1)
+    d0 > 0 ? pc - d0 : pc - k * d0
+
+f_lineAbove(float pc, float g, float l, int len, float thr) =>
+    float k  = thr / (100.0 - thr)
+    float u0 = k * l * (len - 1) - g * (len - 1)
+    u0 > 0 ? pc + u0 : pc + u0 / k
+
+f_near(float x) =>
+    not na(x) and not na(pAtr) and math.abs(x - pClose) <= lineReach * pAtr
+
+float xRsi  = f_lineBelow(pClose, pG2, pL2, 2, RSI_STD)
+// one more down close completes the streak, whatever the RSI
+float xStd  = pStreak >= STREAK - 1 and not na(xRsi) ? math.max(xRsi, pClose) : xRsi
+float xDeep = f_lineBelow(pClose, pG5, pL5, 5, RSI_DEEP)
+float xCap  = f_lineBelow(pClose, pG14, pL14, 14, RSI_CAP)
+float xTop  = f_lineAbove(pClose, pG14, pL14, 14, RSI_TOP)
+
+bool belowStd = not na(xStd) and close < xStd
+bool belowCap = not na(xCap) and close < xCap
+bool aboveTop = not na(xTop) and close >= xTop
+
+// ─────────────────────────────────────────────────────────────
+// DRAWING — nothing here is ever moved or painted backwards
+// ─────────────────────────────────────────────────────────────
+bool drawBot = showLines and showBot and not brk
+bool drawTop = showLines and showTop and not brk
+plot(drawBot and f_near(xStd) ? xStd : na, "Exhaustion line (standard; prime on Mon / Tue)",
+     color = primeDay ? color.new(primeColor, 10) : color.new(botColor, 25), style = plot.style_steplinebr, linewidth = 1)
+plot(drawBot and f_near(xDeep) ? xDeep : na, "Deep line", color = color.new(botColor, 0),
+     style = plot.style_steplinebr, linewidth = 2)
+plot(drawBot and f_near(xCap) ? xCap : na, "Capitulation line", color = color.new(capColor, 0),
+     style = plot.style_steplinebr, linewidth = 2)
+plot(drawTop and f_near(xTop) ? xTop : na, "Blow-off line", color = color.new(topColor, 0),
+     style = plot.style_steplinebr, linewidth = 2)
+plot((botSess or topSess) and not brk ? pClose : na, "Signal close", color = color.new(sigColor, 0),
+     style = plot.style_steplinebr, linewidth = 2)
+
+color botTint = pCap ? capColor : pPrime ? primeColor : botColor
+color tint    = not showTint ? na : topSess ? color.new(topColor, 88) : botSess ? color.new(botTint, 88) : na
+bgcolor(tint, title = "Bounce / fade session")
+plotshape(newDay and botSess, title = "Bottom close", style = shape.triangleup, location = location.belowbar,
+     color = botTint, size = size.small)
+plotshape(newDay and topSess, title = "Blow-off close", style = shape.triangledown, location = location.abovebar,
+     color = topColor, size = size.small)
+
+string depth   = pCap ? "CAPITULATION" : pDeep ? "DEEP" : "STANDARD"
+string botName = depth + (pPrime ? " + PRIME" : "")
+string rsiTxt  = "RSI 2 / 5 / 14:  " + str.tostring(pR2, "#.#") + " / " + str.tostring(pR5, "#.#") + " / " + str.tostring(pR14, "#.#")
+
+if newDay and botSess and showLabel
+    label.new(bar_index, low, "EXHAUSTION CLOSE · " + botName + "\n" + rsiTxt + " · " + str.tostring(pStreak) +
+         " down\nsignal close " + str.tostring(pClose, format.mintick),
+         yloc = yloc.belowbar, style = label.style_label_up, color = color.new(botTint, 10),
+         textcolor = color.white, size = size.small)
+
+if newDay and topSess and showLabel
+    label.new(bar_index, high, "BLOW-OFF CLOSE · weaker evidence\n" + rsiTxt + "\nsignal close " +
+         str.tostring(pClose, format.mintick),
+         yloc = yloc.abovebar, style = label.style_label_down, color = color.new(topColor, 10),
+         textcolor = color.white, size = size.small)
+
+if newDay and botSess
+    alert("Exhaustion close (" + botName + ") confirmed at " + str.tostring(pClose, format.mintick) + ". " + rsiTxt +
+         ", " + str.tostring(pStreak) + " down closes. This is a bounce session.", alert.freq_once_per_bar)
+
+if newDay and topSess
+    alert("Blow-off close confirmed at " + str.tostring(pClose, format.mintick) + ". " + rsiTxt +
+         ". This is a fade session (weaker evidence).", alert.freq_once_per_bar)
+
+// ─────────────────────────────────────────────────────────────
+// SCORECARD — this symbol's own daily history, graded
+// ─────────────────────────────────────────────────────────────
+f_cell(table t, int c, int r, string s, color tc, string al) =>
+    table.cell(t, c, r, s, text_color = tc, text_halign = al, text_size = size.small)
+
+f_pct(float x, string fmt) =>
+    na(x) ? "—" : (x > 0 ? "+" : "") + str.tostring(100.0 * x, fmt) + "%"
+
+// One tier row: sessions, average next session, closed higher, t against every
+// other session, average 5-session move. `want` is +1 for bottoms, -1 for tops.
+f_row(table t, int r, string name, color nc, int want, int n, float s, float q, int w, int n5, float s5) =>
+    int   n0 = nA - n
+    float m1 = n > 0 ? s / n : na
+    float m0 = n0 > 0 ? (sA - s) / n0 : na
+    float v1 = n > 1 ? math.max(q / n - m1 * m1, 0.0) : na
+    float v0 = n0 > 1 ? math.max((qA - q) / n0 - m0 * m0, 0.0) : na
+    float se = not na(v1) and not na(v0) ? math.sqrt(v1 / n + v0 / n0) : na
+    float tv = not na(se) and se > 0 ? (m1 - m0) / se : na
+    color tc = na(tv) ? color.white : want * tv >= 2.0 ? color.new(color.teal, 0) : want * tv <= -2.0 ? color.new(color.red, 0) : color.white
+    f_cell(t, 0, r, name, nc, text.align_left)
+    f_cell(t, 1, r, na(n) ? "—" : str.tostring(n), color.white, text.align_right)
+    f_cell(t, 2, r, f_pct(m1, "#.###") + (na(m1) ? "" : "  ≈ " + str.tostring(m1 * close, "#") + " pts"), tc, text.align_right)
+    f_cell(t, 3, r, n > 0 ? str.tostring(100.0 * w / n, "#") + "%" : "—", color.white, text.align_right)
+    f_cell(t, 4, r, na(tv) ? "—" : str.tostring(tv, "#.##"), tc, text.align_right)
+    f_cell(t, 5, r, n5 > 0 ? f_pct(s5 / n5, "#.##") : "—", color.white, text.align_right)
+
+// Where a trigger line sits relative to price. `side` is -1 for a line that
+// triggers on a close below it, +1 for a close at or above it.
+f_lineTxt(string name, float x, int side) =>
+    string res = name + ": —"
+    if not na(x)
+        bool   hit  = side < 0 ? close < x : close >= x
+        string px   = name + " " + str.tostring(x, format.mintick)
+        string dist = str.tostring(math.abs(close - x), "#")
+        string trig = px + " (price is " + dist + " pts BEYOND it: a close here triggers)"
+        string away = px + " (" + dist + " pts away)"
+        res := hit ? trig : f_near(x) ? away : name + ": out of reach today"
+    res
+
+if showDash and barstate.islast
+    var table dash = table.new(position.top_right, 6, 14, bgcolor = color.new(#101418, 12),
+         border_width = 1, border_color = color.new(color.gray, 75), frame_width = 1, frame_color = color.new(color.gray, 55))
+    table.clear(dash, 0, 0, 5, 13)
+    color dim = color.new(color.silver, 0)
+
+    f_cell(dash, 0, 0, "EXHAUSTION REVERSALS — SCORECARD (this symbol, daily history)", color.white, text.align_left)
+    table.merge_cells(dash, 0, 0, 5, 0)
+
+    f_cell(dash, 0, 1, "close type",         dim, text.align_left)
+    f_cell(dash, 1, 1, "closes",             dim, text.align_right)
+    f_cell(dash, 2, 1, "next session",       dim, text.align_right)
+    f_cell(dash, 3, 1, "closed higher",      dim, text.align_right)
+    f_cell(dash, 4, 1, "t",                  dim, text.align_right)
+    f_cell(dash, 5, 1, "next 5 sessions",    dim, text.align_right)
+
+    f_row(dash, 2, "Standard: RSI(2) < 10 or 3 down closes", botColor,   1, nS, sS, qS, wS, mS, vS)
+    f_row(dash, 3, "Prime: standard on a Monday / Tuesday",  primeColor, 1, nP, sP, qP, wP, mP, vP)
+    f_row(dash, 4, "Deep: RSI(5) < 20",                      botColor,   1, nD, sD, qD, wD, mD, vD)
+    f_row(dash, 5, "Capitulation: RSI(14) < 30",             capColor,   1, nC, sC, qC, wC, mC, vC)
+    f_row(dash, 6, "Blow-off top: RSI(14) >= 80",            topColor,  -1, nT, sT, qT, wT, mT, vT)
+
+    float avgA = nA > 0 ? sA / nA : na
+    f_cell(dash, 0, 7, "Every session", dim, text.align_left)
+    f_cell(dash, 1, 7, na(nA) ? "—" : str.tostring(nA), dim, text.align_right)
+    f_cell(dash, 2, 7, f_pct(avgA, "#.###") + (na(avgA) ? "" : "  ≈ " + str.tostring(avgA * close, "#") + " pts"), dim, text.align_right)
+    f_cell(dash, 3, 7, nA > 0 ? str.tostring(100.0 * wA / nA, "#") + "%" : "—", dim, text.align_right)
+    f_cell(dash, 4, 7, "", dim, text.align_right)
+    f_cell(dash, 5, 7, mA > 0 ? f_pct(vA / mA, "#.##") : "—", dim, text.align_right)
+
+    string today = botSess ? "TODAY: BOUNCE SESSION (" + botName + ") — signal close " + str.tostring(pClose, format.mintick) :
+         topSess ? "TODAY: FADE SESSION (blow-off close) — signal close " + str.tostring(pClose, format.mintick) :
+         "TODAY: no signal from the last close · " + rsiTxt
+    f_cell(dash, 0, 8, today, botSess or topSess ? sigColor : dim, text.align_left)
+    table.merge_cells(dash, 0, 8, 5, 8)
+
+    f_cell(dash, 0, 9, "Lines for today's close:  " + f_lineTxt(primeDay ? "PRIME exhaustion" : "exhaustion", xStd, -1) +
+         "  ·  " + f_lineTxt("deep", xDeep, -1), belowStd ? botColor : dim, text.align_left)
+    table.merge_cells(dash, 0, 9, 5, 9)
+    f_cell(dash, 0, 10, f_lineTxt("capitulation", xCap, -1) + "  ·  " + f_lineTxt("blow-off", xTop, 1),
+         belowCap ? capColor : aboveTop ? topColor : dim, text.align_left)
+    table.merge_cells(dash, 0, 10, 5, 10)
+
+    f_cell(dash, 0, 11, "Backtest, next session (NQ futures 2000-2026): standard +0.24% · prime +0.49% · deep +0.53% ·",
+         dim, text.align_left)
+    table.merge_cells(dash, 0, 11, 5, 11)
+    f_cell(dash, 0, 12, "capitulation +1.13% · blow-off -0.43% · every session +0.05%. t of 2 or more = unlikely to be luck.",
+         dim, text.align_left)
+    table.merge_cells(dash, 0, 12, 5, 12)
+    f_cell(dash, 0, 13, "Not a tick-perfect top or bottom · blow-off tops are rare and weaker evidence · 4 in 10 bounces fail",
+         color.orange, text.align_left)
+    table.merge_cells(dash, 0, 13, 5, 13)
+
+// ─────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────
+alertcondition(newDay and botSess, "Bounce session starts (any bottom tier)",
+     "Exhaustion Reversals: yesterday closed exhausted — this is a bounce session")
+alertcondition(newDay and botSess and (pPrime or pDeep or pCap), "Strong bounce session starts (prime, deep or capitulation)",
+     "Exhaustion Reversals: prime / deep / capitulation close — this is a bounce session")
+alertcondition(newDay and topSess, "Fade session starts (blow-off close)",
+     "Exhaustion Reversals: yesterday was a blow-off close — this is a fade session (weaker evidence)")
+alertcondition(showBot and belowStd and not belowStd[1], "Price below the exhaustion line",
+     "Exhaustion Reversals: price is below today's exhaustion line — a daily close here is an exhaustion close")
+alertcondition(showBot and belowCap and not belowCap[1], "Price below the capitulation line",
+     "Exhaustion Reversals: price is below today's capitulation line — a daily close here is a capitulation close")
+alertcondition(showTop and aboveTop and not aboveTop[1], "Price above the blow-off line",
+     "Exhaustion Reversals: price is above today's blow-off line — a daily close here is a blow-off close")

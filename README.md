@@ -5,13 +5,13 @@ backtest that grades it.
 
 | indicator | file | what it is |
 |---|---|---|
-| **MNQ Exhaustion Bottoms** | `indicators/mnq_exhaustion_bottoms.pine` | the one reversal effect that tested as real: the bounce after an oversold daily close — [details](#mnq-exhaustion-bottoms) |
+| **MNQ Exhaustion Reversals** | `indicators/mnq_exhaustion_reversals.pine` | tiered daily-close reversals that tested as real: oversold bounces (standard / Monday–Tuesday / deep / capitulation) and rare blow-off tops — [details](#mnq-exhaustion-reversals) |
 | MNQ Reversal Zones | `indicators/mnq_reversal_zones.pine` | no-lag zones on prior highs/lows with a live scorecard; tested at chance — [details](#mnq-reversal-zones) |
 | Alpha Predictive Limit Matrix | `indicators/alpha_predictive_limit_matrix.pine` | sweep-rejection limit setups for the 1H chart — [details](#alpha-predictive-limit-matrix) |
 
 ---
 
-# MNQ Exhaustion Bottoms
+# MNQ Exhaustion Reversals
 
 Built on the only reversal effect that survived testing. It does not use
 prior highs or lows.
@@ -80,7 +80,7 @@ history against every other day.
 
 ## Using it
 
-Paste `indicators/mnq_exhaustion_bottoms.pine` into the Pine Editor on MNQ or
+Paste `indicators/mnq_exhaustion_reversals.pine` into the Pine Editor on MNQ or
 NQ, any timeframe. The signal is judged on completed daily bars only. Like the
 zones script, it has not been run through TradingView's compiler.
 
