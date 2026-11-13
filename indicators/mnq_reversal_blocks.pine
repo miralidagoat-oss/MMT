@@ -1,24 +1,30 @@
 //@version=6
-indicator("MNQ Reversal Blocks — 60-point blocks, strict candle-close grading", shorttitle = "RevBlocks",
+indicator("MNQ Reversal Blocks — 60-point session blocks with the daily trend, strict candle-close grading", shorttitle = "RevBlocks",
      overlay = true, max_boxes_count = 500, max_labels_count = 500)
 
 // ============================================================================
 // WHAT THIS IS
-//   Reversal blocks 60 points deep, drawn BEFORE price gets there and graded
-//   strictly on this chart's own candle closes.
+//   Reversal blocks 60 points deep at session levels, drawn BEFORE price gets
+//   there, only with the daily trend behind them, and graded strictly on this
+//   chart's own candle closes.
 //
 //   A BLOCK starts at a level known in advance and extends 60 points beyond it:
-//     PD  prior day's high / low                 (drawn at the 18:00 ET open)
 //     AS  Asia session high / low, 18:00-03:00   (drawn at 03:00 ET)
 //     18:00 open price                           (drawn at 03:00 ET)
+//     midnight open price                        (drawn at 03:00 ET)
 //     LO  London session high / low, 03:00-09:30 (drawn at 09:30 ET)
 //     OR  opening range high / low, 09:30-10:00  (drawn at 10:00 ET)
 //     09:30 open price                           (drawn at 10:00 ET)
-//     PW  prior week's high / low                (off by default)
-//   The two open prices are support while price is above them and resistance
+//     IB  first-hour high / low, 09:30-10:30     (drawn at 10:30 ET)
+//     PD / PW  prior day / prior week high and low: OFF by default. They are
+//              the levels where a block held least often in ten years of data.
+//   The open prices are support while price is above them and resistance
 //   while below. A block is drawn only while price is still outside it, and
 //   not on top of a live block on the same side. Nothing is ever moved or
 //   painted backwards.
+//
+//   TREND   support blocks are drawn only when yesterday's close is above its
+//           50-day average, resistance blocks only when it is below.
 //
 //   GRADING - STRICT (every candle of this chart, at its close)
 //     TOUCH    a candle trades into the block
@@ -32,36 +38,41 @@ indicator("MNQ Reversal Blocks — 60-point blocks, strict candle-close grading"
 //   Hit rate = HIT / (HIT + BROKEN). A block is never marked HIT after a
 //   candle of this chart has closed beyond it.
 //
-// WHAT THE BACKTEST SAYS (README.md, backtest/rb_blocks.py, rb_zoo.py)
-//   Real 1-minute Nasdaq-100 data, 60-point blocks, HIT = 45 points.
-//   5.4 blocks drawn a day, 3.3 touched (last 4 years).
+//   SKIP RULE (off by default)   a block touched while fading the overnight
+//   gap, a fast move or a stretched RSI is greyed out and graded separately.
+//   With the trend filter on, the skipped blocks hit as often as the rest in
+//   the backtest, so the rule is a switch, not a default.
+//
+// WHAT THE BACKTEST SAYS (README.md, backtest/rb_blocks.py)
+//   Real 1-minute Nasdaq-100 data, 60-point blocks, HIT = 45 points, trend
+//   filter on. 2.4 blocks drawn a day, 1.7 touched (last 4 years).
 //
 //                                         hit rate   went on to 100+
-//     5-min chart, in sample 2022-24       76.8%        51.9%
-//     5-min chart, OUT OF SAMPLE 2024-26   76.1%        52.6%
-//     5-min chart, last 4 years            76.4%        52.3%   (3,460 blocks)
-//     1-min chart, last 4 years            74.4%        48.3%
-//     15-min chart, last 4 years           75.9%        54.6%
-//     5-min chart, 10 years                75.6%        52.4%   (10,356 blocks; every
-//                                          year 73% to 78%; sizes scaled to price)
-//     real MNQ futures, last 50 days       71.6%        50.7%   (5-min, 215 blocks)
-//     real MNQ futures, last 22 days       75.2%        47.6%   (1-min, 105 blocks)
+//     5-min chart, in sample 2022-24       78.0%        51.2%
+//     5-min chart, OUT OF SAMPLE 2024-26   77.9%        54.2%
+//     5-min chart, last 4 years            77.9%        52.9%   (1,800 blocks)
+//     1-min chart, last 4 years            74.6%        47.8%
+//     15-min chart, last 4 years           77.0%        55.4%
+//     5-min chart, 10 years                75.9%        53.5%   (5,283 blocks; every
+//                                          year 72% to 79%; sizes scaled to price)
+//     real MNQ futures, last 50 days       71.3%        48.7%   (5-min, 115 blocks)
 //
-//   Hit rate by reversal size (5-min chart, last 4 years):
-//     40 pts 79.7%   45 pts 76.4%   50 pts 73.5%   60 pts 68.3%   75 pts 60.9%   100 pts 52.4%
+//   What each change is worth (5-min chart, last 4 years / 10 years):
+//     earlier version, with prior-day blocks   76.4% / 75.7%   100+ 52.3% / 52.5%
+//     prior-day off, midnight open + IB added  77.6% / 76.4%   100+ 52.0% / 52.7%
+//     + trend filter (this script)             77.9% / 75.9%   100+ 52.9% / 53.5%
+//     + skip rule                              77.5% / 75.9%   100+ 53.1% / 53.6%
+//                    (the skipped blocks themselves: 79.3% / 75.9%)
 //
 //   READ THIS BEFORE TRADING IT
 //   - The hit rate is set by block depth against reversal size. The same
 //     blocks on coin-flip copies of the data (every candle's direction
-//     scrambled) hit 77.5%. Twenty-three kinds of block were graded the same
-//     way over ten years and all land within a few points of each other:
-//     order blocks 76.7%, fair-value gaps 77.3%, arbitrary levels 77.1%.
+//     scrambled) hit 77.3%.
 //   - A 60-point block does NOT give 100-point reversals 70% of the time when
-//     closes count: that number is 52.4%. For 100 points at 70% the block
-//     would have to be about 110 points deep.
+//     closes count: that number is 53%.
 //   - It is not a trading edge. Fading the first touch of a block's edge for
-//     45 points and exiting on the break close won 60.1% of the time and
-//     averaged -2.9 points per block: a loss averages 75 points.
+//     45 points and exiting on the break close won 61.0% of the time and
+//     averaged -2.1 points per block: a loss averages 76 points.
 //
 //   The scorecard grades every block on this chart's own history.
 // ============================================================================
@@ -70,6 +81,7 @@ indicator("MNQ Reversal Blocks — 60-point blocks, strict candle-close grading"
 // INPUTS
 // ─────────────────────────────────────────────────────────────
 const string G_BLK = "Blocks"
+const string G_FLT = "Filters"
 const string G_LVL = "Levels"
 const string G_UI  = "Display"
 
@@ -78,30 +90,62 @@ hitPts   = input.float(45.0, "HIT = a reversal of at least this many points", mi
      tooltip = "Backtested at 45 with 60-point blocks. A larger reversal lowers the hit rate: the scorecard shows the rate for several sizes.")
 bigPts   = input.float(100.0, "Also mark when the reversal reaches this many points", minval = 10.0, step = 5.0, group = G_BLK)
 
-usePD = input.bool(true, "PD: prior day high / low", group = G_LVL)
+trendOnly = input.bool(true, "Draw a block only with the daily trend behind it", group = G_FLT,
+     tooltip = "Support blocks when yesterday's close is above its 50-day average, resistance blocks when it is below. Backtest: the same 45-point hit rate, about 1 point more blocks reaching 100+, half as many blocks.")
+useSkips  = input.bool(false, "Skip blocks touched while fading the overnight gap, a fast move or a stretched RSI", group = G_FLT,
+     tooltip = "Off by default: with the trend filter on, skipped blocks hit as often as the rest in the backtest (79.3% against 77.5% over 4 years, 75.9% against 75.9% over 10). Skipped blocks are greyed out and graded separately in the scorecard.")
+
 useAS = input.bool(true, "AS: Asia session high / low (18:00-03:00 ET)", group = G_LVL)
 useGO = input.bool(true, "18:00 open price (drawn at 03:00 ET)", group = G_LVL)
+useMO = input.bool(true, "Midnight open price (drawn at 03:00 ET)", group = G_LVL)
 useLO = input.bool(true, "LO: London session high / low (03:00-09:30 ET)", group = G_LVL)
 useOR = input.bool(true, "OR: opening range high / low (09:30-10:00 ET)", group = G_LVL)
 useRO = input.bool(true, "09:30 open price (drawn at 10:00 ET)", group = G_LVL)
-usePW = input.bool(false, "PW: prior week high / low", group = G_LVL)
+useIB = input.bool(true, "IB: first-hour high / low (09:30-10:30 ET)", group = G_LVL)
+usePD = input.bool(false, "PD: prior day high / low (held least often in testing)", group = G_LVL)
+usePW = input.bool(false, "PW: prior week high / low (held least often in testing)", group = G_LVL)
 
 showDash  = input.bool(true, "Scorecard", group = G_UI)
-showTags  = input.bool(true, "Label HIT / BROKEN / 100+", group = G_UI)
+showTags  = input.bool(true, "Label HIT / BROKEN / 100+ / SKIP", group = G_UI)
 topColor  = input.color(#EF5350, "Resistance block", group = G_UI)
 botColor  = input.color(#26A69A, "Support block", group = G_UI)
-deadColor = input.color(#787B86, "Broken / expired block", group = G_UI)
+deadColor = input.color(#787B86, "Broken / expired / skipped block", group = G_UI)
 
 if not timeframe.isintraday
     runtime.error("Reversal Blocks grades intraday candles: use a 1 to 60 minute chart.")
 
 float bigUse = math.max(bigPts, hitPts)
 
+// The three skip conditions (fixed: these are the values that were tested).
+const float GAP_ADR    = 0.3     // overnight gap, in average daily ranges
+const float FAST_SIGMA = 2.0     // move over the last hour, in (average 5-minute range x sqrt(12))
+const float RSI_HOT    = 75.0    // RSI(14) of 5-minute closes, into the block
+
 // ─────────────────────────────────────────────────────────────
-// LEVELS FROM COMPLETED HIGHER-TIMEFRAME BARS (never the bar in progress)
+// COMPLETED HIGHER-TIMEFRAME BARS ONLY (never the bar in progress)
 // ─────────────────────────────────────────────────────────────
-[pdH, pdL] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+[pdH, pdL, pdC, sma50, adr] = request.security(syminfo.tickerid, "D",
+     [high[1], low[1], close[1], ta.sma(close, 50)[1], ta.sma(high - low, 14)[1]], lookahead = barmerge.lookahead_on)
 [pwH, pwL] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+// Daily trend: +1 yesterday closed above its 50-day average, -1 below, 0 unknown.
+int bias = na(pdC) or na(sma50) or pdC == sma50 ? 0 : pdC > sma50 ? 1 : -1
+
+// What was known before this candle opened, from completed 5-minute candles
+// (the chart's own candles on charts above 5 minutes): the move over the last
+// hour, the average candle range, and RSI(14).
+bool   lowTF  = timeframe.in_seconds() <= 300
+string featTF = lowTF ? "5" : timeframe.period
+int    hourN  = lowTF ? 12 : math.max(1, math.round(3600.0 / timeframe.in_seconds()))
+
+f_feat() =>
+    float mv = close - close[hourN]
+    float ar = ta.sma(high - low, 100)
+    float rs = ta.rsi(close, 14)
+    [mv[1], ar[1], rs[1]]
+
+[fMove, fRange, fRsi] = request.security(syminfo.tickerid, featTF, f_feat(), lookahead = barmerge.lookahead_on)
+float spd = fRange > 0 ? fMove / (fRange * math.sqrt(hourN)) : na
 
 // ─────────────────────────────────────────────────────────────
 // STATE
@@ -114,21 +158,26 @@ type Block
     float  turn  = na       // extreme made at the block so far
     float  best  = 0.0      // largest reversal from that extreme so far
     int    days  = 0        // trade-day changes since the touch
+    bool   skip  = false    // skipped at the touch (graded separately)
+    string name  = ""
     box    bx    = na
 
 type Tally
-    int touched = 0
-    int hit     = 0
-    int broken  = 0
-    int expired = 0
-    int big     = 0
-    int tTop    = 0
-    int hTop    = 0
-    int bTop    = 0
-    int tBot    = 0
-    int hBot    = 0
-    int bBot    = 0
-    int drawn   = 0
+    int touched  = 0
+    int hit      = 0
+    int broken   = 0
+    int expired  = 0
+    int big      = 0
+    int tTop     = 0
+    int hTop     = 0
+    int bTop     = 0
+    int tBot     = 0
+    int hBot     = 0
+    int bBot     = 0
+    int sTouched = 0        // skipped blocks, graded by the same rules
+    int sHit     = 0
+    int sBroken  = 0
+    int drawn    = 0
 
 var array<Block> live  = array.new<Block>()
 var array<float> bests = array.new<float>()     // best reversal of every graded block, capped at the larger size
@@ -140,22 +189,27 @@ var float loH = na
 var float loL = na
 var float orH = na
 var float orL = na
+var float ibH = na
+var float ibL = na
 var bool asDone = true
 var bool loDone = true
 var bool orDone = true
+var bool ibDone = true
 var float dayOpen = na      // the 18:00 ET open of this trade day
+var float midOpen = na      // the first open after midnight ET
 var float rthOpen = na      // the 09:30 ET open
+var float gapADR  = na      // (09:30 open - yesterday's close) / average daily range, known from 09:30 on
 var int dayCount = 0
 
 int  mod    = hour(time, "America/New_York") * 60 + minute(time, "America/New_York")
 bool newDay = timeframe.change("D")
 bool rth    = mod >= 570 and mod < 1020
 
-// Draw a block at `level` if price is still outside it and no live block on
-// the same side overlaps it.
+// Draw a block at `level` if the trend allows that side, price is still
+// outside the block, and no live block on the same side overlaps it.
 f_add(float level, int side, string name) =>
     float far = level + side * blockPts
-    bool  ok  = not na(level) and side * (open - level) < 0
+    bool  ok  = not na(level) and side * (open - level) < 0 and not (trendOnly and (bias == 0 or side * bias > 0))
     if ok and live.size() > 0
         for b in live
             if b.side == side and math.min(b.near, b.far) <= math.max(level, far) and math.max(b.near, b.far) >= math.min(level, far)
@@ -165,7 +219,7 @@ f_add(float level, int side, string name) =>
         box   bx  = box.new(bar_index, math.max(level, far), bar_index + 1, math.min(level, far), border_color = color.new(col, 20),
              border_width = 1, bgcolor = color.new(col, 85), text = name,
              text_size = size.small, text_color = color.new(col, 0), text_halign = text.align_right, text_valign = text.align_center)
-        live.push(Block.new(side, level, far, 0, na, 0.0, 0, bx))
+        live.push(Block.new(side, level, far, 0, na, 0.0, 0, false, name, bx))
         tl.drawn += 1
 
 // A level that is support while price is above it and resistance while below.
@@ -173,8 +227,15 @@ f_addAuto(float level, string name) =>
     if not na(level) and open != level
         f_add(level, open < level ? 1 : -1, name)
 
+// Why a block of this side would be skipped if it were touched on this candle
+// ("" = it would not). Uses only what was known before the candle opened.
+f_why(int s) =>
+    float ex = s > 0 ? fRsi : 100.0 - fRsi
+    not useSkips ? "" : not na(gapADR) and s * gapADR > GAP_ADR ? "gap fade" : not na(spd) and s * spd > FAST_SIGMA ? "fast move" :
+         not na(ex) and ex >= RSI_HOT ? "RSI stretched" : ""
+
 // ─────────────────────────────────────────────────────────────
-// 1. NEW TRADE DAY: retire old blocks, draw the prior day / week blocks
+// 1. NEW TRADE DAY: retire old blocks, draw the prior day / week blocks if enabled
 // ─────────────────────────────────────────────────────────────
 if newDay
     dayCount += 1
@@ -185,9 +246,9 @@ if newDay
             if not waiting
                 b.days += 1
             bool expire = not waiting and b.days >= 2
-            if expire and b.state == 1
+            if expire and b.state == 1 and not b.skip
                 tl.expired += 1
-            if expire and b.state == 2
+            if expire and b.state == 2 and not b.skip
                 bests.push(math.min(b.best, bigUse))
             if (waiting or expire) and b.state <= 1
                 b.bx.set_right(bar_index)
@@ -202,11 +263,16 @@ if newDay
     loL := na
     orH := na
     orL := na
+    ibH := na
+    ibL := na
     asDone := false
     loDone := false
     orDone := false
+    ibDone := false
     dayOpen := open
+    midOpen := na
     rthOpen := na
+    gapADR  := na
     if usePD
         f_add(pdH, 1, "PD high")
         f_add(pdL, -1, "PD low")
@@ -217,6 +283,8 @@ if newDay
 // ─────────────────────────────────────────────────────────────
 // 2. SESSION BLOCKS, each drawn on the first candle after its level is complete
 // ─────────────────────────────────────────────────────────────
+if mod < 180 and na(midOpen)
+    midOpen := open
 if mod >= 180 and mod < 1020 and not asDone
     asDone := true
     if useAS
@@ -224,9 +292,12 @@ if mod >= 180 and mod < 1020 and not asDone
         f_add(asL, -1, "AS low")
     if useGO
         f_addAuto(dayOpen, "18:00 open")
+    if useMO
+        f_addAuto(midOpen, "midnight open")
 if rth and not loDone
     loDone := true
     rthOpen := open
+    gapADR  := na(pdC) or na(adr) or adr <= 0 ? na : (open - pdC) / adr
     if useLO
         f_add(loH, 1, "LO high")
         f_add(loL, -1, "LO low")
@@ -237,24 +308,33 @@ if rth and mod >= 600 and not orDone
         f_add(orL, -1, "OR low")
     if useRO
         f_addAuto(rthOpen, "09:30 open")
+if rth and mod >= 630 and not ibDone
+    ibDone := true
+    if useIB
+        f_add(ibH, 1, "IB high")
+        f_add(ibL, -1, "IB low")
 
 // ─────────────────────────────────────────────────────────────
 // 3. GRADE every live block on this candle
 // ─────────────────────────────────────────────────────────────
 bool touchNow = false     // live: price is inside a block that was waiting
+bool skipNow  = false     // live: price is inside a block that the skip rule rejects
 bool hitNow   = false
 bool bigNow   = false
 bool brokeNow = false
 
 if live.size() > 0
     for i = live.size() - 1 to 0
-        Block b      = live.get(i)
-        int   s      = b.side
-        float ext    = s > 0 ? high : low
-        float opp    = s > 0 ? low : high
-        bool  inside = s * (ext - b.near) >= 0
-        if b.state == 0 and inside
+        Block  b      = live.get(i)
+        int    s      = b.side
+        float  ext    = s > 0 ? high : low
+        float  opp    = s > 0 ? low : high
+        bool   inside = s * (ext - b.near) >= 0
+        string why    = b.state == 0 and inside ? f_why(s) : ""
+        if b.state == 0 and inside and why == ""
             touchNow := true
+        if b.state == 0 and inside and why != ""
+            skipNow := true
         if b.state <= 1
             b.bx.set_right(bar_index + 1)
         if barstate.isconfirmed
@@ -263,15 +343,29 @@ if live.size() > 0
                 b.state := 1
                 b.turn  := ext
                 first   := true
-                tl.touched += 1
-                tl.tTop += s > 0 ? 1 : 0
-                tl.tBot += s < 0 ? 1 : 0
+                if why == ""
+                    tl.touched += 1
+                    tl.tTop += s > 0 ? 1 : 0
+                    tl.tBot += s < 0 ? 1 : 0
+                if why != ""
+                    b.skip := true
+                    tl.sTouched += 1
+                    b.bx.set_border_color(color.new(deadColor, 40))
+                    b.bx.set_bgcolor(color.new(deadColor, 92))
+                    b.bx.set_text_color(color.new(deadColor, 20))
+                    b.bx.set_text(b.name + " · skip: " + why)
+                    if showTags
+                        label.new(bar_index, s > 0 ? high : low, "SKIP · " + why,
+                             yloc = s > 0 ? yloc.abovebar : yloc.belowbar,
+                             style = s > 0 ? label.style_label_down : label.style_label_up,
+                             color = color.new(deadColor, 30), textcolor = color.white, size = size.tiny)
             if b.state >= 1
                 bool  beyond = s * (close - b.far) > 0      // this candle closed beyond the block
                 bool  gone   = false
+                bool  graded = not b.skip
                 color col    = s > 0 ? topColor : botColor
                 // strict: a close beyond the block ends it, whatever the wick did
-                if beyond and b.state == 1
+                if beyond and b.state == 1 and graded
                     brokeNow := true
                     tl.broken += 1
                     tl.bTop += s > 0 ? 1 : 0
@@ -284,6 +378,8 @@ if live.size() > 0
                              yloc = s > 0 ? yloc.abovebar : yloc.belowbar,
                              style = s > 0 ? label.style_label_down : label.style_label_up,
                              color = color.new(deadColor, 20), textcolor = color.white, size = size.tiny)
+                if beyond and b.state == 1 and not graded
+                    tl.sBroken += 1
                 if beyond
                     gone := true
                 if not beyond
@@ -296,25 +392,30 @@ if live.size() > 0
                     bool nowBig = b.best >= bigUse
                     if nowHit
                         b.state := 2
+                    if nowHit and graded
                         hitNow  := true
                         tl.hit  += 1
                         tl.hTop += s > 0 ? 1 : 0
                         tl.hBot += s < 0 ? 1 : 0
                         b.bx.set_border_color(color.new(col, 0))
                         b.bx.set_border_width(2)
+                    if nowHit and not graded
+                        tl.sHit += 1
                     if nowBig
+                        gone := true
+                    if nowBig and graded
                         bigNow := true
                         tl.big += 1
-                        gone   := true
-                    if showTags and (nowHit or nowBig)
+                    if showTags and graded and (nowHit or nowBig)
                         string txt = nowHit and nowBig ? "HIT " + str.tostring(bigUse, "#") + "+" :
                              nowHit ? "HIT " + str.tostring(hitPts, "#") : str.tostring(bigUse, "#") + "+"
                         label.new(bar_index, s > 0 ? high : low, txt,
                              yloc = s > 0 ? yloc.abovebar : yloc.belowbar,
                              style = s > 0 ? label.style_label_down : label.style_label_up,
                              color = color.new(col, nowHit ? 10 : 45), textcolor = color.white, size = size.tiny)
-                if gone
+                if gone and graded
                     bests.push(math.min(b.best, bigUse))
+                if gone
                     live.remove(i)
 
 // ─────────────────────────────────────────────────────────────
@@ -329,6 +430,9 @@ if mod >= 180 and mod < 570
 if mod >= 570 and mod < 600
     orH := na(orH) ? high : math.max(orH, high)
     orL := na(orL) ? low : math.min(orL, low)
+if mod >= 570 and mod < 630
+    ibH := na(ibH) ? high : math.max(ibH, high)
+    ibL := na(ibL) ? low : math.min(ibL, low)
 
 // ─────────────────────────────────────────────────────────────
 // SCORECARD — this chart's own history, graded by the rules above
@@ -347,9 +451,9 @@ f_row(table t, int r, string name, color nc, int touched, int hits, int broken) 
     f_cell(t, 4, r, f_rate(hits, broken), color.white, text.align_right)
 
 if showDash and barstate.islast
-    var table dash = table.new(position.top_right, 5, 12, bgcolor = color.new(#101418, 12),
+    var table dash = table.new(position.top_right, 5, 14, bgcolor = color.new(#101418, 12),
          border_width = 1, border_color = color.new(color.gray, 75), frame_width = 1, frame_color = color.new(color.gray, 55))
-    table.clear(dash, 0, 0, 4, 11)
+    table.clear(dash, 0, 0, 4, 13)
     color dim    = color.new(color.silver, 0)
     int   graded = tl.hit + tl.broken
     // hit rate for four reversal sizes, from the best reversal of every graded block
@@ -378,42 +482,52 @@ if showDash and barstate.islast
     f_cell(dash, 3, 1, "broken",   dim, text.align_right)
     f_cell(dash, 4, 1, "hit rate", dim, text.align_right)
 
-    f_row(dash, 2, "All blocks",               color.white, tl.touched, tl.hit,  tl.broken)
-    f_row(dash, 3, "Resistance blocks (tops)", topColor,    tl.tTop,    tl.hTop, tl.bTop)
-    f_row(dash, 4, "Support blocks (bottoms)", botColor,    tl.tBot,    tl.hBot, tl.bBot)
+    f_row(dash, 2, "All graded blocks",        color.white, tl.touched,  tl.hit,  tl.broken)
+    f_row(dash, 3, "Resistance blocks (tops)", topColor,    tl.tTop,     tl.hTop, tl.bTop)
+    f_row(dash, 4, "Support blocks (bottoms)", botColor,    tl.tBot,     tl.hBot, tl.bBot)
+    f_row(dash, 5, useSkips ? "Skipped at the touch (graded separately)" : "Skip rule is off", dim, tl.sTouched, tl.sHit, tl.sBroken)
 
-    f_cell(dash, 0, 5, "Went on to " + str.tostring(bigUse, "#") + "+ pts before any close beyond: " + str.tostring(tl.big) +
+    f_cell(dash, 0, 6, "Went on to " + str.tostring(bigUse, "#") + "+ pts before any close beyond: " + str.tostring(tl.big) +
          " of " + str.tostring(graded) + " graded blocks (" + f_rate(tl.big, graded - tl.big) + ")", color.white, text.align_left)
-    table.merge_cells(dash, 0, 5, 4, 5)
-
-    f_cell(dash, 0, 6, "Reversal of at least " + str.tostring(hitPts, "#") + " / " + str.tostring(sizeB, "#") + " / " +
-         str.tostring(sizeC, "#") + " / " + str.tostring(bigUse, "#") + " pts:  " + f_rate(nA, nb - nA) + " / " +
-         f_rate(nB, nb - nB) + " / " + f_rate(nC, nb - nC) + " / " + f_rate(nD, nb - nD), color.white, text.align_left)
     table.merge_cells(dash, 0, 6, 4, 6)
 
-    f_cell(dash, 0, 7, "7 in 10 blocks reversed at least " + (na(seven) ? "—" : str.tostring(seven, "#")) +
-         " pts before any close beyond", color.white, text.align_left)
+    f_cell(dash, 0, 7, "Reversal of at least " + str.tostring(hitPts, "#") + " / " + str.tostring(sizeB, "#") + " / " +
+         str.tostring(sizeC, "#") + " / " + str.tostring(bigUse, "#") + " pts:  " + f_rate(nA, nb - nA) + " / " +
+         f_rate(nB, nb - nB) + " / " + f_rate(nC, nb - nC) + " / " + f_rate(nD, nb - nD), color.white, text.align_left)
     table.merge_cells(dash, 0, 7, 4, 7)
 
-    f_cell(dash, 0, 8, "Drawn " + str.tostring(tl.drawn) + " blocks in " + str.tostring(dayCount) + " days (" +
-         (dayCount > 0 ? str.tostring(1.0 * tl.drawn / dayCount, "#.#") : "—") + " a day) · " + str.tostring(live.size()) +
-         " live now · " + str.tostring(tl.expired) + " touched but still open after two days", dim, text.align_left)
+    f_cell(dash, 0, 8, "7 in 10 blocks reversed at least " + (na(seven) ? "—" : str.tostring(seven, "#")) +
+         " pts before any close beyond", color.white, text.align_left)
     table.merge_cells(dash, 0, 8, 4, 8)
 
-    f_cell(dash, 0, 9, "Backtest, strict rules, 60-pt blocks, HIT = 45 pts, 5-min chart: 76.4% over 4 years, 76.1% out of sample, 75.6% over 10 years.",
-         dim, text.align_left)
+    f_cell(dash, 0, 9, "Drawn " + str.tostring(tl.drawn) + " blocks in " + str.tostring(dayCount) + " days (" +
+         (dayCount > 0 ? str.tostring(1.0 * tl.drawn / dayCount, "#.#") : "—") + " a day) · " + str.tostring(live.size()) +
+         " live now · " + str.tostring(tl.expired) + " touched but still open after two days", dim, text.align_left)
     table.merge_cells(dash, 0, 9, 4, 9)
-    f_cell(dash, 0, 10, "1-min chart 74.4%. Real MNQ futures, last 50 days: 71.6%. About half of all graded blocks (52%) went on to 100+.",
-         dim, text.align_left)
+
+    string trendTxt = bias == 0 ? "DAILY TREND unknown (not enough daily history)" :
+         "DAILY TREND " + (bias > 0 ? "UP" : "DOWN") + ": yesterday's close " + str.tostring(pdC, format.mintick) +
+         (bias > 0 ? " is above" : " is below") + " its 50-day average " + str.tostring(sma50, format.mintick)
+    string sideTxt = not trendOnly ? " · trend filter off: both sides drawn" : bias > 0 ? " · support blocks only" :
+         bias < 0 ? " · resistance blocks only" : " · no blocks drawn"
+    f_cell(dash, 0, 10, trendTxt + sideTxt, bias > 0 ? botColor : bias < 0 ? topColor : dim, text.align_left)
     table.merge_cells(dash, 0, 10, 4, 10)
-    f_cell(dash, 0, 11, "Depth vs reversal size sets the hit rate (coin-flip data 77.5%; order blocks, FVGs, arbitrary levels 77%). Not a trading edge.",
-         color.orange, text.align_left)
+
+    f_cell(dash, 0, 11, "Backtest, 5-min chart, with the daily trend: 77.9% hit over 4 years (78.0% in sample, 77.9% out of sample), 75.9% over 10 years.",
+         dim, text.align_left)
     table.merge_cells(dash, 0, 11, 4, 11)
+    f_cell(dash, 0, 12, "1-min chart 74.6%. Real MNQ futures, last 50 days: 71.3%. 53% of graded blocks went on to 100+. Coin-flip data: 77.3%.",
+         dim, text.align_left)
+    table.merge_cells(dash, 0, 12, 4, 12)
+    f_cell(dash, 0, 13, "The hit rate comes from block depth against reversal size, not from prediction. Not a trading edge.",
+         color.orange, text.align_left)
+    table.merge_cells(dash, 0, 13, 4, 13)
 
 // ─────────────────────────────────────────────────────────────
 // ALERTS
 // ─────────────────────────────────────────────────────────────
 alertcondition(touchNow, "Price entered a reversal block", "Reversal Blocks: price is inside a block")
+alertcondition(skipNow, "Price entered a block the skip rule rejects", "Reversal Blocks: price is inside a block, but it is fading the gap, a fast move or a stretched RSI")
 alertcondition(hitNow, "Block hit", "Reversal Blocks: HIT — the reversal reached the hit size with no candle closing beyond the block")
 alertcondition(bigNow, "Block reached the larger reversal", "Reversal Blocks: a block that was hit has reached the larger reversal")
 alertcondition(brokeNow, "Block broken", "Reversal Blocks: a candle closed beyond a block before it was hit")

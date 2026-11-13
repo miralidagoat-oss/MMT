@@ -5,7 +5,7 @@ backtest that grades it.
 
 | indicator | file | what it is |
 |---|---|---|
-| **MNQ Reversal Blocks** | `indicators/mnq_reversal_blocks.pine` | 60-point blocks at levels known in advance, graded strictly on candle closes: a 45-point reversal 76% of the time, about half going on to 100+ — [details](#mnq-reversal-blocks) |
+| **MNQ Reversal Blocks** | `indicators/mnq_reversal_blocks.pine` | 60-point blocks at session levels, drawn with the daily trend and graded strictly on candle closes: a 45-point reversal 78% of the time, about half going on to 100+ — [details](#mnq-reversal-blocks) |
 | **MNQ Exhaustion Reversals** | `indicators/mnq_exhaustion_reversals.pine` | tiered daily-close reversals that tested as real: oversold bounces (standard / Monday–Tuesday / deep / capitulation) and rare blow-off tops — [details](#mnq-exhaustion-reversals) |
 | MNQ Reversal Zones | `indicators/mnq_reversal_zones.pine` | no-lag zones on prior highs/lows with a live scorecard; tested at chance — [details](#mnq-reversal-zones) |
 | Alpha Predictive Limit Matrix | `indicators/alpha_predictive_limit_matrix.pine` | sweep-rejection limit setups for the 1H chart — [details](#alpha-predictive-limit-matrix) |
@@ -19,20 +19,24 @@ strictly — a candle of the chart closing beyond the block breaks it, a wick
 does not.
 
 **What a 60-point block delivers under that rule:** a reversal of 45 points,
-76% of the time on a 5-minute chart and 74% on a 1-minute chart — in sample,
-out of sample and over ten years. About half of all blocks (52%) go on to
-100 points. A 60-point block does not give 100-point reversals 70% of the
-time once closes count (52%), and no kind of block tested does.
+78% of the time on a 5-minute chart and 75% on a 1-minute chart — in sample,
+out of sample and (76%) over ten years. About half of all blocks (53%) go on
+to 100 points. A 60-point block does not give 100-point reversals 70% of the
+time once closes count, and no kind of block tested does.
 
 **The rules**
 
-- A block starts at a level known in advance and extends 60 points beyond
-  it: prior day high / low, Asia session high / low (18:00–03:00 ET), the
-  18:00 open, London session high / low (03:00–09:30), opening range high /
-  low (09:30–10:00), the 09:30 open. The two opens are support while price
-  is above them and resistance while below. Each block is drawn on the first
-  candle after its level is complete, only while price is still outside it,
-  and never on top of a live block on the same side.
+- A block starts at a session level known in advance and extends 60 points
+  beyond it: Asia session high / low (18:00–03:00 ET), the 18:00 open, the
+  midnight open, London session high / low (03:00–09:30), opening range high
+  / low (09:30–10:00), the 09:30 open, first-hour high / low (09:30–10:30).
+  The opens are support while price is above them and resistance while
+  below. Each block is drawn on the first candle after its level is
+  complete, only while price is still outside it, and never on top of a live
+  block on the same side. Prior day and prior week highs and lows are off by
+  default: they are where a block held least often in ten years.
+- **Trend:** support blocks are drawn only when yesterday's close is above
+  its 50-day average, resistance blocks only when it is below.
 - **Touch:** a candle trades into the block. **Hit:** price reverses 45
   points from the extreme it made at the block. **Broken:** a candle closes
   beyond the far side before the hit — and a candle that closes beyond the
@@ -42,37 +46,56 @@ time once closes count (52%), and no kind of block tested does.
 - Hit rate = hit / (hit + broken). A block is never marked hit after a
   candle of the chart has closed beyond it.
 
-**Results** — real 1-minute Nasdaq-100 data (`rb_blocks.py run`):
+**Results** — real 1-minute Nasdaq-100 data (`rb_blocks.py run --trend`):
 
 | period, chart | touched | hit | broken | **hit rate** | went on to 100+ |
 |---|---|---|---|---|---|
-| in sample, 2022-11 → 2024-11, 5-minute | 1,480 | 1,136 | 344 | 76.8% | 51.9% |
-| **out of sample, 2024-11 → 2026-11, 5-minute** | 1,978 | 1,505 | 473 | **76.1%** | 52.6% |
-| last 4 years, 5-minute | 3,460 | 2,643 | 817 | **76.4%** | 52.3% |
-| last 4 years, 1-minute | 3,460 | 2,574 | 886 | 74.4% | 48.3% |
-| out of sample, 1-minute | 1,978 | 1,479 | 499 | 74.8% | 47.9% |
-| last 4 years, 15-minute | 3,447 | 2,616 | 831 | 75.9% | 54.6% |
-| **10 years, 2016-11 → 2026-11**, 5-minute, sizes scaled to price | 10,356 | 7,828 | 2,528 | **75.6%** | 52.4% |
-| real MNQ futures, last 50 trade days, 5-minute | 215 | 154 | 61 | 71.6% | 50.7% |
-| real MNQ futures, last 22 trade days, 1-minute | 105 | 79 | 26 | 75.2% | 47.6% |
+| in sample, 2022-11 → 2024-11, 5-minute | 763 | 595 | 168 | 78.0% | 51.2% |
+| **out of sample, 2024-11 → 2026-11, 5-minute** | 1,036 | 807 | 229 | **77.9%** | 54.2% |
+| last 4 years, 5-minute | 1,800 | 1,403 | 397 | **77.9%** (scrambled data: 77.3%) | 52.9% |
+| last 4 years, 1-minute | 1,801 | 1,344 | 457 | 74.6% | 47.8% |
+| out of sample, 1-minute | 1,037 | 782 | 255 | 75.4% | 47.5% |
+| last 4 years, 15-minute | 1,790 | 1,379 | 411 | 77.0% | 55.4% |
+| **10 years, 2017-03 → 2026-11**, 5-minute, sizes scaled to price | 5,283 | 4,010 | 1,273 | **75.9%** | 53.5% |
+| real MNQ futures, last 50 trade days, 5-minute | 115 | 82 | 33 | 71.3% | 48.7% |
+| real MNQ futures, last 22 trade days, 1-minute | 62 | 49 | 13 | 79.0% | 43.5% |
 
-Ten years by year: 2016 (7 weeks) 72.6%, 2017 74.7%, 2018 74.8%, 2019 76.6%,
-2020 75.2%, 2021 74.7%, 2022 73.6%, 2023 78.4%, 2024 76.8%, 2025 75.9%, 2026
-76.1%. In the ten-year run the block depth and the reversal sizes are 60, 45
-and 100 points at today's price (27,971) and the same percentage of price
-earlier. 5.4 blocks are drawn a day and 3.3 are touched.
+Ten years by year: 2017 76.0%, 2018 75.7%, 2019 77.1%, 2020 74.3%, 2021
+75.4%, 2022 72.3%, 2023 79.3%, 2024 77.1%, 2025 74.7%, 2026 78.7%. In the
+ten-year run the block depth and the reversal sizes are 60, 45 and 100
+points at today's price and the same percentage of price earlier. 2.4 blocks
+are drawn a day and 1.7 are touched.
 
-**Hit rate by reversal size** (60-point blocks, 5-minute chart, last 4
-years; 1-minute chart in brackets):
+**What each change is worth** (5-minute chart; last 4 years / 10 years):
+
+| version | hit rate | went on to 100+ | touched a day |
+|---|---|---|---|
+| earlier version, with prior-day blocks | 76.4% / 75.7% | 52.3% / 52.5% | 3.3 |
+| prior-day blocks off, midnight open and first-hour blocks added | 77.6% / 76.4% | 52.0% / 52.7% | 3.5 |
+| **+ trend filter (the script's default)** | **77.9% / 75.9%** | **52.9% / 53.5%** | 1.7 |
+| + skip rule (a switch, off by default) | 77.5% / 75.9% | 53.1% / 53.6% | 1.3 |
+
+Dropping the prior-day blocks is what raises the hit rate. The trend filter
+leaves the hit rate where it was, adds about one point to the share that
+reaches 100+, and halves the number of blocks. The skip rule — a block
+touched while fading the overnight gap, a fast move or a stretched RSI is
+greyed out — removes blocks that hit just as often once the trend filter is
+on (the skipped blocks: 79.3% over 4 years, 75.9% over 10), so it ships as a
+switch that is off.
+
+**Hit rate by reversal size** (5-minute chart, last 4 years; 1-minute chart
+in brackets):
 
 | reversal that counts | 40 | 45 | 50 | 55 | 60 | 75 | 100 |
 |---|---|---|---|---|---|---|---|
-| hit rate | 79.7% (78.6%) | **76.4% (74.4%)** | 73.5% (71.0%) | 71.0% (68.0%) | 68.3% | 60.9% | 52.4% |
+| hit rate | 80.9% (78.7%) | **77.9% (74.6%)** | 75.6% (71.8%) | 72.8% (68.6%) | 69.5% (64.9%) | 61.9% (57.0%) | 53.0% (47.8%) |
 
-45 is the largest size that stayed at 70% or more in every sample above,
-including the real-futures windows; at 50 the 1-minute in-sample figure is
-70.3% and the last 50 days of MNQ futures 68.4%. For 100-point reversals at
-70% the block has to be about 110 points deep (70.3%).
+**The Pine logic is checked against the backtest.** `rb_pine_mirror.py` is a
+statement-by-statement Python transliteration of the script; it and the
+engine grade every block identically on 5-minute and on 1-minute candles
+(1,792 / 1,793 blocks with the trend filter, 3,560 / 3,562 without, with the
+skip rule on and off: no differences). The script itself has not been run
+through TradingView's compiler here.
 
 **Every kind of block scores the same.** Twenty-three block types, all 60
 points deep, graded by the same rules (`rb_zoo.py`):
@@ -97,12 +120,12 @@ inside 10–60 points) hit 51.0% and 45.1%, because they are shallower.
 **What the hit rate does not mean**
 
 - **It is not prediction.** The same blocks on direction-scrambled copies of
-  the data (`rz_null.py`) hit 77.5% against 76.4% real. The hit rate comes
+  the data (`rz_null.py`) hit 77.3% against 77.9% real. The hit rate comes
   from block depth against reversal size, and the levels add nothing to it.
 - **It is not a trading edge.** Fading the first touch of a block's edge for
-  45 points and exiting on the break close won 60.1% of the time and
-  averaged −2.9 ± 1.0 points per block (a loss averages 75 points); the same
-  trade on scrambled data averages −1.9.
+  45 points and exiting on the break close won 61.0% of the time and
+  averaged −2.1 ± 1.4 points per block (a loss averages 76 points); the same
+  trade on scrambled data averages −2.3.
 - **Earlier versions overstated it.** The first version broke a block only
   when a 2-hour candle closed beyond it, which scored 70% for 100-point
   reversals while marking blocks held after the chart's own candles had
@@ -150,8 +173,9 @@ by its neighbours at ± 0.75, ± 1.25 and ± 1.5 ranges, so it is treated as
 luck: with 85 types tested, one that good is expected. The consistent finding
 is at the bottom: the prominent highs and lows — prior day, multi-day, prior
 week — are where a block holds LEAST often over ten years, 4–6 points below
-arbitrary levels. Dropping the prior-day blocks from the script lifts it from
-76.4% to 77.3% over the last 4 years; on their own they hit 72.3% over ten.
+arbitrary levels. Dropping the prior-day blocks from the earlier script lifted
+it from 76.4% to 77.3% over the last 4 years; on their own they hit 72.3%
+over ten.
 
 **Conditions at the touch** (session, day and week extremes and opens; each
 level once per day; `rb_hunt.py conditions`, `combo`). Found in the last 4
@@ -174,6 +198,12 @@ volatility, how much of the day's range was used, distance from VWAP and the
 exhaustion-close sessions each moved the hit rate by 2 points or less, and
 not the same way in both samples.
 
+**Built into the indicator and run through the engine** (one block per
+level, no overlapping blocks), these conditions are worth less than the table
+suggests: the trend filter adds about one point to the 100+ rate and nothing
+to the hit rate, and the gap / fast-move / RSI rule adds nothing once the
+trend filter is on — see "What each change is worth" above.
+
 **Result.** The most reliable block found hits 77–79% for 45 points and goes
 on to 100+ about 54% of the time; the least reliable hits 72–73% and 47–48%.
 The market shows mild continuation, not reversal, at the places traders watch
@@ -193,15 +223,19 @@ python3 backtest/rb_hunt.py combo --duka data/nq --start 20161110 --vxn data/yah
 ```
 
 ```bash
-python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --null 8
+python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --null 8
 ```
 
 ```bash
-python3 backtest/rb_blocks.py run --duka data/nq --start 20161110 --scale
+python3 backtest/rb_blocks.py run --duka data/nq --start 20170301 --warm 110 --trend --scale
 ```
 
 ```bash
-python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --tf 1
+python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --tf 1
+```
+
+```bash
+python3 backtest/rb_pine_mirror.py --duka data/nq --start 20221109 --warm 120
 ```
 
 ```bash

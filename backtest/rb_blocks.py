@@ -2,18 +2,26 @@
 """Reversal Blocks: backtest of indicators/mnq_reversal_blocks.pine on real
 1-minute data, graded the way the blocks are meant to be read.
 
-A BLOCK is a wide zone drawn around a level that is known in advance:
-    PD   prior trade day's high / low            (drawn at the 18:00 ET open)
+A BLOCK is a zone 60 points deep that starts at a level known in advance:
     AS   Asia session high / low, 18:00-03:00 ET (drawn at 03:00)
     GO   the 18:00 open price                    (drawn at 03:00)
+    MO   the midnight open price                 (drawn at 03:00)
     LO   London session high / low, 03:00-09:30  (drawn at 09:30)
     OR   opening range high / low, 09:30-10:00   (drawn at 10:00)
     RO   the 09:30 open price                    (drawn at 10:00)
-    PW   prior week's high / low                 (off by default)
-GO and RO are support when price is above them and resistance when below.
-A block starts at the level and extends `width` points beyond it. A block is
-only drawn if price is still outside it, and not if it would overlap a live
-block on the same side.
+    IB   first-hour high / low, 09:30-10:30      (drawn at 10:30)
+    PD / PW   prior day / prior week high and low (off by default)
+The opens are support when price is above them and resistance when below.
+A block is only drawn if price is still outside it, and not if it would
+overlap a live block on the same side.
+
+--trend    a block is drawn only with the daily trend behind it: support
+           when the prior close is above its 50-day average, resistance when
+           below (the shipped default of the indicator)
+--skips    a block touched while fading the overnight gap (> 0.3 average
+           daily ranges), a fast move (> 2 sigma over the last hour of
+           5-minute candles) or an RSI(14) past 75 is skipped and graded
+           separately (off by default in the indicator)
 
 Grading, on chart candles (default 5-minute):
     TOUCH   a candle trades into the block
@@ -33,18 +41,19 @@ Two more numbers keep the hit rate honest:
             `hit` points, exit when a candle closes beyond the far side:
             win rate and average points per block
 
-The shipped configuration is the default: blocks 60 points deep, a hit = a
-45-point reversal, tracked on to 100 points, and STRICT grading (a block
-breaks when any chart candle closes beyond it). --scale keeps the sizes at
-the same % of price through a long history. --brk and --hold reproduce the
-first version (a block breaks only on a longer candle's close; depth
-calculated for a target hold rate), which overstated the result.
+The shipped configuration: the block types above, --trend, blocks 60 points
+deep, a hit = a 45-point reversal, tracked on to 100 points, and STRICT
+grading (a block breaks when any chart candle closes beyond it). --warm loads
+that many days before --start so the 50-day average exists from the first
+reported day. --scale keeps the sizes at the same % of price through a long
+history. --brk and --hold reproduce the first version (a block breaks only on
+a longer candle's close), which overstated the result.
 
-  python3 rb_blocks.py run   --duka data/nq --start 20221109 --null 8
-  python3 rb_blocks.py run   --duka data/nq --start 20161110 --scale
-  python3 rb_blocks.py run   --duka data/nq --start 20221109 --tf 1
-  python3 rb_blocks.py sweep --duka data/nq --start 20221109 --tfs 5 15 60
-  python3 rb_blocks.py run   --csv data/yahoo/MNQ_5m.csv
+  python3 rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --null 8
+  python3 rb_blocks.py run --duka data/nq --start 20170301 --warm 110 --trend --scale
+  python3 rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --tf 1
+  python3 rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --skips
+  python3 rb_blocks.py run --csv data/yahoo/MNQ_5m.csv --daily data/yahoo/MNQ_1d.csv --trend
 """
 import argparse
 import os
@@ -61,11 +70,20 @@ import rz_null
 
 import rz_tiers
 
-FAMS = ("PD", "AS", "LO", "OR", "GO", "RO")          # "PW" is available but off: it held least in every sample
+FAMS = ("AS", "GO", "MO", "LO", "OR", "RO", "IB")    # "PD" and "PW" are available but off: they held least in every sample
 
 
-def prep(df1m, tf):
-    """1-minute frame -> candle arrays + session clocks (America/New_York)."""
+def prep(df1m, tf, daily=None):
+    """1-minute frame -> candle arrays, session clocks (America/New_York) and
+    everything the indicator knows before a candle opens:
+      trend   per trade day, (prior day's close, 50-day average of the closes
+              through the prior day); `daily` (closes indexed by trade-day
+              number) replaces the closes of the intraday data when the
+              intraday history is too short for a 50-day average
+      spd     the move over the last hour of completed 5-minute candles,
+              in units of (average 5-minute range x sqrt(12))
+      rsi     RSI(14) of completed 5-minute closes
+    On charts above 5 minutes the chart's own candles are used for spd / rsi."""
     d = rz_data.resample(df1m, tf) if tf > 1 else df1m
     et = d.index.tz_convert("America/New_York")
     mod = (et.hour * 60 + et.minute).values
@@ -80,20 +98,38 @@ def prep(df1m, tf):
         streak[k] = streak[k - 1] + 1 if down[k] else 0
     exh = (r2 < rz_tiers.RSI_STD) | (streak >= rz_tiers.STREAK)              # standard exhaustion close
     bounce = dict(zip(last.index[1:], exh[:-1]))                             # the session after it
+    closes = last if daily is None else daily
+    prev, avg = closes.shift(1), closes.shift(1).rolling(50).mean()
+    trend = {int(k): (prev[k], avg[k]) for k in closes.index}
+    f = rz_data.resample(df1m, 5) if tf <= 5 else d                          # the feature candles
+    hour = 12 if tf <= 5 else max(1, round(60 / tf))
+    fc = f.close
+    mv = (fc - fc.shift(hour)).shift(1).values
+    ar = (f.high - f.low).rolling(100).mean().shift(1).values
+    rs = pd.Series(rz_tiers.wilder(fc.values, 14)[2]).shift(1).values
+    k = np.searchsorted(f.index.values, d.index.values, side="right") - 1    # the feature candle each chart candle sits in
+    with np.errstate(divide="ignore", invalid="ignore"):
+        spd = np.where(k >= 0, mv[k] / (ar[k] * np.sqrt(hour)), np.nan)
+    rsi = np.where(k >= 0, rs[k], np.nan)
     return dict(o=d.open.values, h=d.high.values, l=d.low.values, c=d.close.values, v=d.volume.values, mod=mod, td=td, wk=wk,
-                index=d.index, bounce=bounce, tf=tf, target=100.0)
+                index=d.index, bounce=bounce, tf=tf, target=100.0, trend=trend, spd=spd, rsi=rsi)
 
 
-def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk=0, hold=0.0, slack=0.55, hit=45.0):
-    """Returns one record per TOUCHED block and the number of blocks drawn.
+GAP_ADR, FAST_SIGMA, RSI_HOT = 0.3, 2.0, 75.0               # the three skip conditions
+
+
+def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk=0, hold=0.0, slack=0.55, hit=45.0,
+        trend=False, skips=False):
+    """Returns one record per TOUCHED block and the candle each drawn block was born on.
     ref > 0 scales width and target by (prior close / ref): the same move in
-    percent of price on every day of the history. dyn > 0 sizes each day's
-    blocks from volatility instead: dyn x the 14-day average daily range,
-    kept inside 10-60 points. brk > candle size: a block breaks only when a
-    candle of `brk` minutes closes beyond it (candles counted from the 18:00
-    ET open, as TradingView builds them); everything else stays on the
-    chart candles."""
+    percent of price on every day of the history. trend: a block is drawn
+    only with the daily trend behind it (support when the prior close is above
+    its 50-day average, resistance when below). skips: a block touched while
+    fading the overnight gap, a fast move or a stretched RSI is marked skipped
+    (it is still graded, separately). dyn / brk / hold / slack reproduce the
+    earlier versions (volatility-sized depth, a longer break candle)."""
     o, h, l, c, mod, td, wk = B["o"], B["h"], B["l"], B["c"], B["mod"], B["td"], B["wk"]
+    spd, rsi = B["spd"], B["rsi"]
     n = len(o)
     last = np.ones(n, bool)                                 # candles that complete a break-timeframe candle
     if brk > B["tf"]:
@@ -105,17 +141,19 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
         g = pd.DataFrame({"td": td, "b": ((mod - 1080) % 1440) // bk, "h": h, "l": l}).groupby(["td", "b"]).agg(h=("h", "max"), l=("l", "min"))
         d = (g.h - g.l).groupby(level=0).agg(["sum", "count"]).rolling(5).sum().shift(1)
         vol = (d["sum"] / d["count"]).dropna().to_dict()
-    live, out = [], []
-    drawn = 0
+    live, out, born = [], [], []
     dH = dL = pdH = pdL = wH = wL = pwH = pwL = np.nan
-    asH = asL = loH = loL = orH = orL = dC = dO = rO = np.nan
-    as_done = lo_done = or_done = True
+    asH = asL = loH = loL = orH = orL = ibH = ibL = dC = dO = rO = mO = np.nan
+    as_done = lo_done = or_done = ib_done = True
     k = 1.0
     wd = width
     rng = []
+    bias = 0                                                # +1 prior close above its 50-day average, -1 below, 0 unknown
+    gap = np.nan                                            # (09:30 open - prior close) / average daily range, from 09:30 on
 
     def add(level, side, fam, i):
-        nonlocal drawn
+        if trend and (bias == 0 or side * bias > 0):        # with the trend: support in an uptrend, resistance in a downtrend
+            return
         near = level - side * front * wd
         far = level + side * (1.0 - front) * wd
         if side * (o[i] - near) >= 0:                       # price is already at or inside the block
@@ -124,10 +162,10 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
         for b in live:
             if not b["res"] and b["side"] == side and min(b["near"], b["far"]) <= hi and max(b["near"], b["far"]) >= lo:
                 return                                      # overlaps a live block on the same side
-        drawn += 1
+        born.append(i)
         live.append(dict(side=side, fam=fam, near=near, far=far, born=i, touch=-1, turn=np.nan, days=0, tg=target * k, w=wd,
                          res="", res_i=-1, entry=np.nan, pnl=np.nan, tres="", best=0.0,
-                         hg=hit * k, tres2="", pnl2=np.nan))
+                         hg=hit * k, tres2="", pnl2=np.nan, skip=""))
 
     def located(level, fam, i):                             # support if price is above the level, resistance if below
         if not np.isnan(level) and o[i] != level:
@@ -165,10 +203,13 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
                 wd = min(max(dyn * float(np.mean(rng[-14:])), 10.0 * k), 60.0 * k)
             if hold > 0 and td[i] in vol:                   # depth needed for the target hold rate, capped
                 wd = min(max(-target * k * np.log(1.0 - hold) - slack * vol[td[i]], 10.0 * k), 60.0 * k)
+            pc, av = B["trend"].get(int(td[i]), (np.nan, np.nan))
+            bias = 0 if np.isnan(pc) or np.isnan(av) or pc == av else (1 if pc > av else -1)
+            gap = np.nan
             dH = dL = np.nan
-            dO, rO = o[i], np.nan
-            asH = asL = loH = loL = orH = orL = np.nan
-            as_done = lo_done = or_done = False
+            dO, rO, mO = o[i], np.nan, np.nan
+            asH = asL = loH = loL = orH = orL = ibH = ibL = np.nan
+            as_done = lo_done = or_done = ib_done = False
             if "PD" in fams and not np.isnan(pdH):
                 add(pdH, 1, "PD", i)
                 add(pdL, -1, "PD", i)
@@ -177,6 +218,8 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
                 add(pwL, -1, "PW", i)
         m = mod[i]
         rth = 570 <= m < 1020
+        if m < 180 and np.isnan(mO):                        # the first candle after midnight
+            mO = o[i]
         if 180 <= m < 1020 and not as_done:                 # ── 03:00: Asia range is complete
             as_done = True
             if "AS" in fams and not np.isnan(asH):
@@ -184,9 +227,14 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
                 add(asL, -1, "AS", i)
             if "GO" in fams:
                 located(dO, "GO", i)
-        if rth and not lo_done:                             # ── 09:30: London range is complete
+            if "MO" in fams:
+                located(mO, "MO", i)
+        if rth and not lo_done:                             # ── 09:30: London range is complete, the gap is known
             lo_done = True
             rO = o[i]
+            pc = B["trend"].get(int(td[i]), (np.nan, np.nan))[0]
+            if len(rng) >= 5 and not np.isnan(pc):
+                gap = (rO - pc) / float(np.mean(rng[-14:]))
             if "LO" in fams and not np.isnan(loH):
                 add(loH, 1, "LO", i)
                 add(loL, -1, "LO", i)
@@ -197,6 +245,11 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
                 add(orL, -1, "OR", i)
             if "RO" in fams:
                 located(rO, "RO", i)
+        if rth and m >= 630 and not ib_done:                # ── 10:30: the first hour is complete
+            ib_done = True
+            if "IB" in fams and not np.isnan(ibH):
+                add(ibH, 1, "IB", i)
+                add(ibL, -1, "IB", i)
 
         keep = []
         for b in live:                                      # ── grade
@@ -209,6 +262,13 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
                     continue
                 b["touch"], b["turn"], first = i, ext, True
                 b["entry"] = b["near"] if s * (o[i] - b["near"]) < 0 else o[i]
+                if skips:                                   # judged on what was known before this candle
+                    if s * gap > GAP_ADR:
+                        b["skip"] = "gap"
+                    elif s * spd[i] > FAST_SIGMA:
+                        b["skip"] = "fast"
+                    elif (rsi[i] if s > 0 else 100.0 - rsi[i]) >= RSI_HOT:
+                        b["skip"] = "rsi"
             broke = last[i] and s * (c[i] - b["far"]) > 0
             if not b["res"]:                                # the block itself: reversal from the turn
                 newturn = ext if s * (ext - b["turn"]) > 0 else b["turn"]
@@ -256,12 +316,16 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
         if 570 <= m < 600:
             orH = h[i] if np.isnan(orH) else max(orH, h[i])
             orL = l[i] if np.isnan(orL) else min(orL, l[i])
-    return out, drawn
+        if 570 <= m < 630:
+            ibH = h[i] if np.isnan(ibH) else max(ibH, h[i])
+            ibL = l[i] if np.isnan(ibL) else min(ibL, l[i])
+    return out, born
 
 
 def frame(recs, B):
     if not recs:
-        return pd.DataFrame(columns=["side", "fam", "res", "tres", "pnl", "t", "year", "mins"])
+        return pd.DataFrame(columns=["side", "fam", "res", "tres", "tres2", "pnl", "pnl2", "t", "year", "mins", "best", "tg", "hg",
+                                     "tg0", "w", "bounce", "skip"])
     f = pd.DataFrame(recs)
     f["t"] = B["index"][f.touch.values]
     f["year"] = f.t.dt.tz_convert("America/New_York").dt.year
@@ -300,27 +364,38 @@ def rate_at(f, x):
 
 
 def load(args):
+    """The 1-minute frame, starting `--warm` days before --start so the 50-day average exists on the first reported day."""
+    warm = getattr(args, "warm", 0)
     if args.csv:
         df, _ = rz_data.clean_yahoo(rz_data.load_csv(args.csv))
         return df
     if args.cache and os.path.exists(args.cache):
         df = pickle.load(open(args.cache, "rb"))
     else:
-        df = rz_data.load_duka(args.duka, args.start, args.end)
+        first = (pd.Timestamp(args.start) - pd.Timedelta(days=warm)).strftime("%Y%m%d") if args.start else None
+        df = rz_data.load_duka(args.duka, first, args.end)
         if args.cache:
             pickle.dump(df, open(args.cache, "wb"))
     if args.start:
-        df = df[df.index >= pd.Timestamp(args.start, tz="UTC")]
+        df = df[df.index >= pd.Timestamp(args.start, tz="UTC") - pd.Timedelta(days=warm)]
     if args.end:
         df = df[df.index < pd.Timestamp(args.end, tz="UTC")]
     return df
 
 
-def groups_of(f, cut):
+SKIP_NAMES = {"gap": "fading the overnight gap", "fast": "fading a fast move", "rsi": "RSI stretched into the block"}
+
+
+def groups_of(fa, cut):
+    """Graded blocks (not skipped) by period, side, type and year; then the blocks skipped at the touch."""
+    f = fa[fa["skip"] == ""]
     g = [("ALL", f), ("LAST 4 YEARS", f[f.t >= cut]), ("EARLIER", f[f.t < cut]),
          ("resistance blocks (tops)", f[f.side > 0]), ("support blocks (bottoms)", f[f.side < 0]),
          ("support, bounce session", f[(f.side < 0) & f.bounce]), ("resistance, bounce session", f[(f.side > 0) & f.bounce])]
     g += [(f"  {k} blocks", f[f.fam == k]) for k in sorted(f.fam.unique())] + [(f"  {y}", f[f.year == y]) for y in sorted(f.year.unique())]
+    sk = fa[fa["skip"] != ""]
+    if len(sk):
+        g += [("SKIPPED at the touch", sk)] + [(f"  {SKIP_NAMES[k]}", sk[sk["skip"] == k]) for k in ("gap", "fast", "rsi")]
     return g
 
 
@@ -329,7 +404,8 @@ def null_stats(df, args, cut):
     rows = []
     for s in range(args.null):
         Bn = prep(rz_null.scramble(df, 500 + s), args.tf)
-        fn = frame(run(Bn, args.width, args.front, args.target, ref=ref_of(Bn, args), dyn=args.dyn, brk=args.brk, hold=args.hold, slack=args.slack, fams=tuple(args.fams), hit=args.hit)[0], Bn)
+        fn = frame(run(Bn, **run_args(Bn, args))[0], Bn)
+        fn = fn[fn.t >= since(args, df)]
         rows.append({name: stats(g) for name, g in groups_of(fn, cut) if len(g)})
     return rows
 
@@ -338,28 +414,56 @@ def ref_of(B, args):
     return float(B["c"][-1]) if args.scale else 0.0
 
 
+def run_args(B, args, **over):
+    kw = dict(width=args.width, front=args.front, target=args.target, ref=ref_of(B, args), dyn=args.dyn, brk=args.brk, hold=args.hold,
+              slack=args.slack, fams=tuple(args.fams), hit=args.hit, trend=args.trend, skips=args.skips)
+    kw.update(over)
+    return kw
+
+
+def since(args, df):
+    """First reported moment: --start (the data before it is warm-up)."""
+    return pd.Timestamp(args.start, tz="UTC") if args.start and not args.csv else df.index[0]
+
+
+def daily_closes(path):
+    """Closes of a Yahoo daily CSV indexed by trade-day number (for the 50-day average when the intraday file is short)."""
+    x = pd.read_csv(path)
+    days = pd.to_datetime(x.time, unit="s").dt.normalize().values.astype("datetime64[D]").astype(np.int64)
+    return pd.Series(x.close.values, index=days).groupby(level=0).last()
+
+
 def cmd_run(args):
     df = load(args)
-    B = prep(df, args.tf)
-    recs, drawn = run(B, args.width, args.front, args.target, ref=ref_of(B, args), dyn=args.dyn, brk=args.brk, hold=args.hold, slack=args.slack, fams=tuple(args.fams), hit=args.hit)
-    f = frame(recs, B)
+    B = prep(df, args.tf, daily_closes(args.daily) if args.daily else None)
+    recs, born = run(B, **run_args(B, args))
+    t0 = since(args, df)
+    fa = frame(recs, B)
+    fa = fa[fa.t >= t0]
+    f = fa[fa["skip"] == ""]
+    drawn = int((B["index"][born] >= t0).sum()) if len(born) else 0
+    if args.trend:
+        print("TREND: a block is drawn only with the daily trend behind it (support above the 50-day average, resistance below)")
+    if args.skips:
+        print(f"SKIPS: a block touched while fading the overnight gap (> {GAP_ADR} daily ranges), a fast move (> {FAST_SIGMA:.0f} sigma in the last "
+              f"hour) or an RSI(14) past {RSI_HOT:.0f} is skipped and graded separately")
     if args.dyn:
         print(f"AUTO SIZE: {args.dyn:.2f} x the 14-day average daily range, kept inside 10-60 points")
     if args.hold:
         print(f"CALCULATED DEPTH: -reversal x ln(1 - {args.hold:.2f}) - {args.slack:.2f} x average break-candle range, kept inside 10-60 points")
     if args.scale:
         print(f"SCALED: depth and reversal are {args.width:.0f} / {args.target:.0f} points at {B['c'][-1]:,.0f} and the same % of price before")
-    days = len(np.unique(B["td"]))
+    days = len(np.unique(B["td"][np.asarray(B["index"] >= t0)]))
     cut = pd.Timestamp(df.index[-1]) - pd.DateOffset(years=4)
-    print(f"{df.index[0].date()} -> {df.index[-1].date()}: {days} trade days, {args.tf}-minute candles, "
-          f"blocks {f.w.mean() if len(recs) else args.width:.0f} pts deep on average, reversal = {args.target:.0f} pts; "
+    print(f"{t0.date()} -> {df.index[-1].date()}: {days} trade days, {args.tf}-minute candles, "
+          f"blocks {fa.w.mean() if len(fa) else args.width:.0f} pts deep on average, reversal = {args.target:.0f} pts; "
           f"'last 4 years' starts {cut.date()}")
-    print(f"blocks drawn {drawn} ({drawn / days:.1f} a day), touched {len(f)} ({len(f) / days:.1f} a day); "
-          f"a break = a {max(args.brk, args.tf)}-minute candle closing beyond the block")
+    print(f"blocks drawn {drawn} ({drawn / days:.1f} a day), touched {len(fa)} ({len(fa) / days:.1f} a day), "
+          f"of which skipped at the touch {len(fa) - len(f)}; a break = a {max(args.brk, args.tf)}-minute candle closing beyond the block")
     nulls = null_stats(df, args, cut) if args.null else []
     print(f"HIT = a reversal of {args.hit:.0f} pts from the extreme made at the block, before any break candle closes beyond it")
     print(f"\n{'':30s} {'touched':>7s} {'hit':>6s} {'broken':>6s} {'open':>5s} {'HIT RATE':>10s} {'chance':>8s} {'z':>5s} {'to ' + format(args.target, '.0f') + '+':>8s}   {'hit trade: win':>15s} {'pts / block':>12s}")
-    for name, g in groups_of(f, cut):
+    for name, g in groups_of(fa, cut):
         if not len(g):
             continue
         s = stats(g)
@@ -397,8 +501,10 @@ def cmd_sweep(args):
         days = len(np.unique(B["td"]))
         cells = [(w, fr, 0.0) for w in args.widths for fr in args.fronts] + [(0.0, fr, d) for d in args.dyns for fr in args.fronts]
         for width, front, dyn in cells:
-            recs, drawn = run(B, width or 60.0, front, args.target, ref=ref_of(B, args), dyn=dyn, brk=args.brk, hold=args.hold, slack=args.slack, fams=tuple(args.fams), hit=args.hit)
+            recs, born = run(B, **run_args(B, args, width=width or 60.0, front=front, dyn=dyn))
+            drawn = len(born)
             g = frame(recs, B)
+            g = g[g["skip"] == ""]
             s = stats(g)
             name = f"{width:.0f}" if not dyn else f"auto {dyn:.2f}"
             print(f"{tf:3d} {name:>9s} {front:6.2f} {drawn / days:9.1f} {s['n'] / days:11.1f} {s['rate']:9.1f}% {s['win']:8.1f}% {s['pts']:+10.1f}"
@@ -426,7 +532,11 @@ def main():
     ap.add_argument("--brk", type=int, default=0, help="break candle in minutes (0 = the chart candle)")
     ap.add_argument("--hold", type=float, default=0.0, help="calculated depth: target hold rate, e.g. 0.70 (0 = off)")
     ap.add_argument("--slack", type=float, default=0.55, help="calculated depth: share of the break candle's average range that wicks absorb")
-    ap.add_argument("--fams", nargs="+", default=list(FAMS), help="block types to draw")
+    ap.add_argument("--fams", nargs="+", default=list(FAMS), help="block types to draw: PD PW AS GO MO LO OR RO IB")
+    ap.add_argument("--trend", action="store_true", help="draw a block only with the daily trend behind it")
+    ap.add_argument("--skips", action="store_true", help="skip blocks touched while fading the gap, a fast move or a stretched RSI")
+    ap.add_argument("--warm", type=int, default=0, help="days of data loaded before --start (for the 50-day average)")
+    ap.add_argument("--daily", help="Yahoo daily CSV whose closes give the 50-day average (short intraday files)")
     ap.add_argument("--null", type=int, default=0)
     ap.add_argument("--scale", action="store_true", help="scale width and target with price (same % move all history)")
     ap.add_argument("--save")
