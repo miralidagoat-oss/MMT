@@ -132,6 +132,7 @@ def vwap_scan(o, h, l, c, w, td, mod, anchor, warm, cool):
 
 def profile(lo, hi, w, bs):
     """Price-by-weight profile of one day -> (point of control, value-area high, value-area low), 70% value area."""
+    bs = abs(bs) if bs != 0 else 1.0                          # scrambled copies can wander below zero
     base = int(np.floor(lo.min() / bs))
     a = np.floor(lo / bs).astype(int) - base
     b = np.floor(hi / bs).astype(int) - base

@@ -18,6 +18,24 @@ overlap a live block on the same side.
 --trend    a block is drawn only with the daily trend behind it: support
            when the prior close is above its 50-day average, resistance when
            below (the shipped default of the indicator)
+
+PRIME      the one kind of block that goes on to 100 points far more often
+           than block size alone explains. All four things are known before
+           price gets there:
+             1. yesterday closed at least 0.75 average daily ranges away from
+                the close before it, in the direction of the daily trend
+                (a strong day with the trend)
+             2. the block is on the trend's side and its level was made
+                overnight: Asia or London session high / low, the 18:00 open
+                or the midnight open
+             3. that level is within 0.40 average daily ranges of yesterday's
+                close
+             4. the block is first touched in the cash session, 09:30-16:00 ET
+           A block that meets 1-3 is a PRIME candidate from the moment it is
+           drawn; it is graded as PRIME if its first touch comes in the cash
+           session and as a standard block otherwise. rb_prime.py shows
+           where the rule comes from and how it moves with its two sizes.
+
 --skips    a block touched while fading the overnight gap (> 0.3 average
            daily ranges), a fast move (> 2 sigma over the last hour of
            5-minute candles) or an RSI(14) past 75 is skipped and graded
@@ -39,7 +57,7 @@ Two more numbers keep the hit rate honest:
             (rz_null.py): what block size alone gives, with no skill
     hit trade  sell / buy the first touch of the block's front edge, take
             `hit` points, exit when a candle closes beyond the far side:
-            win rate and average points per block
+            win rate and average points per block (no costs)
 
 The shipped configuration: the block types above, --trend, blocks 60 points
 deep, a hit = a 45-point reversal, tracked on to 100 points, and STRICT
@@ -101,6 +119,7 @@ def prep(df1m, tf, daily=None):
     closes = last if daily is None else daily
     prev, avg = closes.shift(1), closes.shift(1).rolling(50).mean()
     trend = {int(k): (prev[k], avg[k]) for k in closes.index}
+    prev2 = {int(k): v for k, v in closes.shift(2).items()}                  # the close before the prior close
     f = rz_data.resample(df1m, 5) if tf <= 5 else d                          # the feature candles
     hour = 12 if tf <= 5 else max(1, round(60 / tf))
     fc = f.close
@@ -112,22 +131,33 @@ def prep(df1m, tf, daily=None):
         spd = np.where(k >= 0, mv[k] / (ar[k] * np.sqrt(hour)), np.nan)
     rsi = np.where(k >= 0, rs[k], np.nan)
     return dict(o=d.open.values, h=d.high.values, l=d.low.values, c=d.close.values, v=d.volume.values, mod=mod, td=td, wk=wk,
-                index=d.index, bounce=bounce, tf=tf, target=100.0, trend=trend, spd=spd, rsi=rsi)
+                index=d.index, bounce=bounce, tf=tf, target=100.0, trend=trend, prev2=prev2, spd=spd, rsi=rsi)
 
 
 GAP_ADR, FAST_SIGMA, RSI_HOT = 0.3, 2.0, 75.0               # the three skip conditions
+PRIME_MOVE, PRIME_NEAR = 0.75, 0.40                         # yesterday's move with the trend / level to yesterday's close, in average daily ranges
+PRIME_FAMS = ("AS", "GO", "MO", "LO")                       # levels made before the cash session opens
+PRIME_FROM, PRIME_TO = 570, 960                             # first touch 09:30-16:00 New York
 
 
 def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk=0, hold=0.0, slack=0.55, hit=45.0,
-        trend=False, skips=False):
+        trend=False, skips=False, prime_move=PRIME_MOVE, prime_near=PRIME_NEAR, log=None):
     """Returns one record per TOUCHED block and the candle each drawn block was born on.
     ref > 0 scales width and target by (prior close / ref): the same move in
     percent of price on every day of the history. trend: a block is drawn
     only with the daily trend behind it (support when the prior close is above
     its 50-day average, resistance when below). skips: a block touched while
     fading the overnight gap, a fast move or a stretched RSI is marked skipped
-    (it is still graded, separately). dyn / brk / hold / slack reproduce the
-    earlier versions (volatility-sized depth, a longer break candle)."""
+    (it is still graded, separately). prime_move / prime_near: the two sizes
+    of the PRIME rule (see the module text); `cand` marks a block that was a
+    PRIME candidate when it was drawn, `prime` one whose first touch then came
+    in the cash session. Every record also carries ymv (yesterday's move in
+    average daily ranges, + = with the trend), lvn (the level's distance from
+    yesterday's close in the same unit, + = beyond the close in the direction
+    being faded), wt (+1 with the trend, -1 against) and tmod (minute of the
+    touch). log: a dict that receives `cand`, the candle on which every PRIME
+    candidate was drawn (touched or not). dyn / brk / hold / slack reproduce
+    the earlier versions (volatility-sized depth, a longer break candle)."""
     o, h, l, c, mod, td, wk = B["o"], B["h"], B["l"], B["c"], B["mod"], B["td"], B["wk"]
     spd, rsi = B["spd"], B["rsi"]
     n = len(o)
@@ -150,6 +180,7 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
     rng = []
     bias = 0                                                # +1 prior close above its 50-day average, -1 below, 0 unknown
     gap = np.nan                                            # (09:30 open - prior close) / average daily range, from 09:30 on
+    ypc = adr = ymv = np.nan                                # prior close, average daily range, yesterday's move in daily ranges (+ = with the trend)
 
     def add(level, side, fam, i):
         if trend and (bias == 0 or side * bias > 0):        # with the trend: support in an uptrend, resistance in a downtrend
@@ -163,9 +194,15 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
             if not b["res"] and b["side"] == side and min(b["near"], b["far"]) <= hi and max(b["near"], b["far"]) >= lo:
                 return                                      # overlaps a live block on the same side
         born.append(i)
+        cand = bool(ymv == ymv and ymv >= prime_move and fam in PRIME_FAMS and side * bias < 0
+                    and abs(level - ypc) <= prime_near * adr)                       # a PRIME candidate, known as it is drawn
+        if cand and log is not None:
+            log.setdefault("cand", []).append(i)
         live.append(dict(side=side, fam=fam, near=near, far=far, born=i, touch=-1, turn=np.nan, days=0, tg=target * k, w=wd,
                          res="", res_i=-1, entry=np.nan, pnl=np.nan, tres="", best=0.0,
-                         hg=hit * k, tres2="", pnl2=np.nan, skip=""))
+                         hg=hit * k, tres2="", pnl2=np.nan, skip="", dep=np.nan, hit_i=-1,
+                         ymv=ymv, wt=-side * bias, lvn=side * (level - ypc) / adr if adr == adr and adr > 0 else np.nan,
+                         tmod=-1, cand=cand, prime=False))
 
     def located(level, fam, i):                             # support if price is above the level, resistance if below
         if not np.isnan(level) and o[i] != level:
@@ -206,6 +243,10 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
             pc, av = B["trend"].get(int(td[i]), (np.nan, np.nan))
             bias = 0 if np.isnan(pc) or np.isnan(av) or pc == av else (1 if pc > av else -1)
             gap = np.nan
+            pc2 = B["prev2"].get(int(td[i]), np.nan)
+            ypc = pc
+            adr = float(np.mean(rng[-14:])) if len(rng) >= 14 else np.nan
+            ymv = bias * (pc - pc2) / adr if bias != 0 and adr == adr and adr > 0 and pc2 == pc2 else np.nan
             dH = dL = np.nan
             dO, rO, mO = o[i], np.nan, np.nan
             asH = asL = loH = loL = orH = orL = ibH = ibL = np.nan
@@ -261,6 +302,8 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
                     keep.append(b)
                     continue
                 b["touch"], b["turn"], first = i, ext, True
+                b["tmod"] = int(m)
+                b["prime"] = bool(b["cand"] and PRIME_FROM <= m < PRIME_TO)         # first touch in the cash session
                 b["entry"] = b["near"] if s * (o[i] - b["near"]) < 0 else o[i]
                 if skips:                                   # judged on what was known before this candle
                     if s * gap > GAP_ADR:
@@ -279,6 +322,8 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
                         b["best"] = max(b["best"], s * (b["turn"] - opp))
                     if s * (c[i] - b["far"]) <= 0:          # this candle's own extreme, confirmed by its close
                         b["best"] = max(b["best"], s * (newturn - c[i]))
+                    if np.isnan(b["dep"]) and b["best"] >= b["hg"]:     # the hit: when, and how deep into the block the extreme is
+                        b["dep"], b["hit_i"] = s * (newturn - b["near"]), i
                     if b["best"] >= tgt:
                         b["res"], b["res_i"] = "held", i
                 b["turn"] = newturn
@@ -325,11 +370,12 @@ def run(B, width=60.0, front=0.0, target=100.0, fams=FAMS, ref=0.0, dyn=0.0, brk
 def frame(recs, B):
     if not recs:
         return pd.DataFrame(columns=["side", "fam", "res", "tres", "tres2", "pnl", "pnl2", "t", "year", "mins", "best", "tg", "hg",
-                                     "tg0", "w", "bounce", "skip"])
+                                     "tg0", "w", "bounce", "skip", "dep", "hit_i", "hmins", "ymv", "wt", "lvn", "tmod", "cand", "prime"])
     f = pd.DataFrame(recs)
     f["t"] = B["index"][f.touch.values]
     f["year"] = f.t.dt.tz_convert("America/New_York").dt.year
     f["mins"] = (B["index"][f.res_i.values] - f.t).dt.total_seconds() / 60.0
+    f["hmins"] = np.where(f.hit_i.values >= 0, (f.hit_i.values - f.touch.values) * B["tf"], np.nan)
     f["tg0"] = B.get("target", 100.0)
     f["bounce"] = [bool(B["bounce"].get(x, False)) for x in B["td"][f.touch.values]]
     f["pnl"] = f.pnl * target_scale(f)
@@ -344,15 +390,21 @@ def target_scale(f):
 
 def stats(f):
     """HIT = the block gave a reversal of the hit size before any break candle closed beyond it.
-    BROKEN = a break candle closed beyond it first. 100+ = it went on to the full target."""
+    BROKEN = a break candle closed beyond it first. 100+ = it went on to the full target.
+    win / pts: the hit trade (fade the edge for the hit size); win100 / pts100: the
+    same trade held for the full target. Both exit on the break close."""
     hit = f.best >= f.hg - 1e-9
     broken = (f.res == "broken") & ~hit
     opn = (f.res == "open") & ~hit
+    big = f.res == "held"
     graded = max(int(hit.sum() + broken.sum()), 1)
-    return dict(n=len(f), hit=int(hit.sum()), broken=int(broken.sum()), open=int(opn.sum()),
-                rate=100.0 * hit.sum() / graded, big=100.0 * (f.res == "held").sum() / graded,
+    return dict(n=len(f), hit=int(hit.sum()), broken=int(broken.sum()), open=int(opn.sum()), graded=int(hit.sum() + broken.sum()),
+                bign=int(big.sum()), rate=100.0 * hit.sum() / graded, big=100.0 * big.sum() / graded,
+                hbig=100.0 * (big & hit).sum() / max(int(hit.sum()), 1),
                 win=100.0 * (f.tres2 == "win").sum() / max((f.tres2 != "open").sum(), 1),
-                pts=f.pnl2.mean() if len(f) else np.nan)
+                pts=f.pnl2.mean() if len(f) else np.nan,
+                win100=100.0 * (f.tres == "win").sum() / max((f.tres != "open").sum(), 1),
+                pts100=f.pnl.mean() if len(f) else np.nan)
 
 
 def rate_at(f, x):
@@ -393,10 +445,20 @@ def groups_of(fa, cut):
          ("resistance blocks (tops)", f[f.side > 0]), ("support blocks (bottoms)", f[f.side < 0]),
          ("support, bounce session", f[(f.side < 0) & f.bounce]), ("resistance, bounce session", f[(f.side > 0) & f.bounce])]
     g += [(f"  {k} blocks", f[f.fam == k]) for k in sorted(f.fam.unique())] + [(f"  {y}", f[f.year == y]) for y in sorted(f.year.unique())]
+    g += prime_groups(f, cut)
     sk = fa[fa["skip"] != ""]
     if len(sk):
         g += [("SKIPPED at the touch", sk)] + [(f"  {SKIP_NAMES[k]}", sk[sk["skip"] == k]) for k in ("gap", "fast", "rsi")]
     return g
+
+
+def prime_groups(f, cut):
+    """PRIME blocks by period, side and year, and everything that is not PRIME."""
+    p = f[f.prime.astype(bool)]
+    g = [("PRIME blocks", p), ("PRIME, last 4 years", p[p.t >= cut]), ("PRIME, earlier", p[p.t < cut]),
+         ("PRIME resistance (tops)", p[p.side > 0]), ("PRIME support (bottoms)", p[p.side < 0])]
+    g += [(f"  PRIME {y}", p[p.year == y]) for y in sorted(p.year.unique())]
+    return g + [("standard blocks (not PRIME)", f[~f.prime.astype(bool)])]
 
 
 def null_stats(df, args, cut):
@@ -416,7 +478,8 @@ def ref_of(B, args):
 
 def run_args(B, args, **over):
     kw = dict(width=args.width, front=args.front, target=args.target, ref=ref_of(B, args), dyn=args.dyn, brk=args.brk, hold=args.hold,
-              slack=args.slack, fams=tuple(args.fams), hit=args.hit, trend=args.trend, skips=args.skips)
+              slack=args.slack, fams=tuple(args.fams), hit=args.hit, trend=args.trend, skips=args.skips,
+              prime_move=args.prime_move, prime_near=args.prime_near)
     kw.update(over)
     return kw
 
@@ -436,12 +499,14 @@ def daily_closes(path):
 def cmd_run(args):
     df = load(args)
     B = prep(df, args.tf, daily_closes(args.daily) if args.daily else None)
-    recs, born = run(B, **run_args(B, args))
+    log = {}
+    recs, born = run(B, log=log, **run_args(B, args))
     t0 = since(args, df)
     fa = frame(recs, B)
     fa = fa[fa.t >= t0]
     f = fa[fa["skip"] == ""]
     drawn = int((B["index"][born] >= t0).sum()) if len(born) else 0
+    cands = int((B["index"][log.get("cand", [])] >= t0).sum()) if log.get("cand") else 0
     if args.trend:
         print("TREND: a block is drawn only with the daily trend behind it (support above the 50-day average, resistance below)")
     if args.skips:
@@ -460,6 +525,11 @@ def cmd_run(args):
           f"'last 4 years' starts {cut.date()}")
     print(f"blocks drawn {drawn} ({drawn / days:.1f} a day), touched {len(fa)} ({len(fa) / days:.1f} a day), "
           f"of which skipped at the touch {len(fa) - len(f)}; a break = a {max(args.brk, args.tf)}-minute candle closing beyond the block")
+    npr = int(fa.prime.astype(bool).sum()) if len(fa) else 0
+    print(f"PRIME: yesterday moved {args.prime_move:.2f}+ average daily ranges with the daily trend; a block on the trend's side at an overnight level "
+          f"(AS, LO, 18:00 open, midnight open) within {args.prime_near:.2f} ranges of yesterday's close; first touch 09:30-16:00 ET")
+    print(f"PRIME candidates drawn {cands} ({cands * 252.0 / days:.0f} a year), of which first touched in the cash session {npr} "
+          f"({npr * 252.0 / days:.0f} a year)")
     nulls = null_stats(df, args, cut) if args.null else []
     print(f"HIT = a reversal of {args.hit:.0f} pts from the extreme made at the block, before any break candle closes beyond it")
     print(f"\n{'':30s} {'touched':>7s} {'hit':>6s} {'broken':>6s} {'open':>5s} {'HIT RATE':>10s} {'chance':>8s} {'z':>5s} {'to ' + format(args.target, '.0f') + '+':>8s}   {'hit trade: win':>15s} {'pts / block':>12s}")
@@ -478,6 +548,27 @@ def cmd_run(args):
         print(f"\nchance = the same blocks on {len(nulls)} direction-scrambled copies; hit trade on those: win {w.mean():.1f}%, "
               f"{p.mean():+.1f} ± {p.std():.1f} pts / block")
     if len(f):
+        tg = f"{args.target:.0f}+"
+        print(f"\nWENT ON TO {tg} (share of graded blocks), and two simple fades of the block's edge: take {args.hit:.0f} or {args.target:.0f} pts, "
+              f"exit when a candle closes beyond the block (no costs)")
+        print(f"{'':30s} {'graded':>7s} {'to ' + tg:>8s} {'chance':>8s} {'z':>5s}   {'for ' + format(args.hit, '.0f') + ': win':>12s} {'pts / block':>13s}   "
+              f"{'for ' + format(args.target, '.0f') + ': win':>13s} {'pts / block':>13s}")
+        for name, g in groups_of(fa, cut):
+            if not len(g) or not (name in ("ALL", "LAST 4 YEARS", "EARLIER") or "PRIME" in name):
+                continue
+            s = stats(g)
+            num = sum(x[name]["bign"] for x in nulls if name in x)
+            den = sum(x[name]["graded"] for x in nulls if name in x)
+            r = np.array([x[name]["big"] for x in nulls if name in x and x[name]["graded"] > 0])
+            ch = (f"{100.0 * num / den:7.1f}% {(s['big'] - 100.0 * num / den) / r.std():+5.1f}" if den > 0 and len(r) > 1 and r.std() > 0
+                  else f"{'':8s} {'':5s}")
+            se2 = g.pnl2.std(ddof=1) / np.sqrt(len(g)) if len(g) > 1 else np.nan
+            se1 = g.pnl.std(ddof=1) / np.sqrt(len(g)) if len(g) > 1 else np.nan
+            print(f"{name:30s} {s['graded']:7d} {s['big']:7.1f}% {ch}   {s['win']:11.1f}% {s['pts']:+8.1f} ±{se2:4.1f}   "
+                  f"{s['win100']:12.1f}% {s['pts100']:+8.1f} ±{se1:4.1f}")
+        if nulls:
+            print(f"chance = the same rule on {len(nulls)} direction-scrambled copies (all copies pooled); z = distance from chance in "
+                  f"standard deviations of one copy")
         print("\nhit rate if the hit were a reversal of at least ... points:  "
               + "   ".join(f"{x:.0f}: {rate_at(f, x):.1f}%" for x in args.ladder))
         done = f[f.res != "open"]
@@ -528,6 +619,8 @@ def main():
     ap.add_argument("--dyns", type=float, nargs="+", default=[0.10, 0.15, 0.20])
     ap.add_argument("--target", type=float, default=100.0, help="the full reversal a block is tracked to")
     ap.add_argument("--hit", type=float, default=45.0, help="the reversal that counts as a hit")
+    ap.add_argument("--prime-move", type=float, default=PRIME_MOVE, help="PRIME: yesterday's move with the trend, in average daily ranges")
+    ap.add_argument("--prime-near", type=float, default=PRIME_NEAR, help="PRIME: the level's distance from yesterday's close, in average daily ranges")
     ap.add_argument("--ladder", type=float, nargs="+", default=[40, 45, 50, 55, 60, 75, 100])
     ap.add_argument("--brk", type=int, default=0, help="break candle in minutes (0 = the chart candle)")
     ap.add_argument("--hold", type=float, default=0.0, help="calculated depth: target hold rate, e.g. 0.70 (0 = off)")
