@@ -5,7 +5,7 @@ backtest that grades it.
 
 | indicator | file | what it is |
 |---|---|---|
-| **MNQ Reversal Blocks** | `indicators/mnq_reversal_blocks.pine` | 60-point blocks at session levels, drawn with the daily trend and graded strictly on candle closes: a 45-point reversal 78% of the time, about half going on to 100+ — [details](#mnq-reversal-blocks) |
+| **MNQ Reversal Blocks** | `indicators/mnq_reversal_blocks.pine` | 60-point blocks at session levels, drawn with the daily trend and graded strictly on candle closes: a 45-point reversal 78% of the time, about half going on to 100+. PRIME blocks — the day after a strong day with the trend — went on to 100+ 71% of the time on a 5-minute chart, about 20 a year — [details](#mnq-reversal-blocks) |
 | **MNQ Exhaustion Reversals** | `indicators/mnq_exhaustion_reversals.pine` | tiered daily-close reversals that tested as real: oversold bounces (standard / Monday–Tuesday / deep / capitulation) and rare blow-off tops — [details](#mnq-exhaustion-reversals) |
 | MNQ Reversal Zones | `indicators/mnq_reversal_zones.pine` | no-lag zones on prior highs/lows with a live scorecard; tested at chance — [details](#mnq-reversal-zones) |
 | Alpha Predictive Limit Matrix | `indicators/alpha_predictive_limit_matrix.pine` | sweep-rejection limit setups for the 1H chart — [details](#alpha-predictive-limit-matrix) |
@@ -14,15 +14,23 @@ backtest that grades it.
 
 # MNQ Reversal Blocks
 
-**The rule:** blocks 60 points deep, a hit rate of 70% or more, graded
-strictly — a candle of the chart closing beyond the block breaks it, a wick
-does not.
+**The rule:** blocks 60 points deep, graded strictly — a candle of the chart
+closing beyond the block breaks it, a wick does not — and every zone is on
+the chart before price gets there.
 
 **What a 60-point block delivers under that rule:** a reversal of 45 points,
 78% of the time on a 5-minute chart and 75% on a 1-minute chart — in sample,
 out of sample and (76%) over ten years. About half of all blocks (53%) go on
-to 100 points. A 60-point block does not give 100-point reversals 70% of the
-time once closes count, and no kind of block tested does.
+to 100 points, which is what coin-flip copies of the data give too.
+
+**The exception: PRIME blocks.** The day after a strong day with the daily
+trend, a block on the trend's side at an overnight level near yesterday's
+close, first touched in the cash session, went on to a 100-point reversal
+**70.8%** of the time on a 5-minute chart over ten years (202 blocks: 69.4%
+before November 2022, 72.5% since), 74.3% on a 15-minute chart and 60.9% on
+a 1-minute chart. The same rule on coin-flip copies of the data gives 53%.
+The zone is drawn hours before price reaches it. It is rare — about 20 a
+year — and 202 blocks is a small sample: see [PRIME blocks](#prime-blocks).
 
 **The rules**
 
@@ -46,14 +54,168 @@ time once closes count, and no kind of block tested does.
 - Hit rate = hit / (hit + broken). A block is never marked hit after a
   candle of the chart has closed beyond it.
 
+## PRIME blocks
+
+**The rule** — four things, all known before price gets there:
+
+1. Yesterday closed at least 0.75 average daily ranges (14-day) away from
+   the close before it, in the direction of the daily trend: a strong up day
+   above the 50-day average, or a strong down day below it.
+2. The block is on the trend's side (support in an uptrend, resistance in a
+   downtrend) and its level was made overnight: Asia or London session high
+   / low, the 18:00 open or the midnight open.
+3. That level is within 0.40 average daily ranges of yesterday's close.
+4. Price first touches the block in the cash session, 09:30–16:00 ET.
+
+A block that meets 1–3 is outlined as a PRIME candidate the moment it is
+drawn (03:00 ET for the Asia levels and the opens, 09:30 for the London
+levels). About 64 candidates are drawn a year; about 20 are first touched in
+the cash session and graded as PRIME. A candidate touched before 09:30 or
+after 16:00 is an ordinary block.
+
+**The mechanism, as far as the data shows it.** After a strong day in the
+direction of the trend, the next cash session's first push against the trend
+— back through the overnight range, close to where yesterday ended — usually
+fails. The reading is that whoever missed yesterday's move is waiting to buy
+that dip (to sell that bounce, in a downtrend) once the cash session's volume
+arrives. What is measured, not read in: the effect needs the strong day, the
+trend's side, the cash session and the place, and it does not need any
+particular kind of level (tables below).
+
+**Results** (`rb_blocks.py run --trend`; blocks, hit rate, went on to 100+):
+
+| chart, period | PRIME blocks | PRIME hit (45 pts) | **PRIME went on to 100+** | all other blocks, 100+ |
+|---|---|---|---|---|
+| **5-minute, 10 years** (2017-03 → 2026-11, sizes scaled to price) | 202 | 87.6% | **70.8%** | 52.8% |
+| — before 2022-11 | 111 | 86.5% | 69.4% | 52.5% |
+| — since 2022-11 | 91 | 89.0% | 72.5% | 53.3% |
+| 15-minute, 10 years | 202 | 85.1% | 74.3% | 56.1% |
+| 1-minute, 10 years | 202 | 82.7% | 60.9% | 48.1% |
+| **5-minute, last 4 years, fixed 60 / 100 points** | 72 | 93.1% | **69.4%** (coin-flip data: 52.6%, z = +3.5) | 52.3% (51.3%) |
+| — 2022-11 → 2024-11 | 27 | 92.6% | 66.7% | 50.7% |
+| — 2024-11 → 2026-11 | 45 | 93.3% | 71.1% | 53.4% |
+| 15-minute, last 4 years | 72 | 90.3% | 69.4% | 54.8% |
+| 1-minute, last 4 years | 72 | 88.9% | 61.1% (coin-flip data: 49.3%, z = +2.2) | 47.3% (47.6%) |
+| real MNQ futures, last 50 trade days, 5-minute | 1 | hit | it went on to 100+ | 48.2% |
+
+PRIME by year, 5-minute, went on to 100+: 2017 60% (10 blocks), 2018 85%
+(20), 2019 58% (12), 2020 78% (23), 2021 68% (22), 2022 63% (27), 2023 79%
+(19), 2024 70% (20), 2025 60% (25), 2026 79% (24). Resistance blocks 73.7%
+(76), support blocks 69.0% (126). The 202 blocks fall on 178 days.
+
+**What it takes** (5-minute, 10 years; went on to 100+, before / since
+2022-11 in brackets; `rb_prime.py where`, `landscape`):
+
+| | blocks | went on to 100+ |
+|---|---|---|
+| **PRIME** | 202 | **70.8%** (69.4% / 72.5%) |
+| same days, same place, block AGAINST the trend's side | 181 | 59.1% (63.0% / 55.1%) |
+| same place and side, yesterday quiet (under 0.4 ranges either way) | 491 | 51.1% (51.0% / 51.3%) |
+| same place and side, yesterday 0.4–0.75 ranges with the trend | 187 | 57.8% (60.9% / 52.8%) |
+| same place and side, yesterday 0.75+ ranges AGAINST the trend | 114 | 58.8% (53.2% / 65.4%) |
+| PRIME candidates first touched before 09:30 | 301 | 53.2% (52.0% / 54.7%) |
+| PRIME days, overnight level further than 0.40 ranges from yesterday's close | 84 | 53.6% (51.9% / 56.2%) |
+| PRIME days, levels made in the cash session (opening range, 09:30 open, first hour) | 337 | 54.6% (53.2% / 56.7%) |
+| every block on the trend's side that is not PRIME | 5,081 | 52.8% (52.5% / 53.3%) |
+
+By where the level sits against yesterday's close on those days (ranges
+beyond the close in the direction the block fades): 0–0.10: 82.0%, 0.10–0.25:
+65.3%, 0.25–0.40: 78.0%, 0.40–0.60: 50.0%, beyond 0.60: 52.9% (34–50 blocks
+each); on the near side of the close 60.7% (61 blocks). By the hour of the first touch: 09:30–10:00 70.8% (106 blocks),
+10:00–11:00 75.0% (40), 11:00–12:00 70.0% (20), 12:00–14:00 66.7% (21),
+14:00–16:00 66.7% (15).
+
+**It is the day and the place, not the kind of level.** About ninety level
+families, each graded on its own on PRIME days (on the trend's side, first
+touched in the cash session, within 0.40 ranges of yesterday's close;
+`rb_prime.py families`), against the same family on quiet days:
+
+| level | went on to 100+, PRIME days | quiet days |
+|---|---|---|
+| Asia session high / low | 72.2% (90) | 50.5% |
+| overnight high / low (18:00–09:30) | 71.9% (199) | 49.9% |
+| **arbitrary levels** | **70.0%** (50) | 51.6% |
+| round 100s | 68.8% (64) | 58.6% |
+| swing highs / lows, ±2 hours / ±4 hours | 66.8% (319) / 66.9% (133) | 52.2% / 51.3% |
+| London session high / low | 66.4% (220) | 50.4% |
+| all levels that existed before 09:30, pooled | 64.7% (2,072; 64.7% / 64.6% in the two halves) | 52.5% |
+| all levels made after 09:30, pooled | 58.7% (7,312) | 53.0% |
+| first-hour high / low | 58.3% (180) | 51.8% |
+| order blocks / fair-value gaps | 56.2% (619) / 54.9% (1,267) | 52.4% / 53.0% |
+| session VWAP | 55.6% (453) | 54.5% |
+
+Arbitrary levels in the same place score what the session levels score. The
+session levels are used because they are the edge of the overnight range: a
+level in that band that was not touched overnight is, by construction, at or
+beyond the overnight high or low.
+
+**How it moves with its two sizes** (went on to 100+, blocks in brackets;
+`rb_prime.py grid`):
+
+| yesterday's move with the trend, at least | 0.50 | 0.60 | **0.75** | 0.90 | 1.00 | 1.25 |
+|---|---|---|---|---|---|---|
+| 5-minute | 64.2% (332) | 66.5% (278) | **70.8% (202)** | 72.3% (137) | 75.0% (100) | 82.4% (51) |
+| 15-minute | 70.5% | 71.6% | 74.3% | 73.7% | 75.0% | 84.3% |
+| 1-minute | 56.0% | 56.8% | 60.9% | 60.6% | 61.0% | 64.7% |
+
+| level within … ranges of yesterday's close (move 0.75) | 0.25 | **0.40** | 0.50 | 0.60 | no limit |
+|---|---|---|---|---|---|
+| 5-minute | 68.8% (141) | **70.8% (202)** | 69.4% (229) | 67.7% (248) | 65.7% (286) |
+| 15-minute | 72.3% | 74.3% | 73.4% | 71.0% | 70.3% |
+| 1-minute | 58.2% | 60.9% | 60.3% | 58.5% | 56.6% |
+
+Every cell is above the ordinary blocks in both halves of the ten years. The
+rate rises with the size of yesterday's move and is flat across 0.25–0.50
+for the distance; ending the window at 11:00, 12:00, 14:00 or 16:00 changes
+it by a point (71.9% / 71.7% / 71.1% / 70.8%).
+
+**The simple trade** — fade the first touch of the block's edge, exit when a
+candle closes beyond the block; no costs or slippage; points at today's
+price in the ten-year rows:
+
+| | take 45 pts: wins | points a block | take 100 pts: wins | points a block |
+|---|---|---|---|---|
+| **PRIME, 5-minute, 10 years** (202) | **75.7%** | **+13.5 ± 4.0** | 55.0% | +16.6 ± 6.7 |
+| — before 2022-11 / since | 74.8% / 76.9% | +10.8 ± 5.7 / +16.7 ± 5.6 | 55.0% / 54.9% | +14.1 ± 9.3 / +19.5 ± 9.5 |
+| PRIME, 15-minute, 10 years | 78.2% | +12.8 ± 4.6 | 61.4% | +22.8 ± 7.2 |
+| PRIME, 1-minute, 10 years | 70.3% | +9.8 ± 3.9 | 47.5% | +9.4 ± 6.1 |
+| PRIME, 5-minute, last 4 years, fixed points (72) | 79.2% | +19.0 ± 6.2 | 51.4% | +13.3 ± 11.1 |
+| all other blocks, 5-minute, 10 years (5,081) | 59.7% | −6.5 ± 0.9 | 42.3% | −5.2 ± 1.3 |
+
+A PRIME loss averages 85 points. The 100-point target is measured from the
+edge of the block, so it wins less often than the 70.8%, which is measured
+from the extreme price made inside the block.
+
+**What to hold against it**
+
+- **It is a small sample.** 202 blocks put the 70.8% somewhere between about
+  64% and 77%; a single year has 10 to 27 blocks and ran from 58% to 85%.
+- **It was found on the same ten years it is reported on.** The rule came out
+  of looking at this history: first the day (yesterday's move, the trend),
+  then the session and the place. Each step held in both halves, the two
+  sizes sit on a plateau and not a spike, and coin-flip data scores 53% — but
+  none of that replaces trading it forward, which has not been done.
+- **70% is a 5-minute number.** On a 1-minute chart a single 1-minute close
+  beyond the block breaks it, and the same blocks score 61%.
+- **It is rare.** About 20 a year, and none on most days.
+- **The data is a Nasdaq-100 CFD quoted from the futures**, not the MNQ tape.
+  The 50 days of real MNQ data hold one PRIME block.
+- **There is no older, independent sample.** A daily-bar stand-in (the
+  bounce from the day's low to the close when that low is near yesterday's
+  close) shows nothing after such days — not in 1962–2016 and not in the
+  last ten years either — so daily data can neither confirm nor refute what
+  happens inside the session.
+
+## All blocks
+
 **Results** — real 1-minute Nasdaq-100 data (`rb_blocks.py run --trend`):
 
 | period, chart | touched | hit | broken | **hit rate** | went on to 100+ |
 |---|---|---|---|---|---|
 | in sample, 2022-11 → 2024-11, 5-minute | 763 | 595 | 168 | 78.0% | 51.2% |
 | **out of sample, 2024-11 → 2026-11, 5-minute** | 1,036 | 807 | 229 | **77.9%** | 54.2% |
-| last 4 years, 5-minute | 1,800 | 1,403 | 397 | **77.9%** (scrambled data: 77.3%) | 52.9% |
-| last 4 years, 1-minute | 1,801 | 1,344 | 457 | 74.6% | 47.8% |
+| last 4 years, 5-minute | 1,800 | 1,403 | 397 | **77.9%** (scrambled data: 77.4%) | 52.9% (51.3%) |
+| last 4 years, 1-minute | 1,801 | 1,344 | 457 | 74.6% (75.9%) | 47.8% (47.6%) |
 | out of sample, 1-minute | 1,037 | 782 | 255 | 75.4% | 47.5% |
 | last 4 years, 15-minute | 1,790 | 1,379 | 411 | 77.0% | 55.4% |
 | **10 years, 2017-03 → 2026-11**, 5-minute, sizes scaled to price | 5,283 | 4,010 | 1,273 | **75.9%** | 53.5% |
@@ -81,7 +243,7 @@ reaches 100+, and halves the number of blocks. The skip rule — a block
 touched while fading the overnight gap, a fast move or a stretched RSI is
 greyed out — removes blocks that hit just as often once the trend filter is
 on (the skipped blocks: 79.3% over 4 years, 75.9% over 10), so it ships as a
-switch that is off.
+switch that is off. PRIME marks blocks; it does not add or remove any.
 
 **Hit rate by reversal size** (5-minute chart, last 4 years; 1-minute chart
 in brackets):
@@ -94,8 +256,8 @@ in brackets):
 statement-by-statement Python transliteration of the script; it and the
 engine grade every block identically on 5-minute and on 1-minute candles
 (1,792 / 1,793 blocks with the trend filter, 3,560 / 3,562 without, with the
-skip rule on and off: no differences). The script itself has not been run
-through TradingView's compiler here.
+skip rule on and off, PRIME flag included: no differences). The script
+itself has not been run through TradingView's compiler here.
 
 **Every kind of block scores the same.** Twenty-three block types, all 60
 points deep, graded by the same rules (`rb_zoo.py`):
@@ -120,12 +282,14 @@ inside 10–60 points) hit 51.0% and 45.1%, because they are shallower.
 **What the hit rate does not mean**
 
 - **It is not prediction.** The same blocks on direction-scrambled copies of
-  the data (`rz_null.py`) hit 77.3% against 77.9% real. The hit rate comes
+  the data (`rz_null.py`) hit 77.4% against 77.9% real. The hit rate comes
   from block depth against reversal size, and the levels add nothing to it.
-- **It is not a trading edge.** Fading the first touch of a block's edge for
-  45 points and exiting on the break close won 61.0% of the time and
-  averaged −2.1 ± 1.4 points per block (a loss averages 76 points); the same
-  trade on scrambled data averages −2.3.
+  PRIME blocks are the one exception found: 93.1% hit against 76.4% on
+  scrambled data, 69.4% to 100+ against 52.6%.
+- **Ordinary blocks are not a trading edge.** Fading the first touch of a
+  block's edge for 45 points and exiting on the break close won 61.0% of the
+  time and averaged −2.1 ± 1.4 points per block (a loss averages 76 points);
+  the same trade on scrambled data averages −2.2.
 - **Earlier versions overstated it.** The first version broke a block only
   when a 2-hour candle closed beyond it, which scored 70% for 100-point
   reversals while marking blocks held after the chart's own candles had
@@ -204,11 +368,112 @@ suggests: the trend filter adds about one point to the 100+ rate and nothing
 to the hit rate, and the gap / fast-move / RSI rule adds nothing once the
 trend filter is on — see "What each change is worth" above.
 
-**Result.** The most reliable block found hits 77–79% for 45 points and goes
-on to 100+ about 54% of the time; the least reliable hits 72–73% and 47–48%.
-The market shows mild continuation, not reversal, at the places traders watch
-most and after fast moves. Nothing tested produces a high-probability
-100-point reversal from a 60-point block.
+**Result.** By level type and by what is happening at the touch, the most
+reliable block hits 77–79% for 45 points and goes on to 100+ about 54% of the
+time; the least reliable hits 72–73% and 47–48%. The market shows mild
+continuation, not reversal, at the places traders watch most and after fast
+moves. No kind of level and no condition at the touch produces a
+high-probability 100-point reversal from a 60-point block. What does is the
+kind of day — see [PRIME blocks](#prime-blocks) and the next section.
+
+## Mechanisms that were tested
+
+A reversal that can be seen in advance needs buying or selling that is tied
+to a price and known beforehand. Each candidate was tested on session-level
+blocks by the same strict rules (`rb_mech.py`, `rb_deep.py`; 26,659 graded
+blocks over ten years, 52.1% of which went on to 100+; chance in brackets
+where scrambled copies were run on the last 4 years):
+
+| mechanism | data | went on to 100+ |
+|---|---|---|
+| dealer gamma: dealers long gamma sell rallies and buy dips, short gamma the opposite | SqueezeMetrics daily S&P 500 GEX, 2011 → | 10 years: short gamma 53.9%, highest third 51.9%. 4 years: 55.0% (53.8%) and 49.2% (49.6%). The 45-point hit rate does rise with gamma, 73.1% → 79.2% |
+| dark-pool buying (DIX) on the side of the reversal | same file | lowest fifth 52.4%, middle 52.4%, highest fifth 51.1% |
+| VIX term structure (VIX / 3-month VIX) and VIX level | Yahoo | 50.9–53.4% and 50.5–53.5% across all buckets |
+| QQQ $5 / $10 option strikes, carried to index points at the prior 16:00 ratio | Yahoo | 50.1% (50.4%) / 50.3% (50.2%); Fridays 54.3% / 55.1% on 245 / 158 blocks |
+| leveraged-ETF rebalancing: fading a day already up or down 1%+ in the last hour | prices | 48.6% (183 blocks) |
+| overnight dealer inventory (Boyarchenko, Larsen, Whelan): support when Europe opens, 02:00–04:00 | prices | 53.6% |
+| monthly expiry / other Fridays | calendar | 53.2% / 51.9% |
+| over thirty conditions known before the touch (how the level was made, what today's earlier blocks did, choppiness, speed), and a gradient-boosted model on all of them judged on later years | prices, VXN | each moves the rate by a few points; the model's best fifth: 55.1% against a 52.5% base (10 years), and no better than the same model on scrambled data over 4 years |
+| once a block has already reversed 60 points | — | 76% go on to 100, but that describes a move already under way, not a zone seen in advance: dropped |
+| **the day after a big move**: yesterday moved 1.5%+ against the direction being faded | prices | **57.1%** (57.3% / 56.9% in the two halves), against 51.2% after a flat day |
+
+Only the last one moved the rate in both halves. Narrowed to the trend's
+side, the cash session, the overnight levels and the neighbourhood of
+yesterday's close — each step checked in both halves — it became the PRIME
+rule. Dealer gamma is the most plausible of the others and does show in the
+45-point hit rate; it does not lift the share that reaches 100.
+
+**Commands.** `data/nq` holds the Dukascopy 1-minute day files
+(`rz_data.py duka`), `data/yahoo` the Yahoo files (`rz_data.py yahoo`), and
+`data/mech/DIX.csv` the public SqueezeMetrics file
+(`squeezemetrics.com/monitor/static/DIX.csv`).
+
+The indicator's backtest, PRIME included, with chance from 24 scrambled copies:
+
+```bash
+python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --null 24
+```
+
+Ten years, sizes scaled to price (add `--tf 1` or `--tf 15` for the other charts):
+
+```bash
+python3 backtest/rb_blocks.py run --duka data/nq --start 20170301 --warm 110 --trend --scale
+```
+
+```bash
+python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --tf 1 --null 10
+```
+
+Real MNQ futures:
+
+```bash
+python3 backtest/rb_blocks.py run --csv data/yahoo/MNQ_5m.csv --daily data/yahoo/MNQ_1d.csv --trend
+```
+
+The Pine logic against the engine, block by block:
+
+```bash
+python3 backtest/rb_pine_mirror.py --duka data/nq --start 20221109 --warm 120
+```
+
+Where the PRIME rule comes from, its two sizes swept, the place, and every
+level family on PRIME days:
+
+```bash
+python3 backtest/rb_prime.py landscape --duka data/nq --start 20170301 --warm 110 --scale
+```
+
+```bash
+python3 backtest/rb_prime.py grid --duka data/nq --start 20170301 --warm 110 --scale --tfs 5 1 15
+```
+
+```bash
+python3 backtest/rb_prime.py where --duka data/nq --start 20170301 --warm 110 --scale
+```
+
+```bash
+python3 backtest/rb_prime.py families --duka data/nq --start 20170301 --warm 110 --scale
+```
+
+The mechanisms:
+
+```bash
+python3 backtest/rb_mech.py gamma --duka data/nq --start 20221109 --gex data/mech/DIX.csv --yahoo data/yahoo --null 4
+```
+
+```bash
+python3 backtest/rb_mech.py flows --duka data/nq --start 20170301 --scale --null 0
+```
+
+```bash
+python3 backtest/rb_mech.py strikes --duka data/nq --start 20221109 --yahoo data/yahoo --null 4
+```
+
+```bash
+python3 backtest/rb_deep.py model --duka data/nq --start 20170301 --vxn data/yahoo/VXN_1d.csv --scale --split 20221109
+```
+
+Level types, conditions at the touch, and the twenty-three block types:
 
 ```bash
 python3 backtest/rb_hunt.py levels --duka data/nq --start 20221109 --vxn data/yahoo/VXN_1d.csv --null 6
@@ -223,28 +488,12 @@ python3 backtest/rb_hunt.py combo --duka data/nq --start 20161110 --vxn data/yah
 ```
 
 ```bash
-python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --null 8
-```
-
-```bash
-python3 backtest/rb_blocks.py run --duka data/nq --start 20170301 --warm 110 --trend --scale
-```
-
-```bash
-python3 backtest/rb_blocks.py run --duka data/nq --start 20221109 --warm 120 --trend --tf 1
-```
-
-```bash
-python3 backtest/rb_pine_mirror.py --duka data/nq --start 20221109 --warm 120
-```
-
-```bash
 python3 backtest/rb_zoo.py --duka data/nq --start 20161110 --scale --null 0
 ```
 
 Paste `indicators/mnq_reversal_blocks.pine` into the Pine Editor on MNQ or
-NQ, on a 1 to 15 minute chart. The grading logic is the one `rb_blocks.py`
-runs.
+NQ, on a 1 to 15 minute chart; the PRIME figures above are for a 5-minute
+chart. The grading logic is the one `rb_blocks.py` runs.
 
 ---
 
