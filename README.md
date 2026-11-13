@@ -199,7 +199,10 @@ from the extreme price made inside the block.
   beyond the block breaks it, and the same blocks score 61%.
 - **It is rare.** About 20 a year, and none on most days.
 - **The data is a Nasdaq-100 CFD quoted from the futures**, not the MNQ tape.
-  The 50 days of real MNQ data hold one PRIME block.
+  The 50 days of real MNQ data hold one PRIME block. The CFD's day ends at
+  16:15 ET and TradingView's daily futures bar at 17:00 ET, so on a day whose
+  move is right at 0.75 ranges the chart and the backtest can disagree about
+  whether today is a PRIME day.
 - **There is no older, independent sample.** A daily-bar stand-in (the
   bounce from the day's low to the close when that low is near yesterday's
   close) shows nothing after such days — not in 1962–2016 and not in the
