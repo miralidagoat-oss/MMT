@@ -8,6 +8,12 @@ order of its sections, every condition, every counter - grades each block
 exactly as the backtest does. A mismatch means one of the two is wrong.
 
   python3 rb_pine_mirror.py --duka data/nq --start 20221109 --warm 120
+  python3 rb_pine_mirror.py --csv data/yahoo/MNQ_5m.csv --daily data/yahoo/MNQ_1d.csv --tfs 5
+
+The second form runs on real futures candles, which trade until 17:00 ET: it
+checks that both sides leave the 16:15-17:00 candles out of the day's
+reference close. --daily supplies the daily closes for the 50-day average
+when the intraday file is too short to hold one.
 """
 import argparse
 import os
@@ -27,12 +33,12 @@ class Block:
     def __init__(self, side, near, far, name, born, cand):
         self.side, self.near, self.far, self.name, self.born = side, near, far, name, born
         self.state, self.turn, self.best, self.days, self.skip = 0, np.nan, 0.0, 0, False
-        self.cand, self.prime = cand, False
+        self.cand, self.prime, self.early = cand, False, False
         self.touch, self.hit, self.broken, self.big, self.expired = -1, False, False, False, False
 
 
 def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips=False, usePrime=True, primeMove=0.75, primeNear=0.40,
-           useAS=True, useGO=True, useMO=True, useLO=True, useOR=True, useRO=True, useIB=True, usePD=False, usePW=False):
+           daily=None, useAS=True, useGO=True, useMO=True, useLO=True, useOR=True, useRO=True, useIB=True, usePD=False, usePW=False):
     open_, high, low, close, mod_, td, wk = B["o"], B["h"], B["l"], B["c"], B["mod"], B["td"], B["wk"]
     n = len(open_)
     bigUse = max(bigPts, hitPts)
@@ -48,8 +54,11 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
     pdH = np.r_[np.nan, H[:-1]]
     pdL = np.r_[np.nan, L[:-1]]
     pdC = np.r_[np.nan, C[:-1]]
-    pdC2 = np.r_[np.nan, np.nan, C[:-2]]                                  # close[2]
     sma50 = pd.Series(C).rolling(50).mean().shift(1).values             # ta.sma(close, 50)[1]
+    if daily is not None:                                                 # daily closes from a longer daily file (trade-day number -> close)
+        day0 = td[starts]
+        pdC = daily.shift(1).reindex(day0).values
+        sma50 = daily.rolling(50).mean().shift(1).reindex(day0).values
     adr = pd.Series(H - L).rolling(14).mean().shift(1).values            # ta.sma(high - low, 14)[1]
     wkd = wk[starts]
     pwH, pwL = np.full(D, np.nan), np.full(D, np.nan)
@@ -64,20 +73,27 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
 
     live, done = [], []
     tl = dict(touched=0, hit=0, broken=0, expired=0, big=0, tTop=0, hTop=0, bTop=0, tBot=0, hBot=0, bBot=0,
-              sTouched=0, sHit=0, sBroken=0, drawn=0, pDrawn=0, pTouched=0, pHit=0, pBroken=0, pBig=0)
+              sTouched=0, sHit=0, sBroken=0, drawn=0, pDrawn=0, pTouched=0, pHit=0, pBroken=0, pBig=0,
+              aTouched=0, aHit=0, aBroken=0, aBig=0)
     bests = []
     asH = asL = loH = loL = orH = orL = ibH = ibL = np.nan
     asDone = loDone = orDone = ibDone = True
     dayOpen = midOpen = rthOpen = gapADR = np.nan
+    refClose = yC = yC2 = np.nan                                          # reference closes: day in progress, yesterday, the day before
 
     for i in range(n):
         d = didx[i]
         open, hi, lo, cl, mod = open_[i], high[i], low[i], close[i], mod_[i]
         bias = 0 if np.isnan(pdC[d]) or np.isnan(sma50[d]) or pdC[d] == sma50[d] else (1 if pdC[d] > sma50[d] else -1)
-        yMove = np.nan if bias == 0 or np.isnan(pdC2[d]) or np.isnan(adr[d]) or adr[d] <= 0 else bias * (pdC[d] - pdC2[d]) / adr[d]
-        primeDay = usePrime and not np.isnan(yMove) and yMove >= primeMove
         newDay = i == 0 or td[i] != td[i - 1]
         rth = 570 <= mod < 1020
+        cash = 570 <= mod < 960
+        opening = 570 <= mod < 600
+        if newDay:
+            yC2 = yC
+            yC = refClose
+        yMove = np.nan if bias == 0 or np.isnan(yC) or np.isnan(yC2) or np.isnan(adr[d]) or adr[d] <= 0 else bias * (yC - yC2) / adr[d]
+        primeDay = usePrime and not np.isnan(yMove) and yMove >= primeMove
 
         def f_add(level, side, name, ovn):
             far = level + side * blockPts
@@ -87,7 +103,8 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
                     if b.side == side and min(b.near, b.far) <= max(level, far) and max(b.near, b.far) >= min(level, far):
                         ok = False
             if ok:
-                pc = bool(primeDay and ovn and side * bias < 0 and abs(level - pdC[d]) <= primeNear * adr[d])
+                past = side * (level - yC)
+                pc = bool(primeDay and ovn and side * bias < 0 and past > 0 and past <= primeNear * adr[d])
                 live.append(Block(side, level, far, name, i, pc))
                 tl["drawn"] += 1
                 tl["pDrawn"] += 1 if pc else 0
@@ -151,7 +168,7 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
         if rth and not loDone:
             loDone = True
             rthOpen = open
-            gapADR = np.nan if np.isnan(pdC[d]) or np.isnan(adr[d]) or adr[d] <= 0 else (open - pdC[d]) / adr[d]
+            gapADR = np.nan if np.isnan(yC) or np.isnan(adr[d]) or adr[d] <= 0 else (open - yC) / adr[d]
             if useLO:
                 f_add(loH, 1, "LO high", True)
                 f_add(loL, -1, "LO low", True)
@@ -181,7 +198,8 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
                 f_demote(b)
             if b.state == 0 and inside:
                 b.state, b.turn, first, b.touch = 1, ext, True, i
-                b.prime = b.cand and 570 <= mod < 960
+                b.prime = b.cand and cash
+                b.early = b.prime and opening
                 if b.cand and not b.prime:
                     f_demote(b)
                 if why == "":
@@ -189,6 +207,7 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
                     tl["tTop"] += 1 if s > 0 else 0
                     tl["tBot"] += 1 if s < 0 else 0
                     tl["pTouched"] += 1 if b.prime else 0
+                    tl["aTouched"] += 1 if b.early else 0
                 if why != "":
                     b.skip = True
                     tl["sTouched"] += 1
@@ -201,6 +220,7 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
                     tl["bTop"] += 1 if s > 0 else 0
                     tl["bBot"] += 1 if s < 0 else 0
                     tl["pBroken"] += 1 if b.prime else 0
+                    tl["aBroken"] += 1 if b.early else 0
                 if beyond and b.state == 1 and not graded:
                     tl["sBroken"] += 1
                 if beyond and b.state == 1:
@@ -223,6 +243,7 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
                         tl["hTop"] += 1 if s > 0 else 0
                         tl["hBot"] += 1 if s < 0 else 0
                         tl["pHit"] += 1 if b.prime else 0
+                        tl["aHit"] += 1 if b.early else 0
                     if nowHit and not graded:
                         tl["sHit"] += 1
                     if nowBig:
@@ -231,12 +252,15 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
                     if nowBig and graded:
                         tl["big"] += 1
                         tl["pBig"] += 1 if b.prime else 0
+                        tl["aBig"] += 1 if b.early else 0
                 if gone and graded:
                     bests.append(min(b.best, bigUse))
                 if gone:
                     done.append(live.pop(j))
 
-        # ── 4. SESSION RANGES
+        # ── 4. SESSION RANGES and the day's reference close
+        if mod < 975 or mod >= 1080:
+            refClose = cl
         if mod >= 1080 or mod < 180:
             asH = hi if np.isnan(asH) else max(asH, hi)
             asL = lo if np.isnan(asL) else min(asL, lo)
@@ -252,29 +276,31 @@ def mirror(B, blockPts=60.0, hitPts=45.0, bigPts=100.0, trendOnly=True, useSkips
     return done, tl, bests
 
 
-def compare(B, trend, skips, t0, t1):
+def compare(B, trend, skips, t0, t1, daily=None):
     """Every block touched in [t0, t1): outcome in the Pine mirror against the engine."""
-    done, tl, _ = mirror(B, trendOnly=trend, useSkips=skips)
+    done, tl, _ = mirror(B, trendOnly=trend, useSkips=skips, daily=daily)
     recs, _ = rb_blocks.run(B, trend=trend, skips=skips)
     idx = B["index"]
-    pine = {(b.touch, b.side, round(b.near, 4)): (b.hit, b.broken, b.big, b.skip, b.prime) for b in done
+    pine = {(b.touch, b.side, round(b.near, 4)): (b.hit, b.broken, b.big, b.skip, b.prime, b.early) for b in done
             if b.touch >= 0 and t0 <= idx[b.touch] < t1}
     eng = {}
     for r in recs:
         if t0 <= idx[r["touch"]] < t1:
             hit = r["best"] >= r["hg"] - 1e-9
             eng[(r["touch"], r["side"], round(r["near"], 4))] = (hit, r["res"] == "broken" and not hit, r["res"] == "held", r["skip"] != "",
-                                                                 bool(r["prime"]))
+                                                                 bool(r["prime"]), bool(r["early"]))
     both = set(pine) & set(eng)
     diff = [k for k in both if pine[k] != eng[k]]
     hits = sum(1 for k in both if pine[k][0] and not pine[k][3])
     broken = sum(1 for k in both if pine[k][1] and not pine[k][3])
     pr = [pine[k] for k in both if pine[k][4] and not pine[k][3]]
     ph, pb, pg = sum(1 for x in pr if x[0]), sum(1 for x in pr if x[1]), sum(1 for x in pr if x[2])
+    ea = [x for x in pr if x[5]]
+    ah, ab, ag = sum(1 for x in ea if x[0]), sum(1 for x in ea if x[1]), sum(1 for x in ea if x[2])
     print(f"  trend {'on ' if trend else 'off'} skips {'on ' if skips else 'off'}: blocks in the Pine mirror {len(pine):5d}, in the engine {len(eng):5d}, "
           f"only in one {len(set(pine) ^ set(eng)):3d}, different outcome {len(diff):3d}   "
           f"(graded: {hits} hit, {broken} broken = {100.0 * hits / max(hits + broken, 1):.1f}%;  PRIME: {ph} hit, {pb} broken, "
-          f"{pg} to 100+ = {100.0 * pg / max(ph + pb, 1):.1f}%)")
+          f"{pg} to 100+ = {100.0 * pg / max(ph + pb, 1):.1f}%;  grade A: {ah} hit, {ab} broken, {ag} to 100+)")
     return len(set(pine) ^ set(eng)) + len(diff)
 
 
@@ -282,21 +308,24 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--duka")
     ap.add_argument("--cache")
+    ap.add_argument("--csv", help="a Yahoo intraday CSV (real MNQ=F)")
+    ap.add_argument("--daily", help="Yahoo daily CSV whose closes give the 50-day average (short intraday files)")
     ap.add_argument("--start")
     ap.add_argument("--end")
     ap.add_argument("--warm", type=int, default=120)
     ap.add_argument("--tfs", type=int, nargs="+", default=[5, 1])
     args = ap.parse_args()
-    args.csv = None
     df = rb_blocks.load(args)
-    t0 = pd.Timestamp(args.start, tz="UTC")
+    daily = rb_blocks.daily_closes(args.daily) if args.daily else None
+    t0 = rb_blocks.since(args, df)
     t1 = df.index[-1] - pd.Timedelta(days=5)                 # blocks still live at the end of the data are in neither list
     bad = 0
     for tf in args.tfs:
-        B = rb_blocks.prep(df, tf)
-        print(f"{tf}-minute candles, blocks touched {t0.date()} -> {t1.date()}:")
+        B = rb_blocks.prep(df, tf, daily)
+        late = int(((B["mod"] >= 975) & (B["mod"] < 1080)).sum())
+        print(f"{tf}-minute candles, blocks touched {t0.date()} -> {t1.date()} ({late} candles start between 16:15 and 18:00 ET):")
         for trend, skips in ((True, False), (True, True), (False, False), (False, True)):
-            bad += compare(B, trend, skips, t0, t1)
+            bad += compare(B, trend, skips, t0, t1, daily)
     print("PARITY OK: the Pine logic and the backtest engine grade every block identically" if bad == 0 else f"MISMATCHES: {bad}")
 
 

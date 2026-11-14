@@ -8,7 +8,8 @@ indicator("MNQ Reversal Blocks — 60-point session blocks, PRIME day-after zone
 //   there, only with the daily trend behind them, and graded strictly on this
 //   chart's own candle closes. One kind of block, PRIME, is marked in advance:
 //   it is the only one that goes on to a 100-point reversal far more often
-//   than block size alone explains.
+//   than block size alone explains. Grade A PRIME blocks did it 80% of the
+//   time in ten years of data.
 //
 //   A BLOCK starts at a level known in advance and extends 60 points beyond it:
 //     AS  Asia session high / low, 18:00-03:00   (drawn at 03:00 ET)
@@ -25,24 +26,33 @@ indicator("MNQ Reversal Blocks — 60-point session blocks, PRIME day-after zone
 //   not on top of a live block on the same side. Nothing is ever moved or
 //   painted backwards.
 //
-//   TREND   support blocks are drawn only when yesterday's close is above its
-//           50-day average, resistance blocks only when it is below.
+//   TREND   support blocks (longs) are drawn only when yesterday's close is
+//           above its 50-day average, resistance blocks (shorts) only when it
+//           is below. So in a downtrend the chart shows shorts only, and in an
+//           uptrend longs only, until the close crosses the average.
 //
 //   PRIME BLOCKS - the mechanism
-//     The day after a strong day WITH the trend, the cash session's first push
-//     against the trend, back through the overnight range near yesterday's
-//     close, usually fails: buyers who missed yesterday's move (sellers, in a
-//     downtrend) are waiting there. A block is a PRIME candidate from the
-//     moment it is drawn when all of this is already known:
+//     The day after a strong day WITH the trend, the cash session's opening
+//     push goes back through yesterday's close and takes out the overnight
+//     low (the overnight high, in a downtrend), and usually fails there:
+//     buyers who missed yesterday's move (sellers, in a downtrend) are
+//     waiting. A block is a PRIME candidate from the moment it is drawn when
+//     all of this is already known:
 //       1. yesterday closed at least 0.75 average daily ranges away from the
 //          close before it, in the direction of the daily trend
 //       2. the block is on the trend's side and its level was made overnight:
 //          Asia or London high / low, the 18:00 open or the midnight open
-//       3. that level is within 0.40 average daily ranges of yesterday's close
-//     It is graded as PRIME if price first touches it in the cash session,
-//     09:30-16:00 ET. Touched earlier or later, it is an ordinary block.
-//     About 64 candidates are drawn a year; about 20 are touched in the cash
-//     session.
+//       3. that level is on the FAR side of yesterday's close - below it for
+//          support, above it for resistance - by no more than 0.40 average
+//          daily ranges
+//     The first touch then decides the grade:
+//       PRIME A   first touched 09:30-10:00 ET, the opening push
+//       PRIME B   first touched 10:00-16:00 ET
+//     Touched before 09:30 or after 16:00, it is an ordinary block.
+//     "Yesterday's close" is the close of the last candle that starts before
+//     16:15 ET, read from this chart, so it does not depend on how the daily
+//     bar's close is set. About 45 candidates are drawn a year; about 8
+//     become grade A and 7 grade B.
 //
 //   GRADING - STRICT (every candle of this chart, at its close)
 //     TOUCH    a candle trades into the block
@@ -62,40 +72,46 @@ indicator("MNQ Reversal Blocks — 60-point session blocks, PRIME day-after zone
 // WHAT THE BACKTEST SAYS (README.md, backtest/rb_blocks.py)
 //   Real 1-minute Nasdaq-100 data, 60-point blocks, HIT = 45 points, trend
 //   filter on. Ten years = 2017-03 to 2026-11, sizes scaled to the price.
+//   Went on to 100+ (share of graded blocks), number of blocks in brackets:
 //
-//                                   ALL BLOCKS             PRIME BLOCKS
-//                                   hit    to 100+    blocks   hit    to 100+
-//     5-min chart, 10 years        75.9%   53.5%       202    87.6%   70.8%
-//       of which before Nov 2022   74.7%   53.1%       111    86.5%   69.4%
-//       of which since Nov 2022    77.5%   54.0%        91    89.0%   72.5%
-//     15-min chart, 10 years       74.5%   56.8%       202    85.1%   74.3%
-//     1-min chart, 10 years        75.2%   48.5%       202    82.7%   60.9%
+//                                 all blocks   PRIME A      PRIME B
+//     5-min chart, 10 years         53.5%      79.7% (79)   70.0% (70)
+//       of which before Nov 2022    53.1%      78.0% (50)   69.7% (33)
+//       of which since Nov 2022     54.0%      82.8% (29)   70.3% (37)
+//     3-min chart, 10 years         52.1%      79.7%        64.3%
+//     10-min chart, 10 years        56.0%      82.3%        72.9%
+//     15-min chart, 10 years        56.8%      81.0%        74.3%
+//     30-min chart, 10 years        58.2%      78.5%        78.6%
+//     1-min chart, 10 years         48.5%      72.2%        55.7%
 //     5-min, last 4 years, fixed
-//       60 / 100 points            77.9%   52.9%        72    93.1%   69.4%
+//       60 / 100 points             52.9%      80.0% (20)   69.7% (33)
 //       same rule on coin-flip
-//       copies of the data         77.4%   51.3%               76.4%   52.6%
-//     1-min, last 4 years          74.6%   47.8%        72    88.9%   61.1%
-//       coin-flip copies           75.9%   47.6%               75.8%   49.3%
-//     real MNQ futures, 50 days    71.3%   48.7%         1    (it went to 100+)
+//       copies of the data          51.3%      53.3%        54.9%
+//     real MNQ futures, 50 days     48.7%      none         1 (it went to 100+)
 //
-//   PRIME by year, 5-min chart, went on to 100+: 60% 85% 58% 78% 68% 63% 79%
-//   70% 60% 79% (2017 to 2026, 10 to 27 blocks a year).
+//   45-point hit rate, 5-min chart, 10 years: all blocks 75.9%, PRIME A 96.2%,
+//   PRIME B 87.1%.
+//   PRIME A by year, 5-min chart, went on to 100+: 80% 85% 100% 86% 70% 69%
+//   80% 86% 83% 80% (2017 to 2026, 3 to 13 blocks a year).
 //
 //   READ THIS BEFORE TRADING IT
 //   - Ordinary blocks: the hit rate is set by block depth against reversal
 //     size. Coin-flip copies of the data score the same. 53% go on to 100
 //     points. Fading their edge for 45 points, exit on the break close, won
-//     60% of the time and LOST 6.5 points a block over ten years.
-//   - PRIME blocks are the exception, and they are rare: about 20 a year.
-//     The 70% is a 5-minute-chart number. On a 1-minute chart, where a single
-//     1-minute close beyond the block breaks it, the same blocks score 61%.
-//   - Fading a PRIME block's edge for 45 points, exit on the break close:
-//     75.7% wins, +13.5 points a block (5-min, 10 years, 202 trades, before
-//     costs; a loss averages 85 points). 202 trades is a small sample: the
-//     true rate could sit anywhere from the low 60s to the high 70s.
-//   - The rule was found on this same ten-year history. It held in both
-//     halves (69.4% / 72.5%) and every year scored 58% or more, but it has
-//     not been traded forward.
+//     60% of the time and LOST 6.4 points a block over ten years.
+//   - PRIME A is the exception and it is rare: about 8 blocks a year. 79
+//     blocks put the 80% somewhere between about 71% and 89%.
+//   - The 80% holds on 3- to 15-minute charts. On a 1-minute chart, where a
+//     single 1-minute close beyond the block breaks it, grade A scores 72%.
+//     On charts above 30 minutes no candle starts between 09:30 and 10:00, so
+//     there is no grade A.
+//   - Fading a grade A edge for 45 points, exit on the break close: 82.3%
+//     wins, +21.4 points a block (5-min, 10 years, 79 trades, before costs;
+//     a loss averages 88 points).
+//   - The rule was found on this same ten-year history: first the day, then
+//     the side of yesterday's close, then the time of the touch. Each step
+//     held in both halves and on a wider set of levels, but none of it has
+//     been traded forward.
 //
 //   The scorecard grades every block on this chart's own history.
 // ============================================================================
@@ -115,13 +131,13 @@ hitPts   = input.float(45.0, "HIT = a reversal of at least this many points", mi
 bigPts   = input.float(100.0, "Also mark when the reversal reaches this many points", minval = 10.0, step = 5.0, group = G_BLK)
 
 usePrime  = input.bool(true, "Mark PRIME blocks", group = G_PRM,
-     tooltip = "The day after a strong day with the daily trend, a block on the trend's side at an overnight level near yesterday's close is PRIME if it is first touched 09:30-16:00 New York time. Backtest, 5-minute chart, 10 years: 70.8% of 202 PRIME blocks went on to 100+ (all other blocks: 52.8%).")
+     tooltip = "The day after a strong day with the daily trend, a block on the trend's side at an overnight level just beyond yesterday's close is PRIME. Grade A: first touched 09:30-10:00 New York time. Grade B: first touched 10:00-16:00. Backtest, 5-minute chart, 10 years: grade A 79.7% of 79 blocks went on to 100+, grade B 70.0% of 70, all other blocks 52.9%.")
 primeMove = input.float(0.75, "Yesterday's close-to-close move with the trend, in average daily ranges: at least", minval = 0.5, maxval = 3.0,
      step = 0.05, group = G_PRM,
-     tooltip = "Backtested at 0.75: 202 blocks in 10 years, 70.8% to 100+. At 1.0: 100 blocks, 75.0%. At 0.5: 332 blocks, 64.2%.")
-primeNear = input.float(0.40, "Level no further from yesterday's close than this many average daily ranges", minval = 0.1, maxval = 1.0,
+     tooltip = "Backtested at 0.75: 149 PRIME blocks in 10 years, 75.2% to 100+ (grades A and B together). At 0.5: 250 blocks, 66.8%. At 1.0: 74 blocks, 78.4%. At 1.25: 42 blocks, 85.7%. The samples above 0.75 are thin, and a wider test over all kinds of level did not confirm that a bigger move adds more.")
+primeNear = input.float(0.40, "Level beyond yesterday's close by no more than this many average daily ranges", minval = 0.1, maxval = 1.0,
      step = 0.05, group = G_PRM,
-     tooltip = "Backtested at 0.40: 70.8% to 100+. At 0.25: 68.8%. At 0.60: 67.7%. With no limit: 65.7%.")
+     tooltip = "The level must sit on the far side of yesterday's close: below it for support, above it for resistance. Backtested at 0.40: 75.2% to 100+. At 0.30: 74.4%. At 0.50: 72.6%. At 0.60: 69.6%. Levels on the near side of the close: 58.5%.")
 primeOnly = input.bool(false, "Show only PRIME blocks", group = G_PRM,
      tooltip = "Hides the ordinary blocks. They are still tracked and graded in the scorecard, so the numbers do not change.")
 
@@ -160,17 +176,12 @@ const float RSI_HOT    = 75.0    // RSI(14) of 5-minute closes, into the block
 // ─────────────────────────────────────────────────────────────
 // COMPLETED HIGHER-TIMEFRAME BARS ONLY (never the bar in progress)
 // ─────────────────────────────────────────────────────────────
-[pdH, pdL, pdC, pdC2, sma50, adr] = request.security(syminfo.tickerid, "D",
-     [high[1], low[1], close[1], close[2], ta.sma(close, 50)[1], ta.sma(high - low, 14)[1]], lookahead = barmerge.lookahead_on)
+[pdH, pdL, pdC, sma50, adr] = request.security(syminfo.tickerid, "D",
+     [high[1], low[1], close[1], ta.sma(close, 50)[1], ta.sma(high - low, 14)[1]], lookahead = barmerge.lookahead_on)
 [pwH, pwL] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead = barmerge.lookahead_on)
 
 // Daily trend: +1 yesterday closed above its 50-day average, -1 below, 0 unknown.
 int bias = na(pdC) or na(sma50) or pdC == sma50 ? 0 : pdC > sma50 ? 1 : -1
-
-// Yesterday's close-to-close move in average daily ranges, signed so that
-// + = with the daily trend. A PRIME day needs at least `primeMove`.
-float yMove    = bias == 0 or na(pdC2) or na(adr) or adr <= 0 ? na : bias * (pdC - pdC2) / adr
-bool  primeDay = usePrime and not na(yMove) and yMove >= primeMove
 
 // What was known before this candle opened, from completed 5-minute candles
 // (the chart's own candles on charts above 5 minutes): the move over the last
@@ -205,6 +216,7 @@ type Block
     bool   cand  = false    // PRIME candidate: decided when the block is drawn
     bool   prime = false    // its first touch came in the cash session: graded as PRIME
     bool   show  = true     // visible on the chart (false = hidden by "Show only PRIME blocks")
+    bool   early = false    // PRIME, first touched 09:30-10:00: grade A (later touches are grade B)
 
 type Tally
     int touched  = 0
@@ -227,6 +239,10 @@ type Tally
     int pHit     = 0
     int pBroken  = 0
     int pBig     = 0
+    int aTouched = 0        // grade A: PRIME blocks first touched 09:30-10:00
+    int aHit     = 0
+    int aBroken  = 0
+    int aBig     = 0
 
 var array<Block> live  = array.new<Block>()
 var array<float> bests = array.new<float>()     // best reversal of every graded block, capped at the larger size
@@ -255,6 +271,23 @@ int  mod    = hour(time, "America/New_York") * 60 + minute(time, "America/New_Yo
 bool newDay = timeframe.change("D")
 bool rth    = mod >= 570 and mod < 1020
 bool cash   = mod >= 570 and mod < 960      // 09:30-16:00 ET: where a PRIME candidate must be touched first
+bool opening = mod >= 570 and mod < 600     // 09:30-10:00 ET: a PRIME block first touched here is grade A
+
+// "Yesterday's close" for the PRIME rule and the gap is read from this chart's
+// own candles: the close of the last candle that starts before 16:15 ET. It
+// does not depend on how the daily bar's close is set (last trade or
+// settlement), and it is the price the backtest uses.
+var float refClose = na     // that close for the trade day in progress
+var float yC       = na     // for yesterday
+var float yC2      = na     // for the day before yesterday
+if newDay
+    yC2 := yC
+    yC  := refClose
+
+// Yesterday's close-to-close move in average daily ranges, signed so that
+// + = with the daily trend. A PRIME day needs at least `primeMove`.
+float yMove    = bias == 0 or na(yC) or na(yC2) or na(adr) or adr <= 0 ? na : bias * (yC - yC2) / adr
+bool  primeDay = usePrime and not na(yMove) and yMove >= primeMove
 
 // Draw a block at `level` if the trend allows that side, price is still
 // outside the block, and no live block on the same side overlaps it.
@@ -267,14 +300,15 @@ f_add(float level, int side, string name, bool ovn) =>
             if b.side == side and math.min(b.near, b.far) <= math.max(level, far) and math.max(b.near, b.far) >= math.min(level, far)
                 ok := false
     if ok
-        bool  pc  = primeDay and ovn and side * bias < 0 and math.abs(level - pdC) <= primeNear * adr
-        bool  vis = pc or not primeOnly
-        color col = side > 0 ? topColor : botColor
-        color edg = pc ? primeColor : col
-        box   bx  = box.new(bar_index, math.max(level, far), bar_index + 1, math.min(level, far),
+        float past = side * (level - yC)     // how far the level sits beyond yesterday's close (below it for support, above it for resistance)
+        bool  pc   = primeDay and ovn and side * bias < 0 and past > 0 and past <= primeNear * adr
+        bool  vis  = pc or not primeOnly
+        color col  = side > 0 ? topColor : botColor
+        color edg  = pc ? primeColor : col
+        box   bx   = box.new(bar_index, math.max(level, far), bar_index + 1, math.min(level, far),
              border_color = color.new(edg, vis ? (pc ? 0 : 20) : 100), border_width = pc ? 2 : 1,
              bgcolor = color.new(col, vis ? (pc ? 78 : 85) : 100),
-             text = vis ? (pc ? "PRIME · " + name + " · if first touched 09:30-16:00 ET" : name) : "",
+             text = vis ? (pc ? "PRIME · " + name + " · A if first touched 09:30-10:00, B until 16:00 ET" : name) : "",
              text_size = size.small, text_color = color.new(edg, vis ? 0 : 100), text_halign = text.align_right, text_valign = text.align_center)
         live.push(Block.new(side, level, far, 0, na, 0.0, 0, false, name, bx, pc, false, vis))
         tl.drawn += 1
@@ -369,7 +403,7 @@ if mod >= 180 and mod < 1020 and not asDone
 if rth and not loDone
     loDone := true
     rthOpen := open
-    gapADR  := na(pdC) or na(adr) or adr <= 0 ? na : (open - pdC) / adr
+    gapADR  := na(yC) or na(adr) or adr <= 0 ? na : (open - yC) / adr
     if useLO
         f_add(loH, 1, "LO high", true)
         f_add(loL, -1, "LO low", true)
@@ -394,6 +428,7 @@ pSeen := tl.pDrawn
 // ─────────────────────────────────────────────────────────────
 bool touchNow      = false     // live: price is inside a block that was waiting
 bool primeTouchNow = false     // live: price is inside a PRIME candidate, in the cash session
+bool primeATouchNow = false    // live: ... in its opening half hour (grade A)
 bool skipNow       = false     // live: price is inside a block that the skip rule rejects
 bool hitNow        = false
 bool bigNow        = false
@@ -411,6 +446,8 @@ if live.size() > 0
             touchNow := true
         if b.state == 0 and inside and why == "" and b.cand and cash
             primeTouchNow := true
+        if b.state == 0 and inside and why == "" and b.cand and opening
+            primeATouchNow := true
         if b.state == 0 and inside and why != "" and b.show
             skipNow := true
         if b.state <= 1
@@ -424,8 +461,9 @@ if live.size() > 0
                 b.turn  := ext
                 first   := true
                 b.prime := b.cand and cash
+                b.early := b.prime and opening
                 if b.prime
-                    b.bx.set_text("PRIME · " + b.name)
+                    b.bx.set_text((b.early ? "PRIME A · " : "PRIME B · ") + b.name)
                 if b.cand and not b.prime
                     f_demote(b)                             // first touched outside the cash session: an ordinary block
                 if why == ""
@@ -433,6 +471,7 @@ if live.size() > 0
                     tl.tTop += s > 0 ? 1 : 0
                     tl.tBot += s < 0 ? 1 : 0
                     tl.pTouched += b.prime ? 1 : 0
+                    tl.aTouched += b.early ? 1 : 0
                 if why != ""
                     b.skip := true
                     tl.sTouched += 1
@@ -453,13 +492,14 @@ if live.size() > 0
                 bool   graded = not b.skip
                 color  col    = b.prime ? primeColor : s > 0 ? topColor : botColor
                 color  txc    = b.prime ? color.black : color.white
-                string tag    = b.prime ? "PRIME " : ""
+                string tag    = b.early ? "PRIME A " : b.prime ? "PRIME B " : ""
                 // strict: a close beyond the block ends it, whatever the wick did
                 if beyond and b.state == 1 and graded
                     tl.broken += 1
                     tl.bTop += s > 0 ? 1 : 0
                     tl.bBot += s < 0 ? 1 : 0
                     tl.pBroken += b.prime ? 1 : 0
+                    tl.aBroken += b.early ? 1 : 0
                 if beyond and b.state == 1 and graded and b.show
                     brokeNow := true
                     b.bx.set_border_width(1)
@@ -490,6 +530,7 @@ if live.size() > 0
                         tl.hTop += s > 0 ? 1 : 0
                         tl.hBot += s < 0 ? 1 : 0
                         tl.pHit += b.prime ? 1 : 0
+                        tl.aHit += b.early ? 1 : 0
                     if nowHit and graded and b.show
                         hitNow := true
                         b.bx.set_border_color(color.new(col, 0))
@@ -501,6 +542,7 @@ if live.size() > 0
                     if nowBig and graded
                         tl.big  += 1
                         tl.pBig += b.prime ? 1 : 0
+                        tl.aBig += b.early ? 1 : 0
                     if nowBig and graded and b.show
                         bigNow := true
                     if showTags and graded and b.show and (nowHit or nowBig)
@@ -516,8 +558,10 @@ if live.size() > 0
                     live.remove(i)
 
 // ─────────────────────────────────────────────────────────────
-// 4. SESSION RANGES, updated after the candle has been graded
+// 4. SESSION RANGES and the day's reference close, updated after the candle has been graded
 // ─────────────────────────────────────────────────────────────
+if mod < 975 or mod >= 1080
+    refClose := close
 if mod >= 1080 or mod < 180
     asH := na(asH) ? high : math.max(asH, high)
     asL := na(asL) ? low : math.min(asL, low)
@@ -548,12 +592,17 @@ f_row(table t, int r, string name, color nc, int touched, int hits, int broken) 
     f_cell(t, 4, r, f_rate(hits, broken), color.white, text.align_right)
 
 if showDash and barstate.islast
-    var table dash = table.new(position.top_right, 5, 17, bgcolor = color.new(#101418, 12),
+    var table dash = table.new(position.top_right, 5, 18, bgcolor = color.new(#101418, 12),
          border_width = 1, border_color = color.new(color.gray, 75), frame_width = 1, frame_color = color.new(color.gray, 55))
-    table.clear(dash, 0, 0, 4, 16)
+    table.clear(dash, 0, 0, 4, 17)
     color dim     = color.new(color.silver, 0)
     int   graded  = tl.hit + tl.broken
-    int   pGraded = tl.pHit + tl.pBroken
+    int   aGraded = tl.aHit + tl.aBroken
+    int   bTouched = tl.pTouched - tl.aTouched      // grade B = PRIME blocks that are not grade A
+    int   bHit     = tl.pHit - tl.aHit
+    int   bBroken  = tl.pBroken - tl.aBroken
+    int   bBig     = tl.pBig - tl.aBig
+    int   bGraded  = bHit + bBroken
     // hit rate for four reversal sizes, from the best reversal of every graded block
     float sizeB = 0.6 * bigUse
     float sizeC = 0.75 * bigUse
@@ -583,66 +632,74 @@ if showDash and barstate.islast
     f_row(dash, 2, "All graded blocks",        color.white, tl.touched,  tl.hit,  tl.broken)
     f_row(dash, 3, "Resistance blocks (tops)", topColor,    tl.tTop,     tl.hTop, tl.bTop)
     f_row(dash, 4, "Support blocks (bottoms)", botColor,    tl.tBot,     tl.hBot, tl.bBot)
-    f_row(dash, 5, usePrime ? "PRIME blocks (also counted above)" : "PRIME marking is off", primeColor, tl.pTouched, tl.pHit, tl.pBroken)
-    f_row(dash, 6, useSkips ? "Skipped at the touch (graded separately)" : "Skip rule is off", dim, tl.sTouched, tl.sHit, tl.sBroken)
+    f_row(dash, 5, usePrime ? "PRIME A · first touched 09:30-10:00 (also counted above)" : "PRIME marking is off", primeColor,
+         tl.aTouched, tl.aHit, tl.aBroken)
+    f_row(dash, 6, usePrime ? "PRIME B · first touched 10:00-16:00 (also counted above)" : "PRIME marking is off", primeColor,
+         bTouched, bHit, bBroken)
+    f_row(dash, 7, useSkips ? "Skipped at the touch (graded separately)" : "Skip rule is off", dim, tl.sTouched, tl.sHit, tl.sBroken)
 
-    f_cell(dash, 0, 7, "Went on to " + str.tostring(bigUse, "#") + "+ pts before any close beyond: all blocks " + str.tostring(tl.big) +
-         " of " + str.tostring(graded) + " (" + f_rate(tl.big, graded - tl.big) + ") · PRIME " + str.tostring(tl.pBig) +
-         " of " + str.tostring(pGraded) + " (" + f_rate(tl.pBig, pGraded - tl.pBig) + ")", color.white, text.align_left)
-    table.merge_cells(dash, 0, 7, 4, 7)
-
-    f_cell(dash, 0, 8, "Reversal of at least " + str.tostring(hitPts, "#") + " / " + str.tostring(sizeB, "#") + " / " +
-         str.tostring(sizeC, "#") + " / " + str.tostring(bigUse, "#") + " pts:  " + f_rate(nA, nb - nA) + " / " +
-         f_rate(nB, nb - nB) + " / " + f_rate(nC, nb - nC) + " / " + f_rate(nD, nb - nD), color.white, text.align_left)
+    f_cell(dash, 0, 8, "Went on to " + str.tostring(bigUse, "#") + "+ pts before any close beyond: all blocks " + str.tostring(tl.big) +
+         " of " + str.tostring(graded) + " (" + f_rate(tl.big, graded - tl.big) + ") · PRIME A " + str.tostring(tl.aBig) +
+         " of " + str.tostring(aGraded) + " (" + f_rate(tl.aBig, aGraded - tl.aBig) + ") · PRIME B " + str.tostring(bBig) +
+         " of " + str.tostring(bGraded) + " (" + f_rate(bBig, bGraded - bBig) + ")", color.white, text.align_left)
     table.merge_cells(dash, 0, 8, 4, 8)
 
-    f_cell(dash, 0, 9, "7 in 10 blocks reversed at least " + (na(seven) ? "—" : str.tostring(seven, "#")) +
-         " pts before any close beyond", color.white, text.align_left)
+    f_cell(dash, 0, 9, "Reversal of at least " + str.tostring(hitPts, "#") + " / " + str.tostring(sizeB, "#") + " / " +
+         str.tostring(sizeC, "#") + " / " + str.tostring(bigUse, "#") + " pts:  " + f_rate(nA, nb - nA) + " / " +
+         f_rate(nB, nb - nB) + " / " + f_rate(nC, nb - nC) + " / " + f_rate(nD, nb - nD), color.white, text.align_left)
     table.merge_cells(dash, 0, 9, 4, 9)
 
-    f_cell(dash, 0, 10, "Drawn " + str.tostring(tl.drawn) + " blocks in " + str.tostring(dayCount) + " days (" +
+    f_cell(dash, 0, 10, "7 in 10 blocks reversed at least " + (na(seven) ? "—" : str.tostring(seven, "#")) +
+         " pts before any close beyond", color.white, text.align_left)
+    table.merge_cells(dash, 0, 10, 4, 10)
+
+    f_cell(dash, 0, 11, "Drawn " + str.tostring(tl.drawn) + " blocks in " + str.tostring(dayCount) + " days (" +
          (dayCount > 0 ? str.tostring(1.0 * tl.drawn / dayCount, "#.#") : "—") + " a day), " + str.tostring(tl.pDrawn) +
          " of them PRIME candidates · " + str.tostring(live.size()) + " live now · " + str.tostring(tl.expired) +
          " touched but still open after two days", dim, text.align_left)
-    table.merge_cells(dash, 0, 10, 4, 10)
+    table.merge_cells(dash, 0, 11, 4, 11)
 
     string trendTxt = bias == 0 ? "DAILY TREND unknown (not enough daily history)" :
          "DAILY TREND " + (bias > 0 ? "UP" : "DOWN") + ": yesterday's close " + str.tostring(pdC, format.mintick) +
          (bias > 0 ? " is above" : " is below") + " its 50-day average " + str.tostring(sma50, format.mintick)
-    string sideTxt = not trendOnly ? " · trend filter off: both sides drawn" : bias > 0 ? " · support blocks only" :
-         bias < 0 ? " · resistance blocks only" : " · no blocks drawn"
-    f_cell(dash, 0, 11, trendTxt + sideTxt, bias > 0 ? botColor : bias < 0 ? topColor : dim, text.align_left)
-    table.merge_cells(dash, 0, 11, 4, 11)
+    string sideTxt = not trendOnly ? " · trend filter off: both sides drawn" :
+         bias > 0 ? " · only support blocks (longs) are drawn until the close is back below the average" :
+         bias < 0 ? " · only resistance blocks (shorts) are drawn until the close is back above the average" : " · no blocks drawn"
+    f_cell(dash, 0, 12, trendTxt + sideTxt, bias > 0 ? botColor : bias < 0 ? topColor : dim, text.align_left)
+    table.merge_cells(dash, 0, 12, 4, 12)
 
     string moveTxt = na(yMove) ? "" : str.tostring(math.abs(yMove), "#.##") + " average daily ranges " +
          (yMove >= 0 ? "with" : "against") + " the trend"
     string needTxt = "PRIME needs " + str.tostring(primeMove, "#.##") + " with the trend"
-    string bandTxt = na(pdC) or na(adr) ? "" : str.tostring(pdC - primeNear * adr, format.mintick) + " and " +
-         str.tostring(pdC + primeNear * adr, format.mintick)
-    string primeTxt = not usePrime ? "PRIME marking is off" : na(yMove) ? "PRIME: not enough daily history yet" :
+    float  bandFar = na(yC) or na(adr) ? na : yC - bias * primeNear * adr
+    string bandTxt = na(bandFar) ? "" : str.tostring(math.min(yC, bandFar), format.mintick) + " and " +
+         str.tostring(math.max(yC, bandFar), format.mintick)
+    string primeTxt = not usePrime ? "PRIME marking is off" : na(yMove) ? "PRIME: needs two completed days on the chart and the daily averages" :
          primeDay ? "PRIME DAY: yesterday closed " + moveTxt + ". " + (bias > 0 ? "Support" : "Resistance") +
-         " blocks at overnight levels between " + bandTxt + " are PRIME if first touched 09:30-16:00 ET" :
+         " blocks at overnight levels between " + bandTxt + (bias > 0 ? " (below" : " (above") +
+         " yesterday's close) are PRIME: grade A if first touched 09:30-10:00 ET, grade B until 16:00" :
          "Not a PRIME day: yesterday closed " + moveTxt + " (" + needTxt + ")"
-    f_cell(dash, 0, 12, primeTxt, primeDay ? primeColor : dim, text.align_left)
-    table.merge_cells(dash, 0, 12, 4, 12)
-
-    f_cell(dash, 0, 13, "Backtest, 5-min chart, 10 years. All blocks: 75.9% hit, 53.5% went on to 100+ (5,283 blocks). Coin-flip data scores the same.",
-         dim, text.align_left)
+    f_cell(dash, 0, 13, primeTxt, primeDay ? primeColor : dim, text.align_left)
     table.merge_cells(dash, 0, 13, 4, 13)
-    f_cell(dash, 0, 14, "PRIME blocks: 87.6% hit, 70.8% went on to 100+ (202 blocks, about 20 a year; 69.4% before Nov 2022, 72.5% since). Coin-flip data: 53%.",
-         primeColor, text.align_left)
-    table.merge_cells(dash, 0, 14, 4, 14)
-    f_cell(dash, 0, 15, "PRIME on a 15-min chart 74.3%, on a 1-min chart 60.9%. Fading a PRIME edge for 45 pts, exit on the break close: 75.7% wins, +13.5 pts a block before costs.",
+
+    f_cell(dash, 0, 14, "Backtest, 5-min chart, 10 years. All blocks: 75.9% hit, 53.5% went on to 100+ (5,283 blocks). Coin-flip data scores the same.",
          dim, text.align_left)
+    table.merge_cells(dash, 0, 14, 4, 14)
+    f_cell(dash, 0, 15, "PRIME A: 96.2% hit, 79.7% went on to 100+ (79 blocks, about 8 a year; 78.0% before Nov 2022, 82.8% since). 15-min chart 81.0%, 1-min chart 72.2%.",
+         primeColor, text.align_left)
     table.merge_cells(dash, 0, 15, 4, 15)
-    f_cell(dash, 0, 16, "Only PRIME blocks beat chance, and 202 blocks is a small sample. Every other block's hit rate comes from block depth, not prediction.",
-         color.orange, text.align_left)
+    f_cell(dash, 0, 16, "PRIME B: 87.1% hit, 70.0% went on to 100+ (70 blocks). Coin-flip data: A 53%, B 55%. Fading a grade A edge for 45 pts, exit on the break close: 82.3% wins, +21.4 pts a block before costs.",
+         dim, text.align_left)
     table.merge_cells(dash, 0, 16, 4, 16)
+    f_cell(dash, 0, 17, "Only PRIME blocks beat chance, on small samples (79 and 70 blocks in ten years). Every other block's hit rate comes from block depth, not prediction.",
+         color.orange, text.align_left)
+    table.merge_cells(dash, 0, 17, 4, 17)
 
 // ─────────────────────────────────────────────────────────────
 // ALERTS
 // ─────────────────────────────────────────────────────────────
 alertcondition(primeDrawnNow, "PRIME block drawn", "Reversal Blocks: a PRIME block has been drawn. It counts as PRIME if price first touches it between 09:30 and 16:00 New York time")
+alertcondition(primeATouchNow, "Price entered a PRIME block, grade A", "Reversal Blocks: price is inside a PRIME block in the opening half hour (09:30-10:00 ET): grade A")
 alertcondition(primeTouchNow, "Price entered a PRIME block", "Reversal Blocks: price is inside a PRIME block (cash session, the day after a strong day with the trend)")
 alertcondition(touchNow, "Price entered a reversal block", "Reversal Blocks: price is inside a block")
 alertcondition(skipNow, "Price entered a block the skip rule rejects", "Reversal Blocks: price is inside a block, but it is fading the gap, a fast move or a stretched RSI")
