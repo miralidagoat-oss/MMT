@@ -1,6 +1,6 @@
 # ONR Book: independent review and MNQ backtest (2026-11-17)
 
-Review of `indicators/onr_book.pine` (v1 as received, commit `77b0f72`) and the v2.1 fixes, with a Python replica of
+Review of `indicators/onr_book.pine` (v1 as received, commit `77b0f72`), the v2.1 fixes and the v2.2 research round, with a Python replica of
 the script's exact logic (`engine.py`, `account.py`, `portfolio.py`) run on 2011–2026 minute data and on real MNQ
 futures, including several Lucid accounts side by side.
 
@@ -153,6 +153,61 @@ Tried, pre-registered, chosen on 2011–18 and checked on 2019–26:
 What is left are strategy droughts (2016–17, late 2023): no account structure turns a losing stretch into payouts;
 only a second, unrelated edge would, and adding one untested would be curve-fitting.
 
+### Research round (v2.2): what could make it better
+
+Method: hypotheses fixed in advance from the literature or from Lucid's rules, never from the backtest; a trading change
+counts only if it is positive with t >= 2 in BOTH 2011–18 and 2019–26 (and survives 1 tick of slippage); an account
+change only if it improves the account results in both halves. `research.py legs|accounts|followup|final` reruns all.
+
+**Literature checked against NQ 2011–2026** (published parameters, nothing tuned):
+
+| Test | 2011–18 | 2019–26 | Verdict |
+|---|---|---|---|
+| L1 last-half-hour momentum (Gao, Han, Li, Zhou, JFE 2018: prior close → 10:00 predicts 15:30 → 16:00) | −0.008 ADR (t −1.9) | −0.009 ADR (t −2.0) | rejected: slightly reversed on NQ |
+| L2 noise-area intraday momentum (Zarattini, Aziz, Barbon 2024; TWAP for VWAP) | +0.016 ADR/day (t 1.8) | +0.020 (t 2.5) | not validated |
+| L3 5-minute ORB (Zarattini, Aziz 2023) | +0.03R (t 0.5) | +0.15R (t 2.6) | not validated; the book's 09:35 pyramid: +0.16R (t 3.2) / +0.20R (t 4.4) |
+| M2 momentum legs by volatility regime (ADR14 / ADR100 terciles) | pattern flips between halves | | rejected |
+| M1 overnight leg, buy signals (overnight-drift literature) | +0.118 ADR (t 4.4) | +0.097 ADR (t 3.2) | real |
+| M1 overnight leg, sell signals | −0.029 ADR (t −1.8) | +0.008 ADR (t 0.4) | no edge |
+
+The buy signal beats simply holding long every night (the market's overnight drift, +0.036 / +0.030 ADR) by +0.083 ADR
+(t 2.9) / +0.067 ADR (t 2.1). But skipping sell signals did not improve account results in both halves (better 5-account
+pool, slightly worse single account; with max payouts a wash), so it is not adopted.
+
+**Lucid products and sizes** (third-party summaries of Lucid's help centre, Nov 2026 — verify before buying):
+
+- Flex is the right product for this book: end-of-day drawdown, news trading allowed, no funded consistency rule.
+- LucidDaily (payouts any day above a buffer) does not fit: its funded drawdown is always intraday and high-impact USD
+  news is a hard breach (flat 1 minute before to 1 minute after) — the overnight leg holds through 08:30 releases.
+  Pro and Direct apply funded consistency rules (40% / 20% per cycle) that big trend days would keep tripping.
+- Flex sizes: 50K / 100K / 150K have $2,000 / $3,000 / $4,500 max loss, $3,000 / $6,000 / $9,000 targets, $150 / $200 /
+  $250 qualifying days, $2,000 / $2,500 / $3,000 payout caps, list price $115 / $215 / $323 (30% codes are common).
+
+**Account results** at a realistic $1.34 per MNQ round turn (prop schedules quote $1.24–$1.42), net of the 90% split and
+evals at list price, averaged over 6 start dates (2011–18 | 2019–26):
+
+| Setup | Net / yr | Longest gap | Worst 12 months |
+|---|---|---|---|
+| one 25K, $500 payouts (v2.1) | $1.0k \| $2.6k | 16.0 \| 8.0 mo | −$1.0k \| −$0.3k |
+| one 25K, max-allowed payouts (v2.2) | $2.0k \| $4.3k | 13.5 \| 8.0 mo | −$1.0k \| +$0.1k |
+| one 50K, max-allowed | $4.3k \| $7.2k | 12.0 \| 9.4 mo | −$1.5k \| −$0.8k |
+| 5 funded 25K + eval pool, $500 payouts (v2.1) | $8.1k \| $15.1k | 7.6 \| 6.5 mo | −$7.1k \| −$4.0k |
+| **5 funded 25K + eval pool, max-allowed (v2.2)** | **$12.3k \| $26.4k** | 7.6 \| 6.4 mo | −$6.9k \| −$2.0k |
+| **5 funded 50K + eval pool, max-allowed** | **$21.6k \| $46.7k** | 7.3 \| 6.4 mo | −$12.3k \| −$2.3k |
+| 5 funded 150K + eval pool, max-allowed | $23.2k \| $78.4k | 8.0 \| 6.4 mo | −$34.7k \| −$20.1k |
+
+- **Max-allowed payouts** win in both halves for every size: each Flex account pays out at most 5 times and eventually
+  ends, so profit left inside it is eventually lost. With $500 payouts a 100K pool loses money in 2011–18 and a 150K
+  pool in both halves.
+- **50K** roughly doubles 25K's income per slot with moderately deeper drought years; **150K** only pulls ahead in
+  strong regimes and can cost ~$35k of evals in a bad year. With 2× commission + 1 tick slippage the 5×50K pool still
+  makes $8.0k / $47.6k (25K: $5.5k / $25.5k).
+- No setup removes the 6–8 month gaps: they are the strategy's own losing stretches.
+
+**Operations:** Lucid allows automated strategies and trade copiers on eval and funded accounts (no HFT); TradersPost,
+CrossTrade and PickMyTrade connect to it. Automating the alerts removes late manual entries, which the backtest shows
+matter in calm markets — test any automation on an eval first.
+
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
 | Leg | Trades | Mean R | t | Years positive | Real vs random sides |
@@ -221,6 +276,7 @@ python3 backtest/onr/prep_data.py histdata data/raw data SPXUSD NSXUSD
 curl -s -A "Mozilla/5.0 (X11; Linux x86_64)" -o data/MNQ_5m.json "https://query2.finance.yahoo.com/v8/finance/chart/MNQ=F?interval=5m&range=60d"
 python3 backtest/onr/prep_data.py yahoo data/MNQ_5m.json data/MNQ_5m_60d.npz
 cd backtest/onr && python3 report.py ../../data && python3 overfit.py ../../data && python3 portfolio.py ../../data
+python3 research.py ../../data legs && python3 research.py ../../data accounts && python3 research.py ../../data final
 ```
 
 Limits: the CFD is a proxy for MNQ before Sep 2026 (validated on the overlap only); TradingView's own fills on 1–5

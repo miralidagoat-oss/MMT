@@ -2,7 +2,7 @@
 
 Two Pine Script v6 indicators:
 
-- **ONR Book v2** (`indicators/onr_book.pine`): Lucid Flex 25K plan for NQ / MNQ (overnight S&P-stretch reversion,
+- **ONR Book v2.2** (`indicators/onr_book.pine`): Lucid Flex 25K–150K plan for NQ / MNQ (overnight S&P-stretch reversion,
   opening-drive pyramid, IB breakout). Independent review, overfitting tests and a 2011–2026 + real-MNQ backtest are in
   [`backtest/onr/README.md`](backtest/onr/README.md).
 - **Alpha Predictive Limit Matrix** (below).

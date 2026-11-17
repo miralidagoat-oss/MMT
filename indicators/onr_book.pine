@@ -1,13 +1,15 @@
 //@version=6
-indicator("ONR Book v2.1 - Lucid Flex 25K (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2.1 (2026-11-17). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
+// ONR BOOK v2.2 (2026-11-17). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
+// ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K (input). Every $ amount below is for 25K and scales with the account's max
+//          loss (x2 at 50K, x3 at 100K, x4.5 at 150K); target, qualifying day and payout cap follow Lucid's table.
 // EVAL   : ONE bracket trade per day, first trigger that fires:
 //            1) overnight reversion at 18:10 on signal nights (exit 09:30); skipped into Thursday / first-Friday 08:30 news
 //            2) else the 09:35 opening drive (first 5 min >= 0.10 ADR, exit 16:00); not on half days (13:00 ET halt)
-//          Bracket from your account inputs: stop <= $600 INCLUDING commission, target <= $500 ($625 with the 50% add-on),
-//          contracts = round(($stop + $target) / (width x ADR x $2)).
+//          Bracket from your account inputs: stop <= $600 INCLUDING commission, target <= 40% of the profit target (50% with
+//          the add-on), contracts = round(($stop + $target) / (width x ADR x $2)).
 // FUNDED : trades in priority order under a day risk budget = min($600, cushion - $10), N MNQ per leg:
 //            1) overnight reversion 18:10 -> 09:30, stop 0.5 ADR, no target
 //            2) opening-drive pyramid 09:35: stop 0.35 ADR, add N at +0.15 ADR (stop -> breakeven), trail 0.25 ADR, exit 16:00
@@ -15,37 +17,41 @@ indicator("ONR Book v2.1 - Lucid Flex 25K (overnight reversion + opening drive)"
 //               target 0.5 ADR; on a 09:35-drive day only on the drive's side (else both sides, OCO).
 //          No 09:35 / 10:30 entries on US holiday half-sessions and early closes.
 //          N = round(350 / ADR), 1 to 10 ("Auto", default): 1 MNQ at today's range, more only if NQ's range shrinks.
-//          Request $500 when eligible (5 days >= $100, P&L >= $1,000 and up since the last payout). Abandon if cushion < $200.
+//          When eligible (5 qualifying days, P&L >= $1,000 and up since the last payout) request the MAXIMUM allowed:
+//          50% of profit up to the size's cap. Abandon if cushion < $200.
 // ADR = average 09:30-16:00 NQ range of the last 14 full sessions.
 // SEVERAL ACCOUNTS: one copy of this indicator per account (its own inputs). All copies always hold the same direction,
-//          so copy-trading never creates opposing positions across accounts (Lucid prohibits that).
+//          so copy-trading never creates opposing positions across accounts (Lucid prohibits that). Lucid allows 5 funded
+//          accounts and 10 in all: keep the 5 funded slots full from evals running behind them.
 // ---------------------------------------------------------------------------------------------------------------------
-// v2.1 CHANGES (independent review + backtest, 2026-11-17; signals, times and ADR multiples unchanged)
-//  - Funded size scales with ADR (v1: always 1 MNQ). At NQ's 30-point ranges of 2011-13, v1 risked ~$30 a trade, could
-//    not make $100 days, and its payouts stalled for years. Unchanged today (1 MNQ while the range is above ~233 points).
-//  - IB breakout only with the 09:35 drive on drive days: v1/v2 could be long (pyramid) and short (IB) at once (~1 day a
-//    year; impossible in a netted futures account) and, run across accounts, an eval's 09:35 trade vs a funded IB
-//    short is prohibited hedging (~22 days a year). Against-drive IB trades were also the weakest group.
-//  - No new RTH entries on half days (computed holiday calendar; v1's panel said "no new trades" but the code traded).
-//  - Eval stop includes commission; pyramid add fills at the bar open on a gap; payout check also needs profit since the
-//    last payout (Lucid rule); messages when a funded leg is skipped; warning for charts without overnight bars; time
-//    alerts only when a position is open; chart-built ADR fallback uses full sessions only.
+// v2.2 (research, 2026-11-17; signals, times and ADR multiples unchanged since v1)
+//  - Payout: request the maximum allowed instead of $500. Each Flex account pays out at most 5 times and eventually
+//    ends, so profit left inside it is eventually lost: backtest net income +50% to +75%, in both halves.
+//  - Account size input. With 5 funded slots, bigger accounts earn more per slot (max-allowed payouts required).
+//  - Tested and NOT adopted (pre-registered, must hold in 2011-18 and 2019-26): last-half-hour momentum (Gao et al.
+//    2018: slightly negative on NQ 2011-26), noise-area momentum (Zarattini et al. 2024: t 1.8 / 2.5), 5-min ORB
+//    (weaker than this book's 09:35 pyramid), volatility-regime filters (flip between halves), long-only overnight
+//    (sell signals have no edge, but dropping them did not improve the accounts in both halves), an eval that trades the
+//    funded book (worse), wider overnight stop, dropping legs. LucidDaily / Pro / Direct don't fit: Daily's funded
+//    drawdown is intraday and 08:30 news is a hard breach; Pro and Direct have funded consistency rules.
+// v2.1 / v2: IB only with the 09:35 drive (no opposing positions); funded size scales with ADR; no half-day entries; eval
+//    stop includes commission; pyramid add fills at the open on gaps; payout needs profit since the last payout.
 // BACKTEST (backtest/onr: Nasdaq-100 / S&P 500 CFD minute data 2011-2026 with its timestamps fixed, cross-checked against
-//  real MNQ futures - same trades within ~$25; MNQ $2/pt, $1 commission, this script's fill rules), 2011-18 / 2019-26:
-//  - eval pass rate 44% / 48% vs ~31% / 37% with coin-flip sides; median 9-10 sessions to pass.
-//  - one 25K at a time: 5.2 / 9.0 payouts a year, a payout in 33% / 53% of months, longest dry spell 12 / 9 months
-//    (v1: 1.4 / 7.4 payouts a year, dry spells up to 36 / 15 months).
-//  - 5 funded accounts kept full from a pool of evals (Lucid max: 5 funded, 10 accounts): ~$11.6k / $16.9k a year net of
-//    evals and the 90% split, a payout in 59% / 67% of months, longest dry spell ~8 / 6.5 months. 2016 and 2023 still
-//    netted ~$0: the strategy itself lost money then, so no number of accounts removes those droughts.
-//  - real MNQ futures Sep 9 - Nov 17 2026: 40 of 48 eval starts passed (short sample).
-//  - by leg: opening-drive pyramid strongest; IB breakout weak before 2019; the overnight signal is real (t~4 with no stop)
-//    but its 0.5 ADR stop keeps only about half of it. 2011-18 results roughly halve with 2x costs + 1 tick slippage or
-//    1-minute-late entries; 2019-26 holds. NOT live-tested. Past results do not guarantee future payouts.
+//  real MNQ futures - same trades within ~$25; MNQ $2/pt, $1.34 commission, this script's fill rules), 2011-18 / 2019-26,
+//  net of the 90% split and evals at list price:
+//  - one 25K at a time, max-allowed payouts: ~$2.0k / $4.3k a year (v2.1 with $500 payouts: $1.0k / $2.6k).
+//  - 5 funded 25K + eval pool: ~$12k / $26k a year; 5 funded 50K: ~$22k / $47k (worst 12 months -$12k / -$2k);
+//    5 funded 150K: ~$23k / $78k (worst 12 months -$35k / -$20k of eval fees).
+//  - longest stretch with no payout: ~6-8 months in every setup. 2016 and 2023 netted ~$0 even with 5 accounts: the
+//    strategy itself lost money then. Calm, small-range markets (2011-18 style) roughly halve results with 2x costs.
+//  - by leg: opening-drive pyramid strongest; IB breakout weak before 2019; the overnight signal's edge is all in its BUY
+//    signals (+0.08 ADR a night above the market's overnight drift, t~2.9 / 2.1). NOT live-tested. Past results do not
+//    guarantee future payouts.
 // =====================================================================================================================
 
 grpA = "Account - update before each session"
 phase = input.string("EVAL", "Phase", options = ["EVAL", "FUNDED"], group = grpA)
+acctSize = input.string("25K", "Account size (Lucid Flex)", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets Lucid's target, max loss, qualifying-day amount and payout cap for that size, and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Backtest (5 funded accounts, max-allowed payouts): 50K roughly doubled net income vs 25K with moderately larger drawdowns; 100K/150K paid more still but cost ~$20k of evals in drought years.")
 pnlNow = input.float(0.0, "P&L now ($ vs account start; funded: after payouts)", group = grpA)
 peakEod = input.float(0.0, "Highest end-of-day P&L so far ($)", minval = 0.0, group = grpA)
 bestDay = input.float(0.0, "EVAL: best single day so far ($)", minval = 0.0, group = grpA)
@@ -53,7 +59,7 @@ consOpt = input.string("40% (standard)", "EVAL: consistency rule you bought", op
 widthOpt = input.string("Wide x1.0 (recommended)", "EVAL: bracket width", options = ["Wide x1.0 (recommended)", "Medium x0.75", "Tight x0.5 (old)"], group = grpA, tooltip = "Wide = fewer contracts with a wider stop and target (about 1 MNQ, stop ~300 pts at today's range). Backtest pass rate 43% / 50% (2011-20 / 2021-26) vs 34% / 36% for the tight bracket.")
 newsSkip = input.bool(true, "EVAL: no overnight trade into Thursday / first-Friday 08:30 news", group = grpA, tooltip = "Skips the 18:10 overnight eval trade on Wednesday evenings (jobless claims Thursday 08:30) and on the evening before the first Friday of the month (jobs report; the release occasionally falls on another day). The 09:35 opening drive can still trade that day. Eval only. Backtest effect is small: +1 to +3 points of pass rate.")
 nPay = input.int(0, "FUNDED: payouts taken", minval = 0, maxval = 5, group = grpA)
-qDays = input.int(0, "FUNDED: days >= $100 since last payout", minval = 0, group = grpA)
+qDays = input.int(0, "FUNDED: qualifying days since last payout (>= $100 / $150 / $200 / $250 by size)", minval = 0, group = grpA)
 pnlAfterPay = input.float(0.0, "FUNDED: P&L right after your last payout ($; 0 before the first)", group = grpA, tooltip = "Lucid also requires positive net profit since the last payout. Enter the P&L your account showed right after the last payout was taken.")
 fundSize = input.string("Auto (ADR-normalised)", "FUNDED: contracts per leg", options = ["Auto (ADR-normalised)", "Fixed 1 MNQ (v1)"], group = grpA, tooltip = "Auto = round(350 / ADR) MNQ, 1 to 10. That is 1 MNQ whenever NQ's daily range is above ~233 points (all of 2022-2026), so nothing changes today; it adds contracts only if the range shrinks, which is what stalled v1's payouts in 2011-2019.")
 grpL = "Live tracking (alarm levels) - update each weekend"
@@ -72,10 +78,18 @@ float PV = 2.0
 float TK = 0.25
 float COMM = 1.0      // $ per MNQ round turn
 float THR = 0.7187
-float ADRREF = 350.0  // funded Auto size = round(ADRREF / ADR) MNQ
+float ADRREF = 350.0  // funded Auto size = round(ADRREF x M / ADR) MNQ
+// Lucid Flex rules by size (help centre, Nov 2026); M scales every $ limit of the plan with the account's max loss
+float TARGET = acctSize == "50K" ? 3000.0 : acctSize == "100K" ? 6000.0 : acctSize == "150K" ? 9000.0 : 1250.0
+float MLL = acctSize == "50K" ? 2000.0 : acctSize == "100K" ? 3000.0 : acctSize == "150K" ? 4500.0 : 1000.0
+float QDAY = acctSize == "50K" ? 150.0 : acctSize == "100K" ? 200.0 : acctSize == "150K" ? 250.0 : 100.0
+float PAYCAP = acctSize == "50K" ? 2000.0 : acctSize == "100K" ? 2500.0 : acctSize == "150K" ? 3000.0 : 1000.0
+int EVALMAX = acctSize == "50K" ? 40 : acctSize == "100K" ? 60 : acctSize == "150K" ? 100 : 20
+int FUNDMAX = acctSize == "50K" ? 20 : acctSize == "100K" ? 30 : acctSize == "150K" ? 40 : 10
+float M = MLL / 1000.0
 string TZ = "America/New_York"
 float CONS = consOpt == "50% (paid add-on)" ? 0.5 : 0.4      // best day must stay <= CONS x total profit at the pass
-float TPCAP = 1250.0 * CONS                                   // eval target cap per day: $500 (40%) or $625 (50% add-on)
+float TPCAP = TARGET * CONS                                    // eval target cap per day (25K: $500 at 40%, $625 at 50%)
 float SPAN = widthOpt == "Tight x0.5 (old)" ? 0.5 : (widthOpt == "Medium x0.75" ? 0.75 : 1.0)   // eval bracket width (stop + target) in ADRs
 
 // ---------- trade log (last 30 closed trades)
@@ -296,17 +310,17 @@ float score = request.security(sigSym, "30", f_score(), lookahead = barmerge.loo
 int sigSide = na(score) ? 0 : (score >= THR ? 1 : (score <= -THR ? -1 : 0))
 
 // ---------- account math (from your inputs)
-float floorLvl = (nPay > 0 or peakEod > 1100.0) ? 100.0 : peakEod - 1000.0
+float floorLvl = (nPay > 0 or peakEod > MLL + 100.0) ? 100.0 : peakEod - MLL
 float cushion = pnlNow - floorLvl
-float room = math.min(600.0, cushion - 10.0)
+float room = math.min(600.0 * M, cushion - 10.0 * M)
 bool isEval = phase == "EVAL"
 bool fundAuto = fundSize == "Auto (ADR-normalised)"
-int nF = fundAuto and not na(adr) ? int(math.max(1, math.min(10, math.round(ADRREF / adr)))) : 1
+int nF = fundAuto and not na(adr) ? int(math.max(1, math.min(FUNDMAX, math.round(ADRREF * M / adr)))) : 1
 f_bracket(float a) =>
-    float sl = math.min(600.0, cushion - 5.0)
-    float need = math.max(1250.0, bestDay / CONS)
-    float tp = math.max(20.0, math.min(TPCAP, math.max(need - pnlNow, 0.0) + 15.0))
-    int n = int(math.max(1.0, math.min(20.0, math.round((sl + tp) / (SPAN * a * PV)))))
+    float sl = math.min(600.0 * M, cushion - 5.0 * M)
+    float need = math.max(TARGET, bestDay / CONS)
+    float tp = math.max(20.0 * M, math.min(TPCAP, math.max(need - pnlNow, 0.0) + 15.0 * M))
+    int n = int(math.max(1.0, math.min(EVALMAX, math.round((sl + tp) / (SPAN * a * PV)))))
     // the stop distance leaves room for the round-turn commission, so a full stop-out costs at most $sl
     [n, (sl - n * COMM) / (n * PV), tp / (n * PV)]
 
@@ -511,7 +525,7 @@ if evON and not na(adr) and sigSide != 0
         f_lbl("ON skipped: news", color.gray, sigSide == 1)
         alert("ONR EVAL: overnight " + sideTxt + " signal skipped - 08:30 news tomorrow. No trade tonight; the 09:35 opening drive can still trade.", alert.freq_once_per_bar_close)
     else if isEval
-        if cushion >= 50.0
+        if cushion >= 50.0 * M
             [n, slp, tpp] = f_bracket(adr)
             eSide := sigSide
             eN := n
@@ -530,10 +544,10 @@ if evON and not na(adr) and sigSide != 0
             f_lbl("ON " + sideTxt + " " + str.tostring(n), color.blue, sigSide == 1)
             alert("ONR EVAL: OVERNIGHT " + sideTxt + " " + str.tostring(n) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(eStp, format.mintick) + " | target " + str.tostring(eTgt, format.mintick) + " | exit 09:30 ET", alert.freq_once_per_bar_close)
         else
-            lastMsg := "OVERNIGHT " + sideTxt + " signal NOT traded: eval cushion below $50"
+            lastMsg := "OVERNIGHT " + sideTxt + " signal NOT traded: eval cushion below $" + str.tostring(50.0 * M, "#")
     else
         float rk = 0.5 * adr * PV * nF
-        if cushion >= 200.0 and usedRisk + rk <= room
+        if cushion >= 200.0 * M and usedRisk + rk <= room
             oSide := sigSide
             oN := nF
             oEnt := close
@@ -548,7 +562,7 @@ if evON and not na(adr) and sigSide != 0
             f_lbl("ON " + sideTxt + " " + str.tostring(nF), color.blue, sigSide == 1)
             alert("ONR FUNDED: OVERNIGHT " + sideTxt + " " + str.tostring(nF) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(oStp, format.mintick) + " | no target | exit 09:30 ET", alert.freq_once_per_bar_close)
         else
-            lastMsg := "OVERNIGHT " + sideTxt + " signal NOT traded: " + (cushion < 200.0 ? "cushion below $200" : "risk $" + str.tostring(rk, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
+            lastMsg := "OVERNIGHT " + sideTxt + " signal NOT traded: " + (cushion < 200.0 * M ? "cushion below $" + str.tostring(200.0 * M, "#") : "risk $" + str.tostring(rk, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
 
 // 09:35 opening drive (eval trigger 2 / funded leg 2 = pyramid). Not on half days: the market halts at 13:00 ET.
 if evOD and halfDay
@@ -560,7 +574,7 @@ if evOD and not halfDay and not na(adr) and not na(rOpen)
     if odSide != 0
         string sTxt = odSide == 1 ? "BUY" : "SELL"
         if isEval
-            if not evalUsedToday and eSide == 0 and cushion >= 50.0
+            if not evalUsedToday and eSide == 0 and cushion >= 50.0 * M
                 [n, slp, tpp] = f_bracket(adr)
                 eSide := odSide
                 eN := n
@@ -580,7 +594,7 @@ if evOD and not halfDay and not na(adr) and not na(rOpen)
                 alert("ONR EVAL: OPENING DRIVE " + sTxt + " " + str.tostring(n) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(eStp, format.mintick) + " | target " + str.tostring(eTgt, format.mintick) + " | exit 16:00 ET", alert.freq_once_per_bar_close)
         else
             float rk2 = 0.35 * adr * PV * nF
-            if cushion >= 200.0 and usedRisk + rk2 <= room
+            if cushion >= 200.0 * M and usedRisk + rk2 <= room
                 pSide := odSide
                 pN := nF
                 pE1 := close
@@ -598,14 +612,14 @@ if evOD and not halfDay and not na(adr) and not na(rOpen)
                 f_lbl("PYR " + sTxt + " " + str.tostring(nF), color.teal, odSide == 1)
                 alert("ONR FUNDED: OPENING-DRIVE PYRAMID " + sTxt + " " + str.tostring(nF) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(pStp, format.mintick) + " | add " + str.tostring(nF) + " MNQ at " + str.tostring(close + odSide * 0.15 * adr, format.mintick) + " then stop -> breakeven | trail 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts) | exit 16:00", alert.freq_once_per_bar_close)
             else
-                lastMsg := "PYRAMID " + sTxt + " signal NOT traded: " + (cushion < 200.0 ? "cushion below $200" : "risk $" + str.tostring(rk2, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
+                lastMsg := "PYRAMID " + sTxt + " signal NOT traded: " + (cushion < 200.0 * M ? "cushion below $" + str.tostring(200.0 * M, "#") : "risk $" + str.tostring(rk2, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
 
 // 10:30 IB breakout orders (funded leg 3; its risk is reserved while the orders are live). On a 09:35-drive day only the
 // drive's side is placed: no position ever opposes the pyramid or an eval's 09:35 trade on another account (Lucid's
 // hedging rule; v2 could hold long and short together). Backtest: against-drive IB trades were the weakest group.
 if evIB and not isEval and not halfDay and not na(adr) and not na(ibH)
     float rk3 = 0.25 * adr * PV * nF
-    if cushion >= 200.0 and usedRisk + rk3 <= room
+    if cushion >= 200.0 * M and usedRisk + rk3 <= room
         ibBuy := odToday >= 0 ? ibH + TK : na
         ibSell := odToday <= 0 ? ibL - TK : na
         ibArmed := true
@@ -616,7 +630,7 @@ if evIB and not isEval and not halfDay and not na(adr) and not na(ibH)
         lastMsg := "IB " + str.tostring(nF) + " MNQ: " + ibTxt + " until 13:00"
         alert("ONR FUNDED: IB BREAKOUT " + str.tostring(nF) + " MNQ | " + ibTxt + " | stop 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts) | target 0.5 ADR (" + str.tostring(0.5 * adr, format.mintick) + " pts) | cancel at 13:00 | exit 16:00", alert.freq_once_per_bar_close)
     else
-        lastMsg := "IB breakout NOT placed: " + (cushion < 200.0 ? "cushion below $200" : "risk $" + str.tostring(rk3, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
+        lastMsg := "IB breakout NOT placed: " + (cushion < 200.0 * M ? "cushion below $" + str.tostring(200.0 * M, "#") : "risk $" + str.tostring(rk3, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
 
 // ---------- BUY / SELL markers and levels of open trades
 plotshape(buyNow, "BUY", shape.triangleup, location.belowbar, color.new(color.lime, 0), size = size.normal, text = "BUY", textcolor = color.lime)
@@ -677,12 +691,12 @@ f_nextStep(bool ev) =>
 var table T = table.new(position.top_right, 2, 13, border_width = 1)
 if showPanel and barstate.islast
     bool eligible = not isEval and qDays >= 5 and pnlNow >= 1000.0 and pnlNow > pnlAfterPay
-    float maxPay = math.min(1000.0, 0.5 * pnlNow)
-    string acct = isEval ? ("EVAL (" + (CONS == 0.5 ? "50%" : "40%") + " rule, " + (SPAN == 1.0 ? "wide" : SPAN == 0.75 ? "medium" : "tight") + " bracket" + (newsSkip ? ", news skip" : "") + ") | need $" + str.tostring(math.max(1250.0, bestDay / CONS) - pnlNow, "#") + " more") : ("FUNDED | payouts " + str.tostring(nPay) + "/5 | qualifying days " + str.tostring(qDays) + "/5 | since last payout $" + str.tostring(pnlNow - pnlAfterPay, "#"))
+    float payAmt = math.min(PAYCAP, 0.5 * pnlNow)  // the maximum Lucid allows: 50% of profit up to the size's cap
+    string acct = isEval ? ("EVAL (" + (CONS == 0.5 ? "50%" : "40%") + " rule, " + (SPAN == 1.0 ? "wide" : SPAN == 0.75 ? "medium" : "tight") + " bracket" + (newsSkip ? ", news skip" : "") + ") | " + acctSize + " | need $" + str.tostring(math.max(TARGET, bestDay / CONS) - pnlNow, "#") + " more") : ("FUNDED " + acctSize + " | payouts " + str.tostring(nPay) + "/5 | qualifying days (>= $" + str.tostring(QDAY, "#") + ") " + str.tostring(qDays) + "/5 | since last payout $" + str.tostring(pnlNow - pnlAfterPay, "#"))
     string sigTxt = na(score) ? "warming up" : (str.tostring(score, "#.##") + " (" + (sigSide == 1 ? "BUY tonight" : sigSide == -1 ? "SELL tonight" : "no overnight trade") + ", needs |score| >= 0.72; final after the 16:00 close)")
-    string warn = tfMin == 0 or tfMin > 5 ? "Use a 1-5 minute chart" : (onBars == 0 ? "No overnight bars on this chart: switch it to the 24h (ETH) session" : (cushion < 200.0 and not isEval ? "ABANDON: cushion < $200 - buy a new eval" : (eligible ? "REQUEST $500 PAYOUT NOW (max allowed $" + str.tostring(maxPay, "#") + ")" : "-")))
-    table.cell(T, 0, 0, "ONR Book v2.1", bgcolor = color.new(color.navy, 0), text_color = color.white)
-    table.cell(T, 1, 0, "Backtest 2011-26 (MNQ $), one account: payout in 33% / 53% of months (2011-18 / 2019-26), longest dry spell 12 / 9 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    string warn = tfMin == 0 or tfMin > 5 ? "Use a 1-5 minute chart" : (onBars == 0 ? "No overnight bars on this chart: switch it to the 24h (ETH) session" : (cushion < 200.0 * M and not isEval ? "ABANDON: cushion < $" + str.tostring(200.0 * M, "#") + " - buy a new eval" : (eligible ? "REQUEST $" + str.tostring(payAmt, "#") + " PAYOUT NOW (the maximum allowed: 50% of profit, cap $" + str.tostring(PAYCAP, "#") + ")" : "-")))
+    table.cell(T, 0, 0, "ONR Book v2.2", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 1, 0, "Backtest 2011-26, net/yr (2011-18 / 2019-26): one 25K $2.0k / $4.3k; 5 x 50K $22k / $47k; longest gap 6-8 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))

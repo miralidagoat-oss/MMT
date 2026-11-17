@@ -210,6 +210,7 @@ class Sessions:
                             be = ib_end if ib_end is not None else xe
                             rec["ib"] = dict(H=h[ibr].max(), L=l[ibr].min(), arm=ib_arm, end=be, eod=xe)
             rec["rng"] = (o, h, l, c, t)
+            rec["i0"], rec["i1"] = int(a), int(b)  # this session's bar index range (research.py minute-level legs)
             self.S[d] = rec
             self.days.append(d)
         self.days = np.array(self.days)

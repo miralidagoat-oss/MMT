@@ -22,11 +22,21 @@ def is_half(d):
     return half_day(np.datetime64(int(d), "D").astype(dt.date))
 
 
-def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0):
-    sl = min(600.0, cushion - 5.0)
-    need = max(1250.0, best / cons)
-    tp = max(20.0, min(1250.0 * cons, max(need - pnl, 0.0) + 15.0))
-    n = int(max(1.0, min(20.0, math.floor((sl + tp) / (span * adr * PV) + 0.5))))
+# Lucid Flex sizes (BestProps, checked against Lucid's help centre 2026-11-10). The strategy scales its $ limits by
+# m = mll / 1000 (eval stop cap, day budget, cushion thresholds, funded size reference).
+RULES = {25: dict(target=1250.0, mll=1000.0, qday=100.0, paycap=1000.0, evalmax=20, fundmax=10, price=65.0),
+         50: dict(target=3000.0, mll=2000.0, qday=150.0, paycap=2000.0, evalmax=40, fundmax=20, price=115.0),
+         100: dict(target=6000.0, mll=3000.0, qday=200.0, paycap=2500.0, evalmax=60, fundmax=30, price=215.0),
+         150: dict(target=9000.0, mll=4500.0, qday=250.0, paycap=3000.0, evalmax=100, fundmax=40, price=323.0)}
+
+
+def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0, size=25):
+    R = RULES[size]
+    m = R["mll"] / 1000.0
+    sl = min(600.0 * m, cushion - 5.0 * m)
+    need = max(R["target"], best / cons)
+    tp = max(20.0 * m, min(R["target"] * cons, max(need - pnl, 0.0) + 15.0 * m))
+    n = int(max(1.0, min(float(R["evalmax"]), math.floor((sl + tp) / (span * adr * PV) + 0.5))))
     if comm_aware:  # worst-case loss INCLUDING commission stays inside the $ limit
         sl = sl - n * comm
     return n, sl / (n * PV), tp / (n * PV)
@@ -44,12 +54,15 @@ class EvalAccount:
     """step(d) -> None | 'pass' | 'fail' | 'dead' ('dead' = cushion < $50 before the session: not traded)."""
 
     def __init__(self, S, cons=0.4, span=1.0, news=True, slip=0.0, comm=1.0, side_override=None,
-                 legs=("on", "od"), thr=None, od_k=0.10, improved=False, book_mult=0, adr_ref=350.0):
+                 legs=("on", "od"), thr=None, od_k=0.10, improved=False, book_mult=0, adr_ref=350.0, size=25,
+                 on_long_only=False):
         """book_mult=0: v1/v2 eval (one bracket trade a day). book_mult=k: trade the funded book (overnight, pyramid,
         IB with the drive) at k x the funded size under the same $600 day budget."""
         self.S, self.cons, self.span, self.news, self.slip, self.comm = S, cons, span, news, slip, comm
         self.side_override, self.legs, self.thr, self.od_k, self.improved = side_override, legs, thr, od_k, improved
-        self.book_mult, self.adr_ref = book_mult, adr_ref
+        self.book_mult, self.adr_ref, self.size, self.on_long_only = book_mult, adr_ref, size, on_long_only
+        self.R = RULES[size]
+        self.m = self.R["mll"] / 1000.0
         self.pnl = self.peak = self.best = 0.0
         self.trades = 0
 
@@ -85,9 +98,9 @@ class EvalAccount:
 
     def step(self, d):
         S, r = self.S, self.S.S[d]
-        fl = 100.0 if self.peak >= 1100.0 else self.peak - 1000.0
+        fl = 100.0 if self.peak >= self.R["mll"] + 100.0 else self.peak - self.R["mll"]
         cushion = self.pnl - fl
-        if cushion < (200.0 if self.book_mult else 50.0):  # book mode: same abandon level as the funded account
+        if cushion < (200.0 if self.book_mult else 50.0) * self.m:  # book mode: same abandon level as funded
             return "dead"
         day = 0.0
         traded = False
@@ -99,8 +112,9 @@ class EvalAccount:
                 side = S.on_side(d) if self.thr is None else S.on_side(d, self.thr)
                 if self.side_override is not None and side != 0:
                     side = self.side_override(d, "on")
-                if side != 0 and not (self.news and news_night(d)):
-                    n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved, self.comm)
+                if side != 0 and not (self.news and news_night(d)) and not (self.on_long_only and side < 0):
+                    n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved,
+                                             self.comm, self.size)
                     E = r["on"]["E"] + side * self.slip
                     px, _ = bracket_exit(r["on"]["w"], side, E, sd, td, self.slip)
                     day = (px - E) * side * n * PV - n * self.comm
@@ -110,7 +124,8 @@ class EvalAccount:
                 if self.side_override is not None and side != 0:
                     side = self.side_override(d, "od")
                 if side != 0:
-                    n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved, self.comm)
+                    n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved,
+                                             self.comm, self.size)
                     E = r["od"]["E"] + side * self.slip
                     px, _ = bracket_exit(r["od"]["w"], side, E, sd, td, self.slip)
                     day = (px - E) * side * n * PV - n * self.comm
@@ -122,7 +137,7 @@ class EvalAccount:
         if self.pnl <= fl:
             return "fail"
         self.peak = max(self.peak, self.pnl)
-        if self.pnl >= max(1250.0, self.best / self.cons):
+        if self.pnl >= max(self.R["target"], self.best / self.cons):
             return "pass"
         return None
 
@@ -133,29 +148,35 @@ class FundedAccount:
 
     def __init__(self, S, slip=0.0, legs=("on", "pyr", "ib"), payout_amt=500.0, max_pay=5, day_budget=600.0,
                  abandon=200.0, thr=None, on_stop=0.5, record=None, adr_ref=None, comm=1.0, improved=False,
-                 ib_with_drive=False, payout_max=False):
+                 ib_with_drive=False, payout_max=False, size=25, on_long_only=False, cycle_rule=False):
         self.S, self.slip, self.legs, self.payout_amt, self.max_pay = S, slip, legs, payout_amt, max_pay
         self.day_budget, self.abandon, self.thr, self.on_stop, self.record = day_budget, abandon, thr, on_stop, record
         self.adr_ref, self.comm, self.improved, self.ib_with_drive, self.payout_max = adr_ref, comm, improved, ib_with_drive, payout_max
+        self.size, self.on_long_only, self.cycle_rule = size, on_long_only, cycle_rule
+        self.R = RULES[size]
+        self.m = self.R["mll"] / 1000.0
         self.pnl = self.peak = 0.0
         self.npay = self.q = 0
+        self.after_pay = 0.0  # P&L right after the last payout (Lucid: the next one needs net profit above it)
 
     def step(self, d):
         S, r = self.S, self.S.S[d]
-        fl = 100.0 if (self.npay > 0 or self.peak >= 1100.0) else self.peak - 1000.0
+        m = self.m
+        fl = 100.0 if (self.npay > 0 or self.peak >= self.R["mll"] + 100.0) else self.peak - self.R["mll"]
         cushion = self.pnl - fl
-        if cushion < self.abandon:
+        if cushion < self.abandon * m:
             return "dead", 0.0
-        room = min(self.day_budget, cushion - 10.0)
+        room = min(self.day_budget * m, cushion - 10.0 * m)
         used = day = 0.0
         adr = r["adr"]
         half = self.improved and is_half(d)
         if not np.isnan(adr):
-            n = funded_size(adr, self.adr_ref)
+            n = funded_size(adr, None if self.adr_ref is None else self.adr_ref * m,
+                            nmax=self.R["fundmax"]) if self.adr_ref is not None else 1
             if "on" in self.legs:
                 side = S.on_side(d) if self.thr is None else S.on_side(d, self.thr)
                 rk = self.on_stop * adr * PV * n
-                if side != 0 and used + rk <= room:
+                if side != 0 and used + rk <= room and not (self.on_long_only and side < 0):
                     p, _ = funded_on(S, d, side, self.slip, self.on_stop, n=n, comm=self.comm)
                     day += p
                     used += rk
@@ -183,11 +204,12 @@ class FundedAccount:
         if self.pnl <= fl:
             return "blown", 0.0
         self.peak = max(self.peak, self.pnl)
-        if day >= 100.0:
+        if day >= self.R["qday"]:
             self.q += 1
-        if self.q >= 5 and self.pnl >= 1000.0:
-            amt = min(1000.0, max(500.0, 0.5 * self.pnl)) if self.payout_max else self.payout_amt
+        if self.q >= 5 and self.pnl >= 1000.0 and (not self.cycle_rule or self.pnl > self.after_pay):
+            amt = min(self.R["paycap"], max(500.0, 0.5 * self.pnl)) if self.payout_max else self.payout_amt
             self.pnl -= amt
+            self.after_pay = self.pnl
             self.npay += 1
             self.q = 0
             return ("done" if self.npay >= self.max_pay else None), max(amt, 1e-9)
