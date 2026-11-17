@@ -13,7 +13,7 @@ import sys
 
 import numpy as np
 
-from account import is_half, lifecycle, run_eval, run_funded  # noqa: F401
+from account import FundedAccount, lifecycle, run_eval
 from engine import PV, Sessions, funded_on, ib_breakout, load_npz, pyramid, rth_sessions
 
 
@@ -50,12 +50,17 @@ def pass_rate(S, a, b, **kw):
     return 100 * len(p) / len(done), np.median([r["days"] for r in p])
 
 
-def funded_years(S, adr_ref, improved):
-    """Funded book with the account's risk budget but no account resets: $ per year, 1 MNQ-equivalent."""
+def book(S, days, **fk):
+    """Continuous funded book: each session traded by a fresh account (full $600 day budget, no resets)."""
     rec = []
-    run_funded(S, 0, adr_ref=adr_ref, improved=improved, abandon=-1e18, max_pay=10 ** 9, payout_amt=0.0, record=rec)
+    for d in days:
+        FundedAccount(S, record=rec, **fk).step(d)
+    return rec
+
+
+def funded_years(S, **fk):
     by = {}
-    for d, leg, side, p in rec:
+    for d, leg, side, p in book(S, S.days, **fk):
         by[year(d)] = by.get(year(d), 0.0) + p
     return by
 
@@ -68,7 +73,7 @@ def main(dd):
     kmid = int(np.searchsorted(days, np.datetime64("2019-01-01").astype(int)))
     periods = (("2011-18", k0, kmid), ("2019-26", kmid, len(days)))
     cfg = {"v1 (as written)": (dict(), dict()),
-           "v2 (fixed)": (dict(improved=True), dict(adr_ref=350, improved=True))}
+           "v2.1 (fixed)": (dict(improved=True), dict(adr_ref=350, improved=True, ib_with_drive=True))}
     print("== Eval pass rate (new eval started every session), median sessions to pass")
     for name, (ek, _) in cfg.items():
         print(f"  {name:16s}", " | ".join(f"{lab}: {pr:4.1f}% ({md:.0f} sessions)" for lab, a, b in periods
@@ -80,19 +85,20 @@ def main(dd):
             print(f"  {name:16s} {lab}: payouts/yr {r['payouts_yr']:4.1f} | months with a payout {r['months_pct']:4.1f}% | "
                   f"evals/yr {r['evals_yr']:4.1f} | net ${r['net_yr']:6.0f}/yr | longest dry spell median "
                   f"{r['dry_median']:4.1f} mo, worst {r['dry_worst']:4.1f} mo", flush=True)
-    print("== Robustness of v2 (lifecycle payouts/yr, worst dry spell)")
+    print("== Robustness of v2.1 (lifecycle payouts/yr, worst dry spell)")
     late = Sessions(nq, spx, tf=1, ev=dict(on=11, od=936, ib=991), score=(S.score_raw, S.feats))
+    f21 = cfg["v2.1 (fixed)"][1]
     for name, SS, ek, fk in (("costs x2 + 1 tick slip", S, dict(improved=True, comm=2.0, slip=0.25),
-                              dict(adr_ref=350, improved=True, comm=2.0, slip=0.25)),
-                             ("entries 1 min late", late, dict(improved=True), dict(adr_ref=350, improved=True))):
+                              dict(f21, comm=2.0, slip=0.25)),
+                             ("entries 1 min late", late, dict(improved=True), f21)):
         out = []
         for lab, a, b in periods:
             r = life_stats(SS, a, b, ek, fk)
             out.append(f"{lab}: {r['payouts_yr']:4.1f}/yr, worst dry {r['dry_worst']:4.1f} mo")
         print(f"  {name:24s}", " | ".join(out), flush=True)
-    print("== Funded book $ per year (risk budget applied, no resets)")
-    for name, ref, imp in (("v1 (1 MNQ)", None, False), ("v2 (ADR-sized)", 350, True)):
-        by = funded_years(S, ref, imp)
+    print("== Funded book $ per year (full day budget every session, no account resets)")
+    for name, fk in (("v1 (1 MNQ)", dict()), ("v2.1 (ADR-sized)", f21)):
+        by = funded_years(S, **fk)
         print(f"  {name:16s}", " ".join(f"{y}:{v:+.0f}" for y, v in sorted(by.items())),
               f"| positive years {sum(v > 0 for v in by.values())}/{len(by)}", flush=True)
     mp = os.path.join(dd, "MNQ_5m_60d.npz")
@@ -108,9 +114,8 @@ def main(dd):
             res = [run_eval(M, k, **ek) for k in range(m0, len(M.days))]
             done = [r for r in res if r["result"] != "open"]
             npass = sum(r["result"] == "pass" for r in done)
-            rec = []
-            run_funded(M, m0, record=rec, abandon=-1e18, max_pay=10 ** 9, payout_amt=0.0, **fk)
-            print(f"  {name:16s} evals: {npass}/{len(done)} rolling starts passed | funded book (budgeted, "
+            rec = book(M, M.days[m0:], **fk)
+            print(f"  {name:16s} evals: {npass}/{len(done)} rolling starts passed | funded book (full budget, "
                   f"no resets): {len(rec)} trades, ${sum(x[3] for x in rec):+.0f}, "
                   f"{100 * np.mean([x[3] > 0 for x in rec]):.0f}% winners", flush=True)
 

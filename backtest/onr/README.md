@@ -1,7 +1,8 @@
 # ONR Book: independent review and MNQ backtest (2026-11-17)
 
-Review of `indicators/onr_book.pine` (v1 as received, commit `77b0f72`) and the v2 fixes, with a Python replica of the
-script's exact logic (`engine.py`, `account.py`) run on 2011–2026 minute data and on real MNQ futures.
+Review of `indicators/onr_book.pine` (v1 as received, commit `77b0f72`) and the v2.1 fixes, with a Python replica of
+the script's exact logic (`engine.py`, `account.py`, `portfolio.py`) run on 2011–2026 minute data and on real MNQ
+futures, including several Lucid accounts side by side.
 
 ## Verdict
 
@@ -18,6 +19,13 @@ script's exact logic (`engine.py`, `account.py`) run on 2011–2026 minute data 
 - **The big v1 problem was sizing, not signals:** funded legs were always 1 MNQ. When NQ's daily range was 30–100
   points (2011–2019) that risked $30–$100 a trade, could not make $100 qualifying days, and payouts stalled for
   years. That is what the "14-month dry spell" mostly measured. v2 sizes funded legs by ADR (still 1 MNQ today).
+- **Second real mistake (found in the multi-account review):** the 09:35 pyramid and the 10:30 IB breakout could point
+  opposite ways. Inside one account that is long and short at once (impossible in a netted futures account, ~1 day a
+  year); across copy-traded accounts, an eval's 09:35 trade against a funded account's IB short is the cross-account
+  hedging Lucid prohibits (~22 days a year). v2.1 places the IB order only on the drive's side on drive days.
+- **Dry spells cannot be removed completely.** About half of them were times the strategy itself lost money; the
+  other half were times it made money but the eval kept failing. More accounts run as an eval pool fix much of the
+  second kind (longest gap 12 → 8 months in 2011–18, 8 → 6.5 in 2019–26) but nothing fixes the first kind.
 
 ## Data
 
@@ -47,7 +55,7 @@ evals × $60.
 | | 2011–18 | 2019–26 |
 |---|---|---|
 | v1 | 43.7% (median 10 sessions) | 47.7% (9) |
-| v2 | 44.4% (10) | 47.5% (9) |
+| v2.1 | 44.4% (10) | 47.5% (9) |
 
 Coin-flip sides on the same brackets (10 seeds, 2011–20 / 2021–26 split): 30.9% / 36.8% mean, best 33.5% / 41.4%,
 vs the strategy's 42.9% / 50.4%. The tight bracket passes 34.1% / 36.1%; the paid 50% consistency add-on 42.0% / 49.0%
@@ -59,40 +67,91 @@ vs the strategy's 42.9% / 50.4%. The tight bracket passes 34.1% / 36.1%; the pai
 |---|---|---|---|---|
 | v1, 2011–18 | 1.4 | 11.5% | $489 | 26.7 / 36.2 months |
 | v1, 2019–26 | 7.4 | 43.4% | $2,742 | 13.1 / 14.5 months |
-| **v2, 2011–18** | **5.5** | **35.8%** | **$1,690** | **11.8 / 12.1 months** |
-| **v2, 2019–26** | **8.8** | **51.0%** | **$3,348** | **7.2 / 9.3 months** |
+| **v2.1, 2011–18** | **5.2** | **33.3%** | **$1,552** | **11.9 / 12.4 months** |
+| **v2.1, 2019–26** | **9.0** | **53.3%** | **$3,527** | **6.5 / 8.7 months** |
 
-- Dry spells are regime-driven (Jul 2014–Jul 2015, Dec 2016–Aug 2017, Feb–Sep 2023, Dec 2025–May 2026). Running 2 or
-  3 staggered accounts multiplies payouts but leaves the longest dry spell unchanged, because every account trades
-  the same signals.
+- More accounts that each buy one eval when empty multiply payouts but leave the longest dry spell unchanged, because
+  every account trades the same signals; see "Several accounts" for what does help.
 - The dry-spell statistic is noisy: changing the sizing reference ADR from 350 to 250 or 450 moves the worst 2019–26
   spell between 8.6 and 14.5 months. Treat any single "longest dry spell" number, including these, as ±5 months.
 - Not adopted (tested, no consistent gain in both halves): wider overnight stop (0.75 / 1.0 ADR; it eats the day
   budget and crowds out the pyramid and IB), dropping the funded overnight leg, dropping the IB leg (much worse),
   pyramid-only.
 
-### Robustness of v2 (lifecycle payouts / yr, worst dry spell)
+### Robustness of v2.1 (one account: payouts / yr, worst dry spell)
 
 | | 2011–18 | 2019–26 |
 |---|---|---|
-| base | 5.5, 12.1 months | 8.8, 9.3 months |
-| 2× commission + 1 tick slippage per side | 3.0, 25.5 months | 8.1, 8.8 months |
-| every entry 1 minute late | 3.0, 14.4 months | 7.2, 7.2 months |
+| base | 5.2, 12.4 months | 9.0, 8.7 months |
+| 2× commission + 1 tick slippage per side | 4.0, 25.5 months | 8.1, 7.8 months |
+| every entry 1 minute late | 4.8, 12.5 months | 7.0, 7.4 months |
 
 In the calm, small-range 2011–18 market the book is fragile to costs and timing; in 2019–26 it holds.
 
-### Funded book by year ($, risk budget applied, no account resets)
+### Funded book by year ($, full day budget every session, no account resets)
 
 v1 (1 MNQ): positive in 16 of 16 full years, but only +$432 to +$1,613 a year until 2019.
-v2 (ADR-sized): positive in 16 of 16 full years, from +$267 (2017) and +$2,479 (2023) to +$13,056 (2021).
-Daily Sharpe of the v2 funded book: 1.1 (2011–18), 1.75 (2019–26).
+v2.1 (ADR-sized): positive in 16 of 16 full years, from +$1,384 (2017) and +$1,435 (2023) to +$15,834 (2026 to Nov 13).
+Daily Sharpe of the v2.1 funded book: 1.17 (2011–18), 1.82 (2019–26).
 
 ### Real MNQ futures, 5-min bars, 2026-09-09 → 2026-11-17 (50 sessions)
 
 - Eval: 40 of 48 rolling starts passed (all 8 failures started Oct 28 – Nov 6).
 - Funded legs at 1 MNQ each, no budget: overnight 15 trades +$2,325, pyramid 23 trades +$5,608, IB 43 trades +$1,623.
-- Funded book with the day risk budget: 68 trades, +$7,499, 49% winners (v1 and v2 identical: ADR > 233 → 1 MNQ).
+- Funded book with the day risk budget: v1 68 trades +$7,499; v2.1 65 trades +$7,568 (49% winners; 1 MNQ either way).
 - 50 sessions in a strongly trending market say little about the future; the 15-year results matter more.
+
+### Several accounts (`portfolio.py`)
+
+Lucid (Nov 2026): at most 5 funded accounts and 10 accounts in total per household; copy trading between your own
+accounts is allowed, opposing positions across accounts are not. Net = payouts × 90% − evals × $60; averages over 6
+start dates per period.
+
+| v2.1 | Net $ / yr (2011–18 / 2019–26) | Payouts / yr | Months with a payout | Longest dry spell |
+|---|---|---|---|---|
+| 1 account | $1,755 / $2,980 | 5.6 / 7.9 | 35% / 48% | 12.4 / 8.0 months |
+| 5 accounts, each buys an eval when empty | $8,823 / $14,860 | 28 / 39 | 35% / 50% | 12.4 / 8.0 months |
+| 5 accounts + 1 reserve eval each | $9,987 / $17,675 | 34 / 49 | 41% / 58% | 11.2 / 6.5 months |
+| **5 funded kept full from an eval pool (10 max, ≤ 1 new eval a day)** | **$11,620 / $16,919** | **37 / 48** | **59% / 67%** | **7.6 / 6.5 months** |
+
+- Pool, net by calendar year (started Feb 2011): 2011 $4.6k · 2012 $14.4k · 2013 $7.5k · 2014 $19.2k · 2015 $9.9k ·
+  **2016 $0.4k** · 2017 $11.9k · 2018 $18.9k · 2019 $14.5k · 2020 $13.0k · 2021 $17.7k · 2022 $12.4k · **2023 $0.2k** ·
+  2024 $30.8k · 2025 $22.0k · 2026 $24.2k (to Nov 13). Worst 12 months: −$6.0k (2011–18) / −$3.5k (2019–26).
+- Plain 5 accounts, net by calendar year (same start): 2011 $9.3k · 2012 $12.5k · 2013 $9.9k · 2014 $16.4k ·
+  **2015 −$0.9k** · 2016 $5.4k · 2017 $9.9k · 2018 $7.7k · 2019 $9.6k · 2020 $14.4k · 2021 $12.8k · 2022 $8.0k ·
+  2023 $4.1k · 2024 $24.9k · 2025 $24.9k · 2026 $18.2k.
+- With 2× commission + 1 tick slippage: pool $5.1k / $16.3k a year (longest gap 15.9 / 6.4 months); plain 5 accounts
+  $2.9k / $13.8k.
+- The pool buys ~80 evals a year (~$4,800 at $60, included above); it assumes a passed eval can wait until a funded
+  slot frees up. Five accounts bought on the same day are exact copies of one account (same days, same blow-ups).
+
+### Dry spells: what causes them and what was tried
+
+Gaps of 5 months or more with no payout from any of 5 accounts (staggered a week apart, 2011–2026), with what the
+strategy itself made meanwhile (continuous funded book, full budget, no resets; its average is +$654 a month):
+
+| Gap | Strategy P&L during it | Eval pass rate in it | Kind |
+|---|---|---|---|
+| Jul 2014 → Jul 2015 (12.4 mo) | +$9,106 | 27% | eval bottleneck |
+| Aug 2015 → Jun 2016 (10.8 mo) | +$259 | 43% | flat |
+| Jul 2012 → Jun 2013 (10.7 mo) | +$3,390 | 39% | eval bottleneck |
+| Nov 2017 → Jul 2018 (8.5 mo) | +$2,346 | 64% | slow funded climb |
+| Sep 2020 → May 2021 (8.0 mo) | +$3,596 | 18% | eval bottleneck |
+| Nov 2016 → Jul 2017 (7.6 mo) | −$4,621 | 37% | strategy drought |
+| Mar → Sep 2023 (6.5 mo) | +$5,531 | 28% | eval bottleneck |
+| Sep 2023 → Apr 2024 (6.4 mo) | −$7,655 | 30% | strategy drought |
+| Dec 2025 → May 2026 (5.0 mo) | +$3,305 | 51% | eval bottleneck |
+
+Tried, pre-registered, chosen on 2011–18 and checked on 2019–26:
+
+- **Eval trades the funded book** (overnight + pyramid + IB at 1× or 2× size) to close the eval bottleneck:
+  **rejected**, pass rate 26% / 40% (1×) and 20% / 32% (2×) vs 44% / 48%, twice as slow, far worse with 5 accounts.
+  The v1 one-bracket eval is the better eval.
+- **More parallel evals (reserve evals, eval pool):** better in both halves → recommended for multi-account use.
+- Earlier (one account): wider overnight stop, dropping legs, 50% add-on, more accounts with one eval each: no gain.
+
+What is left are strategy droughts (2016–17, late 2023): no account structure turns a losing stretch into payouts;
+only a second, unrelated edge would, and adding one untested would be curve-fitting.
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
@@ -101,6 +160,9 @@ Daily Sharpe of the v2 funded book: 1.1 (2011–18), 1.75 (2019–26).
 | Overnight (0.5 ADR stop) | 1,303 | +0.029 | 1.2 | 10/16 | random mean −0.033 (best +0.008), opposite −0.101 |
 | Opening-drive pyramid | 1,805 | +0.177 | 5.4 | 13/16 | random mean +0.067 (best +0.103), opposite −0.042 |
 | IB breakout | 3,591 | +0.065 | 3.1 | 13/16 | 2011–18 t = 1.0, 2019–26 t = 3.3 |
+
+IB breakout by direction vs the 09:35 drive (2011–18 / 2019–26): with the drive +0.090R / +0.180R, against it
++0.024R / −0.087R, no drive that day +0.013R / +0.123R.
 
 Overnight signal with no stop: +0.051 ADR per trade, t = 4.1 (2011–18 t = 2.9, 2019–26 t = 2.8); edge rises smoothly
 with the threshold (0.5 → 1.0), barely changes with entry 18:05–20:00 or exit 08:25–10:00. Overnight leg in R by stop
@@ -117,11 +179,11 @@ width (2011–18 / 2019–26): 0.35 ADR +0.024 / −0.001, 0.5 ADR +0.028 / +0.0
 | 50% add-on 47% / 52% | 42.0% / 49.0% (no gain over 40%) |
 | 8–9 sessions to pass | median 9–10 |
 | Longest dry spell 14.0 / 14.2 months | v1: up to 36 months (2011–18), 14.5 (2019–26); depends on the start date |
-| $500 payout in ~45–50% of months | v1: 11.5% (2011–18), 43.4% (2019–26); v2: 35.8% / 51.0% |
+| $500 payout in ~45–50% of months | v1: 11.5% (2011–18), 43.4% (2019–26); v2.1: 33.3% / 53.3% |
 | 16/16 years positive | true for the combined funded book; single legs 10–13 of 16 |
 | Holds with 2–3× costs and 1-minute-late entries | true for 2019–26 only; 2011–18 payouts roughly halve |
 
-## Code review findings fixed in v2
+## Code review findings fixed in v2.1
 
 1. **Funded size fixed at 1 MNQ** regardless of volatility → ADR-normalised `round(350 / ADR)`, 1–10 MNQ (input,
    default Auto; identical to v1 while the range is above ~233 points).
@@ -139,6 +201,13 @@ width (2011–18 / 2019–26): 0.35 ADR +0.024 / −0.001, 0.5 ADR +0.028 / +0.0
 8. No check that the chart shows overnight bars (an RTH-only chart never fires the 18:10 trade) → panel warning.
 9. Chart-built ADR fallback counted partial sessions → full sessions only. `peakEod` / `bestDay` can no longer be
    negative. Unused `isON` removed.
+10. **Opposite positions:** the IB breakout could go short while the pyramid (or another account's eval) was long →
+    on 09:35-drive days only the drive's side is placed. Every position in every account now always points the same
+    way, so copy-trading several accounts can't create prohibited hedges.
+
+Static checks (no TradingView compiler here): v1 and v2.1 both parse with `pynescript` (a full Pine grammar), and a
+scope-aware check of the syntax tree finds no undeclared or out-of-block identifiers; both checks catch deliberately
+injected errors. The holiday calendar's Pine logic matches an independent Python version on every day 2010–2035.
 
 Kept as is (checked): no look-ahead in the ADR and score requests; the score after a half session reuses the last full
 session's value (62 of 1,303 overnight trades, average +0.07 ADR, not harmful); news filter heuristic (first Friday
@@ -151,7 +220,7 @@ python3 backtest/onr/fetch_histdata.py data/raw SPXUSD NSXUSD
 python3 backtest/onr/prep_data.py histdata data/raw data SPXUSD NSXUSD
 curl -s -A "Mozilla/5.0 (X11; Linux x86_64)" -o data/MNQ_5m.json "https://query2.finance.yahoo.com/v8/finance/chart/MNQ=F?interval=5m&range=60d"
 python3 backtest/onr/prep_data.py yahoo data/MNQ_5m.json data/MNQ_5m_60d.npz
-cd backtest/onr && python3 report.py ../../data && python3 overfit.py ../../data
+cd backtest/onr && python3 report.py ../../data && python3 overfit.py ../../data && python3 portfolio.py ../../data
 ```
 
 Limits: the CFD is a proxy for MNQ before Sep 2026 (validated on the overlap only); TradingView's own fills on 1–5

@@ -276,7 +276,9 @@ def pyramid(S, d, side, slip=0.0, stop=0.35, add=0.15, trail=0.25, n=1, comm=1.0
     return (((px - E1) * side + ((px - E2) * side if nu == 2 else 0.0)) * PV - nu * comm) * n, "time"
 
 
-def ib_breakout(S, d, slip=0.0, stop=0.25, tgt=0.5, n=1, comm=1.0):
+def ib_breakout(S, d, slip=0.0, stop=0.25, tgt=0.5, n=1, comm=1.0, only_side=0):
+    """only_side=+1/-1 arms just that stop order (v2.1: on opening-drive days only the drive's side, so no account
+    ever holds a position opposite to another leg or another copy-traded account)."""
     r = S.S[d]
     if "ib" not in r:
         return None
@@ -285,7 +287,8 @@ def ib_breakout(S, d, slip=0.0, stop=0.25, tgt=0.5, n=1, comm=1.0):
     A = r["adr"]
     buy, sell = ib["H"] + TK, ib["L"] - TK
     for j in range(ib["arm"] + 1, ib["end"] + 1):
-        hu, hd = h[j] >= buy, l[j] <= sell
+        hu = h[j] >= buy and only_side >= 0
+        hd = l[j] <= sell and only_side <= 0
         if hu and hd:
             return 0.0, "both-skip", 0
         if hu or hd:

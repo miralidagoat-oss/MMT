@@ -1,8 +1,8 @@
 //@version=6
-indicator("ONR Book v2 - Lucid Flex 25K (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator("ONR Book v2.1 - Lucid Flex 25K (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2 (2026-11-17). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
+// ONR BOOK v2.1 (2026-11-17). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
 // EVAL   : ONE bracket trade per day, first trigger that fires:
 //            1) overnight reversion at 18:10 on signal nights (exit 09:30); skipped into Thursday / first-Friday 08:30 news
 //            2) else the 09:35 opening drive (first 5 min >= 0.10 ADR, exit 16:00); not on half days (13:00 ET halt)
@@ -11,26 +11,34 @@ indicator("ONR Book v2 - Lucid Flex 25K (overnight reversion + opening drive)", 
 // FUNDED : trades in priority order under a day risk budget = min($600, cushion - $10), N MNQ per leg:
 //            1) overnight reversion 18:10 -> 09:30, stop 0.5 ADR, no target
 //            2) opening-drive pyramid 09:35: stop 0.35 ADR, add N at +0.15 ADR (stop -> breakeven), trail 0.25 ADR, exit 16:00
-//            3) initial-balance breakout: stop orders 1 tick beyond the 09:30-10:30 range, live 10:30-13:00, stop 0.25 /
-//               target 0.5 ADR. No 09:35 / 10:30 entries on US holiday half-sessions and early closes.
+//            3) initial-balance breakout: stop order 1 tick beyond the 09:30-10:30 range, live 10:30-13:00, stop 0.25 /
+//               target 0.5 ADR; on a 09:35-drive day only on the drive's side (else both sides, OCO).
+//          No 09:35 / 10:30 entries on US holiday half-sessions and early closes.
 //          N = round(350 / ADR), 1 to 10 ("Auto", default): 1 MNQ at today's range, more only if NQ's range shrinks.
 //          Request $500 when eligible (5 days >= $100, P&L >= $1,000 and up since the last payout). Abandon if cushion < $200.
 // ADR = average 09:30-16:00 NQ range of the last 14 full sessions.
+// SEVERAL ACCOUNTS: one copy of this indicator per account (its own inputs). All copies always hold the same direction,
+//          so copy-trading never creates opposing positions across accounts (Lucid prohibits that).
 // ---------------------------------------------------------------------------------------------------------------------
-// v2 CHANGES (independent review + backtest, 2026-11-17; trade signals, times and ADR multiples unchanged)
+// v2.1 CHANGES (independent review + backtest, 2026-11-17; signals, times and ADR multiples unchanged)
 //  - Funded size scales with ADR (v1: always 1 MNQ). At NQ's 30-point ranges of 2011-13, v1 risked ~$30 a trade, could
 //    not make $100 days, and its payouts stalled for years. Unchanged today (1 MNQ while the range is above ~233 points).
+//  - IB breakout only with the 09:35 drive on drive days: v1/v2 could be long (pyramid) and short (IB) at once (~1 day a
+//    year; impossible in a netted futures account) and, run across accounts, an eval's 09:35 trade vs a funded IB
+//    short is prohibited hedging (~22 days a year). Against-drive IB trades were also the weakest group.
 //  - No new RTH entries on half days (computed holiday calendar; v1's panel said "no new trades" but the code traded).
 //  - Eval stop includes commission; pyramid add fills at the bar open on a gap; payout check also needs profit since the
 //    last payout (Lucid rule); messages when a funded leg is skipped; warning for charts without overnight bars; time
 //    alerts only when a position is open; chart-built ADR fallback uses full sessions only.
 // BACKTEST (backtest/onr: Nasdaq-100 / S&P 500 CFD minute data 2011-2026 with its timestamps fixed, cross-checked against
-//  real MNQ futures - same trades within ~$25; MNQ $2/pt, $1 commission, this script's fill rules):
-//  - eval pass rate 44% (2011-18) / 48% (2019-26) vs ~31% / 37% with coin-flip sides; median 9-10 sessions to pass.
-//  - one 25K at a time: 5.5 / 8.8 payouts a year, a payout in 36% / 51% of months, longest dry spell 12 / 9 months
-//    (v1: 1.4 / 7.4 payouts a year, dry spells up to 36 / 15 months). Dry spells come from market regimes: more accounts
-//    add payouts but do not shorten them.
-//  - real MNQ futures Sep 9 - Nov 17 2026: 40 of 48 eval starts passed; funded book +$7,499 on 68 trades (short sample).
+//  real MNQ futures - same trades within ~$25; MNQ $2/pt, $1 commission, this script's fill rules), 2011-18 / 2019-26:
+//  - eval pass rate 44% / 48% vs ~31% / 37% with coin-flip sides; median 9-10 sessions to pass.
+//  - one 25K at a time: 5.2 / 9.0 payouts a year, a payout in 33% / 53% of months, longest dry spell 12 / 9 months
+//    (v1: 1.4 / 7.4 payouts a year, dry spells up to 36 / 15 months).
+//  - 5 funded accounts kept full from a pool of evals (Lucid max: 5 funded, 10 accounts): ~$11.6k / $16.9k a year net of
+//    evals and the 90% split, a payout in 59% / 67% of months, longest dry spell ~8 / 6.5 months. 2016 and 2023 still
+//    netted ~$0: the strategy itself lost money then, so no number of accounts removes those droughts.
+//  - real MNQ futures Sep 9 - Nov 17 2026: 40 of 48 eval starts passed (short sample).
 //  - by leg: opening-drive pyramid strongest; IB breakout weak before 2019; the overnight signal is real (t~4 with no stop)
 //    but its 0.5 ADR stop keeps only about half of it. 2011-18 results roughly halve with 2x costs + 1 tick slippage or
 //    1-minute-late entries; 2019-26 holds. NOT live-tested. Past results do not guarantee future payouts.
@@ -337,6 +345,7 @@ var int iN = 1
 var float iEnt = na
 var float iStp = na
 var float iTgt = na
+var int odToday = 0   // today's 09:35 drive direction (0 = none); the IB order only trades with it
 var string lastMsg = "-"
 var int t0Chart = time
 var int eT = 0
@@ -371,6 +380,7 @@ if newDay
     evalUsedToday := false
     ibArmed := false
     ibReserve := 0.0
+    odToday := 0
 
 // ---- 1) manage open trades on this bar (entries were made at an earlier bar's close)
 if eSide != 0
@@ -425,8 +435,8 @@ if iSide != 0
         f_log(LOG, iT, time, "IB breakout x" + str.tostring(iN), iSide, iEnt, ipx, ((ipx - iEnt) * iSide * PV - COMM) * iN, (ipx - iEnt) * iSide / math.abs(iEnt - iStp), iStop ? "stop" : "target")
         iSide := 0
 if ibArmed and not evIB
-    bool hu = high >= ibBuy
-    bool hd = low <= ibSell
+    bool hu = not na(ibBuy) and high >= ibBuy
+    bool hd = not na(ibSell) and low <= ibSell
     if hu and hd
         ibArmed := false
         usedRisk := usedRisk - ibReserve
@@ -546,6 +556,7 @@ if evOD and halfDay
 if evOD and not halfDay and not na(adr) and not na(rOpen)
     float d5 = (close - rOpen) / adr
     int odSide = math.abs(d5) >= 0.10 ? (d5 > 0 ? 1 : -1) : 0
+    odToday := odSide
     if odSide != 0
         string sTxt = odSide == 1 ? "BUY" : "SELL"
         if isEval
@@ -589,18 +600,21 @@ if evOD and not halfDay and not na(adr) and not na(rOpen)
             else
                 lastMsg := "PYRAMID " + sTxt + " signal NOT traded: " + (cushion < 200.0 ? "cushion below $200" : "risk $" + str.tostring(rk2, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
 
-// 10:30 IB breakout orders (funded leg 3; its risk is reserved while the orders are live)
+// 10:30 IB breakout orders (funded leg 3; its risk is reserved while the orders are live). On a 09:35-drive day only the
+// drive's side is placed: no position ever opposes the pyramid or an eval's 09:35 trade on another account (Lucid's
+// hedging rule; v2 could hold long and short together). Backtest: against-drive IB trades were the weakest group.
 if evIB and not isEval and not halfDay and not na(adr) and not na(ibH)
     float rk3 = 0.25 * adr * PV * nF
     if cushion >= 200.0 and usedRisk + rk3 <= room
-        ibBuy := ibH + TK
-        ibSell := ibL - TK
+        ibBuy := odToday >= 0 ? ibH + TK : na
+        ibSell := odToday <= 0 ? ibL - TK : na
         ibArmed := true
         iN := nF
         ibReserve := rk3
         usedRisk := usedRisk + rk3
-        lastMsg := "IB OCO " + str.tostring(nF) + " MNQ: buy stop " + str.tostring(ibBuy, format.mintick) + " / sell stop " + str.tostring(ibSell, format.mintick) + " until 13:00"
-        alert("ONR FUNDED: IB BREAKOUT OCO " + str.tostring(nF) + " MNQ | buy stop " + str.tostring(ibBuy, format.mintick) + " | sell stop " + str.tostring(ibSell, format.mintick) + " | stop 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts) | target 0.5 ADR (" + str.tostring(0.5 * adr, format.mintick) + " pts) | cancel at 13:00 | exit 16:00", alert.freq_once_per_bar_close)
+        string ibTxt = odToday == 0 ? "OCO buy stop " + str.tostring(ibBuy, format.mintick) + " / sell stop " + str.tostring(ibSell, format.mintick) : (odToday == 1 ? "buy stop " + str.tostring(ibBuy, format.mintick) + " only (with the 09:35 drive)" : "sell stop " + str.tostring(ibSell, format.mintick) + " only (with the 09:35 drive)")
+        lastMsg := "IB " + str.tostring(nF) + " MNQ: " + ibTxt + " until 13:00"
+        alert("ONR FUNDED: IB BREAKOUT " + str.tostring(nF) + " MNQ | " + ibTxt + " | stop 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts) | target 0.5 ADR (" + str.tostring(0.5 * adr, format.mintick) + " pts) | cancel at 13:00 | exit 16:00", alert.freq_once_per_bar_close)
     else
         lastMsg := "IB breakout NOT placed: " + (cushion < 200.0 ? "cushion below $200" : "risk $" + str.tostring(rk3, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
 
@@ -667,8 +681,8 @@ if showPanel and barstate.islast
     string acct = isEval ? ("EVAL (" + (CONS == 0.5 ? "50%" : "40%") + " rule, " + (SPAN == 1.0 ? "wide" : SPAN == 0.75 ? "medium" : "tight") + " bracket" + (newsSkip ? ", news skip" : "") + ") | need $" + str.tostring(math.max(1250.0, bestDay / CONS) - pnlNow, "#") + " more") : ("FUNDED | payouts " + str.tostring(nPay) + "/5 | qualifying days " + str.tostring(qDays) + "/5 | since last payout $" + str.tostring(pnlNow - pnlAfterPay, "#"))
     string sigTxt = na(score) ? "warming up" : (str.tostring(score, "#.##") + " (" + (sigSide == 1 ? "BUY tonight" : sigSide == -1 ? "SELL tonight" : "no overnight trade") + ", needs |score| >= 0.72; final after the 16:00 close)")
     string warn = tfMin == 0 or tfMin > 5 ? "Use a 1-5 minute chart" : (onBars == 0 ? "No overnight bars on this chart: switch it to the 24h (ETH) session" : (cushion < 200.0 and not isEval ? "ABANDON: cushion < $200 - buy a new eval" : (eligible ? "REQUEST $500 PAYOUT NOW (max allowed $" + str.tostring(maxPay, "#") + ")" : "-")))
-    table.cell(T, 0, 0, "ONR Book v2", bgcolor = color.new(color.navy, 0), text_color = color.white)
-    table.cell(T, 1, 0, "Backtest 2011-26 (MNQ $): payout in 36% / 51% of months (2011-18 / 2019-26), longest dry spell 12 / 9 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    table.cell(T, 0, 0, "ONR Book v2.1", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 1, 0, "Backtest 2011-26 (MNQ $), one account: payout in 33% / 53% of months (2011-18 / 2019-26), longest dry spell 12 / 9 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))
