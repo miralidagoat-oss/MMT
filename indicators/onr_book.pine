@@ -1,0 +1,673 @@
+//@version=6
+indicator("ONR Book - Lucid Flex 25K (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// =====================================================================================================================
+// ONR BOOK (research R15; rebuilt 2026-11-08 from the audited E_Book.pine code). Chart: NQ1! or MNQ1!, 1-5 minute bars. Sizes in MNQ ($2/pt).
+// EVAL   : ONE bracket trade per day, first trigger that fires:
+//            1) overnight reversion at 18:10 on signal nights (exit 09:30)
+//            2) else the 09:35 opening drive (first 5 min >= 0.10 ADR, exit 16:00)
+//          Size, stop and target come from your account inputs (structure bracket: stop <= $600, target <= $500, or <= $625 with
+//          Lucid's paid 50% consistency add-on - set "EVAL: consistency rule you bought").
+//          EVAL UPGRADE 2026-11-12 (default now): WIDE bracket (width 1.0 x ADR instead of 0.5 = about 1 MNQ, stop ~300 pts) + no overnight
+//          trade into Thursday / first-Friday 08:30 news (the 09:35 drive still trades). Pass rate, NQ CFD 2011-20 / futures 2021-26:
+//          41/39% -> 48/49% (40% rule) or 47/52% (50% add-on); coin-flip sides on the same brackets pass 35-36%. Same speed: 8-9 sessions
+//          to pass, eval bought -> its first payout 1 month median, 90% within 2 months. Holds with 1-minute-late entries and 3x costs.
+//          Set "EVAL: bracket width" to "Tight x0.5 (old)" and untick the news skip to get the previous eval back.
+//          Higher pass rates exist only with small slow evals (60%+ needs ~1 month per eval and 5+ months per payout) - not used.
+// FUNDED : 1-MNQ trades in priority order under a day risk budget = min($600, cushion - $10):
+//            1) overnight reversion 18:10 -> 09:30, stop 0.5 ADR, no target
+//            2) opening-drive pyramid 09:35: stop 0.35 ADR, add 1 MNQ at +0.15 ADR (stop -> breakeven), trail 0.25 ADR, exit 16:00
+//            3) initial-balance breakout: stop orders 1 tick beyond the 09:30-10:30 range, live 10:30-13:00, stop 0.25 / target 0.5 ADR
+//          Request $500 when eligible (5 days >= $100 and P&L >= $1,000). Abandon the account if cushion < $200.
+// ADR = average 09:30-16:00 NQ range of the last 14 full sessions.
+// STATUS : 2026 TESTED 2026-11-08 (pre-registered, real futures to Nov 3): PASSED - account from Jan 2: 10 evals -> 7 payouts, longest wait
+//          4.7 mo. Backtest: longest dry spell 14.0 mo (real futures 2021-25), 14.2 mo (2012-25). NOT live-tested.
+//          (That 2026 test used the old tight eval; the wide eval passed 61% of 2026 starts vs 35%, but 2026 is no longer out of sample.)
+// FROZEN 2026-11-14 (no more rule changes). Adversarial battery passed 9/10 tests on 2012-20 and 2021-26: 16/16 years positive, beats
+//          100/100 coin-flip copies, holds with 2x costs, 1-minute-late entries and a second data feed; edge remains after removing NQ's
+//          own moves. Deflated Sharpe P(real) 99.4% at 10,000 trials. Expect a $500 payout in ~45-50% of months on one 25K.
+//          2026-11-14 display additions only (trade logic unchanged): next-step clock in ET + PT, live alarm levels, early-close warning.
+// =====================================================================================================================
+
+grpA = "Account - update before each session"
+phase = input.string("EVAL", "Phase", options = ["EVAL", "FUNDED"], group = grpA)
+pnlNow = input.float(0.0, "P&L now ($ vs account start; funded: after payouts)", group = grpA)
+peakEod = input.float(0.0, "Highest end-of-day P&L so far ($)", group = grpA)
+bestDay = input.float(0.0, "EVAL: best single day so far ($)", group = grpA)
+consOpt = input.string("40% (standard)", "EVAL: consistency rule you bought", options = ["40% (standard)", "50% (paid add-on)"], group = grpA)
+widthOpt = input.string("Wide x1.0 (recommended)", "EVAL: bracket width", options = ["Wide x1.0 (recommended)", "Medium x0.75", "Tight x0.5 (old)"], group = grpA, tooltip = "Wide = fewer contracts with a wider stop and target (about 1 MNQ, stop ~300 pts at today's range). Backtest pass rate 47-52% vs 39-41% for the old tight bracket, same speed.")
+newsSkip = input.bool(true, "EVAL: no overnight trade into Thursday / first-Friday 08:30 news", group = grpA, tooltip = "Skips the 18:10 overnight eval trade on Wednesday evenings (jobless claims Thursday 08:30) and on the evening before the first Friday of the month (jobs report). The 09:35 opening drive can still trade that day. Eval only.")
+nPay = input.int(0, "FUNDED: payouts taken", minval = 0, maxval = 5, group = grpA)
+qDays = input.int(0, "FUNDED: days >= $100 since last payout", minval = 0, group = grpA)
+grpL = "Live tracking (alarm levels) - update each weekend"
+liveDays = input.int(0, "Trading days since you started ONR live", minval = 0, group = grpL)
+livePnl = input.float(0.0, "Live ONR P&L since start ($, at 1 MNQ per trade)", group = grpL, tooltip = "Cumulative result of ONR's trades since your live start, all accounts combined, ignoring eval fees and payouts.")
+grpD = "Data"
+sigSym = input.symbol("OANDA:SPX500USD", "S&P 500 CFD for the stretch score (the research used an S&P 500 CFD)", group = grpD)
+grpV = "Display"
+showPanel = input.bool(true, "Show panel", group = grpV)
+showLevels = input.bool(true, "Show trade labels", group = grpV)
+showLog = input.bool(true, "Show the last 30 trades", group = grpV)
+logPos = input.string("Bottom left", "Trade list position", options = ["Bottom left", "Bottom right", "Top left", "Middle left"], group = grpV)
+
+// ---------- constants (fixed from research; ES 2011-2026)
+float PV = 2.0
+float TK = 0.25
+float THR = 0.7187
+string TZ = "America/New_York"
+float CONS = consOpt == "50% (paid add-on)" ? 0.5 : 0.4      // best day must stay <= CONS x total profit at the pass
+float TPCAP = 1250.0 * CONS                                   // eval target cap per day: $500 (40%) or $625 (50% add-on)
+float SPAN = widthOpt == "Tight x0.5 (old)" ? 0.5 : (widthOpt == "Medium x0.75" ? 0.75 : 1.0)   // eval bracket width (stop + target) in ADRs
+
+// ---------- trade log (last 30 closed trades)
+type Trade
+    int t
+    int tx
+    string nm
+    int sd
+    float ent
+    float ex
+    float usd
+    float r
+    string why
+var array<Trade> LOG = array.new<Trade>()
+f_log(array<Trade> lg, int t0, int tx, string nm, int sd, float ent, float ex, float usd, float r, string why) =>
+    array.push(lg, Trade.new(t0, tx, nm, sd, ent, ex, usd, r, why))
+    if array.size(lg) > 30
+        array.shift(lg)
+    0
+
+// ---------- session clock: minutes since 18:00 ET
+int tfMin = timeframe.isminutes ? timeframe.multiplier : 0
+int sStart = ((hour(time, TZ) * 60 + minute(time, TZ)) - 1080 + 1440) % 1440
+int sEnd = sStart + tfMin
+bool newDay = na(sStart[1]) or sStart < sStart[1]
+f_hit(int m) =>
+    sEnd >= m and (newDay or sEnd[1] < m)
+bool evON = f_hit(10)
+bool evONx = f_hit(930)
+bool evOD = f_hit(935)
+bool evIB = f_hit(990)
+bool evIBend = f_hit(1140)
+bool evEOD = f_hit(1320)
+bool isRth = sStart >= 930 and sStart < 1320
+bool isON = sStart < 930
+
+// ---------- NQ RTH range and ADR14
+var float rHi = na
+var float rLo = na
+var float rOpen = na
+var float ibH = na
+var float ibL = na
+var array<float> rngs = array.new<float>()
+bool rthFirst = isRth and not isRth[1]
+bool rthDone = not isRth and isRth[1]
+if rthFirst
+    rHi := high
+    rLo := low
+    rOpen := open
+    ibH := high
+    ibL := low
+else if isRth
+    rHi := math.max(rHi, high)
+    rLo := math.min(rLo, low)
+    if sStart < 990
+        ibH := math.max(ibH, high)
+        ibL := math.min(ibL, low)
+if rthDone and not na(rHi)
+    array.push(rngs, rHi - rLo)
+    if array.size(rngs) > 14
+        array.shift(rngs)
+// Same ADR from 30-minute bars: that feed's history reaches far before the chart's first bar, so trading (and the
+// trade list) starts on the first chart day instead of after 14 warm-up sessions. 30-min bars tile 09:30-16:00 exactly.
+f_adr30() =>
+    int s0 = ((hour(time, TZ) * 60 + minute(time, TZ)) - 1080 + 1440) % 1440
+    bool inR = s0 >= 930 and s0 < 1320
+    var float hi = na
+    var float lo = na
+    var bool was = false
+    var int nb = 0
+    var array<float> rr = array.new<float>()
+    if inR and not was
+        hi := high
+        lo := low
+        nb := 1
+    else if inR
+        hi := math.max(hi, high)
+        lo := math.min(lo, low)
+        nb := nb + 1
+    if was and not inR and not na(hi) and nb >= 13
+        array.push(rr, hi - lo)
+        if array.size(rr) > 14
+            array.shift(rr)
+    was := inR
+    float a = array.size(rr) >= 14 ? array.avg(rr) : na
+    a[1]
+float adr30 = request.security(syminfo.tickerid, "30", f_adr30(), lookahead = barmerge.lookahead_on)
+float adr = not na(adr30) ? adr30 : (array.size(rngs) >= 14 ? array.avg(rngs) : na)
+
+// ---------- S&P stretch score: RTH sessions (09:30-16:00) of an S&P 500 CFD built from 30-minute bars, features exactly as
+// in the research (HistData SPXUSD, an S&P 500 CFD), full sessions only, fixed z constants. Final once the 16:00 bar closes.
+// The 30-min feed's history reaches far before the chart's first bar. (Before 2026-11-08 this used SP:SPX daily bars:
+// same overnight decision as the research on only 90% of 2021-25 nights; this version 98.6%.)
+f_mean(array<float> a, int k0, int k1) =>
+    float s = 0.0
+    for i = k0 to k1
+        s := s + array.get(a, i)
+    s / (k1 - k0 + 1)
+f_hi(array<float> a, int k0, int k1) =>
+    float m = array.get(a, k0)
+    for i = k0 to k1
+        m := math.max(m, array.get(a, i))
+    m
+f_clv(array<float> c, array<float> h, array<float> l, int k0, int k1) =>
+    float s = 0.0
+    for i = k0 to k1
+        float rg = array.get(h, i) - array.get(l, i)
+        s := s + (rg > 0 ? (array.get(c, i) - array.get(l, i)) / rg : 0.5)
+    s / (k1 - k0 + 1)
+f_score() =>
+    int s0 = ((hour(time, TZ) * 60 + minute(time, TZ)) - 1080 + 1440) % 1440
+    bool inR = s0 >= 930 and s0 < 1320
+    var int prevS = -1
+    var float onl = na
+    var float onlR = na
+    var float ro = na
+    var float rh = na
+    var float rl = na
+    var float rc = na
+    var int nb = 0
+    var bool was = false
+    var array<float> aC = array.new<float>()
+    var array<float> aH = array.new<float>()
+    var array<float> aL = array.new<float>()
+    var array<float> aO = array.new<float>()
+    var array<float> aN = array.new<float>()
+    var float sc = na
+    if prevS < 0 or s0 < prevS
+        onl := low
+    else if s0 < 930
+        onl := na(onl) ? low : math.min(onl, low)
+    if inR and not was
+        ro := open
+        rh := high
+        rl := low
+        nb := 1
+        onlR := onl
+    else if inR
+        rh := math.max(rh, high)
+        rl := math.min(rl, low)
+        nb := nb + 1
+    if inR
+        rc := close
+    if was and not inR and nb >= 13
+        array.push(aC, rc)
+        array.push(aH, rh)
+        array.push(aL, rl)
+        array.push(aO, ro)
+        array.push(aN, onlR)
+        if array.size(aC) > 70
+            array.shift(aC)
+            array.shift(aH)
+            array.shift(aL)
+            array.shift(aO)
+            array.shift(aN)
+        int n = array.size(aC)
+        if n >= 61
+            float rs = 0.0
+            for i = n - 14 to n - 1
+                rs := rs + array.get(aH, i) - array.get(aL, i)
+            float a = rs / 14.0
+            float c0 = array.get(aC, n - 1)
+            int up = 0
+            for i = n - 5 to n - 1
+                if array.get(aC, i) > array.get(aC, i - 1)
+                    up := up + 1
+            float z = (-(c0 - f_mean(aC, n - 5, n - 1)) / a + 0.144803) / 0.992304
+            z := z + (-(c0 - f_mean(aC, n - 10, n - 1)) / a + 0.366907) / 1.472484
+            z := z + (-(c0 - f_mean(aC, n - 20, n - 1)) / a + 0.866958) / 2.110144
+            z := z + (-(c0 - array.get(aC, n - 4)) / (a * math.sqrt(3.0)) + 0.126071) / 0.907152
+            z := z + (-(c0 - array.get(aC, n - 6)) / (a * math.sqrt(5.0)) + 0.176010) / 0.876653
+            z := z + (-(c0 - array.get(aC, n - 11)) / (a * math.sqrt(10.0)) + 0.283615) / 0.855161
+            z := z + (-(c0 - f_hi(aC, n - 10, n - 1)) / a - 1.168381) / 1.361280
+            z := z + (-(c0 - f_hi(aC, n - 20, n - 1)) / a - 1.551989) / 1.655467
+            z := z + (-(c0 - f_hi(aC, n - 60, n - 1)) / a - 2.324757) / 2.348382
+            z := z + (-(f_clv(aC, aH, aL, n - 3, n - 1) - 0.5) + 0.054304) / 0.178694
+            z := z + (-(f_clv(aC, aH, aL, n - 5, n - 1) - 0.5) + 0.054296) / 0.137704
+            z := z + (-(up / 5.0 - 0.5) + 0.045908) / 0.216550
+            z := z + (-(array.get(aO, n - 1) - array.get(aC, n - 2)) / a + 0.064120) / 0.675399
+            z := z + ((array.get(aN, n - 1) < array.get(aL, n - 2) ? 1.0 : 0.0) - 0.355450) / 0.478650
+            sc := z / 14.0
+    was := inR
+    prevS := s0
+    sc[1]
+float score = request.security(sigSym, "30", f_score(), lookahead = barmerge.lookahead_on)
+int sigSide = na(score) ? 0 : (score >= THR ? 1 : (score <= -THR ? -1 : 0))
+
+// ---------- account math (from your inputs)
+float floorLvl = (nPay > 0 or peakEod > 1100.0) ? 100.0 : peakEod - 1000.0
+float cushion = pnlNow - floorLvl
+float room = math.min(600.0, cushion - 10.0)
+bool isEval = phase == "EVAL"
+f_bracket(float a) =>
+    float sl = math.min(600.0, cushion - 5.0)
+    float need = math.max(1250.0, bestDay / CONS)
+    float tp = math.max(20.0, math.min(TPCAP, math.max(need - pnlNow, 0.0) + 15.0))
+    int n = int(math.max(1.0, math.min(20.0, math.round((sl + tp) / (SPAN * a * PV)))))
+    [n, sl / (n * PV), tp / (n * PV)]
+
+// ---------- trade state (what the plan says to hold; estimated with bar highs/lows)
+var float usedRisk = 0.0
+var bool evalUsedToday = false
+var float ibReserve = 0.0
+// eval single trade
+var int eSide = 0
+var int eN = 0
+var float eEnt = na
+var float eStp = na
+var float eTgt = na
+var int eExit = 0
+var string eName = ""
+// funded overnight
+var int oSide = 0
+var float oEnt = na
+var float oStp = na
+// funded pyramid
+var int pSide = 0
+var float pE1 = na
+var float pE2 = na
+var int pNu = 0
+var float pStp = na
+var float pBest = na
+var float pA = na
+// funded IB
+var bool ibArmed = false
+var float ibBuy = na
+var float ibSell = na
+var int iSide = 0
+var float iEnt = na
+var float iStp = na
+var float iTgt = na
+var string lastMsg = "-"
+var int t0Chart = time
+var int eT = 0
+var int oT = 0
+var int pT = 0
+var int iT = 0
+bool buyNow = false
+bool sellNow = false
+
+f_lbl(string txt, color c, bool up) =>
+    if showLevels
+        label.new(bar_index, up ? low : high, txt, style = up ? label.style_label_up : label.style_label_down, color = c, textcolor = color.white, size = size.small)
+    0
+
+// a session that ended before 16:00 (early close) leaves nothing open: flat at its last price
+if newDay and not na(close[1])
+    if eSide != 0
+        f_log(LOG, eT, time_close[1], "EVAL " + eName + " x" + str.tostring(eN), eSide, eEnt, close[1], (close[1] - eEnt) * eSide * eN * PV - eN * 1.0, (close[1] - eEnt) * eSide / math.abs(eEnt - eStp), "session end")
+        eSide := 0
+    if oSide != 0
+        f_log(LOG, oT, time_close[1], "Overnight", oSide, oEnt, close[1], (close[1] - oEnt) * oSide * PV - 1.0, (close[1] - oEnt) * oSide / math.abs(oEnt - oStp), "session end")
+        oSide := 0
+    if pSide != 0
+        float pUsd3 = ((close[1] - pE1) * pSide + (pNu == 2 ? (close[1] - pE2) * pSide : 0.0)) * PV - pNu * 1.0
+        f_log(LOG, pT, time_close[1], "Pyramid x" + str.tostring(pNu), pSide, pE1, close[1], pUsd3, pUsd3 / (0.35 * pA * PV), "session end")
+        pSide := 0
+    if iSide != 0
+        f_log(LOG, iT, time_close[1], "IB breakout", iSide, iEnt, close[1], (close[1] - iEnt) * iSide * PV - 1.0, (close[1] - iEnt) * iSide / math.abs(iEnt - iStp), "session end")
+        iSide := 0
+if newDay
+    usedRisk := 0.0
+    evalUsedToday := false
+    ibArmed := false
+    ibReserve := 0.0
+
+// ---- 1) manage open trades on this bar (entries were made at an earlier bar's close)
+if eSide != 0
+    bool stopHit = eSide == 1 ? low <= eStp : high >= eStp
+    bool tgtHit = eSide == 1 ? high >= eTgt + TK : low <= eTgt - TK
+    if stopHit or tgtHit
+        float px = stopHit ? ((eSide == 1 and open <= eStp) or (eSide == -1 and open >= eStp) ? open : eStp) : eTgt
+        f_lbl(eName + (stopHit ? " STOP " : " TARGET ") + "$" + str.tostring((px - eEnt) * eSide * eN * PV, "#"), stopHit ? color.red : color.green, eSide == -1)
+        f_log(LOG, eT, time, "EVAL " + eName + " x" + str.tostring(eN), eSide, eEnt, px, (px - eEnt) * eSide * eN * PV - eN * 1.0, (px - eEnt) * eSide / math.abs(eEnt - eStp), stopHit ? "stop" : "target")
+        eSide := 0
+if oSide != 0
+    bool oHit = oSide == 1 ? low <= oStp : high >= oStp
+    if oHit
+        float opx = (oSide == 1 and open <= oStp) or (oSide == -1 and open >= oStp) ? open : oStp
+        f_lbl("ON STOP", color.red, oSide == -1)
+        f_log(LOG, oT, time, "Overnight", oSide, oEnt, opx, (opx - oEnt) * oSide * PV - 1.0, (opx - oEnt) * oSide / math.abs(oEnt - oStp), "stop")
+        oSide := 0
+if pSide != 0
+    bool pHit = pSide == 1 ? low <= pStp : high >= pStp
+    if pHit
+        float ppx = (pSide == 1 and open <= pStp) or (pSide == -1 and open >= pStp) ? open : pStp
+        float pUsd = ((ppx - pE1) * pSide + (pNu == 2 ? (ppx - pE2) * pSide : 0.0)) * PV - pNu * 1.0
+        f_lbl("PYR STOP (" + str.tostring(pNu) + " MNQ)", color.orange, pSide == -1)
+        f_log(LOG, pT, time, "Pyramid x" + str.tostring(pNu), pSide, pE1, ppx, pUsd, pUsd / (0.35 * pA * PV), "stop/trail")
+        alert("ONR: pyramid stopped at " + str.tostring(pStp, format.mintick) + " (" + str.tostring(pNu) + " MNQ). Flat.", alert.freq_once_per_bar_close)
+        pSide := 0
+    else
+        float fav = pSide == 1 ? high : low
+        if (fav - pBest) * pSide > 0
+            pBest := fav
+        if pNu < 2 and (pBest - pE1) * pSide >= 0.15 * pA
+            pE2 := pE1 + pSide * 0.15 * pA
+            pNu := 2
+            if (pE1 - pStp) * pSide > 0
+                pStp := pE1
+            if pSide == 1
+                buyNow := true
+            else
+                sellNow := true
+            alert("ONR: ADD 1 MNQ at " + str.tostring(pE2, format.mintick) + " and move the stop to breakeven " + str.tostring(pE1, format.mintick), alert.freq_once_per_bar_close)
+        float ts = pBest - pSide * 0.25 * pA
+        if (ts - pStp) * pSide > 0
+            pStp := ts
+if iSide != 0
+    bool iStop = iSide == 1 ? low <= iStp : high >= iStp
+    bool iTg = iSide == 1 ? high >= iTgt + TK : low <= iTgt - TK
+    if iStop or iTg
+        float ipx = iStop ? ((iSide == 1 and open <= iStp) or (iSide == -1 and open >= iStp) ? open : iStp) : iTgt
+        f_lbl(iStop ? "IB STOP" : "IB TARGET", iStop ? color.red : color.green, iSide == -1)
+        f_log(LOG, iT, time, "IB breakout", iSide, iEnt, ipx, (ipx - iEnt) * iSide * PV - 1.0, (ipx - iEnt) * iSide / math.abs(iEnt - iStp), iStop ? "stop" : "target")
+        iSide := 0
+if ibArmed and not evIB
+    bool hu = high >= ibBuy
+    bool hd = low <= ibSell
+    if hu and hd
+        ibArmed := false
+        usedRisk := usedRisk - ibReserve
+        ibReserve := 0.0
+        lastMsg := "IB: both sides touched in one bar - skipped (rule)"
+    else if hu or hd
+        iSide := hu ? 1 : -1
+        iEnt := hu ? math.max(ibBuy, open) : math.min(ibSell, open)
+        iStp := iEnt - iSide * 0.25 * adr
+        iTgt := iEnt + iSide * 0.5 * adr
+        ibArmed := false
+        ibReserve := 0.0
+        if iSide == 1
+            buyNow := true
+        else
+            sellNow := true
+        f_lbl("IB " + (iSide == 1 ? "BUY" : "SELL") + " 1", color.purple, iSide == 1)
+        alert("ONR: IB breakout filled " + (iSide == 1 ? "BUY" : "SELL") + " 1 MNQ @ " + str.tostring(iEnt, format.mintick) + " | stop " + str.tostring(iStp, format.mintick) + " | target " + str.tostring(iTgt, format.mintick) + " | exit 16:00 | cancel the other side", alert.freq_once_per_bar_close)
+        iT := time
+        if (iSide == 1 and iEnt - low >= 0.25 * adr) or (iSide == -1 and high - iEnt >= 0.25 * adr)
+            f_lbl("IB STOP (fill bar)", color.red, iSide == -1)
+            f_log(LOG, iT, time, "IB breakout", iSide, iEnt, iStp, (iStp - iEnt) * iSide * PV - 1.0, -1.0, "stop (fill bar)")
+            iSide := 0
+
+// ---- 2) clock events (decisions at bar close)
+if evONx
+    if eSide != 0 and eExit == 930
+        f_lbl(eName + " EXIT 09:30 " + "$" + str.tostring((close - eEnt) * eSide * eN * PV, "#"), color.gray, eSide == -1)
+        f_log(LOG, eT, time_close, "EVAL " + eName + " x" + str.tostring(eN), eSide, eEnt, close, (close - eEnt) * eSide * eN * PV - eN * 1.0, (close - eEnt) * eSide / math.abs(eEnt - eStp), "time exit")
+        eSide := 0
+    if oSide != 0
+        f_lbl("ON EXIT 09:30", color.gray, oSide == -1)
+        f_log(LOG, oT, time_close, "Overnight", oSide, oEnt, close, (close - oEnt) * oSide * PV - 1.0, (close - oEnt) * oSide / math.abs(oEnt - oStp), "time exit")
+        oSide := 0
+    alert("ONR: 09:30 - close any overnight position at market.", alert.freq_once_per_bar_close)
+if evIBend and ibArmed
+    ibArmed := false
+    usedRisk := usedRisk - ibReserve
+    ibReserve := 0.0
+    alert("ONR: 13:00 - cancel unfilled IB stop orders.", alert.freq_once_per_bar_close)
+if evEOD
+    if eSide != 0
+        f_lbl(eName + " EXIT 16:00 " + "$" + str.tostring((close - eEnt) * eSide * eN * PV, "#"), color.gray, eSide == -1)
+        f_log(LOG, eT, time_close, "EVAL " + eName + " x" + str.tostring(eN), eSide, eEnt, close, (close - eEnt) * eSide * eN * PV - eN * 1.0, (close - eEnt) * eSide / math.abs(eEnt - eStp), "time exit")
+        eSide := 0
+    if pSide != 0
+        float pUsd2 = ((close - pE1) * pSide + (pNu == 2 ? (close - pE2) * pSide : 0.0)) * PV - pNu * 1.0
+        f_lbl("PYR EXIT 16:00", color.gray, pSide == -1)
+        f_log(LOG, pT, time_close, "Pyramid x" + str.tostring(pNu), pSide, pE1, close, pUsd2, pUsd2 / (0.35 * pA * PV), "time exit")
+        pSide := 0
+    if iSide != 0
+        f_lbl("IB EXIT 16:00", color.gray, iSide == -1)
+        f_log(LOG, iT, time_close, "IB breakout", iSide, iEnt, close, (close - iEnt) * iSide * PV - 1.0, (close - iEnt) * iSide / math.abs(iEnt - iStp), "time exit")
+        iSide := 0
+    alert("ONR: 16:00 - close everything at market. Then update the account inputs.", alert.freq_once_per_bar_close)
+
+// 18:10 overnight reversion (eval trigger 1 / funded leg 1)
+if evON and not na(adr) and sigSide != 0
+    string sideTxt = sigSide == 1 ? "BUY" : "SELL"
+    // the session this overnight trade belongs to = the calendar day 6 hours after the 18:00 open (same rule as the research)
+    int sessT = time + 6 * 3600000
+    bool newsNight = newsSkip and (dayofweek(sessT, TZ) == dayofweek.thursday or (dayofweek(sessT, TZ) == dayofweek.friday and dayofmonth(sessT, TZ) <= 7))
+    if isEval and newsNight
+        lastMsg := "OVERNIGHT " + sideTxt + " signal SKIPPED (08:30 news tomorrow) - the 09:35 drive can still trade"
+        f_lbl("ON skipped: news", color.gray, sigSide == 1)
+        alert("ONR EVAL: overnight " + sideTxt + " signal skipped - 08:30 news tomorrow. No trade tonight; the 09:35 opening drive can still trade.", alert.freq_once_per_bar_close)
+    else if isEval
+        if cushion >= 50.0
+            [n, slp, tpp] = f_bracket(adr)
+            eSide := sigSide
+            eN := n
+            eEnt := close
+            eStp := close - sigSide * slp
+            eTgt := close + sigSide * tpp
+            eExit := 930
+            eName := "ON"
+            eT := time_close
+            evalUsedToday := true
+            if sigSide == 1
+                buyNow := true
+            else
+                sellNow := true
+            lastMsg := "OVERNIGHT " + sideTxt + " " + str.tostring(n) + " MNQ, stop " + str.tostring(eStp, format.mintick) + ", target " + str.tostring(eTgt, format.mintick) + ", exit 09:30"
+            f_lbl("ON " + sideTxt + " " + str.tostring(n), color.blue, sigSide == 1)
+            alert("ONR EVAL: OVERNIGHT " + sideTxt + " " + str.tostring(n) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(eStp, format.mintick) + " | target " + str.tostring(eTgt, format.mintick) + " | exit 09:30 ET", alert.freq_once_per_bar_close)
+    else
+        float rk = 0.5 * adr * PV
+        if cushion >= 200.0 and usedRisk + rk <= room
+            oSide := sigSide
+            oEnt := close
+            oStp := close - sigSide * 0.5 * adr
+            oT := time_close
+            usedRisk := usedRisk + rk
+            if sigSide == 1
+                buyNow := true
+            else
+                sellNow := true
+            lastMsg := "OVERNIGHT " + sideTxt + " 1 MNQ, stop " + str.tostring(oStp, format.mintick) + ", exit 09:30"
+            f_lbl("ON " + sideTxt + " 1", color.blue, sigSide == 1)
+            alert("ONR FUNDED: OVERNIGHT " + sideTxt + " 1 MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(oStp, format.mintick) + " | no target | exit 09:30 ET", alert.freq_once_per_bar_close)
+
+// 09:35 opening drive (eval trigger 2 / funded leg 2 = pyramid)
+if evOD and not na(adr) and not na(rOpen)
+    float d5 = (close - rOpen) / adr
+    int odSide = math.abs(d5) >= 0.10 ? (d5 > 0 ? 1 : -1) : 0
+    if odSide != 0
+        string sTxt = odSide == 1 ? "BUY" : "SELL"
+        if isEval
+            if not evalUsedToday and eSide == 0 and cushion >= 50.0
+                [n, slp, tpp] = f_bracket(adr)
+                eSide := odSide
+                eN := n
+                eEnt := close
+                eStp := close - odSide * slp
+                eTgt := close + odSide * tpp
+                eExit := 1320
+                eName := "OD"
+                eT := time_close
+                evalUsedToday := true
+                if odSide == 1
+                    buyNow := true
+                else
+                    sellNow := true
+                lastMsg := "OPENING DRIVE " + sTxt + " " + str.tostring(n) + " MNQ, stop " + str.tostring(eStp, format.mintick) + ", target " + str.tostring(eTgt, format.mintick) + ", exit 16:00"
+                f_lbl("OD " + sTxt + " " + str.tostring(n), color.teal, odSide == 1)
+                alert("ONR EVAL: OPENING DRIVE " + sTxt + " " + str.tostring(n) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(eStp, format.mintick) + " | target " + str.tostring(eTgt, format.mintick) + " | exit 16:00 ET", alert.freq_once_per_bar_close)
+        else
+            float rk2 = 0.35 * adr * PV
+            if cushion >= 200.0 and usedRisk + rk2 <= room
+                pSide := odSide
+                pE1 := close
+                pA := adr
+                pNu := 1
+                pStp := close - odSide * 0.35 * adr
+                pBest := close
+                pT := time_close
+                usedRisk := usedRisk + rk2
+                if odSide == 1
+                    buyNow := true
+                else
+                    sellNow := true
+                lastMsg := "PYRAMID " + sTxt + " 1 MNQ, stop " + str.tostring(pStp, format.mintick) + ", add at " + str.tostring(close + odSide * 0.15 * adr, format.mintick) + ", trail 0.25 ADR, exit 16:00"
+                f_lbl("PYR " + sTxt + " 1", color.teal, odSide == 1)
+                alert("ONR FUNDED: OPENING-DRIVE PYRAMID " + sTxt + " 1 MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(pStp, format.mintick) + " | add 1 MNQ at " + str.tostring(close + odSide * 0.15 * adr, format.mintick) + " then stop -> breakeven | trail 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts) | exit 16:00", alert.freq_once_per_bar_close)
+
+// 10:30 IB breakout orders (funded leg 3; its risk is reserved while the orders are live)
+if evIB and not isEval and not na(adr) and not na(ibH)
+    float rk3 = 0.25 * adr * PV
+    if cushion >= 200.0 and usedRisk + rk3 <= room
+        ibBuy := ibH + TK
+        ibSell := ibL - TK
+        ibArmed := true
+        ibReserve := rk3
+        usedRisk := usedRisk + rk3
+        lastMsg := "IB OCO: buy stop " + str.tostring(ibBuy, format.mintick) + " / sell stop " + str.tostring(ibSell, format.mintick) + " until 13:00"
+        alert("ONR FUNDED: IB BREAKOUT OCO 1 MNQ | buy stop " + str.tostring(ibBuy, format.mintick) + " | sell stop " + str.tostring(ibSell, format.mintick) + " | stop 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts) | target 0.5 ADR (" + str.tostring(0.5 * adr, format.mintick) + " pts) | cancel at 13:00 | exit 16:00", alert.freq_once_per_bar_close)
+
+// ---------- BUY / SELL markers and levels of open trades
+plotshape(buyNow, "BUY", shape.triangleup, location.belowbar, color.new(color.lime, 0), size = size.normal, text = "BUY", textcolor = color.lime)
+plotshape(sellNow, "SELL", shape.triangledown, location.abovebar, color.new(color.red, 0), size = size.normal, text = "SELL", textcolor = color.red)
+plot(eSide != 0 ? eStp : na, "Eval stop", color.red, 1, plot.style_linebr)
+plot(eSide != 0 ? eTgt : na, "Eval target", color.green, 1, plot.style_linebr)
+plot(oSide != 0 ? oStp : na, "Overnight stop", color.red, 1, plot.style_linebr)
+plot(pSide != 0 ? pStp : na, "Pyramid stop", color.orange, 2, plot.style_linebr)
+plot(iSide != 0 ? iStp : na, "IB stop", color.red, 1, plot.style_linebr)
+plot(iSide != 0 ? iTgt : na, "IB target", color.green, 1, plot.style_linebr)
+plot(ibArmed ? ibBuy : na, "IB buy stop", color.purple, 1, plot.style_linebr)
+plot(ibArmed ? ibSell : na, "IB sell stop", color.purple, 1, plot.style_linebr)
+alertcondition(buyNow, "ONR BUY", "ONR: BUY signal - check the alert message / panel for size, stop and target")
+alertcondition(sellNow, "ONR SELL", "ONR: SELL signal - check the alert message / panel for size, stop and target")
+
+// ---------- early-close days (day after Thanksgiving, Christmas Eve): CME equity futures stop around 13:00-13:15 ET
+bool earlyClose = (month(time, TZ) == 11 and dayofweek(time, TZ) == dayofweek.friday and dayofmonth(time, TZ) >= 23 and dayofmonth(time, TZ) <= 29) or (month(time, TZ) == 12 and dayofmonth(time, TZ) == 24)
+bool evEarly = f_hit(1135)
+if earlyClose and evEarly
+    alert("ONR: EARLY CLOSE today - close everything now (12:55 ET / 9:55 AM PT) and place no new trades.", alert.freq_once_per_bar_close)
+
+// ---------- live alarm levels (block bootstrap of ONR's real 2021-26 daily P&L at 1 MNQ; 5th pct = yellow, 1st pct = red)
+f_interp(float d, array<float> xs, array<float> ys) =>
+    float out = array.get(ys, 0)
+    if d >= array.get(xs, array.size(xs) - 1)
+        out := array.get(ys, array.size(ys) - 1)
+    else if d > array.get(xs, 0)
+        for k = 0 to array.size(xs) - 2
+            float x0 = array.get(xs, k)
+            float x1 = array.get(xs, k + 1)
+            if d >= x0 and d <= x1
+                out := array.get(ys, k) + (array.get(ys, k + 1) - array.get(ys, k)) * (d - x0) / (x1 - x0)
+    out
+var array<float> AX = array.from(20.0, 40.0, 60.0, 120.0, 250.0)
+var array<float> AMED = array.from(867.0, 1757.0, 2782.0, 5717.0, 12175.0)
+var array<float> AYEL = array.from(-2216.0, -2737.0, -2790.0, -2346.0, 240.0)
+var array<float> ARED = array.from(-3421.0, -4535.0, -4945.0, -5380.0, -4578.0)
+
+// ---------- next step on the clock (ET and PT)
+f_nextStep(bool ev) =>
+    int m = hour(timenow, TZ) * 60 + minute(timenow, TZ)
+    int dw = dayofweek(timenow, TZ)
+    bool wkend = dw == dayofweek.saturday or (dw == dayofweek.sunday and m < 18 * 60) or (dw == dayofweek.friday and m >= 17 * 60)
+    string s = ""
+    if wkend
+        s := "Weekend. Next: Sunday 18:10 ET / 3:10 PM PT overnight check. Update the Live tracking inputs."
+    else if m < 9 * 60 + 30
+        s := ev ? "09:30 ET / 6:30 AM PT: exit any overnight trade. Then 09:35 ET / 6:35 AM PT: opening-drive check (only if no overnight trade)." : "09:30 ET / 6:30 AM PT: exit the overnight trade. 09:35 ET / 6:35 AM PT: opening-drive pyramid check."
+    else if m < 9 * 60 + 35
+        s := "09:35 ET / 6:35 AM PT: opening-drive check (first 5 min >= 0.10 ADR)."
+    else if m < 10 * 60 + 30
+        s := ev ? "Manage the trade (stop / target on chart). Exit 16:00 ET / 1:00 PM PT." : "10:30 ET / 7:30 AM PT: place the IB breakout buy-stop / sell-stop (OCO)."
+    else if m < 13 * 60
+        s := ev ? "Manage the trade. Exit 16:00 ET / 1:00 PM PT." : "IB orders live until 13:00 ET / 10:00 AM PT, then cancel unfilled. Exit everything 16:00 ET / 1:00 PM PT."
+    else if m < 16 * 60
+        s := "Exit everything at 16:00 ET / 1:00 PM PT. Then update the Account inputs."
+    else if m < 18 * 60 + 10
+        s := "18:10 ET / 3:10 PM PT: overnight check (score row above; final after 16:00)."
+    else
+        s := "Overnight trade (if any) runs to 09:30 ET / 6:30 AM PT. Next: 09:35 ET / 6:35 AM PT opening drive."
+    s
+
+// ---------- panel
+var table T = table.new(position.top_right, 2, 13, border_width = 1)
+if showPanel and barstate.islast
+    bool eligible = not isEval and qDays >= 5 and pnlNow >= 1000.0
+    string acct = isEval ? ("EVAL (" + (CONS == 0.5 ? "50%" : "40%") + " rule, " + (SPAN == 1.0 ? "wide" : SPAN == 0.75 ? "medium" : "tight") + " bracket" + (newsSkip ? ", news skip" : "") + ") | need $" + str.tostring(math.max(1250.0, bestDay / CONS) - pnlNow, "#") + " more") : ("FUNDED | payouts " + str.tostring(nPay) + "/5 | qualifying days " + str.tostring(qDays) + "/5")
+    string sigTxt = na(score) ? "warming up" : (str.tostring(score, "#.##") + " (" + (sigSide == 1 ? "BUY tonight" : sigSide == -1 ? "SELL tonight" : "no overnight trade") + ", needs |score| >= 0.72; final after the 16:00 close)")
+    string warn = tfMin == 0 or tfMin > 5 ? "Use a 1-5 minute chart" : (cushion < 200.0 and not isEval ? "ABANDON: cushion < $200 - buy a new eval" : (eligible ? "REQUEST $500 PAYOUT NOW" : "-"))
+    table.cell(T, 0, 0, "ONR Book", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 1, 0, "FROZEN 2026-11-14 | 16/16 yrs +, beats 100/100 coin copies | expect $500 in ~45-50% of months", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 2, "$" + str.tostring(cushion, "#") + " / $" + str.tostring(math.max(room, 0.0), "#"), text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 0, 3, "S&P stretch score", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 3, sigTxt, text_color = sigSide == 0 ? color.white : color.yellow, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 0, 4, "NQ ADR (14 RTH days)", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 4, na(adr) ? "warming up (needs 14 sessions on chart)" : str.tostring(adr, "#.##") + " pts", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 0, 5, "Last instruction", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 5, lastMsg, text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 0, 6, "Open now", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    string openTxt = (eSide != 0 ? eName + " " + str.tostring(eN) + " | " : "") + (oSide != 0 ? "ON 1 | " : "") + (pSide != 0 ? "PYR " + str.tostring(pNu) + " stop " + str.tostring(pStp, format.mintick) + " | " : "") + (iSide != 0 ? "IB 1 | " : "") + (ibArmed ? "IB orders live" : "")
+    table.cell(T, 1, 6, openTxt == "" ? "flat" : openTxt, text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 0, 7, "Action", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 7, warn, text_color = warn == "-" ? color.white : color.yellow, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 0, 8, "Today's eval trigger", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 8, isEval ? (evalUsedToday ? "used (one eval trade per day)" : "waiting: 18:10 overnight -> 09:35 drive") : "-", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    string nxt = earlyClose ? "EARLY CLOSE TODAY: flat by 12:55 ET / 9:55 AM PT, no new trades." : f_nextStep(isEval)
+    table.cell(T, 0, 9, "Next step", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 9, nxt, text_color = earlyClose ? color.orange : color.aqua, bgcolor = color.new(color.gray, 40))
+    float yl = f_interp(liveDays, AX, AYEL)
+    float rd = f_interp(liveDays, AX, ARED)
+    float md = liveDays >= 20 ? f_interp(liveDays, AX, AMED) : 867.0 * liveDays / 20.0
+    string alarmTxt = liveDays == 0 ? "enter your live trading days + P&L (Live tracking inputs)" : ("day " + str.tostring(liveDays) + ": $" + str.tostring(livePnl, "#") + " vs typical $" + str.tostring(md, "#") + " | yellow < $" + str.tostring(yl, "#") + " | red < $" + str.tostring(rd, "#") + (liveDays < 20 ? " (bands start at day 20)" : ""))
+    color alarmCol = liveDays == 0 ? color.white : (livePnl < rd ? color.red : (livePnl < yl ? color.yellow : color.lime))
+    string alarmHead = liveDays == 0 ? "Live alarm" : (livePnl < rd ? "Live alarm: RED - STOP" : (livePnl < yl ? "Live alarm: YELLOW" : "Live alarm: GREEN"))
+    table.cell(T, 0, 10, alarmHead, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 10, alarmTxt, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
+
+// ---------- last 30 trades (simulated on this chart's bars: fills estimated from bar highs/lows, $1/MNQ commission included)
+var table TL = table.new(logPos == "Bottom right" ? position.bottom_right : logPos == "Top left" ? position.top_left : logPos == "Middle left" ? position.middle_left : position.bottom_left, 7, 33, border_width = 1)
+if showLog and barstate.islast
+    table.clear(TL, 0, 0, 6, 32)
+    color hb = color.new(color.navy, 0)
+    color rb = color.new(color.gray, 40)
+    table.cell(TL, 0, 0, "Last 30 trades (" + phase + ") - simulated on this chart's bars, $1/MNQ commission in | eval size = your CURRENT inputs | R = result / stop", bgcolor = hb, text_color = color.yellow, text_size = size.tiny)
+    table.merge_cells(TL, 0, 0, 6, 0)
+    table.cell(TL, 0, 1, "Entered (ET)", bgcolor = hb, text_color = color.white, text_size = size.tiny)
+    table.cell(TL, 1, 1, "Trade", bgcolor = hb, text_color = color.white, text_size = size.tiny)
+    table.cell(TL, 2, 1, "Side", bgcolor = hb, text_color = color.white, text_size = size.tiny)
+    table.cell(TL, 3, 1, "Entry -> Exit", bgcolor = hb, text_color = color.white, text_size = size.tiny)
+    table.cell(TL, 4, 1, "$", bgcolor = hb, text_color = color.white, text_size = size.tiny)
+    table.cell(TL, 5, 1, "R", bgcolor = hb, text_color = color.white, text_size = size.tiny)
+    table.cell(TL, 6, 1, "Exit (ET)", bgcolor = hb, text_color = color.white, text_size = size.tiny)
+    int nT = array.size(LOG)
+    int wins = 0
+    float net = 0.0
+    float sumR = 0.0
+    if nT > 0
+        for k = 0 to nT - 1
+            Trade tr = array.get(LOG, nT - 1 - k)
+            int row = 2 + k
+            color fc = tr.usd > 0 ? color.lime : (tr.usd < 0 ? color.red : color.white)
+            table.cell(TL, 0, row, str.format_time(tr.t, "MM-dd HH:mm", TZ), bgcolor = rb, text_color = color.white, text_size = size.tiny)
+            table.cell(TL, 1, row, tr.nm, bgcolor = rb, text_color = color.white, text_size = size.tiny)
+            table.cell(TL, 2, row, tr.sd == 1 ? "BUY" : "SELL", bgcolor = rb, text_color = tr.sd == 1 ? color.lime : color.red, text_size = size.tiny)
+            table.cell(TL, 3, row, str.tostring(tr.ent, format.mintick) + " -> " + str.tostring(tr.ex, format.mintick), bgcolor = rb, text_color = color.white, text_size = size.tiny)
+            table.cell(TL, 4, row, (tr.usd >= 0 ? "+" : "") + str.tostring(tr.usd, "#"), bgcolor = rb, text_color = fc, text_size = size.tiny)
+            table.cell(TL, 5, row, str.tostring(tr.r, "#.##"), bgcolor = rb, text_color = fc, text_size = size.tiny)
+            table.cell(TL, 6, row, tr.why + " " + str.format_time(tr.tx, "HH:mm", TZ), bgcolor = rb, text_color = color.white, text_size = size.tiny)
+            if tr.usd > 0
+                wins := wins + 1
+            net := net + tr.usd
+            sumR := sumR + tr.r
+    string more = nT >= 30 ? "" : (" | chart history starts " + str.format_time(t0Chart, "yyyy-MM-dd", TZ) + (tfMin > 0 and tfMin < 5 ? " - 5-min bars load " + str.tostring(5.0 / tfMin, "#.#") + "x more days" : " (TradingView bar limit)"))
+    string summ = nT == 0 ? "no closed trades on the loaded history yet" + more : (str.tostring(nT) + " trades | won " + str.tostring(wins) + " (" + str.tostring(100.0 * wins / nT, "#") + "%) | net $" + str.tostring(net, "#") + " | avg R " + str.tostring(sumR / nT, "#.##") + more)
+    table.cell(TL, 0, 32, summ, bgcolor = hb, text_color = net >= 0 ? color.lime : color.red, text_size = size.tiny)
+    table.merge_cells(TL, 0, 32, 6, 32)
