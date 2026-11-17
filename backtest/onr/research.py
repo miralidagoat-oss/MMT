@@ -40,16 +40,16 @@ def tstat(x):
 def halves(vals, unit=""):
     out = []
     for lab, a, b in (("2011-18", 2011, 2018), ("2019-26", 2019, 2026)):
-        x = [v for y, v in vals if a <= y <= b]
+        x = [v for d, v in vals if a <= year(d) <= b]
         out.append(f"{lab} {np.mean(x):+.3f}{unit} (t {tstat(x):4.1f}, n {len(x):4d})" if len(x) > 2 else f"{lab} n/a")
     return " | ".join(out)
 
 
 def verdict(vals, vals_slip=None):
     ok = all(len(x) > 2 and np.mean(x) > 0 and tstat(x) >= 2 for x in
-             ([v for y, v in vals if y <= 2018], [v for y, v in vals if y >= 2019]))
+             ([v for d, v in vals if year(d) <= 2018], [v for d, v in vals if year(d) >= 2019]))
     if ok and vals_slip is not None:
-        ok = np.mean([v for y, v in vals_slip if y >= 2019]) > 0
+        ok = np.mean([v for d, v in vals_slip if year(d) >= 2019]) > 0
     return "VALIDATED" if ok else "not validated"
 
 
@@ -93,8 +93,8 @@ def test_L1(S, slip=0.0):
             continue
         side = 1 if p10 > pc else -1
         pnl = (p16 - p1530) * side - 2 * slip
-        vals.append((year(d), (pnl * PV - COMM) / (A * PV)))
-        by_mag.append((year(d), abs(p10 / pc - 1), (pnl * PV - COMM) / (A * PV)))
+        vals.append((d, (pnl * PV - COMM) / (A * PV)))
+        by_mag.append((d, abs(p10 / pc - 1), (pnl * PV - COMM) / (A * PV)))
     return vals, by_mag
 
 
@@ -130,7 +130,7 @@ def test_L3(S, slip=0.0):
                 break
         if np.isnan(px):
             px = price_at(M, 390) - side * slip
-        vals.append((year(d), ((px - E) * side * PV - COMM) / (R * PV)))
+        vals.append((d, ((px - E) * side * PV - COMM) / (R * PV)))
     return vals
 
 
@@ -173,7 +173,7 @@ def test_L2(S, slip=0.0):
                         pos, ent = 1, P + slip
                     elif P < LB:
                         pos, ent = -1, P - slip
-            out.append((year(d), day / (A * PV)))
+            out.append((d, day / (A * PV)))
         moves.append(mv)
     return out
 
@@ -190,9 +190,9 @@ def leg_vals(S, which, slip=0.0):
             if not s or (which.startswith("on_buy") and s < 0) or (which.startswith("on_sell") and s > 0):
                 continue
             if which.endswith("nostop"):
-                out.append((year(d), (r["on"]["w"].xc - r["on"]["E"]) * s / A))
+                out.append((d, (r["on"]["w"].xc - r["on"]["E"]) * s / A))
             else:
-                out.append((year(d), funded_on(S, d, s, slip)[0] / (0.5 * A * PV)))
+                out.append((d, funded_on(S, d, s, slip)[0] / (0.5 * A * PV)))
         elif which == "pyr":
             s = S.od_side(d)
             if s:
@@ -222,16 +222,16 @@ def legs(dd):
     v, mag = test_L1(S)
     vs, _ = test_L1(S, slip=TK)
     print("  ", halves(v, " ADR"), "->", verdict(v, vs))
-    q = np.quantile([m for y, m, _ in mag if y <= 2018], [1 / 3, 2 / 3])
+    q = np.quantile([m for d, m, _ in mag if year(d) <= 2018], [1 / 3, 2 / 3])
     for lab, lo, hi in (("small first move", -1, q[0]), ("medium", q[0], q[1]), ("large first move", q[1], 9)):
-        print(f"     {lab:17s}", halves([(y, x) for y, m, x in mag if lo < m <= hi], " ADR"))
+        print(f"     {lab:17s}", halves([(d, x) for d, m, x in mag if lo < m <= hi], " ADR"))
     print("== L2 noise-area intraday momentum (published rules, TWAP for VWAP), P&L per day in ADR units")
     v, vs = test_L2(S), test_L2(S, slip=TK)
     print("  ", halves(v, " ADR"), "->", verdict(v, vs))
     print("== L3 5-minute ORB (first-candle direction, stop at its extreme, 10R target), R per trade")
     v, vs = test_L3(S), test_L3(S, slip=TK)
     print("  ", halves(v, "R"), "->", verdict(v, vs))
-    print("   (book's own 09:35 pyramid, R per trade):", halves([(year(d), x) for d, x in leg_vals(S, "pyr")], "R"))
+    print("   (book's own 09:35 pyramid, R per trade):", halves(leg_vals(S, "pyr"), "R"))
     print("== M1 overnight leg by signal side")
     for w in ("on_buy_nostop", "on_sell_nostop"):
         print(f"   {w:16s} (ADR, no stop) ", halves(leg_vals(S, w), " ADR"))
@@ -244,7 +244,7 @@ def legs(dd):
     for leg in ("pyr", "ib"):
         lv = leg_vals(S, leg)
         for lab, lo, hi in (("low vol", -1, q[0]), ("mid vol", q[0], q[1]), ("high vol", q[1], 99)):
-            sel = [(year(d), x) for d, x in lv if d in ratio and lo < ratio[d] <= hi]
+            sel = [(d, x) for d, x in lv if d in ratio and lo < ratio[d] <= hi]
             print(f"   {leg:3s} {lab:8s}", halves(sel, "R"))
 
 
@@ -261,14 +261,14 @@ def _init(dd):
 def _acct_job(args):
     from account import RULES
     from portfolio import pool, portfolio, summarize
-    name, ek, fk, structure, a, b = args
+    name, ek, fk, structure, a, b, offsets = args
     S = _S
     fee = RULES[fk.get("size", 25)]["price"]
     fn = (lambda **kw: portfolio(S, lanes=1, **kw)) if structure == "1 account" else (lambda **kw: pool(S, **kw))
     rs = [summarize(S, fn(k_start=a + off, k_stop=b, eval_kw=ek, funded_kw=fk), a + off, b, fee=fee)
-          for off in range(0, 252, 42)]
+          for off in offsets]
     g = lambda k, f=np.mean: f([r[k] for r in rs])  # noqa: E731
-    return name, structure, a, (g("net_yr"), g("payouts_yr"), g("months_with_payout"), g("longest_gap_mo"),
+    return name, structure, (a, b), (g("net_yr"), g("payouts_yr"), g("months_with_payout"), g("longest_gap_mo"),
                                 g("worst_12m", np.min), g("evals_yr"))
 
 
@@ -285,26 +285,33 @@ def account_configs():
     return cfg
 
 
-def accounts(dd, configs=None):
+def accounts(dd, configs=None, periods=None, offsets=range(0, 252, 42)):
+    """periods: list of (label, first session date 'YYYY-MM-DD', end date or None). Default: 2011-18 and 2019-26."""
     from multiprocessing import Pool as MP
     S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
     days = S.days
     k0 = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in days]))
-    kmid = int(np.searchsorted(days, np.datetime64("2019-01-01").astype(int)))
+
+    def kof(date):
+        return int(np.searchsorted(days, np.datetime64(date).astype(int)))
+    if periods is None:
+        P = [("2011-18", k0, kof("2019-01-01")), ("2019-26", kof("2019-01-01"), len(days))]
+    else:
+        P = [(lab, kof(a), kof(b) if b else len(days)) for lab, a, b in periods]
     cfg = configs or account_configs()
-    jobs = [(n, e, f, st, a, b) for n, e, f in cfg for st in ("1 account", "5 funded + eval pool")
-            for a, b in ((k0, kmid), (kmid, len(days)))]
+    jobs = [(n, e, f, st, a, b, tuple(offsets)) for n, e, f in cfg for st in ("1 account", "5 funded + eval pool")
+            for _, a, b in P]
     with MP(4, initializer=_init, initargs=(dd,)) as mp:
         res = mp.map(_acct_job, jobs)
-    print("net = payouts x 90% - evals x list price; 6 start dates per period; 2011-18 | 2019-26")
+    labs = " | ".join(lab for lab, _, _ in P)
+    print(f"net = payouts x 90% - evals x list price; {len(offsets)} start dates per period; {labs}")
     for st in ("1 account", "5 funded + eval pool"):
         print(f"-- {st}")
         for n, _, _ in cfg:
-            r = {a: v for nn, s, a, v in res if nn == n and s == st}
-            ra, rb = r[k0], r[kmid]
-            print(f"  {n:34s} net ${ra[0]:7,.0f} | ${rb[0]:7,.0f}  payouts/yr {ra[1]:5.1f} | {rb[1]:5.1f}  months paid "
-                  f"{ra[2]:4.1f}% | {rb[2]:4.1f}%  longest gap {ra[3]:4.1f} | {rb[3]:4.1f} mo  worst 12m "
-                  f"${ra[4]:7,.0f} | ${rb[4]:7,.0f}  evals/yr {ra[5]:5.1f} | {rb[5]:5.1f}", flush=True)
+            r = [{ab: v for nn, s_, ab, v in res if nn == n and s_ == st}[(a, b)] for _, a, b in P]
+            j = lambda i, fmt: " | ".join(fmt.format(x[i]) for x in r)  # noqa: E731
+            print(f"  {n:34s} net {j(0, '${:7,.0f}')}  payouts/yr {j(1, '{:5.1f}')}  months paid {j(2, '{:4.1f}%')}  "
+                  f"longest gap {j(3, '{:4.1f}')} mo  worst 12m {j(4, '${:7,.0f}')}  evals/yr {j(5, '{:5.1f}')}", flush=True)
 
 
 def followup(dd):
@@ -329,5 +336,103 @@ def final(dd):
                   ("v2.2 150K, max-allowed payouts", dict(be, size=150), dict(bf, size=150, payout_max=True))])
 
 
+def recent(dd, start="2022-11-14", mid="2024-11-14", only_accounts=False):
+    """Only the trailing 4 years (the user's reliability window): leg edges (also per 2-year half), literature tests,
+    eval pass rates, account results at $1.34 per MNQ round turn, year by year, and a cost stress test."""
+    from account import run_eval
+    S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
+    days = S.days
+    d0, dm = np.datetime64(start).astype(int), np.datetime64(mid).astype(int)
+    d1 = days[-1] + 1
+
+    def st(vals, a, b, unit):
+        x = [v for d, v in vals if a <= d < b]
+        return f"{np.mean(x):+.3f}{unit} (t {tstat(x):4.1f}, n {len(x):3d})" if len(x) > 2 else "n/a"
+
+    if only_accounts:
+        return recent_accounts(dd, start, mid)
+
+    def show(name, vals, unit):
+        print(f"  {name:38s} 4y {st(vals, d0, d1, unit)} | first 2y {st(vals, d0, dm, unit)} | last 2y {st(vals, dm, d1, unit)}",
+              flush=True)
+    print(f"== Legs, {start} -> {np.datetime64(int(days[-1]), 'D')} (MNQ, $1 commission, Pine fills)")
+    show("overnight BUY signals, no stop", leg_vals(S, "on_buy_nostop"), " ADR")
+    show("overnight SELL signals, no stop", leg_vals(S, "on_sell_nostop"), " ADR")
+    show("overnight BUY, 0.5 ADR stop (funded)", leg_vals(S, "on_buy"), "R")
+    show("overnight SELL, 0.5 ADR stop (funded)", leg_vals(S, "on_sell"), "R")
+    drift = [(d, (S.S[d]["on"]["w"].xc - S.S[d]["on"]["E"]) / S.S[d]["adr"]) for d in days
+             if "on" in S.S[d] and not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"])]
+    show("long every night (overnight drift)", drift, " ADR")
+    show("opening-drive pyramid", leg_vals(S, "pyr"), "R")
+    ib_all = []
+    for d in days:
+        A = S.S[d]["adr"]
+        if np.isnan(A):
+            continue
+        res = ib_breakout(S, d)
+        if res and res[1] != "both-skip":
+            od = S.od_side(d)
+            ib_all.append((d, res[0] / (0.25 * A * PV), 0 if not od else (1 if res[2] == od else -1)))
+    show("IB breakout with the 09:35 drive", [(d, x) for d, x, k in ib_all if k == 1], "R")
+    show("IB breakout against the drive", [(d, x) for d, x, k in ib_all if k == -1], "R")
+    show("IB breakout, no drive that day", [(d, x) for d, x, k in ib_all if k == 0], "R")
+    show("L1 last-half-hour momentum", test_L1(S)[0], " ADR")
+    show("L2 noise-area momentum (per day)", test_L2(S), " ADR")
+    show("L3 5-minute ORB", test_L3(S), "R")
+    print("== Eval pass rate, evals started on every session of the window")
+    ks = [k for k in range(len(days)) if days[k] >= d0]
+    for name, kw in (("25K v2.2", dict(improved=True, comm=1.34)), ("50K v2.2", dict(improved=True, comm=1.34, size=50)),
+                     ("150K v2.2", dict(improved=True, comm=1.34, size=150))):
+        r = [run_eval(S, k, **kw) for k in ks]
+        done = [x for x in r if x["result"] != "open"]
+        ps = [x["days"] for x in done if x["result"] == "pass"]
+        print(f"  {name:10s} pass {100 * len(ps) / len(done):4.1f}% of {len(done)} | median {np.median(ps):.0f} sessions to pass",
+              flush=True)
+    rs = []
+    for seed in range(10):
+        g = np.random.default_rng(seed)
+        flip = {(d, leg): int(g.choice([-1, 1])) for d in days for leg in ("on", "od")}
+        r = [run_eval(S, k, improved=True, comm=1.34, side_override=lambda d, leg, f=flip: f[(d, leg)]) for k in ks]
+        done = [x for x in r if x["result"] != "open"]
+        rs.append(100 * np.mean([x["result"] == "pass" for x in done]))
+    print(f"  25K coin-flip sides x10: mean {np.mean(rs):.1f}%, best {np.max(rs):.1f}%", flush=True)
+    recent_accounts(dd, start, mid)
+
+
+def recent_accounts(dd, start="2022-11-14", mid="2024-11-14"):
+    S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
+    days = S.days
+    d0 = np.datetime64(start).astype(int)
+    be = dict(improved=True, comm=1.34)
+    bf = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=1.34)
+    cost = dict(comm=2.0, slip=0.25)
+    print("== Accounts, $1.34 per MNQ round turn")
+    accounts(dd, [("v2.1 25K, $500 payouts", be, bf),
+                  ("v2.2 25K, max-allowed payouts", be, dict(bf, payout_max=True)),
+                  ("v2.2 50K, max-allowed payouts", dict(be, size=50), dict(bf, size=50, payout_max=True)),
+                  ("v2.2 100K, max-allowed payouts", dict(be, size=100), dict(bf, size=100, payout_max=True)),
+                  ("v2.2 150K, max-allowed payouts", dict(be, size=150), dict(bf, size=150, payout_max=True)),
+                  ("25K max + long-only overnight", dict(be, on_long_only=True), dict(bf, payout_max=True, on_long_only=True)),
+                  ("50K max + long-only overnight", dict(be, size=50, on_long_only=True),
+                   dict(bf, size=50, payout_max=True, on_long_only=True)),
+                  ("25K max, 2x costs + 1 tick", dict(be, **cost), dict(bf, payout_max=True, **cost)),
+                  ("50K max, 2x costs + 1 tick", dict(be, size=50, **cost), dict(bf, size=50, payout_max=True, **cost))],
+             periods=[("last 4y", start, None), ("first 2y", start, mid), ("last 2y", mid, None)],
+             offsets=range(0, 126, 21))
+    print("== Year by year (net), 5 funded + eval pool started on the window's first session")
+    from account import RULES
+    from portfolio import pool, summarize
+    kw0 = int(np.searchsorted(days, d0))
+    for name, size in (("25K max-allowed", 25), ("50K max-allowed", 50), ("150K max-allowed", 150)):
+        r = summarize(S, pool(S, k_start=kw0, eval_kw=dict(be, size=size), funded_kw=dict(bf, size=size, payout_max=True)),
+                      kw0, len(days), fee=RULES[size]["price"])
+        by = {}
+        for i, v in enumerate(r["by_month"]):
+            by[(r["m0"] + i) // 12] = by.get((r["m0"] + i) // 12, 0.0) + v
+        print(f"  {name:17s} " + " ".join(f"{y}:${v:,.0f}" for y, v in sorted(by.items())) +
+              f" | longest gap {r['longest_gap_mo']:.1f} mo | months with a payout {r['months_with_payout']:.0f}%", flush=True)
+
+
 if __name__ == "__main__":
-    {"legs": legs, "accounts": accounts, "followup": followup, "final": final}[sys.argv[2]](sys.argv[1])
+    {"legs": legs, "accounts": accounts, "followup": followup, "final": final, "recent": recent,
+     "recent_accounts": recent_accounts}[sys.argv[2]](sys.argv[1])

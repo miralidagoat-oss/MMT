@@ -36,9 +36,17 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 //    drawdown is intraday and 08:30 news is a hard breach; Pro and Direct have funded consistency rules.
 // v2.1 / v2: IB only with the 09:35 drive (no opposing positions); funded size scales with ADR; no half-day entries; eval
 //    stop includes commission; pyramid add fills at the open on gaps; payout needs profit since the last payout.
-// BACKTEST (backtest/onr: Nasdaq-100 / S&P 500 CFD minute data 2011-2026 with its timestamps fixed, cross-checked against
-//  real MNQ futures - same trades within ~$25; MNQ $2/pt, $1.34 commission, this script's fill rules), 2011-18 / 2019-26,
-//  net of the 90% split and evals at list price:
+// BACKTEST, LAST 4 YEARS (Nov 2022 - Nov 2026, the window treated as reliable: today's NQ range and 0DTE era), Nasdaq-100
+//  / S&P 500 CFD minute data with its timestamps fixed, cross-checked against real MNQ futures (same trades within ~$25);
+//  MNQ $2/pt, $1.34 commission, this script's fill rules, net of the 90% split and evals at list price:
+//  - eval pass rate 53% at 25K (coin-flip sides: 37%, best of 10: 45%), median 9 sessions.
+//  - one 25K at a time, max-allowed payouts: ~$5.2k a year ($500 payouts: $3.4k).
+//  - 5 funded 25K + eval pool: ~$32k a year; 5 funded 50K: ~$51k (same worst 12 months as 25K, about -$2.7k);
+//    5 funded 150K: ~$83k but -$22k worst 12 months of eval fees. Year by year, 5 x 50K: 2023 +$6k, 2024 +$84k,
+//    2025 +$25k, 2026 to Nov 13 +$82k; 5 x 25K: 2023 -$1k, 2024 +$50k, 2025 +$31k, 2026 +$43k.
+//  - by leg: pyramid +0.22R a trade (t 3.4), IB with the drive +0.23R (t 2.6; against the drive -0.29R, removed),
+//    overnight buys +0.13 ADR (t 3.0), overnight sells ~0. Longest stretch with no payout ~7 months (2023).
+// LONGER HISTORY, for context only (2011-18 / 2019-26, same settings):
 //  - one 25K at a time, max-allowed payouts: ~$2.0k / $4.3k a year (v2.1 with $500 payouts: $1.0k / $2.6k).
 //  - 5 funded 25K + eval pool: ~$12k / $26k a year; 5 funded 50K: ~$22k / $47k (worst 12 months -$12k / -$2k);
 //    5 funded 150K: ~$23k / $78k (worst 12 months -$35k / -$20k of eval fees).
@@ -51,7 +59,7 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 
 grpA = "Account - update before each session"
 phase = input.string("EVAL", "Phase", options = ["EVAL", "FUNDED"], group = grpA)
-acctSize = input.string("25K", "Account size (Lucid Flex)", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets Lucid's target, max loss, qualifying-day amount and payout cap for that size, and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Backtest (5 funded accounts, max-allowed payouts): 50K roughly doubled net income vs 25K with moderately larger drawdowns; 100K/150K paid more still but cost ~$20k of evals in drought years.")
+acctSize = input.string("25K", "Account size (Lucid Flex)", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets Lucid's target, max loss, qualifying-day amount and payout cap for that size, and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Backtest Nov 2022 - Nov 2026 (5 funded accounts, max-allowed payouts): 50K made ~58% more than 25K with the same worst 12 months (about -$2.7k); 100K/150K made more still but cost ~$21-22k of evals in their worst 12 months.")
 pnlNow = input.float(0.0, "P&L now ($ vs account start; funded: after payouts)", group = grpA)
 peakEod = input.float(0.0, "Highest end-of-day P&L so far ($)", minval = 0.0, group = grpA)
 bestDay = input.float(0.0, "EVAL: best single day so far ($)", minval = 0.0, group = grpA)
@@ -696,7 +704,7 @@ if showPanel and barstate.islast
     string sigTxt = na(score) ? "warming up" : (str.tostring(score, "#.##") + " (" + (sigSide == 1 ? "BUY tonight" : sigSide == -1 ? "SELL tonight" : "no overnight trade") + ", needs |score| >= 0.72; final after the 16:00 close)")
     string warn = tfMin == 0 or tfMin > 5 ? "Use a 1-5 minute chart" : (onBars == 0 ? "No overnight bars on this chart: switch it to the 24h (ETH) session" : (cushion < 200.0 * M and not isEval ? "ABANDON: cushion < $" + str.tostring(200.0 * M, "#") + " - buy a new eval" : (eligible ? "REQUEST $" + str.tostring(payAmt, "#") + " PAYOUT NOW (the maximum allowed: 50% of profit, cap $" + str.tostring(PAYCAP, "#") + ")" : "-")))
     table.cell(T, 0, 0, "ONR Book v2.2", bgcolor = color.new(color.navy, 0), text_color = color.white)
-    table.cell(T, 1, 0, "Backtest 2011-26, net/yr (2011-18 / 2019-26): one 25K $2.0k / $4.3k; 5 x 50K $22k / $47k; longest gap 6-8 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    table.cell(T, 1, 0, "Backtest Nov 2022 - Nov 2026, net/yr: one 25K $5.2k; 5 x 25K $32k; 5 x 50K $51k; longest gap ~7 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))

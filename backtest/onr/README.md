@@ -23,6 +23,8 @@ futures, including several Lucid accounts side by side.
   opposite ways. Inside one account that is long and short at once (impossible in a netted futures account, ~1 day a
   year); across copy-traded accounts, an eval's 09:35 trade against a funded account's IB short is the cross-account
   hedging Lucid prohibits (~22 days a year). v2.1 places the IB order only on the drive's side on drive days.
+- **Last 4 years only** (Nov 2022 – Nov 2026, the window to rely on): same conclusions; 5 funded 50K accounts with
+  max-allowed payouts netted ~$51k a year (25K: ~$32k), with 2023 the drought year. See "Last 4 years only" below.
 - **Dry spells cannot be removed completely.** About half of them were times the strategy itself lost money; the
   other half were times it made money but the eval kept failing. More accounts run as an eval pool fix much of the
   second kind (longest gap 12 → 8 months in 2011–18, 8 → 6.5 in 2019–26) but nothing fixes the first kind.
@@ -153,6 +155,48 @@ Tried, pre-registered, chosen on 2011–18 and checked on 2019–26:
 What is left are strategy droughts (2016–17, late 2023): no account structure turns a losing stretch into payouts;
 only a second, unrelated edge would, and adding one untested would be curve-fitting.
 
+### Last 4 years only (Nov 14 2022 → Nov 13 2026): the numbers to rely on
+
+The window treated as reliable: today's NQ (about 28,000, daily range 380–650 points) and the same-day-options era.
+About 1,000 sessions, essentially one regime, so per-trade t-stats are smaller; each result is also shown for the two
+2-year halves. `research.py DATA recent` reproduces this section. MNQ, $1.34 per round turn for accounts.
+
+| Leg | 4 years | Nov 2022 – Nov 2024 | Nov 2024 – Nov 2026 |
+|---|---|---|---|
+| Opening-drive pyramid | +0.224R (t 3.4, n 462) | +0.175R (t 1.7) | +0.261R (t 3.0) |
+| IB breakout with the 09:35 drive | +0.225R (t 2.6, n 246) | +0.269R (t 2.1) | +0.190R (t 1.7) |
+| IB breakout against the drive (removed in v2.1) | −0.291R (t −3.2, n 158) | −0.075R | −0.477R (t −4.3) |
+| IB breakout, no drive that day | +0.085R (t 1.6, n 505) | +0.031R | +0.151R |
+| Overnight buy signals, no stop | +0.133 ADR (t 3.0, n 140) | +0.039 (t 0.6) | +0.211 (t 3.3) |
+| Overnight sell signals, no stop | +0.024 ADR (t 0.8, n 151) | +0.003 | +0.051 |
+| Overnight leg with its 0.5 ADR stop | buys +0.122R (t 1.4), sells +0.006R | | |
+| Long every night (overnight drift) | +0.031 ADR (t 2.1) | | |
+| Last-half-hour momentum / noise area / 5-min ORB | t −0.3 / 1.6 / 1.3 | | |
+
+Eval pass rate (evals started on every session): 25K 53.5%, 50K 42.9%, 150K 38.5% (median 9–10 sessions); 25K with
+coin-flip sides 37.2% (best of 10 seeds 44.8%).
+
+| Setup (net of 90% split and list-price evals) | 4 years | First 2 yrs | Last 2 yrs | Longest gap | Worst 12 months |
+|---|---|---|---|---|---|
+| one 25K, $500 payouts (v2.1) | $3.4k | $2.5k | $3.7k | 7.0 mo | −$0.3k |
+| one 25K, max-allowed payouts (v2.2) | $5.2k | $4.1k | $6.4k | 7.3 mo | ~$0 |
+| one 50K, max-allowed | $9.4k | $8.7k | $7.6k | 9.3 mo | −$0.8k |
+| 5 funded 25K + eval pool, $500 payouts | $19.0k | $12.4k | $23.8k | 6.9 mo | −$4.6k |
+| **5 funded 25K + eval pool, max-allowed** | **$32.4k** | $20.6k | $40.3k | 7.2 mo | −$2.6k |
+| **5 funded 50K + eval pool, max-allowed** | **$51.1k** | $32.6k | $57.8k | 6.7 mo | −$2.7k |
+| 5 funded 100K + eval pool, max-allowed | $61.2k | $36.1k | $73.4k | 6.6 mo | −$20.9k |
+| 5 funded 150K + eval pool, max-allowed | $83.5k | $68.6k | $73.6k | 6.5 mo | −$22.3k |
+
+Year by year, 5 funded + eval pool from Nov 14 2022 (2022 = 7 weeks, 2026 = to Nov 13):
+- 25K max-allowed: 2022 +$3.7k · **2023 −$1.3k** · 2024 +$49.5k · 2025 +$30.8k · 2026 +$42.9k
+- 50K max-allowed: 2022 +$4.5k · 2023 +$6.1k · 2024 +$84.1k · 2025 +$24.8k · 2026 +$81.8k
+- 150K max-allowed: 2022 +$9.0k · 2023 +$35.1k · 2024 +$168.5k · 2025 +$54.3k · 2026 +$95.2k
+
+What the 4-year view changes: nothing in the rules. It confirms the v2.1 IB fix (against-drive trades lost heavily),
+max-allowed payouts (+70% for 5×25K) and 50K over 25K (+58% with the same worst 12 months). Long-only overnight
+stays out (5×50K better, single 25K worse). Run-to-run noise between setups is around ±10% (e.g. 50K with doubled costs
+came out slightly ahead of base costs), so don't read small differences. 2023 is the drought year in this window.
+
 ### Research round (v2.2): what could make it better
 
 Method: hypotheses fixed in advance from the literature or from Lucid's rules, never from the backtest; a trading change
@@ -277,6 +321,7 @@ curl -s -A "Mozilla/5.0 (X11; Linux x86_64)" -o data/MNQ_5m.json "https://query2
 python3 backtest/onr/prep_data.py yahoo data/MNQ_5m.json data/MNQ_5m_60d.npz
 cd backtest/onr && python3 report.py ../../data && python3 overfit.py ../../data && python3 portfolio.py ../../data
 python3 research.py ../../data legs && python3 research.py ../../data accounts && python3 research.py ../../data final
+python3 research.py ../../data recent
 ```
 
 Limits: the CFD is a proxy for MNQ before Sep 2026 (validated on the overlap only); TradingView's own fills on 1–5
