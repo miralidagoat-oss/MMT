@@ -3,62 +3,34 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 
 // =====================================================================================================================
 // ONR BOOK v2.2 (2026-11-17). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
-// ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K (input, default 50K). Every $ amount below is written for 25K and scales
-//          with the account's max loss (x2 at 50K, x3 at 100K, x4.5 at 150K); target, qualifying day and payout cap follow
-//          Lucid's table. At 50K: stop <= $1,200, day budget $1,200, qualifying day $150, payout cap $2,000.
+// ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K (input, default 50K). The $ amounts below are for 25K; every one scales
+//          with the account's max loss (x2 at 50K, x3 at 100K, x4.5 at 150K). Target, qualifying day and payout cap
+//          follow Lucid's table. At 50K: stop <= $1,200, day budget $1,200, qualifying day $150, payout cap $2,000.
 // EVAL   : ONE bracket trade per day, first trigger that fires:
 //            1) overnight reversion at 18:10 on signal nights (exit 09:30); skipped into Thursday / first-Friday 08:30 news
 //            2) else the 09:35 opening drive (first 5 min >= 0.10 ADR, exit 16:00); not on half days (13:00 ET halt)
-//          Bracket from your account inputs: stop <= $600 INCLUDING commission, target <= 40% of the profit target (50% with
-//          the add-on), contracts = round(($stop + $target) / (width x ADR x $2)).
+//          Stop <= $600 INCLUDING commission, target <= 40% of the profit target (50% with the add-on),
+//          contracts = round(($stop + $target) / (width x ADR x $2)).
 // FUNDED : trades in priority order under a day risk budget = min($600, cushion - $10), N MNQ per leg:
 //            1) overnight reversion 18:10 -> 09:30, stop 0.5 ADR, no target
 //            2) opening-drive pyramid 09:35: stop 0.35 ADR, add N at +0.15 ADR (stop -> breakeven), trail 0.25 ADR, exit 16:00
 //            3) initial-balance breakout: stop order 1 tick beyond the 09:30-10:30 range, live 10:30-13:00, stop 0.25 /
-//               target 0.5 ADR; on a 09:35-drive day only on the drive's side (else both sides, OCO).
+//               target 0.5 ADR; on a 09:35-drive day only on the drive's side (else both sides, OCO)
 //          No 09:35 / 10:30 entries on US holiday half-sessions and early closes.
-//          N = round(350 / ADR), 1 to 10 ("Auto", default): 1 MNQ at today's range, more only if NQ's range shrinks.
+//          N ("Auto", default) = round(350 / ADR) per $1,000 of max loss: at 50K round(700 / ADR), so 2 MNQ at a 233-467
+//          point range and 1 MNQ above it; more only if NQ's range shrinks (cap: 10 / 20 / 30 / 40 MNQ by size).
 //          When eligible (5 qualifying days, P&L >= $1,000 and up since the last payout) request the MAXIMUM allowed:
-//          50% of profit up to the size's cap. Abandon if cushion < $200.
+//          50% of profit up to the size's cap. Abandon the account if the cushion falls below $200.
 // ADR = average 09:30-16:00 NQ range of the last 14 full sessions.
 // SEVERAL ACCOUNTS: one copy of this indicator per account (its own inputs). All copies always hold the same direction,
 //          so copy-trading never creates opposing positions across accounts (Lucid prohibits that). Lucid allows 5 funded
 //          accounts and 10 in all: keep the 5 funded slots full from evals running behind them.
-// ---------------------------------------------------------------------------------------------------------------------
-// v2.2 (research, 2026-11-17; signals, times and ADR multiples unchanged since v1)
-//  - Payout: request the maximum allowed instead of $500. Each Flex account pays out at most 5 times and eventually
-//    ends, so profit left inside it is eventually lost: backtest net income +50% to +75%, in both halves.
-//  - Account size input. With 5 funded slots, bigger accounts earn more per slot (max-allowed payouts required).
-//  - Tested and NOT adopted (pre-registered, must hold in 2011-18 and 2019-26): last-half-hour momentum (Gao et al.
-//    2018: slightly negative on NQ 2011-26), noise-area momentum (Zarattini et al. 2024: t 1.8 / 2.5), 5-min ORB
-//    (weaker than this book's 09:35 pyramid), volatility-regime filters (flip between halves), long-only overnight
-//    (sell signals have no edge, but dropping them did not improve the accounts in both halves), an eval that trades the
-//    funded book (worse), wider overnight stop, dropping legs. LucidDaily / Pro / Direct don't fit: Daily's funded
-//    drawdown is intraday and 08:30 news is a hard breach; Pro and Direct have funded consistency rules.
-// v2.1 / v2: IB only with the 09:35 drive (no opposing positions); funded size scales with ADR; no half-day entries; eval
-//    stop includes commission; pyramid add fills at the open on gaps; payout needs profit since the last payout.
-// BACKTEST, LAST 4 YEARS (Nov 2022 - Nov 2026, the window treated as reliable: today's NQ range and 0DTE era), Nasdaq-100
-//  / S&P 500 CFD minute data with its timestamps fixed, cross-checked against real MNQ futures (same trades within ~$25);
-//  MNQ $2/pt, $1.34 commission, this script's fill rules, net of the 90% split and evals at list price:
-//  - 50K (default): eval pass 43% (25K: 53%, coin-flip sides 37%), median 9 sessions to pass, ~2.3 evals per funded
-//    account; 57% of funded accounts reach a payout; one account slot: first payout after a median 69 days (61% within
-//    90 days, 86% within 180); 5 funded 50K + eval pool: ~$49k a year, a payout in 66% of months, every full year
-//    positive, worst 12 months -$2.7k. Full tables: backtest/onr/report50k.py.
-//  - one 25K at a time, max-allowed payouts: ~$5.2k a year ($500 payouts: $3.4k).
-//  - 5 funded 25K + eval pool: ~$32k a year; 5 funded 50K: ~$51k (same worst 12 months as 25K, about -$2.7k);
-//    5 funded 150K: ~$83k but -$22k worst 12 months of eval fees. Year by year, 5 x 50K: 2023 +$6k, 2024 +$84k,
-//    2025 +$25k, 2026 to Nov 13 +$82k; 5 x 25K: 2023 -$1k, 2024 +$50k, 2025 +$31k, 2026 +$43k.
-//  - by leg: pyramid +0.22R a trade (t 3.4), IB with the drive +0.23R (t 2.6; against the drive -0.29R, removed),
-//    overnight buys +0.13 ADR (t 3.0), overnight sells ~0. Longest stretch with no payout ~7 months (2023).
-// LONGER HISTORY, for context only (2011-18 / 2019-26, same settings):
-//  - one 25K at a time, max-allowed payouts: ~$2.0k / $4.3k a year (v2.1 with $500 payouts: $1.0k / $2.6k).
-//  - 5 funded 25K + eval pool: ~$12k / $26k a year; 5 funded 50K: ~$22k / $47k (worst 12 months -$12k / -$2k);
-//    5 funded 150K: ~$23k / $78k (worst 12 months -$35k / -$20k of eval fees).
-//  - longest stretch with no payout: ~6-8 months in every setup. 2016 and 2023 netted ~$0 even with 5 accounts: the
-//    strategy itself lost money then. Calm, small-range markets (2011-18 style) roughly halve results with 2x costs.
-//  - by leg: opening-drive pyramid strongest; IB breakout weak before 2019; the overnight signal's edge is all in its BUY
-//    signals (+0.08 ADR a night above the market's overnight drift, t~2.9 / 2.1). NOT live-tested. Past results do not
-//    guarantee future payouts.
+// BACKTEST at 50K, Nov 2022 - Nov 2026 (Nasdaq-100 / S&P 500 CFD minute data cross-checked against real MNQ futures;
+//          $1.34 commission; after Lucid's 10% and $115 evals): eval pass 42.9%, median 9 sessions; 56.9% of funded
+//          accounts reach a payout; one account slot's first payout after a median 69 days (60.9% within 90 days);
+//          5 funded 50K + eval pool about $49k a year, a payout in 65.9% of months, longest gap 6.8 months, worst
+//          12 months -$2.7k. By year (5 x 50K): 2023 +$6.1k, 2024 +$84.1k, 2025 +$24.8k, 2026 to Nov 13 +$81.8k.
+//          NOT live-tested; past results do not guarantee future payouts. Full study: backtest/onr in the MMT repo.
 // =====================================================================================================================
 
 grpA = "Account - update before each session"
@@ -73,7 +45,8 @@ newsSkip = input.bool(true, "EVAL: no overnight trade into Thursday / first-Frid
 nPay = input.int(0, "FUNDED: payouts taken", minval = 0, maxval = 5, group = grpA)
 qDays = input.int(0, "FUNDED: qualifying days since last payout (>= $100 / $150 / $200 / $250 by size)", minval = 0, group = grpA)
 pnlAfterPay = input.float(0.0, "FUNDED: P&L right after your last payout ($; 0 before the first)", group = grpA, tooltip = "Lucid also requires positive net profit since the last payout. Enter the P&L your account showed right after the last payout was taken.")
-fundSize = input.string("Auto (ADR-normalised)", "FUNDED: contracts per leg", options = ["Auto (ADR-normalised)", "Fixed 1 MNQ (v1)"], group = grpA, tooltip = "Auto = round(350 / ADR) MNQ, 1 to 10. That is 1 MNQ whenever NQ's daily range is above ~233 points (all of 2022-2026), so nothing changes today; it adds contracts only if the range shrinks, which is what stalled v1's payouts in 2011-2019.")
+commIn = input.float(1.34, "Commission per MNQ round turn ($)", minval = 0.0, step = 0.01, group = grpA, tooltip = "All-in cost per micro contract, in and out. Used for the eval stop (a full stop-out stays inside the $ limit) and for the simulated trade list. Prop-firm schedules quote about $1.24-$1.42; the backtest used $1.34.")
+fundSize = input.string("Auto (ADR-normalised)", "FUNDED: contracts per leg", options = ["Auto (ADR-normalised)", "Fixed 1 MNQ (v1)"], group = grpA, tooltip = "Auto = round(350 / ADR) MNQ per $1,000 of max loss. At 50K that is round(700 / ADR): 2 MNQ while NQ's daily range is 233-467 points, 1 MNQ above that, and more only if the range shrinks (at most 10 / 20 / 30 / 40 MNQ for 25K / 50K / 100K / 150K). Fixed 1 MNQ is v1's sizing, which stalled payouts in low-range years.")
 grpL = "Live tracking (alarm levels) - update each weekend"
 liveDays = input.int(0, "Trading days since this funded account started trading ONR", minval = 0, group = grpL)
 livePnl = input.float(0.0, "Live ONR trade P&L since then ($, this one funded account)", group = grpL, tooltip = "Sum of this funded account's ONR trade results since it started (no eval fees, no payouts). The bands come from the backtest: one funded account at your size, Nov 2022 - Nov 2026, 20,000 bootstrap paths - median, 5th percentile (yellow) and 1st percentile (red).")
@@ -88,7 +61,7 @@ logPos = input.string("Bottom left", "Trade list position", options = ["Bottom l
 // ---------- constants (fixed from research; ES 2011-2026)
 float PV = 2.0
 float TK = 0.25
-float COMM = 1.0      // $ per MNQ round turn
+float COMM = commIn   // $ per MNQ round turn
 float THR = 0.7187
 float ADRREF = 350.0  // funded Auto size = round(ADRREF x M / ADR) MNQ
 // Lucid Flex rules by size (help centre, Nov 2026); M scales every $ limit of the plan with the account's max loss
@@ -689,7 +662,7 @@ f_nextStep(bool ev) =>
     else if m < 9 * 60 + 35
         s := "09:35 ET / 6:35 AM PT: opening-drive check (first 5 min >= 0.10 ADR)."
     else if m < 10 * 60 + 30
-        s := ev ? "Manage the trade (stop / target on chart). Exit 16:00 ET / 1:00 PM PT." : "10:30 ET / 7:30 AM PT: place the IB breakout buy-stop / sell-stop (OCO)."
+        s := ev ? "Manage the trade (stop / target on chart). Exit 16:00 ET / 1:00 PM PT." : "10:30 ET / 7:30 AM PT: place the IB breakout order - only the 09:35 drive's side on a drive day, else buy-stop + sell-stop (OCO)."
     else if m < 13 * 60
         s := ev ? "Manage the trade. Exit 16:00 ET / 1:00 PM PT." : "IB orders live until 13:00 ET / 10:00 AM PT, then cancel unfilled. Exit everything 16:00 ET / 1:00 PM PT."
     else if m < 16 * 60
@@ -740,13 +713,13 @@ if showPanel and barstate.islast
     table.cell(T, 0, 10, alarmHead, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 10, alarmTxt, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
 
-// ---------- last 30 trades (simulated on this chart's bars: fills estimated from bar highs/lows, $1/MNQ commission included)
+// ---------- last 30 trades (simulated on this chart's bars: fills estimated from bar highs/lows, commission input included)
 var table TL = table.new(logPos == "Bottom right" ? position.bottom_right : logPos == "Top left" ? position.top_left : logPos == "Middle left" ? position.middle_left : position.bottom_left, 7, 33, border_width = 1)
 if showLog and barstate.islast
     table.clear(TL, 0, 0, 6, 32)
     color hb = color.new(color.navy, 0)
     color rb = color.new(color.gray, 40)
-    table.cell(TL, 0, 0, "Last 30 trades (" + phase + ") - simulated on this chart's bars, $1/MNQ commission in | sizes = your CURRENT inputs | R = result / stop", bgcolor = hb, text_color = color.yellow, text_size = size.tiny)
+    table.cell(TL, 0, 0, "Last 30 trades (" + phase + ", " + acctSize + ") - simulated on this chart's bars, $" + str.tostring(COMM, "#.##") + "/MNQ commission in | sizes = your CURRENT inputs | R = result / stop", bgcolor = hb, text_color = color.yellow, text_size = size.tiny)
     table.merge_cells(TL, 0, 0, 6, 0)
     table.cell(TL, 0, 1, "Entered (ET)", bgcolor = hb, text_color = color.white, text_size = size.tiny)
     table.cell(TL, 1, 1, "Trade", bgcolor = hb, text_color = color.white, text_size = size.tiny)
