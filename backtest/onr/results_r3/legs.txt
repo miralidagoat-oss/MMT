@@ -1,0 +1,28 @@
+== E: second pyramid add at +0.30 ADR, paired per trade (R = initial risk 0.35 ADR, 1 MNQ, $1.34)
+  pyramid (current)                            2011-18 +0.139R (t  2.8, n  857) | 2019-26 +0.195R (t  4.4, n  927) | last 4y +0.222R (t  3.3, n  454)
+  pyramid + second add                         2011-18 +0.156R (t  2.5, n  857) | 2019-26 +0.231R (t  4.2, n  927) | last 4y +0.236R (t  2.8, n  454)
+  difference (second add - current)            2011-18 +0.017R (t  0.8, n  857) | 2019-26 +0.036R (t  1.9, n  927) | last 4y +0.013R (t  0.4, n  454)
+== F: overnight exit 04:00 vs 09:30, paired per trade (funded leg, 0.5 ADR stop, R = 0.5 ADR, 1 MNQ, $1.34)
+  overnight buys, exit 09:30 (current)         2011-18 +0.139R (t  2.9, n  341) | 2019-26 +0.078R (t  1.4, n  334) | last 4y +0.121R (t  1.4, n  140)
+  overnight buys, exit 04:00                   2011-18 +0.108R (t  2.8, n  341) | 2019-26 +0.074R (t  1.6, n  334) | last 4y +0.088R (t  1.4, n  140)
+  difference (04:00 - 09:30), buys             2011-18 -0.031R (t -1.0, n  341) | 2019-26 -0.004R (t -0.1, n  334) | last 4y -0.033R (t -0.7, n  140)
+  overnight sells, exit 09:30 (current)        2011-18 -0.112R (t -3.4, n  310) | 2019-26 -0.025R (t -0.6, n  316) | last 4y +0.004R (t  0.1, n  151)
+  overnight sells, exit 04:00                  2011-18 -0.069R (t -2.8, n  310) | 2019-26 -0.028R (t -0.9, n  316) | last 4y +0.004R (t  0.1, n  151)
+  difference (04:00 - 09:30), sells            2011-18 +0.043R (t  1.7, n  310) | 2019-26 -0.004R (t -0.1, n  316) | last 4y -0.000R (t -0.0, n  151)
+== Eval pass rate, an eval started on every session (50K, $1.34)
+  BASE                                   2011-18 34.9% (median  11 sessions) | 2019-26 39.2% (median  10 sessions) | last 4y 42.9% (median   9 sessions)
+  C eval risk x0.5                       2011-18 37.2% (median  37 sessions) | 2019-26 43.3% (median  33 sessions) | last 4y 47.7% (median  33 sessions)
+  C eval risk x0.75                      2011-18 37.4% (median  17 sessions) | 2019-26 39.1% (median  16 sessions) | last 4y 43.8% (median  14 sessions)
+  D1 eval 09:35 drive only               2011-18 37.0% (median  13 sessions) | 2019-26 37.4% (median  11 sessions) | last 4y 42.6% (median  10 sessions)
+  D2 eval skips overnight sells          2011-18 35.2% (median  11 sessions) | 2019-26 40.3% (median  10 sessions) | last 4y 45.7% (median  10 sessions)
+  F overnight exit 04:00, no news skip   2011-18 30.0% (median  13 sessions) | 2019-26 41.2% (median  11 sessions) | last 4y 45.9% (median  10 sessions)
+== Funded 50K accounts started every 5th session: share with a payout / payouts per account / $ per account
+  BASE                   2011-18 41.3% / 0.70 / $1,015 | 2019-26 56.0% / 1.19 / $1,810 | last 4y 55.0% / 1.28 / $1,981
+  A f=0.4                2011-18 62.4% / 0.83 / $725 | 2019-26 70.5% / 1.23 / $1,181 | last 4y 69.9% / 1.30 / $1,299
+  A f=0.6                2011-18 51.1% / 0.75 / $869 | 2019-26 61.0% / 1.31 / $1,590 | last 4y 61.4% / 1.43 / $1,828
+  B day budget 800 x M   2011-18 42.0% / 0.71 / $1,009 | 2019-26 52.6% / 1.06 / $1,585 | last 4y 51.7% / 1.10 / $1,667
+  E second pyramid add   2011-18 39.8% / 0.69 / $1,041 | 2019-26 54.2% / 1.25 / $1,979 | last 4y 52.0% / 1.25 / $1,966
+
+real	0m21.858s
+user	0m21.195s
+sys	0m0.689s

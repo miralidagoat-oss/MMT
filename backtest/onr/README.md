@@ -317,6 +317,39 @@ evals at list price, averaged over 6 start dates (2011–18 | 2019–26):
 CrossTrade and PickMyTrade connect to it. Automating the alerts removes late manual entries, which the backtest shows
 matter in calm markets — test any automation on an eval first.
 
+### Research round 3 (pre-registered in `PREREG_R3.md` before testing): nothing beat the current rules
+
+Six changes with a published or structural rationale, tested on Lucid Flex 50K (max-allowed payouts, $1.34) with 12
+start dates per period; `research3.py DATA accounts|legs|diag` reruns everything (`results_r3/`). Decision rule: beat
+the shipped rules by more than the placebo noise band in BOTH 2011–18 and 2019–26, longest gap at most 1 month worse.
+
+**Noise band.** Four placebo runs (score threshold 0.715 / 0.722, Auto-size reference 345 / 355) moved the 5 × 50K
+pool by up to $4.5k (2011–18), $3.8k (2019–26) and $11.3k a year (last 4 years) around the base's $21.5k / $47.1k /
+$54.3k. Account-level differences smaller than that are path noise: trivial changes shift which days cross a payout
+or drawdown threshold, and the effect compounds.
+
+| ID | Change (source) | 5 × 50K pool vs base: 2011–18 / 2019–26 / last 4y | Other evidence | Verdict |
+|---|---|---|---|---|
+| A | Funded risk proportional to the cushion (Grossman & Zhou 1993); f = 0.6 chosen | −$2.4k / −$12.0k / −$9.8k | more funded accounts get a payout (51–61% vs 41–56%) but smaller ones; f = 0.4: worst 12 months −$1.7k / −$1.0k / −$0.8k vs −$12.3k / −$2.3k / −$2.7k, for about half the income | rejected |
+| B | Day budget 800 × M (all three legs fit) | +$6.0k (gap +1.1 mo) / −$3.2k / −$10.2k | | rejected |
+| C | Eval risk per trade × 0.75 (Dubins & Savage timid play) | −$5.9k / −$2.3k / +$1.0k | × 0.5 raises the pass rate (37.2 / 43.3 / 47.7% vs 34.9 / 39.2 / 42.9%) but triples the time to pass (median 33–37 sessions) | rejected |
+| D | Eval skips overnight sells (chosen over 09:35-drive only) | −$1.7k / +$1.9k / +$7.0k | pass rate +0.3 / +1.1 / +2.8 points | rejected (inside the noise) |
+| E | Second pyramid add at +0.30 ADR | −$4.6k (gap +8.3 mo) / +$13.3k / +$3.3k | per trade +0.017R (t 0.8) / +0.036R (t 1.9) | rejected (works only in the recent regime) |
+| F | Overnight exit at 04:00 ET, no eval news skip (Boyarchenko, Larsen & Whelan 2023) | +$0.2k / +$0.9k / −$3.3k | per trade, buys −0.031R / −0.004R | rejected |
+
+As pre-registered, A cut the day budget faster than contract rounding cut the size, so it often crowded out the
+pyramid. A version that scales every leg in proportion was not tested; it would be a post-hoc change.
+
+**Diagnostics.**
+- **European-open drift.** The 2–3 a.m. ET move, every night, was +0.010 ADR (t 3.3) in 2011–14 and +0.012 (t 3.5) in
+  2015–18, then +0.003 (t 0.7) in 2019–22 and +0.001 (t 0.3) in 2023–26. This replicates the NY Fed's *Disappearing
+  Overnight Drift* (July 2026) on this data.
+- **Overnight buy signal.** It does not depend on that window: +0.140 ADR by 09:30 in 2023–26, 40% of it earned after
+  04:00. Sell signals show no edge in any 4-year block.
+- **S&P 500 (MES).** The momentum legs are weaker there: pyramid +0.050R (t 1.0) / +0.087R (t 2.0), IB +0.002R /
+  +0.073R. Monthly correlation with NQ is 0.50. They were positive in both NQ droughts (+4.5R and +11.5R) but fail
+  2011–18, so MES is not added.
+
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
 | Leg | Trades | Mean R | t | Years positive | Real vs random sides |
@@ -387,6 +420,7 @@ python3 backtest/onr/prep_data.py yahoo data/MNQ_5m.json data/MNQ_5m_60d.npz
 cd backtest/onr && python3 report.py ../../data && python3 overfit.py ../../data && python3 portfolio.py ../../data
 python3 research.py ../../data legs && python3 research.py ../../data accounts && python3 research.py ../../data final
 python3 research.py ../../data recent
+python3 research3.py ../../data all
 ```
 
 Limits: the CFD is a proxy for MNQ before Sep 2026 (validated on the overlap only); TradingView's own fills on 1–5

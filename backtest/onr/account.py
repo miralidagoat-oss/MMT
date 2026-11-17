@@ -30,12 +30,13 @@ RULES = {25: dict(target=1250.0, mll=1000.0, qday=100.0, paycap=1000.0, evalmax=
          150: dict(target=9000.0, mll=4500.0, qday=250.0, paycap=3000.0, evalmax=100, fundmax=40, price=323.0)}
 
 
-def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0, size=25):
+def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0, size=25, k=1.0):
+    """k scales the stop cap and the per-trade target cap (round 3, hypothesis C: timid play)."""
     R = RULES[size]
     m = R["mll"] / 1000.0
-    sl = min(600.0 * m, cushion - 5.0 * m)
+    sl = min(600.0 * m * k, cushion - 5.0 * m)
     need = max(R["target"], best / cons)
-    tp = max(20.0 * m, min(R["target"] * cons, max(need - pnl, 0.0) + 15.0 * m))
+    tp = max(20.0 * m, min(R["target"] * cons * k, max(need - pnl, 0.0) + 15.0 * m))
     n = int(max(1.0, min(float(R["evalmax"]), math.floor((sl + tp) / (span * adr * PV) + 0.5))))
     if comm_aware:  # worst-case loss INCLUDING commission stays inside the $ limit
         sl = sl - n * comm
@@ -55,12 +56,14 @@ class EvalAccount:
 
     def __init__(self, S, cons=0.4, span=1.0, news=True, slip=0.0, comm=1.0, side_override=None,
                  legs=("on", "od"), thr=None, od_k=0.10, improved=False, book_mult=0, adr_ref=350.0, size=25,
-                 on_long_only=False):
+                 on_long_only=False, risk_k=1.0):
         """book_mult=0: v1/v2 eval (one bracket trade a day). book_mult=k: trade the funded book (overnight, pyramid,
-        IB with the drive) at k x the funded size under the same $600 day budget."""
+        IB with the drive) at k x the funded size under the same $600 day budget. risk_k: bracket stop and target caps
+        x risk_k (round 3, C)."""
         self.S, self.cons, self.span, self.news, self.slip, self.comm = S, cons, span, news, slip, comm
         self.side_override, self.legs, self.thr, self.od_k, self.improved = side_override, legs, thr, od_k, improved
         self.book_mult, self.adr_ref, self.size, self.on_long_only = book_mult, adr_ref, size, on_long_only
+        self.risk_k = risk_k
         self.R = RULES[size]
         self.m = self.R["mll"] / 1000.0
         self.pnl = self.peak = self.best = 0.0
@@ -114,7 +117,7 @@ class EvalAccount:
                     side = self.side_override(d, "on")
                 if side != 0 and not (self.news and news_night(d)) and not (self.on_long_only and side < 0):
                     n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved,
-                                             self.comm, self.size)
+                                             self.comm, self.size, self.risk_k)
                     E = r["on"]["E"] + side * self.slip
                     px, _ = bracket_exit(r["on"]["w"], side, E, sd, td, self.slip)
                     day = (px - E) * side * n * PV - n * self.comm
@@ -125,7 +128,7 @@ class EvalAccount:
                     side = self.side_override(d, "od")
                 if side != 0:
                     n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved,
-                                             self.comm, self.size)
+                                             self.comm, self.size, self.risk_k)
                     E = r["od"]["E"] + side * self.slip
                     px, _ = bracket_exit(r["od"]["w"], side, E, sd, td, self.slip)
                     day = (px - E) * side * n * PV - n * self.comm
@@ -148,7 +151,11 @@ class FundedAccount:
 
     def __init__(self, S, slip=0.0, legs=("on", "pyr", "ib"), payout_amt=500.0, max_pay=5, day_budget=600.0,
                  abandon=200.0, thr=None, on_stop=0.5, record=None, adr_ref=None, comm=1.0, improved=False,
-                 ib_with_drive=False, payout_max=False, size=25, on_long_only=False, cycle_rule=False):
+                 ib_with_drive=False, payout_max=False, size=25, on_long_only=False, cycle_rule=False,
+                 cushion_frac=None, add2=None):
+        """cushion_frac=f (round 3, A): day budget min(day_budget x M, f x cushion) and contracts scaled by
+        min(1, f x cushion / (day_budget x M)), at least 1. add2 (round 3, E): second pyramid add at add2 x ADR."""
+        self.cushion_frac, self.add2 = cushion_frac, add2
         self.S, self.slip, self.legs, self.payout_amt, self.max_pay = S, slip, legs, payout_amt, max_pay
         self.day_budget, self.abandon, self.thr, self.on_stop, self.record = day_budget, abandon, thr, on_stop, record
         self.adr_ref, self.comm, self.improved, self.ib_with_drive, self.payout_max = adr_ref, comm, improved, ib_with_drive, payout_max
@@ -173,6 +180,10 @@ class FundedAccount:
         if not np.isnan(adr):
             n = funded_size(adr, None if self.adr_ref is None else self.adr_ref * m,
                             nmax=self.R["fundmax"]) if self.adr_ref is not None else 1
+            if self.cushion_frac is not None:
+                g = min(1.0, self.cushion_frac * cushion / (self.day_budget * m))
+                n = max(1, int(math.floor(n * g + 0.5)))
+                room = min(room, self.cushion_frac * cushion)
             if "on" in self.legs:
                 side = S.on_side(d) if self.thr is None else S.on_side(d, self.thr)
                 rk = self.on_stop * adr * PV * n
@@ -186,7 +197,7 @@ class FundedAccount:
                 side = S.od_side(d)
                 rk = 0.35 * adr * PV * n
                 if side != 0 and used + rk <= room:
-                    p, _ = pyramid(S, d, side, self.slip, n=n, comm=self.comm, fix_gap=self.improved)
+                    p, _ = pyramid(S, d, side, self.slip, n=n, comm=self.comm, fix_gap=self.improved, add2=self.add2)
                     day += p
                     used += rk
                     if self.record is not None:

@@ -1,0 +1,45 @@
+Lucid Flex 50K, max-allowed payouts, $1.34/MNQ; net = payouts x 90% - evals x $115; 12 start dates per period: 2011-18 | 2019-26 | last 4y
+-- 5 funded + eval pool
+  BASE                            net $ 21,475 | $ 47,111 | $ 54,275  gap  7.3 |  6.4 |  6.5 mo  worst 12m $-12,309 | $ -2,266 | $ -2,730  months paid  41% |  65% |  68%  evals/yr 107.5 |  96.4 |  93.3
+  placebo thr 0.715               net $ 22,094 | $ 49,442 | $ 59,171  gap  7.3 |  6.4 |  6.5 mo  worst 12m $-12,309 | $ -2,266 | $ -2,730  months paid  41% |  65% |  68%  evals/yr 107.4 |  95.4 |  91.0
+  placebo thr 0.722               net $ 21,892 | $ 48,558 | $ 54,275  gap  7.3 |  6.4 |  6.5 mo  worst 12m $-12,309 | $ -2,266 | $ -2,730  months paid  41% |  68% |  68%  evals/yr 107.0 |  96.2 |  93.3
+  placebo size ref 345            net $ 25,995 | $ 49,405 | $ 58,779  gap  8.2 |  6.4 |  6.5 mo  worst 12m $-11,878 | $ -1,691 | $ -2,155  months paid  42% |  66% |  68%  evals/yr 101.9 |  91.7 |  85.9
+  placebo size ref 355            net $ 20,256 | $ 50,876 | $ 65,608  gap  7.1 |  6.8 |  6.5 mo  worst 12m $-11,801 | $ -2,726 | $ -2,730  months paid  42% |  61% |  63%  evals/yr 110.8 |  94.8 |  84.0
+  A f=0.4 (risk by cushion)       net $ 13,659 | $ 22,048 | $ 24,490  gap  8.6 |  7.2 |  6.6 mo  worst 12m $ -1,713 | $   -952 | $   -775  months paid  47% |  57% |  56%  evals/yr  59.7 |  56.9 |  52.5
+  A f=0.6 (risk by cushion)       net $ 19,032 | $ 35,156 | $ 44,453  gap  6.5 |  6.6 |  6.6 mo  worst 12m $-12,780 | $ -8,400 | $ -3,305  months paid  48% |  60% |  56%  evals/yr  87.0 |  79.6 |  74.6
+  B day budget 800 x M            net $ 27,442 | $ 43,918 | $ 44,062  gap  8.4 |  6.8 |  6.6 mo  worst 12m $-12,309 | $ -3,765 | $ -3,765  months paid  42% |  66% |  61%  evals/yr 101.3 |  95.9 |  94.9
+  C eval risk x0.5                net $ 13,916 | $ 37,349 | $ 51,892  gap 16.8 |  9.8 |  9.9 mo  worst 12m $ -9,890 | $ -9,775 | $ -6,325  months paid  28% |  47% |  55%  evals/yr  57.7 |  55.4 |  51.8
+  C eval risk x0.75               net $ 15,594 | $ 44,805 | $ 55,242  gap  7.7 |  6.9 |  6.7 mo  worst 12m $-11,705 | $ -8,553 | $ -3,572  months paid  37% |  52% |  51%  evals/yr  90.3 |  77.9 |  75.0
+  D1 eval 09:35 drive only        net $ 17,485 | $ 46,754 | $ 52,209  gap  7.4 |  6.5 |  6.5 mo  worst 12m $-15,020 | $ -1,691 | $ -1,695  months paid  36% |  61% |  56%  evals/yr 107.7 |  93.4 |  82.8
+  D2 eval skips overnight sells   net $ 19,788 | $ 49,027 | $ 61,272  gap  7.4 |  6.4 |  6.4 mo  worst 12m $-13,054 | $ -6,651 | $ -6,655  months paid  36% |  64% |  63%  evals/yr 110.4 |  98.9 |  88.0
+  E second pyramid add +0.30      net $ 16,845 | $ 60,413 | $ 57,545  gap 15.6 |  6.4 |  6.4 mo  worst 12m $-15,832 | $ -1,784 | $ -1,899  months paid  39% |  65% |  61%  evals/yr 104.0 |  87.0 |  87.9
+  F overnight exit 04:00          net $ 21,632 | $ 48,044 | $ 50,987  gap  6.9 |  5.9 |  6.0 mo  worst 12m $-15,694 | $  3,779 | $ 10,417  months paid  52% |  66% |  67%  evals/yr 102.6 |  87.1 |  80.3
+-- 1 account
+  BASE                            net $  4,309 | $  7,269 | $ 10,055  gap 12.0 |  9.3 |  9.3 mo  worst 12m $ -1,488 | $   -848 | $   -848  months paid  27% |  43% |  47%  evals/yr  13.7 |  17.4 |  15.1
+  placebo thr 0.715               net $  4,440 | $  7,286 | $ 10,117  gap 12.0 |  9.3 |  9.3 mo  worst 12m $ -1,488 | $   -848 | $   -848  months paid  29% |  42% |  44%  evals/yr  13.6 |  17.5 |  15.1
+  placebo thr 0.722               net $  4,578 | $  8,106 | $ 10,055  gap 12.0 |  9.3 |  9.3 mo  worst 12m $ -1,488 | $   -848 | $   -848  months paid  27% |  44% |  47%  evals/yr  13.4 |  17.0 |  15.1
+  placebo size ref 345            net $  4,054 | $  7,549 | $  9,160  gap 12.0 |  7.9 |  6.6 mo  worst 12m $ -1,602 | $   -848 | $   -848  months paid  26% |  45% |  47%  evals/yr  13.8 |  16.1 |  14.8
+  placebo size ref 355            net $  3,728 | $  7,460 | $  9,909  gap 12.8 |  9.3 |  9.3 mo  worst 12m $ -1,955 | $   -733 | $   -848  months paid  24% |  40% |  47%  evals/yr  14.4 |  16.6 |  15.6
+  A f=0.4 (risk by cushion)       net $  2,181 | $  4,071 | $  5,678  gap  9.5 | 10.3 |  6.6 mo  worst 12m $   -827 | $   -791 | $   -459  months paid  28% |  37% |  42%  evals/yr   8.9 |   8.5 |   6.9
+  A f=0.6 (risk by cushion)       net $  3,018 | $  6,407 | $  9,209  gap  9.9 |  8.0 |  6.7 mo  worst 12m $ -1,218 | $   -503 | $   -503  months paid  26% |  44% |  49%  evals/yr  12.1 |  12.7 |  11.1
+  B day budget 800 x M            net $  4,518 | $  7,870 | $  9,088  gap 13.3 |  7.7 |  7.3 mo  worst 12m $ -1,955 | $ -1,006 | $ -1,006  months paid  26% |  42% |  42%  evals/yr  13.8 |  15.5 |  13.6
+  C eval risk x0.5                net $  1,737 | $  5,076 | $  7,081  gap 37.4 | 10.7 | 11.8 mo  worst 12m $ -1,150 | $ -1,035 | $   -805  months paid   9% |  24% |  27%  evals/yr   6.7 |   6.3 |   5.7
+  C eval risk x0.75               net $  2,980 | $  7,533 | $  9,957  gap 25.5 |  9.1 |  7.3 mo  worst 12m $ -1,840 | $   -633 | $   -205  months paid  19% |  34% |  39%  evals/yr  11.6 |  10.1 |  10.3
+  D1 eval 09:35 drive only        net $  3,551 | $  6,087 | $  8,244  gap 21.5 |  7.1 |  7.2 mo  worst 12m $ -2,300 | $    373 | $    420  months paid  23% |  35% |  35%  evals/yr  14.2 |  13.6 |  11.2
+  D2 eval skips overnight sells   net $  3,843 | $  6,986 | $  9,246  gap 17.7 |  7.4 |  7.4 mo  worst 12m $ -2,645 | $   -883 | $   -614  months paid  23% |  42% |  40%  evals/yr  14.5 |  15.2 |  12.7
+  E second pyramid add +0.30      net $  2,990 | $  8,024 | $  9,730  gap 13.3 |  7.7 |  7.4 mo  worst 12m $ -1,955 | $   -500 | $   -401  months paid  23% |  43% |  42%  evals/yr  13.5 |  16.3 |  13.9
+  F overnight exit 04:00          net $  3,126 | $  8,512 | $  8,298  gap 17.4 |  8.1 |  7.0 mo  worst 12m $ -2,300 | $  1,301 | $  2,220  months paid  27% |  43% |  42%  evals/yr  14.6 |  12.1 |  10.7
+
+Noise band (largest placebo move, pool net/yr): 2011-18 $4,520 | 2019-26 $3,765 | last 4y $11,333
+Decision (variant chosen on 2011-18; must beat BASE by more than the band in 2011-18 AND 2019-26, longest gap <= BASE + 1.0 mo in both):
+  A: A f=0.6 (risk by cushion)       reject | 2011-18 -2,443 (band 4,520), gap -0.8 mo | 2019-26 -11,955 (band 3,765), gap +0.2 mo | last 4y -9,822
+  B: B day budget 800 x M            reject | 2011-18 +5,967 (band 4,520), gap +1.1 mo | 2019-26 -3,193 (band 3,765), gap +0.4 mo | last 4y -10,213
+  C: C eval risk x0.75               reject | 2011-18 -5,881 (band 4,520), gap +0.4 mo | 2019-26 -2,306 (band 3,765), gap +0.6 mo | last 4y +967
+  D: D2 eval skips overnight sells   reject | 2011-18 -1,687 (band 4,520), gap +0.1 mo | 2019-26 +1,916 (band 3,765), gap +0.0 mo | last 4y +6,998
+  E: E second pyramid add +0.30      reject | 2011-18 -4,630 (band 4,520), gap +8.3 mo | 2019-26 +13,302 (band 3,765), gap +0.1 mo | last 4y +3,270
+  F: F overnight exit 04:00          reject | 2011-18 +157 (band 4,520), gap -0.5 mo | 2019-26 +933 (band 3,765), gap -0.5 mo | last 4y -3,288
+Adopted: none
+
+real	1m18.312s
+user	4m8.724s
+sys	0m2.944s

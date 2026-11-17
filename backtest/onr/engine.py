@@ -244,37 +244,42 @@ def funded_on(S, d, side, slip=0.0, stop_adr=0.5, n=1, comm=1.0):
     return ((px - E) * side * PV - comm) * n, why
 
 
-def pyramid(S, d, side, slip=0.0, stop=0.35, add=0.15, trail=0.25, n=1, comm=1.0, fix_gap=False):
+def pyramid(S, d, side, slip=0.0, stop=0.35, add=0.15, trail=0.25, n=1, comm=1.0, fix_gap=False, add2=None):
+    """add2 (round 3, E): a second add of n at add2 x ADR from the first entry; the stop then sits at least at the
+    first add's price."""
     r = S.S[d]
     A = r["adr"]
     w = r["od"]["w"]
     E1 = r["od"]["E"] + side * slip
     stp = E1 - side * stop * A
     best = E1
-    nu = 1
-    E2 = np.nan
+    ents = [E1]
+
+    def pnl(px):
+        return (sum((px - e) * side for e in ents) * PV - len(ents) * comm) * n
+
     for j in range(len(w.o)):
         hit = w.l[j] <= stp if side == 1 else w.h[j] >= stp
         if hit:
             op = w.o[j]
             px = op if (side == 1 and op <= stp) or (side == -1 and op >= stp) else stp
-            px -= side * slip
-            return (((px - E1) * side + ((px - E2) * side if nu == 2 else 0.0)) * PV - nu * comm) * n, "stop"
+            return pnl(px - side * slip), "stop"
         fav = w.h[j] if side == 1 else w.l[j]
         if (fav - best) * side > 0:
             best = fav
-        if nu < 2 and (best - E1) * side >= add * A:
-            lvl = E1 + side * add * A
+        for k_add, dist in ((1, add), (2, add2)):
+            if dist is None or len(ents) != k_add or (best - E1) * side < dist * A:
+                continue
+            lvl = E1 + side * dist * A
             gap = (side == 1 and w.o[j] > lvl) or (side == -1 and w.o[j] < lvl)
-            E2 = (w.o[j] if (fix_gap and gap) else lvl) + side * slip  # buy-stop add fills at the open on a gap
-            nu = 2
-            if (E1 - stp) * side > 0:
-                stp = E1
+            ents.append((w.o[j] if (fix_gap and gap) else lvl) + side * slip)  # stop order: open on a gap
+            lock = E1 if k_add == 1 else ents[1]  # first add -> breakeven; second add -> the first add's price
+            if (lock - stp) * side > 0:
+                stp = lock
         ts = best - side * trail * A
         if (ts - stp) * side > 0:
             stp = ts
-    px = w.xc - side * slip
-    return (((px - E1) * side + ((px - E2) * side if nu == 2 else 0.0)) * PV - nu * comm) * n, "time"
+    return pnl(w.xc - side * slip), "time"
 
 
 def ib_breakout(S, d, slip=0.0, stop=0.25, tgt=0.5, n=1, comm=1.0, only_side=0):
