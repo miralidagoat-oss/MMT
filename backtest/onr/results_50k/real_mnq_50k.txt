@@ -80,7 +80,7 @@ date          ADR  MNQ  trade        side    result
    IB breakout     34      47%    +3,245     +95
    ALL             71      51%   +17,568    +247
    traded days 47: positive 51%, >= $150 (qualifying) 47%, best +7,078, worst -810
-   by week (week starting): 09-03 -232  09-10 +989  09-17 +10,259  09-24 -1,742  10-01 +986  10-08 -54  10-15 +2,326  10-22 -11  10-29 +115  11-05 +3,525  11-12 +1,407
+   by week (Monday): 09-07 +201  09-14 +1,726  09-21 +8,453  09-28 -1,495  10-05 +1,058  10-12 +1,603  10-19 +1,465  10-26 -399  11-02 +2,809  11-09 +224  11-16 +1,924
 
 == 50K evals started on each session
    start 2026-09-09: pass  after 16 sessions (10 trades), ends 2026-09-30

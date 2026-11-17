@@ -96,7 +96,7 @@ v1 (1 MNQ): positive in 16 of 16 full years, but only +$432 to +$1,613 a year un
 v2.1 (ADR-sized): positive in 16 of 16 full years, from +$1,384 (2017) and +$1,435 (2023) to +$15,834 (2026 to Nov 13).
 Daily Sharpe of the v2.1 funded book: 1.17 (2011–18), 1.82 (2019–26).
 
-### Real MNQ futures, 5-min bars, 2026-09-09 → 2026-11-17 (50 sessions)
+### Real MNQ futures, 5-min bars, 2026-09-09 → 2026-11-17 (50 sessions; v2.1 at 25K — the final 50K run is below)
 
 - Eval: 40 of 48 rolling starts passed (all 8 failures started Oct 28 – Nov 6).
 - Funded legs at 1 MNQ each, no budget: overnight 15 trades +$2,325, pyramid 23 trades +$5,608, IB 43 trades +$1,623.
@@ -197,6 +197,28 @@ a spread of possible futures. Per trade (one 50K account): pyramid 98.6 trades a
 1.72, +$10,841 a year (t 3.21); IB with the drive 168.9 a year, 43.7%, 1.21, +$6,322 (t 2.17); overnight 72.8 a year,
 49.5%, 1.17, +$2,708 (t 1.01). Live alarm bands for one 50K funded account (median / yellow / red): day 20 $1,309 /
 −$3,538 / −$5,359; day 60 $4,340 / −$4,383 / −$7,776; day 250 $18,683 / $100 / −$7,284.
+
+#### The final 50K setup on real MNQ futures (`mnq_real50k.py` → `results_50k/real_mnq_50k.txt`)
+
+Yahoo `MNQ=F` 5-minute bars, Sep 9 → Nov 17 2026, 50 sessions, same rules and costs. The S&P score data ends Nov 13,
+so the Nov 17 session reuses Nov 13's score. These weeks lie inside the research window (through the CFD), so this
+checks the strategy on real futures prices; it is not an out-of-sample test.
+
+| One funded 50K account, every session | Trades | Winners | Net |
+|---|---|---|---|
+| Overnight | 15 | 67% | +$4,477 |
+| Opening-drive pyramid | 22 | 45% | +$9,845 |
+| IB breakout | 34 | 47% | +$3,245 |
+| All | 71 | 51% | +$17,568 |
+
+- 47 traded days: 51% positive, 47% qualifying ($150+), best +$7,078 (Sep 21), worst −$810. Without Sep 21 the
+  account made about +$10,500. Weeks (Monday start): 9 of 11 positive, worst −$1,495 (week of Sep 28).
+- Size: 3 MNQ while the ADR was under 280, 2 MNQ at 286–421, 1 MNQ from Nov 2 (ADR 490–647).
+- Evals started on every session: 32 of 48 finished passed (67%, median 10 sessions); all 15 started Oct 19 – Nov 6
+  failed, then passes resumed.
+- One account bought Sep 9: eval passed Sep 30; payouts $1,136 (Oct 16), $1,280 (Oct 30), $2,000 (Nov 17); net
+  +$3,859 after the $115 eval, still open with +$4,237.
+- 5 funded 50K + eval pool: 15 payouts ($21,677 gross), 10 evals ($1,150), net +$18,360 in the 50 sessions.
 
 ### Last 4 years only (Nov 14 2022 → Nov 13 2026): the numbers to rely on
 

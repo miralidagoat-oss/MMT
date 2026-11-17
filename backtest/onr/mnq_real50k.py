@@ -62,10 +62,9 @@ def main(dd):
           f"best {dv.max():+,.0f}, worst {dv.min():+,.0f}")
     wk = {}
     for d, v in by_day.items():
-        w = str(np.datetime64(int(d), "D") - (np.datetime64(int(d), "D").astype("datetime64[W]").astype("datetime64[D]") - np.datetime64(int(d), "D")))
-        key = str(np.datetime64(int(d), "D").astype("datetime64[W]"))
+        key = day(int(d) - (int(d) + 3) % 7)  # Monday of that week (day 0, 1970-01-01, was a Thursday)
         wk[key] = wk.get(key, 0.0) + v
-    print("   by week (week starting):", "  ".join(f"{k[5:]} {v:+,.0f}" for k, v in sorted(wk.items())))
+    print("   by week (Monday):", "  ".join(f"{k[5:]} {v:+,.0f}" for k, v in sorted(wk.items())))
 
     # ---- evals started on every session
     print("\n== 50K evals started on each session")
