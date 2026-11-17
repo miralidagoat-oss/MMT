@@ -1,4 +1,13 @@
-# MMT — Quant Engine: Alpha Predictive Limit Matrix
+# MMT — Quant Engine
+
+Two Pine Script v6 indicators:
+
+- **ONR Book v2** (`indicators/onr_book.pine`): Lucid Flex 25K plan for NQ / MNQ (overnight S&P-stretch reversion,
+  opening-drive pyramid, IB breakout). Independent review, overfitting tests and a 2011–2026 + real-MNQ backtest are in
+  [`backtest/onr/README.md`](backtest/onr/README.md).
+- **Alpha Predictive Limit Matrix** (below).
+
+# Alpha Predictive Limit Matrix
 
 Pine Script v6 indicator that detects liquidity-sweep rejection blocks, posts a
 limit entry at the rejection-wick midpoint with an EWMA-volatility stop and a
