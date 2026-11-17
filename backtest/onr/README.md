@@ -155,6 +155,49 @@ Tried, pre-registered, chosen on 2011–18 and checked on 2019–26:
 What is left are strategy droughts (2016–17, late 2023): no account structure turns a losing stretch into payouts;
 only a second, unrelated edge would, and adding one untested would be curve-fitting.
 
+### Final setup: Lucid Flex 50K (indicator default), last 4 years
+
+`report50k.py DATA OUT` produces every figure below; its tables are committed in `results_50k/`. Window Nov 14 2022 →
+Nov 13 2026, $1.34 per MNQ round turn, maximum-allowed payouts, eval at $115 list price, Lucid's 10% share removed.
+
+| Figure | Value |
+|---|---|
+| Eval pass rate (evals started on every session) | 42.9% of 1,034 |
+| Sessions to pass: 25th / median / 75th / 90th percentile | 6 / 9 / 14 / 21 |
+| Evals per funded account; fees per funded account | 2.33; $268 |
+| Funded accounts that reach a payout | 56.9% of 371 (all 5 payouts: 13.5%) |
+| Payouts per funded account before it ends: 0 / 1 / 2 / 3 / 4 / 5 | 43.1% / 27.5% / 1.9% / 5.7% / 8.4% / 13.5% |
+| Net withdrawn per funded account, average | $2,184 |
+| Days from funding to first payout (when one comes): median / 90th pct | 14 / 22 |
+| One account slot, first eval to first payout: median | 69 days |
+| First payout within 30 / 60 / 90 / 180 / 365 days | 17.1% / 45.0% / 60.9% / 86.4% / 100% |
+| 5 funded 50K + eval pool: net a year (10 start dates) | $49,078 median ($48,114 – $54,104) |
+| Payouts a year; evals bought a year | 44.2; 90.8 |
+| Months with a payout; months net positive after eval fees | 65.9%; 51.3% |
+| Monthly net: 10th / 25th / median / 75th / 90th percentile | −$1,725 / −$1,146 / $416 / $7,707 / $13,825 |
+| Longest stretch with no payout; worst 12 months | 6.8 months; −$2,726 |
+| Full calendar years positive (2023–2025, all 10 start dates) | 100% |
+| One account trading every session (no resets): net a year; daily Sharpe | $19,871; 1.84 |
+| Traded days positive; days of $150+ (qualifying) | 44.6%; 38.4% |
+| 2× commission + 1 tick slippage: 5×50K net a year; worst 12 months | $53,796; −$3,339 (noise exceeds the cost effect) |
+| Real MNQ futures Sep 9 – Nov 17 2026: evals passed; one account's trades | 32 of 48; +$17,568 on 71 trades |
+
+By calendar year (5 funded 50K + eval pool from Nov 14 2022; one account's trades split by leg):
+
+| Year | Net, 5 × 50K | Payouts | One account | Overnight | Pyramid | IB | Eval pass |
+|---|---|---|---|---|---|---|---|
+| 2022 (Nov 14 – Dec 31) | $4,521 | 5 | $4,044 | −$182 | $4,764 | −$538 | 32.4% |
+| 2023 | $6,116 | 14 | −$3,204 | −$2,589 | −$2,607 | $1,992 | 24.9% |
+| 2024 | $84,081 | 71 | $27,634 | $1,737 | $15,494 | $10,402 | 57.0% |
+| 2025 | $24,814 | 32 | $15,355 | $2,252 | $9,951 | $3,152 | 42.3% |
+| 2026 (to Nov 13) | $81,838 | 59 | $35,600 | $9,606 | $15,733 | $10,261 | 49.5% |
+
+The 10 start dates converge by 2024 (the pool buys evals every day), so the yearly rows are one historical path, not
+a spread of possible futures. Per trade (one 50K account): pyramid 98.6 trades a year, 32.5% winners, profit factor
+1.72, +$10,841 a year (t 3.21); IB with the drive 168.9 a year, 43.7%, 1.21, +$6,322 (t 2.17); overnight 72.8 a year,
+49.5%, 1.17, +$2,708 (t 1.01). Live alarm bands for one 50K funded account (median / yellow / red): day 20 $1,309 /
+−$3,538 / −$5,359; day 60 $4,340 / −$4,383 / −$7,776; day 250 $18,683 / $100 / −$7,284.
+
 ### Last 4 years only (Nov 14 2022 → Nov 13 2026): the numbers to rely on
 
 The window treated as reliable: today's NQ (about 28,000, daily range 380–650 points) and the same-day-options era.
