@@ -3,8 +3,9 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 
 // =====================================================================================================================
 // ONR BOOK v2.2 (2026-11-17). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
-// ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K (input). Every $ amount below is for 25K and scales with the account's max
-//          loss (x2 at 50K, x3 at 100K, x4.5 at 150K); target, qualifying day and payout cap follow Lucid's table.
+// ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K (input, default 50K). Every $ amount below is written for 25K and scales
+//          with the account's max loss (x2 at 50K, x3 at 100K, x4.5 at 150K); target, qualifying day and payout cap follow
+//          Lucid's table. At 50K: stop <= $1,200, day budget $1,200, qualifying day $150, payout cap $2,000.
 // EVAL   : ONE bracket trade per day, first trigger that fires:
 //            1) overnight reversion at 18:10 on signal nights (exit 09:30); skipped into Thursday / first-Friday 08:30 news
 //            2) else the 09:35 opening drive (first 5 min >= 0.10 ADR, exit 16:00); not on half days (13:00 ET halt)
@@ -39,7 +40,10 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 // BACKTEST, LAST 4 YEARS (Nov 2022 - Nov 2026, the window treated as reliable: today's NQ range and 0DTE era), Nasdaq-100
 //  / S&P 500 CFD minute data with its timestamps fixed, cross-checked against real MNQ futures (same trades within ~$25);
 //  MNQ $2/pt, $1.34 commission, this script's fill rules, net of the 90% split and evals at list price:
-//  - eval pass rate 53% at 25K (coin-flip sides: 37%, best of 10: 45%), median 9 sessions.
+//  - 50K (default): eval pass 43% (25K: 53%, coin-flip sides 37%), median 9 sessions to pass, ~2.3 evals per funded
+//    account; 57% of funded accounts reach a payout; one account slot: first payout after a median 69 days (61% within
+//    90 days, 86% within 180); 5 funded 50K + eval pool: ~$49k a year, a payout in 66% of months, every full year
+//    positive, worst 12 months -$2.7k. Full tables: backtest/onr/report50k.py.
 //  - one 25K at a time, max-allowed payouts: ~$5.2k a year ($500 payouts: $3.4k).
 //  - 5 funded 25K + eval pool: ~$32k a year; 5 funded 50K: ~$51k (same worst 12 months as 25K, about -$2.7k);
 //    5 funded 150K: ~$83k but -$22k worst 12 months of eval fees. Year by year, 5 x 50K: 2023 +$6k, 2024 +$84k,
@@ -59,7 +63,7 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 
 grpA = "Account - update before each session"
 phase = input.string("EVAL", "Phase", options = ["EVAL", "FUNDED"], group = grpA)
-acctSize = input.string("25K", "Account size (Lucid Flex)", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets Lucid's target, max loss, qualifying-day amount and payout cap for that size, and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Backtest Nov 2022 - Nov 2026 (5 funded accounts, max-allowed payouts): 50K made ~58% more than 25K with the same worst 12 months (about -$2.7k); 100K/150K made more still but cost ~$21-22k of evals in their worst 12 months.")
+acctSize = input.string("50K", "Account size (Lucid Flex)", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets Lucid's target, max loss, qualifying-day amount and payout cap for that size, and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Backtest Nov 2022 - Nov 2026 (5 funded accounts, max-allowed payouts): 50K made ~58% more than 25K with the same worst 12 months (about -$2.7k); 100K/150K made more still but cost ~$21-22k of evals in their worst 12 months.")
 pnlNow = input.float(0.0, "P&L now ($ vs account start; funded: after payouts)", group = grpA)
 peakEod = input.float(0.0, "Highest end-of-day P&L so far ($)", minval = 0.0, group = grpA)
 bestDay = input.float(0.0, "EVAL: best single day so far ($)", minval = 0.0, group = grpA)
@@ -71,8 +75,8 @@ qDays = input.int(0, "FUNDED: qualifying days since last payout (>= $100 / $150 
 pnlAfterPay = input.float(0.0, "FUNDED: P&L right after your last payout ($; 0 before the first)", group = grpA, tooltip = "Lucid also requires positive net profit since the last payout. Enter the P&L your account showed right after the last payout was taken.")
 fundSize = input.string("Auto (ADR-normalised)", "FUNDED: contracts per leg", options = ["Auto (ADR-normalised)", "Fixed 1 MNQ (v1)"], group = grpA, tooltip = "Auto = round(350 / ADR) MNQ, 1 to 10. That is 1 MNQ whenever NQ's daily range is above ~233 points (all of 2022-2026), so nothing changes today; it adds contracts only if the range shrinks, which is what stalled v1's payouts in 2011-2019.")
 grpL = "Live tracking (alarm levels) - update each weekend"
-liveDays = input.int(0, "Trading days since you started ONR live", minval = 0, group = grpL)
-livePnl = input.float(0.0, "Live ONR P&L since start ($, at 1 MNQ per trade)", group = grpL, tooltip = "Cumulative result of ONR's trades since your live start, all accounts combined, ignoring eval fees and payouts.")
+liveDays = input.int(0, "Trading days since this funded account started trading ONR", minval = 0, group = grpL)
+livePnl = input.float(0.0, "Live ONR trade P&L since then ($, this one funded account)", group = grpL, tooltip = "Sum of this funded account's ONR trade results since it started (no eval fees, no payouts). The bands come from the backtest: one funded account at your size, Nov 2022 - Nov 2026, 20,000 bootstrap paths - median, 5th percentile (yellow) and 1st percentile (red).")
 grpD = "Data"
 sigSym = input.symbol("OANDA:SPX500USD", "S&P 500 CFD for the stretch score (the research used an S&P 500 CFD)", group = grpD)
 grpV = "Display"
@@ -654,7 +658,8 @@ plot(ibArmed ? ibSell : na, "IB sell stop", color.purple, 1, plot.style_linebr)
 alertcondition(buyNow, "ONR BUY", "ONR: BUY signal - check the alert message / panel for size, stop and target")
 alertcondition(sellNow, "ONR SELL", "ONR: SELL signal - check the alert message / panel for size, stop and target")
 
-// ---------- live alarm levels (block bootstrap of ONR's real 2021-26 daily P&L at 1 MNQ; 5th pct = yellow, 1st pct = red)
+// ---------- live alarm levels: block bootstrap (10-session blocks, 20,000 paths) of one 50K funded account's daily trade P&L,
+// Nov 2022 - Nov 2026 backtest (v2.2 rules, $1.34 commission); median, 5th pct = yellow, 1st pct = red; scaled by size
 f_interp(float d, array<float> xs, array<float> ys) =>
     float out = array.get(ys, 0)
     if d >= array.get(xs, array.size(xs) - 1)
@@ -667,9 +672,9 @@ f_interp(float d, array<float> xs, array<float> ys) =>
                 out := array.get(ys, k) + (array.get(ys, k + 1) - array.get(ys, k)) * (d - x0) / (x1 - x0)
     out
 var array<float> AX = array.from(20.0, 40.0, 60.0, 120.0, 250.0)
-var array<float> AMED = array.from(867.0, 1757.0, 2782.0, 5717.0, 12175.0)
-var array<float> AYEL = array.from(-2216.0, -2737.0, -2790.0, -2346.0, 240.0)
-var array<float> ARED = array.from(-3421.0, -4535.0, -4945.0, -5380.0, -4578.0)
+var array<float> AMED = array.from(1309.0, 2785.0, 4340.0, 8760.0, 18683.0)
+var array<float> AYEL = array.from(-3538.0, -4112.0, -4383.0, -3566.0, 100.0)
+var array<float> ARED = array.from(-5359.0, -6883.0, -7776.0, -8929.0, -7284.0)
 
 // ---------- next step on the clock (ET and PT)
 f_nextStep(bool ev) =>
@@ -704,7 +709,7 @@ if showPanel and barstate.islast
     string sigTxt = na(score) ? "warming up" : (str.tostring(score, "#.##") + " (" + (sigSide == 1 ? "BUY tonight" : sigSide == -1 ? "SELL tonight" : "no overnight trade") + ", needs |score| >= 0.72; final after the 16:00 close)")
     string warn = tfMin == 0 or tfMin > 5 ? "Use a 1-5 minute chart" : (onBars == 0 ? "No overnight bars on this chart: switch it to the 24h (ETH) session" : (cushion < 200.0 * M and not isEval ? "ABANDON: cushion < $" + str.tostring(200.0 * M, "#") + " - buy a new eval" : (eligible ? "REQUEST $" + str.tostring(payAmt, "#") + " PAYOUT NOW (the maximum allowed: 50% of profit, cap $" + str.tostring(PAYCAP, "#") + ")" : "-")))
     table.cell(T, 0, 0, "ONR Book v2.2", bgcolor = color.new(color.navy, 0), text_color = color.white)
-    table.cell(T, 1, 0, "Backtest Nov 2022 - Nov 2026, net/yr: one 25K $5.2k; 5 x 25K $32k; 5 x 50K $51k; longest gap ~7 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    table.cell(T, 1, 0, "Backtest Nov 2022 - Nov 2026 at " + acctSize + " (figures for 50K): eval pass 43%, first payout median 69 days, 5 x 50K ~$49k/yr, longest gap ~7 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))
@@ -725,9 +730,10 @@ if showPanel and barstate.islast
     string nxt = halfDay ? "HALF DAY (13:00 ET halt): exit the overnight trade at 09:30, no new trades, flat by 12:55 ET / 9:55 AM PT." : f_nextStep(isEval)
     table.cell(T, 0, 9, "Next step", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 9, nxt, text_color = halfDay ? color.orange : color.aqua, bgcolor = color.new(color.gray, 40))
-    float yl = f_interp(liveDays, AX, AYEL)
-    float rd = f_interp(liveDays, AX, ARED)
-    float md = liveDays >= 20 ? f_interp(liveDays, AX, AMED) : 867.0 * liveDays / 20.0
+    float bandScale = M / 2.0  // bands are for 50K (M = 2)
+    float yl = f_interp(liveDays, AX, AYEL) * bandScale
+    float rd = f_interp(liveDays, AX, ARED) * bandScale
+    float md = (liveDays >= 20 ? f_interp(liveDays, AX, AMED) : array.get(AMED, 0) * liveDays / 20.0) * bandScale
     string alarmTxt = liveDays == 0 ? "enter your live trading days + P&L (Live tracking inputs)" : ("day " + str.tostring(liveDays) + ": $" + str.tostring(livePnl, "#") + " vs typical $" + str.tostring(md, "#") + " | yellow < $" + str.tostring(yl, "#") + " | red < $" + str.tostring(rd, "#") + (liveDays < 20 ? " (bands start at day 20)" : ""))
     color alarmCol = liveDays == 0 ? color.white : (livePnl < rd ? color.red : (livePnl < yl ? color.yellow : color.lime))
     string alarmHead = liveDays == 0 ? "Live alarm" : (livePnl < rd ? "Live alarm: RED - STOP" : (livePnl < yl ? "Live alarm: YELLOW" : "Live alarm: GREEN"))
