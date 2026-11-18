@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Every number behind the dashboard's charts, with the costs itemised, at Lucid Flex 50K with the shipped v2.2 rules:
-the 60 days of real MNQ futures (Yahoo 5-minute bars, Sep 9 - Nov 17 2026) and the last 4 years (Nasdaq-100 CFD
-minute bars, Nov 14 2022 - Nov 13 2026).
+the 60 days of real MNQ futures (Yahoo 5-minute bars; the window is printed when it runs) and the last 4 years
+(Nasdaq-100 CFD minute bars, Nov 14 2022 - Nov 13 2026). For the real-MNQ part, DATA_DIR's SPXUSD.npz may be the CFD
+series extended with ES futures bars (prep_spx_ext.py), so the sessions after the CFD's end have their own S&P score.
 
 usage: export_charts.py DATA_DIR OUT_DIR
 
@@ -19,7 +20,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import account  # noqa: E402
 from account import RULES, EvalAccount, FundedAccount, funded_size, run_eval, run_funded  # noqa: E402
-from engine import Sessions, load_npz, rth_sessions  # noqa: E402
+from account import is_half  # noqa: E402
+from engine import PV, Sessions, bracket_exit, load_npz, news_night, rth_sessions  # noqa: E402
 from portfolio import pool  # noqa: E402
 
 COMM = 1.34
@@ -29,6 +31,8 @@ E_KW = dict(improved=True, comm=COMM, size=50)
 F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM, size=50, payout_max=True)
 LEG = {"on": "Overnight", "pyr": "Pyramid", "ib": "IB breakout"}
 WHY = {"stop": "stop", "target": "target", "time": "time exit", "stop-fillbar": "stop (fill bar)", "none": "time exit"}
+# the real-MNQ totals mnq_real50k.py prints for the same data (checked before anything is written)
+REAL = dict(trades=71, net=16955, slot_payouts=[1136, 1280, 2000], slot_cash=3859.4, pool=(15, 21677, 10, 18359.3))
 
 # ---- cost bookkeeping: wrap the leg functions the account module calls (results are passed through unchanged)
 TRADES = []   # (gross, net, exit reason) of each funded-leg trade, in call order
@@ -101,6 +105,35 @@ def book(S, ks):
                            WHY.get(why, why), r2(gross), r2(-comm), r2(net), r2(cum)])
         days.append([day(d), r2(adr) if not np.isnan(adr) else "", n, len(rec), r2(g_day), r2(-c_day), r2(n_day), r2(cum)])
     return trades, days
+
+
+def eval_plan(S, ks):
+    """The eval plan session by session, as the indicator draws it in its EVAL phase for an eval with its full bracket
+    (cushion $2,000, no profit yet): the 18:10 ET overnight trade when there is a signal and it is not a news night,
+    otherwise the 09:35 opening drive (not on half days); one trade a session (account.EvalAccount.step)."""
+    rows, cum = [], 0.0
+    for k in ks:
+        d = S.days[k]
+        r = S.S[d]
+        adr = r["adr"]
+        if np.isnan(adr):
+            continue
+        so, sd_ = S.on_side(d), S.od_side(d)
+        if so != 0 and not news_night(d):
+            leg, side, rec = "Overnight (ON), 18:10 ET", so, r["on"]
+        elif sd_ != 0 and not is_half(d):
+            leg, side, rec = "Opening drive (OD), 09:35 ET", sd_, r["od"]
+        else:
+            continue
+        n, stop_pts, tgt_pts = _eval_bracket(adr, 2000.0, 0.0, 0.0, 0.4, 1.0, True, COMM, 50)
+        E = rec["E"]
+        px, why = bracket_exit(rec["w"], side, E, stop_pts, tgt_pts)
+        gross = (px - E) * side * n * PV
+        net = gross - n * COMM
+        cum += net
+        rows.append([len(rows) + 1, day(d), leg, "BUY" if side > 0 else "SELL", n, r2(E), r2(E - side * stop_pts),
+                     r2(E + side * tgt_pts), r2(px), WHY.get(why, why), r2(gross), r2(-n * COMM), r2(net), r2(cum)])
+    return rows
 
 
 def journey(S, k0, k1):
@@ -285,9 +318,11 @@ def main(dd, out):
     kr = range(m0, len(R.days))
     print(f"real MNQ: {day(R.days[m0])} -> {day(R.days[-1])}, {len(kr)} sessions")
     rt, rd = book(R, kr)
-    assert abs(sum(t[8] for t in rt) - 17568) < 1.0 and len(rt) == 71, sum(t[8] for t in rt)
+    assert abs(sum(t[8] for t in rt) - REAL["net"]) < 1.0 and len(rt) == REAL["trades"], (len(rt), sum(t[8] for t in rt))
     write(out, "real_trades", TC, rt)
     write(out, "real_days", DC, rd)
+    write(out, "real_eval_trades", ["trade", "date", "trade_type", "side", "mnq", "entry", "stop", "target", "exit_price",
+                                    "exit", "gross_usd", "commission_usd", "net_usd", "running_net_usd"], eval_plan(R, kr))
     ev = [(k, run_eval(R, k, **E_KW)) for k in kr]
     write(out, "real_evals", ["start_date", "result", "sessions", "trades", "end_date"],
           [[day(R.days[k]), r["result"], r["days"], r["trades"], day(R.days[min(r["k_end"], len(R.days) - 1)])] for k, r in ev])
@@ -295,10 +330,10 @@ def main(dd, out):
     ja = journey(R, m0, len(R.days))
     j_paid = PAID[0]
     j_pay = [x[3] for x in ja if x[3] > 0]
-    assert [round(p) for p in j_pay] == [1136, 1280, 2000] and abs(ja[-1][5] - 3859.4) < 1.0, (j_pay, ja[-1])
+    assert [round(p) for p in j_pay] == REAL["slot_payouts"] and abs(ja[-1][5] - REAL["slot_cash"]) < 1.0, (j_pay, ja[-1])
     write(out, "real_account", JC, ja)
     rp, rs = pool_rows(R, m0, len(R.days))
-    assert rs["payouts"] == 15 and round(rs["gross"]) == 21677 and rs["evals"] == 10 and abs(rs["net"] - 18359.3) < 1.0, rs
+    assert (rs["payouts"], round(rs["gross"]), rs["evals"]) == REAL["pool"][:3] and abs(rs["net"] - REAL["pool"][3]) < 1.0, rs
     write(out, "real_pool", PC, rp)
 
     # ================= last 4 years (CFD minute bars)
@@ -385,7 +420,9 @@ def main(dd, out):
     legs = {}
     for t in rt:
         legs.setdefault(t[2], []).append(t[8])
-    K = [["real", "real_sessions", "Sessions in the window", len(kr), "count", "Sep 9 - Nov 17 2026"],
+    d0, d1 = (pd_(day(R.days[kr[i]])) for i in (0, -1))
+    span = f"{d0:%b} {d0.day} - {d1:%b} {d1.day} {d1.year}"  # as before: "Sep 9 - Nov 17 2026"
+    K = [["real", "real_sessions", "Sessions in the window", len(kr), "count", span],
          ["real", "real_trades", "Trades, one funded account", len(rt), "count", ""],
          ["real", "real_win", "Winning trades", 100 * np.mean(rn > 0), "pct", ""],
          ["real", "real_net", "Trading profit after commission", rn.sum(), "usd", ""],
@@ -425,8 +462,8 @@ def main(dd, out):
     lg.append(["All trades", len(rt), round(100 * np.mean([t[8] > 0 for t in rt]), 1), round(sum(t[6] for t in rt)),
                round(sum(t[7] for t in rt)), round(sum(t[8] for t in rt))])
     write(out, "real_legs", ["trade_type", "trades", "win_pct", "gross_usd", "commission_usd", "net_usd"], lg)
-    print("checks passed: real 71 trades +$17,568; account 3 payouts, net $3,859; pool 15 payouts, net $18,359; "
-          "4-year book by year = years.csv; 4-year pool net = $201,371")
+    print(f"checks passed: real {REAL['trades']} trades {REAL['net']:+,.0f}; account payouts {REAL['slot_payouts']}, net "
+          f"{REAL['slot_cash']:,.0f}; pool {REAL['pool']}; 4-year book by year = years.csv; 4-year pool net = $201,371")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-REAL MNQ futures, 5-min bars: 2026-09-09 -> 2026-11-17, 50 sessions (S&P score data ends 2026-11-13, so the 2026-11-17 session reuses Nov 13's score)
+REAL MNQ futures, 5-min bars: 2026-09-09 -> 2026-11-17, 50 sessions, last bar ends 2026-11-17T12:45 ET; S&P score data through the 2026-11-16 session: every session has its own score
 
 == Every trade of one funded 50K account (full day budget every session)
 date          ADR  MNQ  trade        side    result
@@ -71,16 +71,16 @@ date          ADR  MNQ  trade        side    result
 2026-11-13    618    1  Pyramid      SELL      -188
 2026-11-13    618    1  IB breakout  SELL      -310
 2026-11-16    640    1  Pyramid      SELL      -217
+2026-11-17    647    1  Overnight    BUY        +33
 2026-11-17    647    1  Pyramid      SELL     +1495
-2026-11-17    647    1  IB breakout  SELL      +645
 
    trade       trades  winners     net $   avg $
-   Overnight       15      67%    +4,477    +298
+   Overnight       16      69%    +4,510    +282
    Pyramid         22      45%    +9,845    +448
-   IB breakout     34      47%    +3,245     +95
-   ALL             71      51%   +17,568    +247
+   IB breakout     33      45%    +2,600     +79
+   ALL             71      51%   +16,955    +239
    traded days 47: positive 51%, >= $150 (qualifying) 47%, best +7,078, worst -810
-   by week (Monday): 09-07 +201  09-14 +1,726  09-21 +8,453  09-28 -1,495  10-05 +1,058  10-12 +1,603  10-19 +1,465  10-26 -399  11-02 +2,809  11-09 +224  11-16 +1,924
+   by week (Monday): 09-07 +201  09-14 +1,726  09-21 +8,453  09-28 -1,495  10-05 +1,058  10-12 +1,603  10-19 +1,465  10-26 -399  11-02 +2,809  11-09 +224  11-16 +1,311
 
 == 50K evals started on each session
    start 2026-09-09: pass  after 16 sessions (10 trades), ends 2026-09-30
@@ -126,21 +126,21 @@ date          ADR  MNQ  trade        side    result
    start 2026-11-04: fail  after  4 sessions (4 trades), ends 2026-11-09
    start 2026-11-05: fail  after  3 sessions (3 trades), ends 2026-11-09
    start 2026-11-06: fail  after  2 sessions (2 trades), ends 2026-11-09
-   start 2026-11-09: pass  after  7 sessions (5 trades), ends 2026-11-17
+   start 2026-11-09: open  after  7 sessions (5 trades), ends 2026-11-17
    start 2026-11-10: pass  after  6 sessions (4 trades), ends 2026-11-17
    start 2026-11-11: pass  after  5 sessions (4 trades), ends 2026-11-17
    start 2026-11-12: pass  after  4 sessions (4 trades), ends 2026-11-17
-   start 2026-11-13: pass  after  3 sessions (3 trades), ends 2026-11-17
+   start 2026-11-13: open  after  3 sessions (3 trades), ends 2026-11-17
    start 2026-11-16: open  after  2 sessions (2 trades), ends 2026-11-17
    start 2026-11-17: open  after  1 sessions (1 trades), ends 2026-11-17
-   passed 32 of 48 finished (67%), median 10 sessions to pass; 2 still open at the data's end
+   passed 30 of 46 finished (65%), median 10 sessions to pass; 4 still open at the data's end
 
 == One 50K account bought on the first session (eval -> funded -> payouts, buying a new eval if one fails)
    eval #1 bought 2026-09-09: pass 2026-09-30 (eval P&L $+3,026)
    payout 1: $1,136 requested 2026-10-16 (you keep $1,022)
    payout 2: $1,280 requested 2026-10-30 (you keep $1,152)
    payout 3: $2,000 requested 2026-11-17 (you keep $1,800)
-   funded since 2026-10-01, still open at the data's end: P&L $+4,237, 0 qualifying days since the last payout
+   funded since 2026-10-01, still open at the data's end: P&L $+3,624, 0 qualifying days since the last payout
    result: 1 eval(s) ($115), payouts $4,416 gross -> net $+3,859
 
 == 5 funded 50K + eval pool from 2026-09-09: 15 payouts ($21,677 gross), 10 evals bought ($1,150) -> net $+18,360 in 50 sessions

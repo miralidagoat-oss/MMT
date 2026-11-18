@@ -33,7 +33,7 @@ def sess_cols(t):
     return ((t % 1440) - 1080) % 1440, (t + 360) // 1440
 
 
-def rth_sessions(t, o, h, l, c):
+def rth_sessions(t, o, h, l, c, rth=(930, 1320)):
     """Per session id: RTH open/high/low/close, overnight low (18:00-09:30), number of 30-min RTH buckets."""
     s, day = sess_cols(t)
     out = {}
@@ -41,21 +41,21 @@ def rth_sessions(t, o, h, l, c):
     end = np.r_[start[1:], len(t)]
     for d, a, b in zip(ids, start, end):
         ss = s[a:b]
-        r = np.where((ss >= 930) & (ss < 1320))[0]
+        r = np.where((ss >= rth[0]) & (ss < rth[1]))[0]
         if len(r) == 0:
             continue
         r = r + a
-        on = np.where(ss < 930)[0] + a
+        on = np.where(ss < rth[0])[0] + a
         out[int(d)] = dict(o=o[r[0]], h=h[r].max(), l=l[r].min(), c=c[r[-1]],
                            onl=l[on].min() if len(on) else l[r[0]],
                            nb=len(np.unique(t[r] // 30)))
     return out
 
 
-def adr_by_session(rth, n=14):
+def adr_by_session(rth, n=14, nb_full=13):
     """ADR used for session X = mean range of the last n FULL (13 x 30-min) RTH sessions before X."""
     days = sorted(rth)
-    full = [d for d in days if rth[d]["nb"] >= 13]
+    full = [d for d in days if rth[d]["nb"] >= nb_full]
     rng = np.array([rth[d]["h"] - rth[d]["l"] for d in full])
     res = {}
     k = 0
@@ -151,14 +151,16 @@ class Sessions:
 
     EV = dict(on=10, onx=930, od=935, ib=990, ibend=1140, eod=1320)
 
-    def __init__(self, nq, spx, tf, adr_src=None, stale_score=True, ev=None, score=None):
+    def __init__(self, nq, spx, tf, adr_src=None, stale_score=True, ev=None, score=None, rth=(930, 1320), nb_full=13):
+        """rth / nb_full (round 5): the traded market's day session in minutes after 18:00 and the 30-minute buckets
+        of a full session (NQ: 09:30-16:00, 13); ev must then hold that market's event minutes."""
         """ev: override event minutes since 18:00 (sensitivity tests). score: precomputed score_series output."""
         ev = dict(self.EV, **(ev or {}))
         t, o, h, l, c = nq
         self.tf = tf
         s, day = sess_cols(t)
-        self.rth = rth_sessions(*nq)
-        self.adr = adr_by_session(adr_src if adr_src is not None else self.rth)
+        self.rth = rth_sessions(*nq, rth=rth)
+        self.adr = adr_by_session(adr_src if adr_src is not None else self.rth, nb_full=nb_full)
         srth = rth_sessions(*spx)
         self.srth = srth
         self.score_raw, self.feats = score if score is not None else score_series(srth)
@@ -178,7 +180,7 @@ class Sessions:
                 return a + j if j < len(ss) else None
 
             e_on, x_on = first(ev["on"]), first(ev["onx"])
-            r0 = np.where((ss >= 930) & (ss < 1320))[0]
+            r0 = np.where((ss >= rth[0]) & (ss < rth[1]))[0]
             e_od, x_eod = first(ev["od"]), first(ev["eod"])
             ib_arm, ib_end = first(ev["ib"]), first(ev["ibend"])
             last = b - 1
@@ -197,14 +199,14 @@ class Sessions:
                 rec["on"] = dict(E=c[e_on], t=int(t[e_on]), w=Win(o[e_on + 1:xe + 1], h[e_on + 1:xe + 1],
                                                                   l[e_on + 1:xe + 1], c[e_on + 1:xe + 1]))
             # RTH legs
-            if len(r0) and e_od is not None and s[e_od] >= 930 and s[e_od] < 1320:
+            if len(r0) and e_od is not None and s[e_od] >= rth[0] and s[e_od] < rth[1]:
                 r_first = a + r0[0]
                 if r_first <= e_od:
                     xe = x_eod if x_eod is not None else last
                     rec["rOpen"] = o[r_first]
                     rec["od"] = dict(E=c[e_od], t=int(t[e_od]), w=Win(o[e_od + 1:xe + 1], h[e_od + 1:xe + 1],
                                                                       l[e_od + 1:xe + 1], c[e_od + 1:xe + 1]))
-                    if ib_arm is not None and s[ib_arm] < 1320:
+                    if ib_arm is not None and s[ib_arm] < rth[1]:
                         ibr = a + r0[(ss[r0] < ev["ib"])]
                         if len(ibr):
                             be = ib_end if ib_end is not None else xe

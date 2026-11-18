@@ -1,7 +1,7 @@
 item_id,setup,item,real_60d_usd,last_4y_usd,all_years_usd
-book_gross,"One funded account, every session",Trading profit before commission,17779,85079,316424
+book_gross,"One funded account, every session",Trading profit before commission,17166,85079,316424
 book_comm,"One funded account, every session",Commission at $1.34 per MNQ round turn,-212,-5651,-84167
-book_net,"One funded account, every session",Trading profit after commission,17568,79428,232257
+book_net,"One funded account, every session",Trading profit after commission,16955,79428,232257
 slot_payouts,One account slot (new eval whenever one ends),Payouts requested,4416,48468,125382
 slot_lucid,One account slot (new eval whenever one ends),Lucid's 10% share,-442,-4847,-12538
 slot_fees,One account slot (new eval whenever one ends),Eval fees at $115,-115,-6670,-28175

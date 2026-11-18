@@ -1,0 +1,28 @@
+setup,name,family,net_5y_usd,worst_year_5y_usd,deepest_drop_5y_usd,net_2011_21_usd,worst_year_2011_21_usd,verdict
+BASE,Current rules (5 funded + 5 evals),Current rules,49103,11081,-8855,27984,-5122,The rules in use
+P size ref 340,Placebo: size reference 340 (not 350),Placebo,54785,11656,-8280,29988,-3731,Trivial change: sets the noise band
+P size ref 345,Placebo: size reference 345,Placebo,54240,11656,-8280,28726,483,Trivial change: sets the noise band
+P size ref 355,Placebo: size reference 355,Placebo,56486,5647,-8855,26447,-750,Trivial change: sets the noise band
+P size ref 360,Placebo: size reference 360,Placebo,60699,20964,-8855,29580,981,Trivial change: sets the noise band
+P thr 0.712,Placebo: score threshold 0.712 (not 0.7187),Placebo,51935,11081,-8855,27163,-5122,Trivial change: sets the noise band
+P thr 0.715,Placebo: score threshold 0.715,Placebo,52637,11081,-8855,28415,-5122,Trivial change: sets the noise band
+P thr 0.722,Placebo: score threshold 0.722,Placebo,49103,11081,-8855,29170,-5122,Trivial change: sets the noise band
+P thr 0.725,Placebo: score threshold 0.725,Placebo,49682,11081,-8855,29269,-4041,Trivial change: sets the noise band
+A f=0.4 (risk by cushion),Risk tied to the cushion (0.4),Round 3: risk by cushion,21550,7768,-6363,15598,1475,Not better than the noise in the last 5 years
+A f=0.6 (risk by cushion),Risk tied to the cushion (0.6),Round 3: risk by cushion,36347,6690,-8625,21892,128,Not better than the noise in the last 5 years
+B day budget 800 x M,"Funded day budget $1,600 (not $1,200)",Round 3: day budget,42474,3439,-9315,32144,-5194,Not better than the noise in the last 5 years
+C eval risk x0.5,Eval risk 0.5x,Round 3: eval risk,44458,12314,-5520,16449,-9890,Not better than the noise in the last 5 years
+C eval risk x0.75,Eval risk 0.75x,Round 3: eval risk,47307,13972,-8625,21796,-11705,Not better than the noise in the last 5 years
+D1 eval 09:35 drive only,Eval trades the 09:35 drive only,Round 3: eval triggers,48724,12451,-7820,26437,-13334,Not better than the noise in the last 5 years
+D2 eval skips overnight sells,Eval skips overnight sells,Round 3: eval triggers,54626,12682,-10465,26789,-5467,Not better than the noise in the last 5 years
+E second pyramid add +0.30,Pyramid adds again at +0.30 ADR,Round 3: pyramid add,56201,25108,-7820,31499,-11577,"Better in the last 5 years (steadier), but worse than the noise in 2011-21: rejected"
+F overnight exit 04:00,Overnight trades exit at 04:00 ET,Round 3: overnight exit,47472,14484,-7360,29049,-1011,Not better than the noise in the last 5 years
+T 126 sessions,No new evals after a losing 6 months,Round 4: eval throttle,42208,2617,-8471,22346,-8062,Not better than the noise in the last 5 years
+T 63 sessions,No new evals after a losing 3 months,Round 4: eval throttle,43661,6671,-5980,21030,-7006,Not better than the noise in the last 5 years
+R x0.5,Half the size (0.5x),Round 4: risk level,24062,3442,-6363,16309,-236,Not better than the noise in the last 5 years
+R x0.75,0.75x the size,Round 4: risk level,41739,8295,-9890,24020,4698,Not better than the noise in the last 5 years
+R x1.25,1.25x the size,Round 4: risk level,63006,13958,-8510,25918,929,"Better in the last 5 years (more money), but worse than the noise in 2011-21: rejected"
+R x1.5,1.5x the size,Round 4: risk level,25553,0,-6363,8338,-1522,Not better than the noise in the last 5 years
+V 7 accounts,7 accounts in all (2 reserve evals),Round 4: eval reserve,38239,7127,-6555,25772,-2944,Not better than the noise in the last 5 years
+V 8 accounts,8 accounts in all (3 reserve evals),Round 4: eval reserve,42179,7897,-7360,27482,-3497,Not better than the noise in the last 5 years
+S funded skips overnight sells,Funded skips overnight sells,Round 5: overnight sells,48535,2798,-9315,33705,-1975,Not better than the noise in the last 5 years

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""The final ONR Book v2.2 at Lucid Flex 50K on REAL MNQ futures (Yahoo MNQ=F 5-minute bars, Sep 9 - Nov 17 2026).
+"""The final ONR Book v2.2 at Lucid Flex 50K on REAL MNQ futures (Yahoo MNQ=F 5-minute bars, the last 60 days).
 
-The S&P stretch score still comes from the S&P 500 CFD (as in the indicator); the ADR's first 14 sessions are seeded
-from the Nasdaq CFD because the Yahoo window starts mid-stream. Everything traded is real MNQ.
+The S&P stretch score still comes from an S&P 500 CFD (as in the indicator); DATA_DIR's SPXUSD.npz may be HistData's
+series extended past its end with another S&P source (prep_spx_ext.py), and the run says which sessions, if any, had
+to reuse an older score. The ADR's first 14 sessions are seeded from the Nasdaq CFD because the Yahoo window starts
+mid-stream. Everything traded is real MNQ.
 usage: mnq_real50k.py DATA_DIR      (needs MNQ_5m_60d.npz, NSXUSD.npz, SPXUSD.npz from prep_data.py)
 """
 import os
@@ -33,8 +35,13 @@ def main(dd):
     S = Sessions(mnq, load_npz(os.path.join(dd, "SPXUSD.npz")), tf=5, adr_src=src)
     days = S.days
     m0 = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in days]))
-    print(f"REAL MNQ futures, 5-min bars: {day(days[m0])} -> {day(days[-1])}, {len(days) - m0} sessions "
-          f"(S&P score data ends 2026-11-13, so the 2026-11-17 session reuses Nov 13's score)\n")
+    last_spx = max(d for d, v in S.srth.items() if v["nb"] >= 13)
+    after = [d for d in days[m0:] if d > last_spx]
+    stale = [day(d) for d in after[1:]]  # the first session after it uses its score as intended; later ones reuse it
+    t_end = np.datetime64(int(mnq[0][-1]) + 5, "m")
+    print(f"REAL MNQ futures, 5-min bars: {day(days[m0])} -> {day(days[-1])}, {len(days) - m0} sessions, last bar ends "
+          f"{t_end} ET; S&P score data through the {day(last_spx)} session"
+          + (f", so {', '.join(stale)} reuse(s) that score" if stale else ": every session has its own score") + "\n")
 
     # ---- one funded 50K account trading every session (full $1,200 budget, never reset): every trade
     print("== Every trade of one funded 50K account (full day budget every session)")

@@ -200,25 +200,49 @@ a spread of possible futures. Per trade (one 50K account): pyramid 98.6 trades a
 
 #### The final 50K setup on real MNQ futures (`mnq_real50k.py` → `results_50k/real_mnq_50k.txt`)
 
-Yahoo `MNQ=F` 5-minute bars, Sep 9 → Nov 17 2026, 50 sessions, same rules and costs. The S&P score data ends Nov 13,
-so the Nov 17 session reuses Nov 13's score. These weeks lie inside the research window (through the CFD), so this
-checks the strategy on real futures prices; it is not an out-of-sample test.
+Yahoo `MNQ=F` 5-minute bars, Sep 9 → 12:45 ET on Nov 17 2026, 50 sessions, same rules and costs. HistData's S&P data
+ends with the Nov 13 session; the score of the Nov 16 session comes from Dukascopy's S&P 500 CFD (`prep_spx_ext.py`:
+on the four days both sources have, the two scores agree to within 0.002), so every session has its own overnight
+signal. These weeks lie inside the research window (through the CFD), so this checks the strategy on real futures
+prices; it is not an out-of-sample test.
+
+**Correction (Nov 18 2026).** The first version of this run reused Nov 13's score for Nov 17, which gave no overnight
+signal. With Monday Nov 16's own score (+0.885, a buy, as the live indicator showed), Nov 17 has the overnight buy
+(+$32.66 at 1 MNQ) and the pyramid (+$1,495.43), and **no** IB breakout. The day's $1,200 risk budget was already used:
+the overnight trade took $647 and the pyramid $453, and the IB needed $323 more. The first version showed the IB
+(+$645.50) instead of the overnight trade, so it overstated Nov 17 by $612.84.
 
 | One funded 50K account, every session | Trades | Winners | Net |
 |---|---|---|---|
-| Overnight | 15 | 67% | +$4,477 |
+| Overnight | 16 | 69% | +$4,510 |
 | Opening-drive pyramid | 22 | 45% | +$9,845 |
-| IB breakout | 34 | 47% | +$3,245 |
-| All | 71 | 51% | +$17,568 |
+| IB breakout | 33 | 45% | +$2,600 |
+| All | 71 | 51% | +$16,955 |
 
 - 47 traded days: 51% positive, 47% qualifying ($150+), best +$7,078 (Sep 21), worst −$810. Without Sep 21 the
-  account made about +$10,500. Weeks (Monday start): 9 of 11 positive, worst −$1,495 (week of Sep 28).
+  account made about +$9,900. Weeks (Monday start): 9 of 11 positive, worst −$1,495 (week of Sep 28).
 - Size: 3 MNQ while the ADR was under 280, 2 MNQ at 286–421, 1 MNQ from Nov 2 (ADR 490–647).
-- Evals started on every session: 32 of 48 finished passed (67%, median 10 sessions); all 15 started Oct 19 – Nov 6
-  failed, then passes resumed.
+- Evals started on every session: 30 of 46 finished passed (65%, median 10 sessions); all 15 started Oct 19 – Nov 6
+  failed, then passes resumed. 4 were still open when the data ended.
 - One account bought Sep 9: eval passed Sep 30; payouts $1,136 (Oct 16), $1,280 (Oct 30), $2,000 (Nov 17); net
-  +$3,859 after the $115 eval, still open with +$4,237.
+  +$3,859 after the $115 eval, still open with +$3,624.
 - 5 funded 50K + eval pool: 15 payouts ($21,677 gross), 10 evals ($1,150), net +$18,360 in the 50 sessions.
+
+**Eval plan vs funded plan.** The table above is the funded plan, which the indicator draws with Phase = FUNDED: up to
+three trades a day, 1 MNQ each at today's range. With Phase = EVAL, the default, the indicator draws the eval plan:
+one trade a session, the 18:10 ET overnight trade if there is a signal and otherwise the 09:35 drive. It trades 2 MNQ
+with a fixed stop (299 points) and target (300 points). `export_charts.py` writes that plan session by session to
+`results_charts/real_eval_trades.csv`, and it matches the live chart:
+
+| Session | Eval | Funded |
+|---|---|---|
+| Nov 16 | 09:35 drive sell, target +$1,197.32 | pyramid sell, trailing stop −$216.84 |
+| Nov 17 | overnight buy from Nov 16 18:10 ET, out at 09:30 +$65.32 (the chart showed +$66: TradingView's feed differs by one tick) | overnight +$32.66, pyramid +$1,495.43, IB not placed |
+| Nov 18 (entered Nov 17 18:10 ET) | overnight buy, stopped −$1,200.00 | overnight buy at 1 MNQ, stopped about −$680 |
+
+The Nov 18 entry is after the MNQ data ends. Yahoo refused downloads that day, so it was checked on Dukascopy's
+Nasdaq-100 CFD ticks instead. The price fell 495 points below the entry, past both stops: 299 points for the eval,
+340 points (0.5 ADR) for the funded account.
 
 ### Last 4 years only (Nov 14 2022 → Nov 13 2026): the numbers to rely on
 
@@ -397,6 +421,59 @@ Every year for each setup is in `results_r4/accounts_years_wide.csv` (median, lo
 
 Noise bands (largest placebo move): 2011–18 net $4,535, worst year $5,605; 2019–26 net $3,644, worst year $5,434. Verdict (`results_r4/decisions.txt`): **none adopted**. The throttle lowered both the income and the worst year in every period. 0.75× size passed 2011–18 on steadiness but failed 2019–26 (less income, no better worst year). 1.25× made more since 2019 but its 2019–26 worst year fell. 7 or 8 accounts made less. The current rules stay.
 
+### The last 5 years first, and research round 5 (pre-registered in `PREREG_R5.md` and its addendum before any result)
+
+`research5.py DATA R5DATA results_r5 accounts` (about 5 minutes) and `report5.py results_r5`. These use Lucid Flex 50K,
+$1.34 per MNQ round turn, $115 per eval, a 90% split and the mean of 12 start dates (Nov 15 2021 and every 5 sessions
+after it, to Nov 13 2026). The full years are 2022–2025. The start dates converge within months, so each year is
+essentially one historical path.
+
+**The current rules over the last 5 years.** Accounts bought the same day and copy-traded make exactly N times one
+account: $8,028 a year each.
+
+| Setup | Net a year | Worst full year | Total, 5 years | Deepest drop | Worst 12 months | Longest gap | Months with a payout | Eval pass rate | Payouts | Most cash out |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 account in all | $7,314 | $716 | $35,733 | −$1,840 | −$618 | 9.3 mo | 40.2% | 41.2% | 31.1 | −$527 |
+| 2 accounts in all | $13,458 | $1,285 | $65,748 | −$3,105 | −$1,121 | 7.2 mo | 45.2% | 40.5% | 59.1 | −$1,054 |
+| 3 accounts in all | $19,521 | $2,165 | $95,370 | −$4,140 | −$701 | 6.8 mo | 48.5% | 40.7% | 87.1 | −$1,572 |
+| 4 accounts in all | $25,573 | $3,045 | $124,945 | −$5,060 | −$166 | 6.8 mo | 50.2% | 41.5% | 114.9 | −$2,070 |
+| 5 accounts in all | $32,830 | $3,925 | $160,402 | −$5,865 | $1,059 | 6.8 mo | 55.2% | 42.6% | 146.9 | −$2,492 |
+| 1 funded + 1 eval | $10,488 | −$67 | $51,237 | −$2,990 | −$2,343 | 7.1 mo | 53.7% | 38.9% | 50.1 | −$1,054 |
+| 2 funded + 2 evals | $19,675 | $2,862 | $96,125 | −$3,910 | −$1,690 | 7.0 mo | 53.7% | 41.8% | 95.1 | −$2,070 |
+| 3 funded + 3 evals | $29,829 | $6,163 | $145,735 | −$5,520 | −$1,381 | 6.4 mo | 62.1% | 45.0% | 141.1 | −$2,904 |
+| 4 funded + 4 evals | $40,407 | $7,594 | $197,417 | −$7,245 | −$1,996 | 6.4 mo | 66.5% | 45.3% | 186.8 | −$3,699 |
+| **5 funded + 5 evals (current)** | **$49,103** | **$11,081** | $239,902 | −$8,855 | −$2,266 | 6.4 mo | 67.0% | 46.2% | 230.0 | −$4,284 |
+
+Year by year, 5 funded + 5 evals (median of the 12 start dates): 2021 (from Nov 15) −$1,610 · 2022 $38,691 ·
+**2023 $11,081** · 2024 $84,081 · 2025 $24,814 · 2026 (to Nov 13) $81,838. The eval pass rate ran 49.2%, **23.4%**,
+50.5%, 52.3% and 49.2% in 2022 to 2026, so 2023 was weak because evals failed. Every year of every setup is in
+`results_r5/accounts_5y_years_wide.csv` and on the dashboard.
+
+**Every account-level change of rounds 3 to 5, re-scored on the last 5 years (rule 5Y).**
+- **The rule:** a change must beat the current rules over the last 5 years by more than the noise band, either on the
+  worst full year or on the net a year without hurting the other by more than its band. In 2011–21 it must not be
+  worse than that period's band on either.
+- **The noise band:** 8 placebo runs (score threshold 0.712/0.715/0.722/0.725 instead of 0.7187; size reference
+  340/345/355/360 instead of 350) give ±$11,596 a year in net and ±$9,884 in the worst year over the last 5 years, and
+  ±$2,005 and ±$6,103 in 2011–21.
+
+The size reference 360 alone, a trivial change, moved the last-5-year income by $11,596 a year. One 5-year path cannot
+tell smaller differences from luck.
+
+| Setup (5 funded + 5 evals) | Last 5 years: net a year | Last 5 years: worst year | 2011–21: net a year | 2011–21: worst year | Verdict |
+|---|---|---|---|---|---|
+| Current rules | $49,103 | $11,081 | $27,984 | −$5,122 | in use |
+| Pyramid adds again at +0.30 ADR (round 3, E) | $56,201 | $25,108 | $31,499 | −$11,577 | steadier in the last 5 years, worse than the band in 2011–21: rejected |
+| 1.25× the size (round 4, R) | $63,006 | $13,958 | $25,918 | $929 | more money in the last 5 years, net a year $61 past the band in 2011–21: rejected |
+| Eval skips overnight sells (round 3, D2) | $54,626 | $12,682 | $26,789 | −$5,467 | inside the noise |
+| Funded skips overnight sells (round 5, S) | $48,535 | $2,798 | $33,705 | −$1,975 | inside the noise |
+| Overnight exit 04:00 ET (round 3, F) | $47,472 | $14,484 | $29,049 | −$1,011 | inside the noise |
+| Placebo: size reference 360 | $60,699 | $20,964 | $29,580 | $981 | sets the band |
+
+All 18 changes, 9 from round 3, 8 from round 4 and 1 from round 5, are in `results_r5/r5_configs.csv` and
+`results_r5/decisions.txt`. **None passed.** Under the original round-4 rule (2011–18 and 2019–26), the funded "skip
+overnight sells" change (H5-S) passed 2011–18 on money and failed 2019–26, so it is rejected there too. The rules stay.
+
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
 | Leg | Trades | Mean R | t | Years positive | Real vs random sides |
@@ -469,6 +546,10 @@ python3 research.py ../../data legs && python3 research.py ../../data accounts &
 python3 research.py ../../data recent
 python3 research3.py ../../data all
 python3 research4.py ../../data results_r4 && python3 report4.py results_r4 results_r4
+python3 research5.py ../../data ../../data results_r5 accounts && python3 report5.py results_r5
+python3 fetch_dukascopy.py ../../data/duk_idx USA500IDXUSD 2026-11-09 2026-11-16   # S&P CFD past HistData's end
+python3 prep_spx_ext.py ../../data ../../data/duk_idx ../../data_live/SPXUSD.npz   # + NSXUSD.npz, MNQ_5m_60d.npz
+python3 mnq_real50k.py ../../data_live && python3 export_charts.py ../../data_live results_charts
 ```
 
 Limits: the CFD is a proxy for MNQ before Sep 2026 (validated on the overlap only); TradingView's own fills on 1–5
