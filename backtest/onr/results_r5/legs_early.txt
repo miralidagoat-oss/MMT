@@ -1,0 +1,11 @@
+Necessary conditions on complete blocks (R per trade at 1 micro, $1.34; t-statistic, trades):
+  gold pyramid            2011-18: -0.012R (t -0.27, n 633); with 1 tick of slippage -0.097R
+  gold pyramid            2011-21: -0.015R (t -0.41, n 871); with 1 tick of slippage -0.095R
+  gold IB with the drive  2011-18: -0.007R (t -0.24, n 1636); with 1 tick of slippage -0.070R
+  gold IB with the drive  2011-21: -0.011R (t -0.41, n 2246); with 1 tick of slippage -0.076R
+  gold: original rule FAILS (2011-18); 5Y rule FAILS (2011-21) -> rejected, no account test
+  crude pyramid            2011-18: +0.017R (t 0.41, n 758); with 1 tick of slippage -0.053R
+  crude pyramid            2011-21: +0.004R (t 0.13, n 1091); with 1 tick of slippage -0.063R
+  crude IB with the drive  2011-18: +0.028R (t 0.85, n 1650); with 1 tick of slippage -0.028R
+  crude IB with the drive  2011-21: +0.015R (t 0.54, n 2216); with 1 tick of slippage -0.043R
+  crude: original rule FAILS (2011-18); 5Y rule still possible (needs the last 5 years) (2011-21)

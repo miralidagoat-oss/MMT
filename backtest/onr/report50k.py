@@ -2,7 +2,8 @@
 """Full backtest of the ONR Book v2.2 default setup: Lucid Flex 50K, max-allowed payouts, $1.34 per MNQ round turn.
 
 Primary window: the last 4 years (Nov 14 2022 -> Nov 13 2026). 2011-2026 and real MNQ futures (Sep-Nov 2026) as context.
-usage: report50k.py DATA_DIR OUT_DIR      (writes CSV tables + summary.json into OUT_DIR and prints the summary)
+usage: report50k.py DATA_DIR OUT_DIR [WINDOW_START]   (writes CSV tables + summary.json into OUT_DIR and prints the
+       summary; WINDOW_START defaults to 2022-11-14, e.g. 2021-11-15 for the last 5 years)
 """
 import csv
 import functools
@@ -246,9 +247,10 @@ def main(dd, out):
                      int(pay_n[0])])
     write_csv(os.path.join(out, "pool_years.csv"), ["year", "net_usd_first_path", "net_usd_min_of_10", "net_usd_median_of_10",
                                                    "net_usd_max_of_10", "payouts_first_path"], ytab)
-    allm = [(m, v, p["pays"].get(m, 0)) for p in paths for m, v in zip(p["months"], p["net"]) if "2023-01" <= m <= "2026-10"]
+    m_from = f"{int(W0[:4]) + 1}-01"  # whole calendar months from the first full year of the window
+    allm = [(m, v, p["pays"].get(m, 0)) for p in paths for m, v in zip(p["months"], p["net"]) if m_from <= m <= "2026-10"]
     mv = np.array([v for _, v, _ in allm])
-    full_years = [(y, sum(v for m, v in zip(p["months"], p["net"]) if int(m[:4]) == y)) for p in paths for y in (2023, 2024, 2025)]
+    full_years = [(y, sum(v for m, v in zip(p["months"], p["net"]) if int(m[:4]) == y)) for p in paths for y in range(int(W0[:4]) + 1, 2026)]
     summary["pool"] = dict(paths=len(paths), net_per_year_median=round(float(np.median([p["net_yr"] for p in paths])), 0),
                            net_per_year_range=[round(min(p["net_yr"] for p in paths), 0), round(max(p["net_yr"] for p in paths), 0)],
                            payouts_per_year=round(float(np.mean([p["payouts_yr"] for p in paths])), 1),
@@ -317,4 +319,6 @@ def main(dd, out):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 3:
+        W0 = sys.argv[3]
     main(sys.argv[1], sys.argv[2])

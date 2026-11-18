@@ -23,7 +23,11 @@ futures, including several Lucid accounts side by side.
   opposite ways. Inside one account that is long and short at once (impossible in a netted futures account, ~1 day a
   year); across copy-traded accounts, an eval's 09:35 trade against a funded account's IB short is the cross-account
   hedging Lucid prohibits (~22 days a year). v2.1 places the IB order only on the drive's side on drive days.
-- **Last 4 years only** (Nov 2022 – Nov 2026, the window to rely on): same conclusions; 5 funded 50K accounts with
+- **The last 5 years first** (Nov 15 2021 – Nov 13 2026, the window now given priority): 5 funded 50K accounts with
+  5 evals in reserve netted $49,103 a year, and every full year was positive. The worst was 2023 at +$11,081, when
+  only 23% of evals passed. 1 funded + 1 eval made $10,488 a year. Rounds 3–5 re-scored on these 5 years: none of 18
+  changes passed. See "The last 5 years first" below.
+- **Last 4 years only** (Nov 2022 – Nov 2026): same conclusions; 5 funded 50K accounts with
   max-allowed payouts netted ~$51k a year (25K: ~$32k), with 2023 the drought year. See "Last 4 years only" below.
 - **Dry spells cannot be removed completely.** About half of them were times the strategy itself lost money; the
   other half were times it made money but the eval kept failing. More accounts run as an eval pool fix much of the

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Research round 5 (PREREG_R5.md and its addendum, both committed before any round-5 or last-5-year result).
 
-usage: research5.py DATA_DIR R5_DATA_DIR OUT_DIR legs|accounts|all
+usage: research5.py DATA_DIR R5_DATA_DIR OUT_DIR legs|legs-early|accounts|all
   DATA_DIR: NSXUSD.npz, SPXUSD.npz (prep_data.py); R5_DATA_DIR: XAUUSD.npz, WTIUSD.npz (prep_r5.py, prices scaled so
   one point = $2 per micro contract). A market whose file is missing is reported as not tested.
 
@@ -9,6 +9,9 @@ legs      H5-M: the book's opening-drive pyramid and IB legs, unchanged, on the 
           (09:00-14:30 ET) day sessions: R per trade at 1 micro and $1.34, by period, with 1 tick of slippage; the
           original leg rule (2011-18 and 2019-26) and the 5Y leg rule (last 5 years, 2011-21 not negative); monthly
           correlation with the NQ legs.
+legs-early  Only the blocks that need no data after Nov 2023 (2011-18 and 2011-21): each rule's necessary condition
+          there (original: positive with t >= 2 in 2011-18; 5Y: positive in 2011-21). A market failing both is rejected
+          whatever its later data shows.
 accounts  The last 5 years (2021-11-15 -> 2026-11-13) first.
           Part 1 (descriptive): the current rules with 1-5 accounts in round 4's structures A, B and C, 12 start dates
           every 5 sessions from 2021-11-15, every year.
@@ -479,8 +482,41 @@ def accounts(dd, rd, out):
     open(os.path.join(out, "decisions.txt"), "w").write("\n".join(lines) + "\n")
 
 
+def legs_early(dd, rd, out):
+    spx = load_npz(os.path.join(dd, "SPXUSD.npz"))
+    lines = ["Necessary conditions on complete blocks (R per trade at 1 micro, $1.34; t-statistic, trades):"]
+    verdict = {}
+    for name in MK:
+        engine.TK = TICK[name]
+        S = load_market(rd, spx, name)
+        if S is None:
+            lines.append(f"  {name}: no data file")
+            continue
+        p, i = leg_trades(S)
+        ps, is_ = leg_trades(S, slip=TICK[name])
+        o_ok = f_ok = True
+        for leg, v, vs in (("pyramid", p, ps), ("IB with the drive", i, is_)):
+            b, bs = blocks(v), blocks(vs)
+            for blk in ("2011-18", "2011-21"):
+                lines.append(f"  {name} {leg:18s} {blk}: {b[blk][0]:+.3f}R (t {b[blk][1]:.2f}, n {b[blk][2]}); with 1 tick of "
+                             f"slippage {bs[blk][0]:+.3f}R")
+            o_ok &= b["2011-18"][0] > 0 and b["2011-18"][1] >= 2
+            f_ok &= b["2011-21"][0] > 0
+        verdict[name] = dict(original_possible=bool(o_ok), five_possible=bool(f_ok))
+        lines.append(f"  {name}: original rule {'still possible' if o_ok else 'FAILS'} (2011-18); 5Y rule "
+                     f"{'still possible (needs the last 5 years)' if f_ok else 'FAILS'} (2011-21)"
+                     + (" -> rejected, no account test" if not (o_ok or f_ok) else ""))
+    engine.TK = 0.25
+    os.makedirs(out, exist_ok=True)
+    open(os.path.join(out, "legs_early.txt"), "w").write("\n".join(lines) + "\n")
+    print("\n".join(lines), flush=True)
+    return verdict
+
+
 if __name__ == "__main__":
     dd, rd, out, what = sys.argv[1:5]
+    if what == "legs-early":
+        legs_early(dd, rd, out)
     if what in ("legs", "all"):
         legs(dd, rd, out)
     if what in ("accounts", "all"):
