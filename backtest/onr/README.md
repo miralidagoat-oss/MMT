@@ -474,6 +474,28 @@ tell smaller differences from luck.
 | Overnight exit 04:00 ET (round 3, F) | $47,472 | $14,484 | $29,049 | −$1,011 | inside the noise |
 | Placebo: size reference 360 | $60,699 | $20,964 | $29,580 | $981 | sets the band |
 
+**A second market (H5-M), the book's pyramid and IB legs unchanged on gold and crude oil.**
+
+| Leg | 2011–18 (R per trade) | t | 2011–21 (R per trade) | t |
+|---|---|---|---|---|
+| Gold pyramid | −0.012R | −0.3 | −0.015R | −0.4 |
+| Gold IB breakout | −0.007R | −0.2 | −0.011R | −0.4 |
+| Crude pyramid | +0.017R | 0.4 | +0.004R | 0.1 |
+| Crude IB breakout | +0.028R | 0.9 | +0.015R | 0.5 |
+
+`research5.py … legs-early` writes `results_r5/legs_early.txt`. These periods need no data after Nov 2023.
+- **Gold** fails both rules, the original (positive with t ≥ 2 in 2011–18) and 5Y (positive in 2011–21), so it gets no
+  account test whatever 2023–26 shows.
+- **Crude** fails the original rule. Rule 5Y needs crude's last 5 years, and its 2024–26 minute data (Dukascopy) was
+  still downloading when this was written.
+
+Data notes:
+- HistData's gold and crude files label the sessions of the US/European daylight-saving mismatch weeks an hour
+  early, as its index CFDs do. With that fixed, the correlation of 5-minute moves with real gold futures in
+  daylight-saving weeks rose from 0.877 to 0.987.
+- Both files miss large parts of the day session from February to July 2023. Crude's 113 such days were filled from
+  Dukascopy, whose prices match HistData's to the cent on the complete days.
+
 All 18 changes, 9 from round 3, 8 from round 4 and 1 from round 5, are in `results_r5/r5_configs.csv` and
 `results_r5/decisions.txt`. **None passed.** Under the original round-4 rule (2011–18 and 2019–26), the funded "skip
 overnight sells" change (H5-S) passed 2011–18 on money and failed 2019–26, so it is rejected there too. The rules stay.
