@@ -1,0 +1,19 @@
+Part 2: 5 funded accounts + evals (BASE = B5), mean of 12 start dates; M net/yr, W worst full year, L losing full years, D deepest drop
+noise bands (largest placebo move): 2011-18: M 4,535, W 5,605 | 2019-26: M 3,644, W 5,434
+  B5               2011-18: M   21,006 W   -5,122 L 1.00 D  -20,490 worst12  -12,309 gap 7.3 || 2019-26: M   47,303 W   11,081 L 0.00 D   -8,855 worst12   -2,266 gap 6.4 || last 4y: M   50,199 W    4,182 L 0.00 D   -8,855 worst12   -2,726 gap 6.8
+  P thr 0.715      2011-18: M   21,597 W   -5,122 L 1.00 D  -20,260 worst12  -12,309 gap 7.3 || 2019-26: M   49,499 W   11,081 L 0.00 D   -8,855 worst12   -2,266 gap 6.4 || last 4y: M   54,641 W    4,182 L 0.00 D   -8,855 worst12   -2,726 gap 6.8
+  P thr 0.722      2011-18: M   21,404 W   -5,122 L 1.00 D  -20,490 worst12  -12,309 gap 7.3 || 2019-26: M   48,918 W   11,081 L 0.00 D   -8,855 worst12   -2,266 gap 6.4 || last 4y: M   50,199 W    4,182 L 0.00 D   -8,855 worst12   -2,726 gap 6.8
+  P size ref 345   2011-18: M   25,541 W      483 L 0.00 D  -15,732 worst12  -11,878 gap 8.2 || 2019-26: M   47,080 W   11,656 L 0.00 D   -8,280 worst12   -1,691 gap 6.4 || last 4y: M   54,339 W    4,757 L 0.00 D   -8,280 worst12   -2,151 gap 6.8
+  P size ref 355   2011-18: M   19,842 W     -750 L 1.00 D  -15,188 worst12  -11,801 gap 7.1 || 2019-26: M   50,947 W    5,647 L 0.00 D   -8,855 worst12   -2,726 gap 6.8 || last 4y: M   60,480 W    4,182 L 0.00 D   -8,855 worst12   -2,726 gap 6.8
+  T 63 sessions    2011-18: M   14,318 W   -7,006 L 2.00 D  -11,500 worst12   -9,660 gap 15.5 || 2019-26: M   41,201 W    6,671 L 0.00 D   -8,253 worst12   -4,035 gap 8.7 || last 4y: M   42,875 W        2 L 0.75 D   -6,093 worst12   -4,265 gap 8.7
+  T 126 sessions   2011-18: M   13,490 W   -8,062 L 1.00 D  -21,935 worst12  -12,892 gap 13.3 || 2019-26: M   42,849 W    2,617 L 0.00 D   -8,471 worst12   -5,789 gap 10.3 || last 4y: M   41,535 W   -4,282 L 0.92 D   -9,996 worst12   -7,322 gap 10.3
+  R x0.5           2011-18: M   12,835 W     -236 L 1.00 D  -13,885 worst12  -10,037 gap 7.8 || 2019-26: M   24,010 W    3,442 L 0.00 D   -7,820 worst12     -775 gap 7.4 || last 4y: M   26,552 W    1,896 L 0.00 D   -6,441 worst12     -444 gap 7.2
+  R x0.75          2011-18: M   20,832 W    4,698 L 0.00 D  -10,970 worst12   -7,750 gap 6.5 || 2019-26: M   37,523 W    8,295 L 0.00 D   -9,890 worst12   -3,795 gap 6.4 || last 4y: M   46,675 W      405 L 0.50 D   -9,890 worst12   -3,795 gap 6.8
+  R x1.25          2011-18: M   20,888 W      929 L 0.00 D  -13,509 worst12  -10,565 gap 7.9 || 2019-26: M   53,538 W    3,411 L 0.00 D   -8,510 worst12   -2,960 gap 9.8 || last 4y: M   63,928 W    9,038 L 0.00 D   -8,510 worst12   -2,960 gap 7.0
+  R x1.5           2011-18: M   11,415 W   -1,522 L 1.00 D  -11,527 worst12  -10,120 gap 15.5 || 2019-26: M    9,016 W        0 L 0.00 D   -6,325 worst12   -1,955 gap 46.2 || last 4y: M   22,925 W    3,044 L 0.33 D   -7,408 worst12   -3,586 gap 15.8
+  V 7 accounts     2011-18: M   20,373 W   -2,944 L 1.00 D  -13,984 worst12  -10,131 gap 7.3 || 2019-26: M   38,293 W    7,127 L 0.00 D   -6,555 worst12      609 gap 6.8 || last 4y: M   39,269 W    5,587 L 0.00 D   -6,555 worst12      599 gap 6.8
+  V 8 accounts     2011-18: M   21,775 W   -3,497 L 1.00 D  -16,294 worst12  -10,683 gap 7.3 || 2019-26: M   41,636 W    7,897 L 0.00 D   -7,360 worst12     -541 gap 6.8 || last 4y: M   42,774 W    5,185 L 0.00 D   -7,360 worst12     -541 gap 6.8
+  T: reject (no variant passes 2011-18)
+  R: R x0.75 passes 2011-18 by consistency; 2019-26: fails -> reject
+  V: reject (no variant passes 2011-18)
+Adopted: none

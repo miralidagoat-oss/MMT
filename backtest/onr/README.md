@@ -350,6 +350,53 @@ pyramid. A version that scales every leg in proportion was not tested; it would 
   +0.073R. Monthly correlation with NQ is 0.50. They were positive in both NQ droughts (+4.5R and +11.5R) but fail
   2011–18, so MES is not added.
 
+### Research round 4 (pre-registered in `PREREG_R4.md` before testing): 1 to 5 accounts, and can the weak years be fixed?
+
+`research4.py DATA results_r4` runs everything (528 simulations, about a minute); `report4.py results_r4 results_r4` writes the tables. Lucid Flex 50K, $1.34 per MNQ round turn, $115 per eval, 90% split, mean of 12 start dates (Feb–May 2011, and from Nov 14 2022 for the last 4 years). The start dates converge within the first year, so each calendar year is effectively one historical path.
+
+**Why some years made little** (one funded account trading every session):
+
+- 2011–2017: NQ at 2,000–6,000 with a 30–55 point range meant 14–20 MNQ per leg, and commission took 32–94% of the gross (2017: $9,275 gross, −$8,721 commission). At today's 1–3 MNQ per leg it is 3–8% (2026: −$919 on $36,519).
+- 2023: the strategy lost before any commission (−$1,673 gross).
+- 2015 and 2016: eval pass rates of 17.0% and 36.4%, so eval fees ate the payouts (5 funded + evals: $3,497 and −$5,122).
+
+**1 to 5 accounts.** *N accounts in all*: each an eval until it passes, then funded, a new eval when one fails or ends, at most one new eval a day. *N funded + N evals in reserve*: up to 2N accounts, so a passed eval is waiting when a funded account ends. Accounts bought the same day and copy-traded move in lockstep and make exactly N times one account ($5,438 a year each, $9,330 over the last 4 years).
+
+| Setup | Net a year, 2011–26 | Net a year, last 4 years | Worst year | Losing years 2012–25 | Worst 12 months | Longest gap | Eval pass rate | Funded with a payout | Most cash out of pocket |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 account | $5,202 | $6,676 | −$1,819 | 3 | −$2,070 | 14.7 mo | 36.5% | 47.4% | −$987 |
+| 2 accounts | $9,822 | $13,449 | −$2,790 | 3 | −$3,275 | 12.0 mo | 37.4% | 45.5% | −$1,974 |
+| 3 accounts | $14,624 | $20,108 | −$2,208 | 2 | −$4,770 | 12.0 mo | 38.4% | 45.8% | −$3,023 |
+| 4 accounts | $19,638 | $26,334 | −$2,403 | 2 | −$6,265 | 12.0 mo | 39.4% | 47.1% | −$3,895 |
+| 5 accounts | $24,599 | $34,681 | −$2,597 | 3 | −$7,990 | 12.0 mo | 39.7% | 47.6% | −$4,624 |
+| 1 funded + 1 eval | $7,129 | $11,037 | −$174 | 3 | −$2,623 | 7.4 mo | 37.0% | 44.3% | −$1,277 |
+| 2 funded + 2 evals | $13,659 | $20,118 | −$117 | 1 | −$5,245 | 7.3 mo | 38.6% | 43.5% | −$2,276 |
+| 3 funded + 3 evals | $20,724 | $30,221 | −$1,136 | 1 | −$7,408 | 7.3 mo | 40.2% | 42.6% | −$3,707 |
+| 4 funded + 4 evals | $27,867 | $41,309 | −$2,499 | 1 | −$9,686 | 7.3 mo | 40.3% | 43.0% | −$4,542 |
+| **5 funded + 5 evals (current)** | $34,221 | $50,199 | −$5,122 | 1 | −$12,309 | 7.3 mo | 40.4% | 43.9% | −$6,190 |
+
+Every year for each setup is in `results_r4/accounts_years_wide.csv` (median, lowest and highest of the 12 start dates, eval pass rate, payouts, evals) and on the dashboard.
+
+**Can the weak years be fixed?** Three families aimed at steadier years, with the rule written down first: adopt only if the worst year (or the yearly net) improves by more than the placebo noise band in both 2011–18 and 2019–26 without the other falling by more than its band. 5 funded + evals:
+
+| Setup | 2011–18 net a year | 2011–18 worst year | 2019–26 net a year | 2019–26 worst year | Last 4 years net a year | Last 4 years worst year |
+|---|---|---|---|---|---|---|
+| **Current rules** | $21,006 | −$5,122 | $47,303 | $11,081 | $50,199 | $4,182 |
+| Placebo: size reference 345 | $25,541 | $483 | $47,080 | $11,656 | $54,339 | $4,757 |
+| Placebo: size reference 355 | $19,842 | −$750 | $50,947 | $5,647 | $60,480 | $4,182 |
+| Placebo: score threshold 0.715 | $21,597 | −$5,122 | $49,499 | $11,081 | $54,641 | $4,182 |
+| Placebo: score threshold 0.722 | $21,404 | −$5,122 | $48,918 | $11,081 | $50,199 | $4,182 |
+| 0.5× size | $12,835 | −$236 | $24,010 | $3,442 | $26,552 | $1,896 |
+| 0.75× size | $20,832 | $4,698 | $37,523 | $8,295 | $46,675 | $405 |
+| 1.25× size | $20,888 | $929 | $53,538 | $3,411 | $63,928 | $9,038 |
+| 1.5× size | $11,415 | −$1,522 | $9,016 | $0 | $22,925 | $3,044 |
+| No new evals after a losing 6 months | $13,490 | −$8,062 | $42,849 | $2,617 | $41,535 | −$4,282 |
+| No new evals after a losing 3 months | $14,318 | −$7,006 | $41,201 | $6,671 | $42,875 | $2 |
+| 7 accounts in all | $20,373 | −$2,944 | $38,293 | $7,127 | $39,269 | $5,587 |
+| 8 accounts in all | $21,775 | −$3,497 | $41,636 | $7,897 | $42,774 | $5,185 |
+
+Noise bands (largest placebo move): 2011–18 net $4,535, worst year $5,605; 2019–26 net $3,644, worst year $5,434. Verdict (`results_r4/decisions.txt`): **none adopted**. The throttle lowered both the income and the worst year in every period. 0.75× size passed 2011–18 on steadiness but failed 2019–26 (less income, no better worst year). 1.25× made more since 2019 but its 2019–26 worst year fell. 7 or 8 accounts made less. The current rules stay.
+
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
 | Leg | Trades | Mean R | t | Years positive | Real vs random sides |
@@ -421,6 +468,7 @@ cd backtest/onr && python3 report.py ../../data && python3 overfit.py ../../data
 python3 research.py ../../data legs && python3 research.py ../../data accounts && python3 research.py ../../data final
 python3 research.py ../../data recent
 python3 research3.py ../../data all
+python3 research4.py ../../data results_r4 && python3 report4.py results_r4 results_r4
 ```
 
 Limits: the CFD is a proxy for MNQ before Sep 2026 (validated on the overlap only); TradingView's own fills on 1–5

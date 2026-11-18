@@ -87,9 +87,11 @@ def portfolio(S, lanes=5, k_start=0, k_stop=None, stagger=0, eval_kw=None, funde
     return dict(payouts=pays, eval_buys=buys)
 
 
-def pool(S, k_start=0, k_stop=None, max_funded=5, max_total=10, new_per_day=1, eval_kw=None, funded_kw=None):
+def pool(S, k_start=0, k_stop=None, max_funded=5, max_total=10, new_per_day=1, eval_kw=None, funded_kw=None,
+         buy_gate=None):
     """Keep the household at Lucid's caps: up to max_funded funded accounts and max_total accounts in all; buy at most
-    new_per_day evals per session while below max_total. Passed evals wait (counted) until a funded slot frees up."""
+    new_per_day evals per session while below max_total. Passed evals wait (counted) until a funded slot frees up.
+    buy_gate(k) -> bool (research round 4, family T): when given, no eval is bought on a session where it is False."""
     eval_kw = V21_EVAL if eval_kw is None else eval_kw
     funded_kw = V21_FUNDED if funded_kw is None else funded_kw
     k_stop = len(S.days) if k_stop is None else k_stop
@@ -101,6 +103,8 @@ def pool(S, k_start=0, k_stop=None, max_funded=5, max_total=10, new_per_day=1, e
             funded.append(FundedAccount(S, **funded_kw))
             ready -= 1
         for _ in range(max(0, min(new_per_day, max_total - len(funded) - len(evals) - ready))):
+            if buy_gate is not None and not buy_gate(k):
+                break
             evals.append(EvalAccount(S, **eval_kw))
             buys.append(k)
         keep = []

@@ -1,0 +1,241 @@
+structure,accounts,year,net_median_usd,net_lowest_usd,net_highest_usd,payouts_median,payouts_usd_median,evals_bought_median,evals_passed_median,evals_failed_median,eval_pass_pct,funded_started_median
+N accounts bought the same day (copy-traded in lockstep),1,2011,787,557,2804,2.0,2280,11.0,4.0,7.0,38.2,4.0
+N accounts bought the same day (copy-traded in lockstep),1,2012,2665,2665,2665,4.0,4367,11.0,4.0,7.0,36.4,4.0
+N accounts bought the same day (copy-traded in lockstep),1,2013,3786,3786,3786,4.0,5995,14.0,5.0,8.0,38.5,5.0
+N accounts bought the same day (copy-traded in lockstep),1,2014,5820,5820,5820,4.0,8000,12.0,6.0,6.0,50.0,6.0
+N accounts bought the same day (copy-traded in lockstep),1,2015,-1135,-1135,-1135,1.0,1422,21.0,4.0,17.0,19.0,4.0
+N accounts bought the same day (copy-traded in lockstep),1,2016,2718,2718,2718,4.0,4682,13.0,6.0,7.0,46.2,6.0
+N accounts bought the same day (copy-traded in lockstep),1,2017,6915,6915,6915,5.0,9344,13.0,4.0,10.0,28.6,4.0
+N accounts bought the same day (copy-traded in lockstep),1,2018,9829,9829,9829,7.0,12455,12.0,6.0,5.0,54.5,6.0
+N accounts bought the same day (copy-traded in lockstep),1,2019,-270,-270,-270,1.0,2000,18.0,5.0,13.0,27.8,5.0
+N accounts bought the same day (copy-traded in lockstep),1,2020,5478,5478,5478,6.0,9153,24.0,7.0,17.0,29.2,7.0
+N accounts bought the same day (copy-traded in lockstep),1,2021,9010,9010,9010,8.0,12438,19.0,4.0,15.0,21.1,4.0
+N accounts bought the same day (copy-traded in lockstep),1,2022,3198,3198,3198,6.0,5981,19.0,7.0,12.0,36.8,7.0
+N accounts bought the same day (copy-traded in lockstep),1,2023,716,716,716,2.0,2584,14.0,4.0,10.0,28.6,4.0
+N accounts bought the same day (copy-traded in lockstep),1,2024,20616,20616,20616,14.0,24567,13.0,5.0,9.0,35.7,5.0
+N accounts bought the same day (copy-traded in lockstep),1,2025,4228,4228,4228,4.0,6742,16.0,9.0,7.0,56.2,9.0
+N accounts bought the same day (copy-traded in lockstep),1,2026,10539,10539,10539,8.0,13371,13.0,5.0,7.0,41.7,5.0
+N accounts bought the same day (copy-traded in lockstep),2,2011,1574,1114,5609,4.0,4560,22.0,8.0,14.0,38.2,8.0
+N accounts bought the same day (copy-traded in lockstep),2,2012,5331,5331,5331,8.0,8734,22.0,8.0,14.0,36.4,8.0
+N accounts bought the same day (copy-traded in lockstep),2,2013,7571,7571,7571,8.0,11990,28.0,10.0,16.0,38.5,10.0
+N accounts bought the same day (copy-traded in lockstep),2,2014,11640,11640,11640,8.0,16000,24.0,12.0,12.0,50.0,12.0
+N accounts bought the same day (copy-traded in lockstep),2,2015,-2270,-2270,-2270,2.0,2844,42.0,8.0,34.0,19.0,8.0
+N accounts bought the same day (copy-traded in lockstep),2,2016,5437,5437,5437,8.0,9363,26.0,12.0,14.0,46.2,12.0
+N accounts bought the same day (copy-traded in lockstep),2,2017,13829,13829,13829,10.0,18688,26.0,8.0,20.0,28.6,8.0
+N accounts bought the same day (copy-traded in lockstep),2,2018,19658,19658,19658,14.0,24909,24.0,12.0,10.0,54.5,12.0
+N accounts bought the same day (copy-traded in lockstep),2,2019,-540,-540,-540,2.0,4000,36.0,10.0,26.0,27.8,10.0
+N accounts bought the same day (copy-traded in lockstep),2,2020,10955,10955,10955,12.0,18306,48.0,14.0,34.0,29.2,14.0
+N accounts bought the same day (copy-traded in lockstep),2,2021,18019,18019,18019,16.0,24877,38.0,8.0,30.0,21.1,8.0
+N accounts bought the same day (copy-traded in lockstep),2,2022,6397,6397,6397,12.0,11963,38.0,14.0,24.0,36.8,14.0
+N accounts bought the same day (copy-traded in lockstep),2,2023,1431,1431,1431,4.0,5168,28.0,8.0,20.0,28.6,8.0
+N accounts bought the same day (copy-traded in lockstep),2,2024,41231,41231,41231,28.0,49135,26.0,10.0,18.0,35.7,10.0
+N accounts bought the same day (copy-traded in lockstep),2,2025,8456,8456,8456,8.0,13485,32.0,18.0,14.0,56.2,18.0
+N accounts bought the same day (copy-traded in lockstep),2,2026,21077,21077,21077,16.0,26742,26.0,10.0,14.0,41.7,10.0
+N accounts bought the same day (copy-traded in lockstep),3,2011,2361,1671,8413,6.0,6840,33.0,12.0,21.0,38.2,12.0
+N accounts bought the same day (copy-traded in lockstep),3,2012,7996,7996,7996,12.0,13101,33.0,12.0,21.0,36.4,12.0
+N accounts bought the same day (copy-traded in lockstep),3,2013,11357,11357,11357,12.0,17985,42.0,15.0,24.0,38.5,15.0
+N accounts bought the same day (copy-traded in lockstep),3,2014,17460,17460,17460,12.0,24000,36.0,18.0,18.0,50.0,18.0
+N accounts bought the same day (copy-traded in lockstep),3,2015,-3405,-3405,-3405,3.0,4266,63.0,12.0,51.0,19.0,12.0
+N accounts bought the same day (copy-traded in lockstep),3,2016,8155,8155,8155,12.0,14045,39.0,18.0,21.0,46.2,18.0
+N accounts bought the same day (copy-traded in lockstep),3,2017,20744,20744,20744,15.0,28032,39.0,12.0,30.0,28.6,12.0
+N accounts bought the same day (copy-traded in lockstep),3,2018,29487,29487,29487,21.0,37364,36.0,18.0,15.0,54.5,18.0
+N accounts bought the same day (copy-traded in lockstep),3,2019,-810,-810,-810,3.0,6000,54.0,15.0,39.0,27.8,15.0
+N accounts bought the same day (copy-traded in lockstep),3,2020,16433,16433,16433,18.0,27459,72.0,21.0,51.0,29.2,21.0
+N accounts bought the same day (copy-traded in lockstep),3,2021,27029,27029,27029,24.0,37315,57.0,12.0,45.0,21.1,12.0
+N accounts bought the same day (copy-traded in lockstep),3,2022,9595,9595,9595,18.0,17944,57.0,21.0,36.0,36.8,21.0
+N accounts bought the same day (copy-traded in lockstep),3,2023,2147,2147,2147,6.0,7752,42.0,12.0,30.0,28.6,12.0
+N accounts bought the same day (copy-traded in lockstep),3,2024,61847,61847,61847,42.0,73702,39.0,15.0,27.0,35.7,15.0
+N accounts bought the same day (copy-traded in lockstep),3,2025,12685,12685,12685,12.0,20227,48.0,27.0,21.0,56.2,27.0
+N accounts bought the same day (copy-traded in lockstep),3,2026,31616,31616,31616,24.0,40112,39.0,15.0,21.0,41.7,15.0
+N accounts bought the same day (copy-traded in lockstep),4,2011,3148,2228,11218,8.0,9120,44.0,16.0,28.0,38.2,16.0
+N accounts bought the same day (copy-traded in lockstep),4,2012,10661,10661,10661,16.0,17468,44.0,16.0,28.0,36.4,16.0
+N accounts bought the same day (copy-traded in lockstep),4,2013,15142,15142,15142,16.0,23980,56.0,20.0,32.0,38.5,20.0
+N accounts bought the same day (copy-traded in lockstep),4,2014,23280,23280,23280,16.0,32000,48.0,24.0,24.0,50.0,24.0
+N accounts bought the same day (copy-traded in lockstep),4,2015,-4540,-4540,-4540,4.0,5689,84.0,16.0,68.0,19.0,16.0
+N accounts bought the same day (copy-traded in lockstep),4,2016,10873,10873,10873,16.0,18726,52.0,24.0,28.0,46.2,24.0
+N accounts bought the same day (copy-traded in lockstep),4,2017,27659,27659,27659,20.0,37377,52.0,16.0,40.0,28.6,16.0
+N accounts bought the same day (copy-traded in lockstep),4,2018,39316,39316,39316,28.0,49818,48.0,24.0,20.0,54.5,24.0
+N accounts bought the same day (copy-traded in lockstep),4,2019,-1080,-1080,-1080,4.0,8000,72.0,20.0,52.0,27.8,20.0
+N accounts bought the same day (copy-traded in lockstep),4,2020,21911,21911,21911,24.0,36612,96.0,28.0,68.0,29.2,28.0
+N accounts bought the same day (copy-traded in lockstep),4,2021,36038,36038,36038,32.0,49753,76.0,16.0,60.0,21.1,16.0
+N accounts bought the same day (copy-traded in lockstep),4,2022,12793,12793,12793,24.0,23926,76.0,28.0,48.0,36.8,28.0
+N accounts bought the same day (copy-traded in lockstep),4,2023,2863,2863,2863,8.0,10336,56.0,16.0,40.0,28.6,16.0
+N accounts bought the same day (copy-traded in lockstep),4,2024,82462,82462,82462,56.0,98269,52.0,20.0,36.0,35.7,20.0
+N accounts bought the same day (copy-traded in lockstep),4,2025,16913,16913,16913,16.0,26970,64.0,36.0,28.0,56.2,36.0
+N accounts bought the same day (copy-traded in lockstep),4,2026,42155,42155,42155,32.0,53483,52.0,20.0,28.0,41.7,20.0
+N accounts bought the same day (copy-traded in lockstep),5,2011,3935,2785,14022,10.0,11400,55.0,20.0,35.0,38.2,20.0
+N accounts bought the same day (copy-traded in lockstep),5,2012,13326,13326,13326,20.0,21835,55.0,20.0,35.0,36.4,20.0
+N accounts bought the same day (copy-traded in lockstep),5,2013,18928,18928,18928,20.0,29975,70.0,25.0,40.0,38.5,25.0
+N accounts bought the same day (copy-traded in lockstep),5,2014,29100,29100,29100,20.0,40000,60.0,30.0,30.0,50.0,30.0
+N accounts bought the same day (copy-traded in lockstep),5,2015,-5675,-5675,-5675,5.0,7111,105.0,20.0,85.0,19.0,20.0
+N accounts bought the same day (copy-traded in lockstep),5,2016,13592,13592,13592,20.0,23408,65.0,30.0,35.0,46.2,30.0
+N accounts bought the same day (copy-traded in lockstep),5,2017,34574,34574,34574,25.0,46721,65.0,20.0,50.0,28.6,20.0
+N accounts bought the same day (copy-traded in lockstep),5,2018,49146,49146,49146,35.0,62273,60.0,30.0,25.0,54.5,30.0
+N accounts bought the same day (copy-traded in lockstep),5,2019,-1350,-1350,-1350,5.0,10000,90.0,25.0,65.0,27.8,25.0
+N accounts bought the same day (copy-traded in lockstep),5,2020,27389,27389,27389,30.0,45765,120.0,35.0,85.0,29.2,35.0
+N accounts bought the same day (copy-traded in lockstep),5,2021,45048,45048,45048,40.0,62192,95.0,20.0,75.0,21.1,20.0
+N accounts bought the same day (copy-traded in lockstep),5,2022,15992,15992,15992,30.0,29907,95.0,35.0,60.0,36.8,35.0
+N accounts bought the same day (copy-traded in lockstep),5,2023,3578,3578,3578,10.0,12920,70.0,20.0,50.0,28.6,20.0
+N accounts bought the same day (copy-traded in lockstep),5,2024,103078,103078,103078,70.0,122836,65.0,25.0,45.0,35.7,25.0
+N accounts bought the same day (copy-traded in lockstep),5,2025,21141,21141,21141,20.0,33712,80.0,45.0,35.0,56.2,45.0
+N accounts bought the same day (copy-traded in lockstep),5,2026,52693,52693,52693,40.0,66854,65.0,25.0,35.0,41.7,25.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2011,902,672,2919,2.0,2280,10.0,5.0,5.0,51.6,5.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2012,-969,-969,-969,1.0,840,15.0,6.0,9.0,40.0,6.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2013,3838,3838,3838,4.0,6181,15.0,5.0,9.0,35.7,5.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2014,6280,6280,6280,4.0,8000,8.0,6.0,3.0,66.7,6.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2015,-1819,-1819,-1819,1.0,534,20.0,4.0,15.0,21.1,4.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2016,899,899,899,3.0,3171,17.0,4.0,13.0,23.5,4.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2017,6915,6915,6915,5.0,9344,13.0,5.0,9.0,35.7,5.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2018,8745,8745,8745,6.0,11122,11.0,5.0,5.0,50.0,5.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2019,-720,-720,-720,2.0,1244,16.0,4.0,12.0,25.0,4.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2020,6626,6626,6626,6.0,9662,18.0,6.0,12.0,33.3,6.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2021,14849,14849,14849,10.0,18032,12.0,3.0,9.0,25.0,3.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2022,9892,9892,9892,10.0,12653,13.0,6.0,7.0,46.2,6.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2023,716,716,716,2.0,2584,14.0,2.0,12.0,14.3,2.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2024,12061,12061,12061,9.0,14935,12.0,6.0,7.0,46.2,6.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2025,3574,3574,3574,3.0,5760,14.0,8.0,6.0,57.1,8.0
+"N accounts, each an eval then funded, at most one new eval a day",1,2026,9426,9426,9426,7.0,12135,13.0,5.0,7.0,41.7,5.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2011,5221,4876,7008,6.0,8228,19.0,9.0,10.0,49.6,9.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2012,-1471,-1471,-1471,2.0,2071,29.0,12.0,17.0,41.4,12.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2013,7393,7393,7393,8.0,12176,31.0,10.0,19.0,34.5,10.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2014,12560,12560,12560,8.0,16000,16.0,12.0,6.0,66.7,12.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2015,-2014,-2014,-2014,3.0,2490,37.0,9.0,27.0,25.0,9.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2016,1278,1278,1278,5.0,5637,33.0,8.0,24.0,25.0,8.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2017,12029,12029,12029,9.0,16688,26.0,10.0,18.0,35.7,10.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2018,17304,17304,17304,13.0,22038,22.0,11.0,10.0,52.4,11.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2019,-2790,-2790,-2790,2.0,1244,34.0,9.0,24.0,27.3,9.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2020,12202,12202,12202,11.0,18030,35.0,12.0,23.0,34.3,12.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2021,26042,26042,26042,19.0,32130,25.0,8.0,17.0,32.0,8.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2022,13965,13965,13965,16.0,19223,29.0,12.0,17.0,41.4,12.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2023,1285,1285,1285,4.0,4750,26.0,4.0,22.0,15.4,4.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2024,22738,22738,22738,18.0,28331,24.0,12.0,14.0,46.2,12.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2025,8179,8179,8179,7.0,12410,26.0,15.0,11.0,57.7,15.0
+"N accounts, each an eval then funded, at most one new eval a day",2,2026,19583,19583,19583,14.0,24825,24.0,9.0,13.0,40.9,9.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2011,9539,9079,11212,10.0,14177,28.0,13.0,15.0,49.1,13.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2012,-1744,-1744,-1744,3.0,3301,41.0,18.0,23.0,43.9,18.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2013,11807,11807,11807,12.0,18869,45.0,14.0,28.0,33.3,14.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2014,18840,18840,18840,12.0,24000,24.0,17.0,10.0,63.0,17.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2015,-2208,-2208,-2208,5.0,4446,54.0,13.0,39.0,25.0,13.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2016,13,13,13,5.0,5637,44.0,14.0,29.0,32.6,14.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2017,17527,17527,17527,13.0,24330,38.0,13.0,28.0,31.7,13.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2018,24172,24172,24172,19.0,31075,33.0,18.0,14.0,56.2,18.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2019,2650,2650,2650,7.0,8822,46.0,12.0,32.0,27.3,12.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2020,18551,18551,18551,17.0,27001,50.0,19.0,31.0,38.0,19.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2021,34032,34032,34032,25.0,42285,35.0,11.0,24.0,31.4,11.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2022,18377,18377,18377,23.0,26169,45.0,19.0,26.0,42.2,19.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2023,2165,2165,2165,5.0,6750,34.0,5.0,29.0,14.7,5.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2024,34539,34539,34539,28.0,42977,36.0,18.0,21.0,46.2,18.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2025,12785,12785,12785,11.0,19061,38.0,21.0,17.0,55.3,21.0
+"N accounts, each an eval then funded, at most one new eval a day",3,2026,27563,27563,27563,20.0,35354,37.0,14.0,20.0,41.2,14.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2011,13944,13369,15386,13.0,19965,35.0,17.0,18.0,50.3,17.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2012,82,82,82,6.0,6607,51.0,23.0,28.0,45.1,23.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2013,16681,16681,16681,16.0,25562,55.0,18.0,33.0,35.3,18.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2014,25120,25120,25120,16.0,32000,32.0,23.0,13.0,63.9,23.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2015,-2403,-2403,-2403,7.0,6402,71.0,17.0,51.0,25.0,17.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2016,-453,-453,-453,6.0,6652,56.0,19.0,36.0,34.5,19.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2017,24663,24663,24663,19.0,33920,51.0,16.0,39.0,29.1,16.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2018,30002,30002,30002,25.0,38958,44.0,25.0,18.0,58.1,25.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2019,1694,1694,1694,8.0,9677,61.0,18.0,40.0,31.0,18.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2020,28021,28021,28021,24.0,38801,60.0,25.0,36.0,41.0,25.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2021,44447,44447,44447,34.0,55774,50.0,15.0,34.0,30.6,15.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2022,24644,24644,24644,30.0,34921,59.0,24.0,36.0,40.0,24.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2023,3045,3045,3045,6.0,8750,42.0,6.0,35.0,14.6,6.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2024,46455,46455,46455,38.0,57622,47.0,24.0,27.0,47.1,24.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2025,15729,15729,15729,14.0,23738,49.0,28.0,21.0,57.1,28.0
+"N accounts, each an eval then funded, at most one new eval a day",4,2026,35419,35419,35419,27.0,45361,47.0,19.0,25.0,43.2,19.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2011,18608,17918,19935,17.0,25914,41.0,21.0,20.0,52.4,21.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2012,-421,-421,-421,7.0,7838,65.0,27.0,38.0,41.5,27.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2013,16069,16069,16069,17.0,26543,68.0,22.0,41.0,34.9,22.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2014,29370,29370,29370,19.0,38000,42.0,29.0,18.0,61.7,29.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2015,-2597,-2597,-2597,9.0,8359,88.0,21.0,63.0,25.0,21.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2016,-1034,-1034,-1034,7.0,7668,69.0,23.0,45.0,33.8,23.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2017,29225,29225,29225,23.0,40906,66.0,21.0,50.0,29.6,21.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2018,36639,36639,36639,31.0,47738,55.0,33.0,21.0,61.1,33.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2019,2318,2318,2318,10.0,12287,76.0,21.0,51.0,29.2,21.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2020,36869,36869,36869,31.0,49910,70.0,30.0,41.0,42.3,30.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2021,58820,58820,58820,43.0,72639,57.0,18.0,38.0,32.1,18.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2022,28443,28443,28443,36.0,41058,74.0,29.0,46.0,38.7,29.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2023,3925,3925,3925,7.0,10750,50.0,7.0,42.0,14.3,7.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2024,64970,64970,64970,52.0,79345,56.0,30.0,31.0,49.2,30.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2025,18234,18234,18234,17.0,28054,61.0,36.0,25.0,59.0,36.0
+"N accounts, each an eval then funded, at most one new eval a day",5,2026,45268,45268,45268,35.0,57453,56.0,24.0,28.0,46.2,24.0
+N funded + N evals in reserve,1,2011,4013,3783,5915,5.0,7014,20.0,6.0,14.0,33.2,5.0
+N funded + N evals in reserve,1,2012,3454,3454,3454,5.0,6777,23.0,8.0,15.0,34.8,8.0
+N funded + N evals in reserve,1,2013,3742,3742,3742,5.0,7352,25.0,10.0,13.0,43.5,11.0
+N funded + N evals in reserve,1,2014,7991,7991,7991,7.0,10923,16.0,9.0,9.0,50.0,8.0
+N funded + N evals in reserve,1,2015,-55,-55,-55,4.0,4411,35.0,7.0,27.0,20.6,8.0
+N funded + N evals in reserve,1,2016,-174,-174,-174,3.0,3001,25.0,9.0,15.0,37.5,9.0
+N funded + N evals in reserve,1,2017,5672,5672,5672,5.0,9114,22.0,8.0,16.0,33.3,7.0
+N funded + N evals in reserve,1,2018,10909,10909,10909,8.0,14421,18.0,11.0,7.0,61.1,11.0
+N funded + N evals in reserve,1,2019,3505,3505,3505,6.0,7600,29.0,6.0,21.0,22.2,7.0
+N funded + N evals in reserve,1,2020,7127,7127,7127,7.0,11114,25.0,11.0,14.0,44.0,11.0
+N funded + N evals in reserve,1,2021,13868,13868,13868,12.0,18220,22.0,8.0,14.0,36.4,8.0
+N funded + N evals in reserve,1,2022,8310,8310,8310,11.0,12172,23.0,11.0,14.0,44.0,10.0
+N funded + N evals in reserve,1,2023,-67,-67,-67,3.0,3120,25.0,3.0,20.0,13.0,4.0
+N funded + N evals in reserve,1,2024,20349,20349,20349,16.0,25038,19.0,9.0,11.0,45.0,9.0
+N funded + N evals in reserve,1,2025,4272,4272,4272,7.0,8069,26.0,14.0,13.0,51.9,13.0
+N funded + N evals in reserve,1,2026,18433,18433,18433,13.0,22525,16.0,6.0,10.0,37.5,6.0
+N funded + N evals in reserve,2,2011,8370,7910,9928,10.0,14028,37.0,13.0,24.0,37.7,11.0
+N funded + N evals in reserve,2,2012,7720,7720,7720,10.0,13944,42.0,16.0,26.0,38.1,16.0
+N funded + N evals in reserve,2,2013,6900,6900,6900,10.0,13928,49.0,20.0,25.0,44.4,22.0
+N funded + N evals in reserve,2,2014,16534,16534,16534,14.0,22459,32.0,18.0,18.0,50.0,16.0
+N funded + N evals in reserve,2,2015,579,579,579,8.0,8821,64.0,12.0,49.0,19.7,14.0
+N funded + N evals in reserve,2,2016,-117,-117,-117,6.0,6003,48.0,19.0,28.0,40.4,19.0
+N funded + N evals in reserve,2,2017,9720,9720,9720,10.0,17061,49.0,16.0,36.0,30.8,15.0
+N funded + N evals in reserve,2,2018,15436,15436,15436,14.0,22517,42.0,24.0,18.0,57.1,25.0
+N funded + N evals in reserve,2,2019,11756,11756,11756,15.0,19451,50.0,14.0,34.0,29.2,14.0
+N funded + N evals in reserve,2,2020,13764,13764,13764,13.0,21682,50.0,21.0,28.0,42.9,21.0
+N funded + N evals in reserve,2,2021,26573,26573,26573,23.0,35275,45.0,15.0,30.0,33.3,15.0
+N funded + N evals in reserve,2,2022,17270,17270,17270,22.0,24939,45.0,21.0,28.0,42.9,19.0
+N funded + N evals in reserve,2,2023,2862,2862,2862,6.0,7269,32.0,6.0,22.0,21.4,8.0
+N funded + N evals in reserve,2,2024,35683,35683,35683,30.0,44759,40.0,19.0,23.0,45.2,19.0
+N funded + N evals in reserve,2,2025,8398,8398,8398,13.0,15465,48.0,25.0,25.0,50.0,23.0
+N funded + N evals in reserve,2,2026,32087,32087,32087,24.0,39741,32.0,12.0,19.0,38.7,13.0
+N funded + N evals in reserve,3,2011,12229,11424,13441,14.0,19977,50.0,20.0,30.0,41.3,17.0
+N funded + N evals in reserve,3,2012,12100,12100,12100,15.0,21111,60.0,24.0,36.0,40.0,24.0
+N funded + N evals in reserve,3,2013,9955,9955,9955,14.0,20389,73.0,25.0,42.0,37.3,28.0
+N funded + N evals in reserve,3,2014,24526,24526,24526,20.0,33257,47.0,27.0,26.0,50.9,24.0
+N funded + N evals in reserve,3,2015,1329,1329,1329,12.0,13232,92.0,17.0,70.0,19.5,20.0
+N funded + N evals in reserve,3,2016,-1136,-1136,-1136,8.0,7555,69.0,29.0,39.0,42.6,29.0
+N funded + N evals in reserve,3,2017,14795,14795,14795,15.0,26278,77.0,24.0,58.0,29.3,22.0
+N funded + N evals in reserve,3,2018,26249,26249,26249,23.0,36833,60.0,38.0,22.0,63.3,38.0
+N funded + N evals in reserve,3,2019,18099,18099,18099,21.0,29182,71.0,21.0,46.0,31.3,23.0
+N funded + N evals in reserve,3,2020,19956,19956,19956,19.0,31373,72.0,31.0,40.0,43.7,31.0
+N funded + N evals in reserve,3,2021,39779,39779,39779,34.0,51738,59.0,22.0,37.0,37.3,22.0
+N funded + N evals in reserve,3,2022,25069,25069,25069,32.0,36671,69.0,33.0,42.0,44.0,30.0
+N funded + N evals in reserve,3,2023,6163,6163,6163,10.0,12470,44.0,9.0,29.0,23.7,12.0
+N funded + N evals in reserve,3,2024,54963,54963,54963,45.0,68098,55.0,29.0,30.0,49.2,28.0
+N funded + N evals in reserve,3,2025,11890,11890,11890,19.0,22028,69.0,37.0,34.0,52.1,35.0
+N funded + N evals in reserve,3,2026,47992,47992,47992,35.0,59203,46.0,20.0,24.0,45.5,22.0
+N funded + N evals in reserve,4,2011,16969,15934,17952,19.0,27033,64.0,26.0,38.0,41.4,22.0
+N funded + N evals in reserve,4,2012,16481,16481,16481,20.0,28278,78.0,32.0,46.0,41.0,32.0
+N funded + N evals in reserve,4,2013,13564,13564,13564,18.0,27082,94.0,30.0,56.0,34.9,34.0
+N funded + N evals in reserve,4,2014,31898,31898,31898,26.0,43364,62.0,36.0,34.0,51.4,32.0
+N funded + N evals in reserve,4,2015,2172,2172,2172,15.0,17108,115.0,23.0,85.0,21.3,27.0
+N funded + N evals in reserve,4,2016,-2499,-2499,-2499,10.0,9106,93.0,36.0,56.0,39.1,36.0
+N funded + N evals in reserve,4,2017,20583,20583,20583,20.0,35264,97.0,31.0,73.0,29.8,28.0
+N funded + N evals in reserve,4,2018,34737,34737,34737,31.0,48691,79.0,50.0,29.0,63.3,51.0
+N funded + N evals in reserve,4,2019,21523,21523,21523,26.0,35415,90.0,28.0,56.0,33.3,30.0
+N funded + N evals in reserve,4,2020,27313,27313,27313,26.0,42486,95.0,39.0,56.0,41.1,39.0
+N funded + N evals in reserve,4,2021,54882,54882,54882,45.0,70564,75.0,28.0,46.0,37.8,28.0
+N funded + N evals in reserve,4,2022,33413,33413,33413,43.0,48626,90.0,43.0,55.0,43.9,39.0
+N funded + N evals in reserve,4,2023,7594,7594,7594,13.0,16105,60.0,12.0,40.0,23.1,16.0
+N funded + N evals in reserve,4,2024,68488,68488,68488,57.0,85170,71.0,39.0,39.0,50.0,36.0
+N funded + N evals in reserve,4,2025,19902,19902,19902,26.0,33230,87.0,46.0,42.0,52.3,45.0
+N funded + N evals in reserve,4,2026,68719,68719,68719,48.0,83382,55.0,25.0,28.0,47.2,27.0
+N funded + N evals in reserve,5,2011,22917,21537,23952,25.0,35175,76.0,31.0,45.0,41.3,26.0
+N funded + N evals in reserve,5,2012,20702,20702,20702,25.0,35396,97.0,38.0,59.0,39.2,38.0
+N funded + N evals in reserve,5,2013,12345,12345,12345,20.0,28411,115.0,39.0,68.0,36.4,44.0
+N funded + N evals in reserve,5,2014,41069,41069,41069,33.0,55599,78.0,46.0,40.0,53.5,41.0
+N funded + N evals in reserve,5,2015,3497,3497,3497,19.0,21519,138.0,27.0,102.0,20.9,32.0
+N funded + N evals in reserve,5,2016,-5122,-5122,-5122,11.0,9642,120.0,42.0,77.0,35.3,42.0
+N funded + N evals in reserve,5,2017,24915,24915,24915,24.0,42250,114.0,38.0,84.0,31.1,35.0
+N funded + N evals in reserve,5,2018,42860,42860,42860,39.0,59761,95.0,61.0,35.0,63.5,60.0
+N funded + N evals in reserve,5,2019,29445,29445,29445,33.0,46645,109.0,33.0,68.0,32.7,37.0
+N funded + N evals in reserve,5,2020,34403,34403,34403,33.0,52665,113.0,46.0,69.0,40.0,46.0
+N funded + N evals in reserve,5,2021,67597,67597,67597,55.0,86864,92.0,34.0,55.0,38.2,34.0
+N funded + N evals in reserve,5,2022,38691,38691,38691,51.0,56918,109.0,54.0,64.0,45.8,50.0
+N funded + N evals in reserve,5,2023,11081,11081,11081,17.0,21512,72.0,15.0,49.0,23.4,19.0
+N funded + N evals in reserve,5,2024,84081,84081,84081,71.0,104796,89.0,49.0,48.0,50.5,45.0
+N funded + N evals in reserve,5,2025,24814,24814,24814,32.0,41116,106.0,56.0,51.0,52.3,55.0
+N funded + N evals in reserve,5,2026,81838,81838,81838,59.0,99620,68.0,32.0,33.0,49.2,35.0
