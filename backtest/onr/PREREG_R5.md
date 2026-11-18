@@ -48,3 +48,73 @@ An account-level version was tested in round 2 at 25K with mixed results, so thi
 method and rule, at 50K. Eval unchanged. Same rule as above.
 
 Nothing else is tested in this round.
+
+## Addendum (written and committed 2026-11-18, before any round-5 result and before any last-5-year result)
+
+### 1. The last 5 years come first (the user's request)
+
+The user asked to backtest the last 5 years and give them priority. Window: the sessions from **2021-11-15 to
+2026-11-13** (the end of the data). Full calendar years inside it: 2022-2025. The 2021 stub (Nov 15 - Dec 31) and 2026
+(to Nov 13) are reported but are not full years.
+
+**Descriptive backtest (no decision):** the current rules with 1 to 5 accounts in round 4's three structures (A: N
+accounts bought the same day; B: N funded + N evals in reserve; C: N accounts in all, one new eval a day), 12 start
+dates (every 5 sessions from 2021-11-15), every year, round 4's metrics and eval/funded counts.
+
+**Decision rule "5Y" (applied to every candidate below):**
+1. **Noise band** from 8 placebo runs of BASE (B5: 5 funded + 5 evals in reserve):
+   - score threshold 0.712, 0.715, 0.722, 0.725 (BASE 0.7187);
+   - Auto-size reference 340, 345, 355, 360 (BASE 350).
+
+   Band = the largest |placebo - BASE| of net a year (M) and of the worst full year (W). It is computed separately
+   for the last 5 years and for 2011-21 (Feb 2011 - Nov 14 2021, full years 2012-2020).
+
+   Why 8 placebos, not round 4's 4: many candidates are now scored in one window, and the round-3/4 candidates'
+   last-4-year results (which overlap this window) were already seen. A wider band means fewer false passes.
+2. **One variant per family:** the variant with the best result in the last 5 years. A pass by the consistency
+   route beats a pass by the money route; within a route, the larger improvement wins.
+3. **Adoption:** ADOPTED only if both of these hold:
+   - In the last 5 years it passes round 4's rule. Either W is better by more than the band and M is not worse by
+     more than the band, or M is better by more than the band and W is not worse by more than the band.
+   - In 2011-21, neither M nor W is worse than BASE by more than that period's band.
+4. **Several families pass:** their combination must also pass, and must beat each single change in the last 5
+   years. Otherwise only the single change with the largest improvement in its passing route is adopted.
+
+**Candidates:** every account-level change tested in rounds 3-5.
+- Round 3:
+  - A: risk by cushion, f = 0.4 or 0.6.
+  - B: day budget 800 x M.
+  - C: eval risk x0.5 or x0.75.
+  - D: D1 eval on the 09:35 drive only; D2 eval skips overnight sells.
+  - E: second pyramid add at +0.30.
+  - F: overnight exit at 04:00, with the eval's news skip off.
+- Round 4:
+  - T: an eval-buying throttle of 63 or 126 sessions.
+  - R: funded risk x0.5, x0.75, x1.25 or x1.5.
+  - V: 7 or 8 accounts.
+- Round 5:
+  - S: funded accounts skip overnight sells.
+  - M-gold and M-crude: k = 1 or 2 of the 5 funded accounts on that market. Each is tested only if both its legs
+    count under the original leg rule or the 5Y leg rule.
+
+**5Y leg rule:** the mean R per trade is positive with t >= 2 in the last 5 years, still positive there with 1 tick
+of slippage per side, and positive in 2011-21.
+
+For round 5's own candidates (S, M), the original rule above (2011-18 and 2019-26) is also applied and reported.
+
+### 2. Crude oil data
+
+HistData's WTIUSD ends on 2023-12-01; its pages for 2024 onwards hold no file. The crude series is therefore built in
+two parts:
+- HistData WTIUSD up to 2023-11-30;
+- from 2023-12-01, Dukascopy LIGHT.CMD/USD: a WTI CFD, 1-minute bid candles in UTC, converted to New York time, with
+  zero-volume minutes (market shut) dropped.
+
+Checks before use:
+- HistData's clock convention is chosen by the correlation of 5-minute moves with Dukascopy over Jan-Nov 2023,
+  separately for daylight-saving and standard weeks.
+- Dukascopy is checked against Yahoo CL=F over the last 60 days.
+
+If the Dukascopy download cannot be completed, crude is tested only to Nov 2023 and cannot be adopted, because its
+account test needs the last 5 years. Gold is HistData XAUUSD for the whole span (2010 - Nov 2026), checked against
+Yahoo GC=F.
