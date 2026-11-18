@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Single figures for the dashboard (kpis CSV) from a report50k.py summary.json.
 
-usage: make_kpis.py REPORT_DIR OUT_CSV WINDOW_TEXT FULL_YEARS_TEXT
+usage: make_kpis.py REPORT_DIR OUT_CSV WINDOW_TEXT FULL_YEARS_TEXT [YEARS_MONTHLY_DIR]
   e.g. make_kpis.py results_50k_5y results_50k_5y/kpis.csv "Nov 15 2021 - Nov 13 2026" "2022-2025"
 Same metrics, labels and units as the dashboard's 4-year kpis.csv (made by the same code earlier), without the
-real-MNQ rows: those come from export_charts.py's real_kpis.csv.
+real-MNQ rows: those come from export_charts.py's real_kpis.csv. With YEARS_MONTHLY_DIR (the 4-year report only), also
+the dashboard's years.csv and monthly.csv from the same report.
 """
 import csv
 import json
@@ -42,7 +43,9 @@ def main(rd, out, window, full_years):
     add("eval", "eval_days_p90", "Sessions to pass, 90th percentile", e["sessions_to_pass"]["p90"], "sessions")
     add("eval", "eval_fail_days_median", "Sessions to fail, median", e["sessions_to_fail_median"], "sessions")
     add("eval", "evals_per_funded", "Evals bought per funded account", e["evals_per_funded_account"], "count")
-    add("eval", "eval_cost_per_funded", "Eval fees per funded account (list price $115)", e["eval_cost_per_funded_account"], "usd")
+    price = float(s["eval_price"])
+    add("eval", "eval_cost_per_funded", "Eval fees per funded account (list price $115)" if price == 115.0 else
+        f"Eval fees per funded account (${price:.2f} each)", e["eval_cost_per_funded_account"], "usd")
     add("funded", "funded_with_payout", "Funded accounts that reach a payout", f["pct_with_a_payout"], "pct", f"{f['accounts']} funded accounts")
     add("funded", "funded_avg_payouts", "Payouts per funded account, average", f["avg_payouts"], "count")
     add("funded", "funded_avg_net", "Net withdrawn per funded account, average (after 10%)", f["avg_withdrawn_net"], "usd")
@@ -75,5 +78,30 @@ def main(rd, out, window, full_years):
     print(f"wrote {out}: {len(k)} figures")
 
 
+def years_monthly(rd, od):
+    """The dashboard's years.csv and monthly.csv (4-year window) from report50k.py's tables."""
+    def rows(fn):
+        return list(csv.DictReader(open(os.path.join(rd, fn))))
+    py = {r["year"]: r for r in rows("pool_years.csv")}
+    by = {r["year"]: r for r in rows("book_years.csv")}
+    ey = {r["year_started"]: r for r in rows("eval_pass_by_year.csv")}
+    with open(os.path.join(od, "years.csv"), "w", newline="") as fh:
+        w = csv.writer(fh, lineterminator="\n")
+        w.writerow(["year", "period", "pool_net_usd", "pool_payouts", "book_net_usd", "overnight_usd", "pyramid_usd", "ib_usd",
+                    "eval_pass_pct", "evals_started"])
+        for y in sorted(py):
+            per = "Nov 14 - Dec 31" if y == "2022" else ("Jan 1 - Nov 13" if y == "2026" else "full year")
+            w.writerow([y, per, py[y]["net_usd_first_path"], py[y]["payouts_first_path"], by[y]["net_usd"], by[y]["overnight_usd"],
+                        by[y]["pyramid_usd"], by[y]["ib_usd"], ey[y]["pass_pct"], ey[y]["evals"]])
+    with open(os.path.join(od, "monthly.csv"), "w", newline="") as fh:
+        w = csv.writer(fh, lineterminator="\n")
+        w.writerow(["month", "net_usd", "cumulative_usd", "payouts", "evals_bought"])
+        for r in rows("pool_monthly.csv"):
+            w.writerow([r["month"], r["net_usd"], r["cumulative_usd"], r["payouts"], r["evals_bought"]])
+    print(f"wrote {od}/years.csv and monthly.csv")
+
+
 if __name__ == "__main__":
     main(*sys.argv[1:5])
+    if len(sys.argv) > 5:
+        years_monthly(sys.argv[1], sys.argv[5])

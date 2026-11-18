@@ -1,0 +1,5 @@
+trade_type,trades,win_pct,gross_usd,commission_usd,net_usd
+Overnight,16,68.8,4550,-40,4510
+Pyramid,22,45.5,9928,-83,9845
+IB breakout,33,45.5,2688,-88,2600
+All trades,71,50.7,17166,-212,16955

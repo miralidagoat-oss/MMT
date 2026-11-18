@@ -23,7 +23,7 @@ import research4 as R4  # noqa: E402
 import research5 as R5  # noqa: E402
 from account import is_half  # noqa: E402
 from engine import PV, bracket_exit, news_night  # noqa: E402
-from account import eval_bracket  # noqa: E402
+from account import FEE_TAG, eval_bracket  # noqa: E402
 
 OFFSETS = R4.OFFSETS
 NO_ON_E, NO_ON_F = dict(legs=("od",)), dict(legs=("pyr", "ib"))
@@ -91,7 +91,7 @@ def main(dd, out):
         lines.append(s)
 
     # ---------------- checks against round 5 (same code, same data -> same numbers)
-    r5 = json.load(open(os.path.join(HERE, "results_r5", "runs.json")))
+    r5 = json.load(open(os.path.join(HERE, "results_r5" + FEE_TAG, "runs.json")))
     pairs = [("BASE", "BASE")] + [(n, n) for n, f, _ in C if f == "placebo"] + [("N3 eval without the overnight trade",
                                                                                    "D1 eval 09:35 drive only")]
     for mine, theirs in pairs:
@@ -113,7 +113,7 @@ def main(dd, out):
                                 for k in ("M", "W", "L", "D", "worst12", "gap", "months_paid")}
     plac = [n for n in names if fam[n] == "placebo"]
     band = {p: {k: max(abs(mean[x][p][k] - mean["BASE"][p][k]) for x in plac) for k in ("M", "W")} for p in ("last 5y", "2011-21")}
-    bands_r5 = {r["period"]: r for r in csv.DictReader(open(os.path.join(HERE, "results_r5", "r5_bands.csv")))}
+    bands_r5 = {r["period"]: r for r in csv.DictReader(open(os.path.join(HERE, "results_r5" + FEE_TAG, "r5_bands.csv")))}
     for p in band:
         assert round(band[p]["M"]) == int(bands_r5[p]["net_band_usd"]) and round(band[p]["W"]) == int(bands_r5[p]["worst_year_band_usd"])
     say("noise bands (round 5's, recomputed): " + " | ".join(f"{p}: M {band[p]['M']:,.0f}, W {band[p]['W']:,.0f}" for p in band))
@@ -163,15 +163,16 @@ def main(dd, out):
         if good:
             adopted.append(pick)
     say("Adopted under rule 5Y: " + (", ".join(adopted) if adopted else "none"))
+    R4B = R5.r4_bands()
     say("\nOriginal rule (variant chosen on 2011-18; must pass 2011-18 and 2019-26 with round 4's bands)")
     for f in ("N", "U"):
         cand = [n for n in names if fam[n] == f]
-        ok = sorted([(n,) + route(n, "2011-18", R5.R4_BANDS) for n in cand if route(n, "2011-18", R5.R4_BANDS)[0]],
+        ok = sorted([(n,) + route(n, "2011-18", R4B) for n in cand if route(n, "2011-18", R4B)[0]],
                     key=lambda x: (x[1] != "consistency", -x[2]))
         if not ok:
             say(f"  {f}: reject, no variant passes 2011-18")
             continue
-        rt, _ = route(ok[0][0], "2019-26", R5.R4_BANDS)
+        rt, _ = route(ok[0][0], "2019-26", R4B)
         say(f"  {f}: {ok[0][0]} passes 2011-18 by {ok[0][1]}; 2019-26 {'passes by ' + rt if rt else 'fails'} -> "
             f"{'ADOPT' if rt else 'reject'}")
 
@@ -184,13 +185,13 @@ def main(dd, out):
     with open(os.path.join(out, "r6_configs.csv"), "w", newline="") as fh:
         w = csv.writer(fh, lineterminator="\n")
         w.writerow(["setup", "name", "family", "net_5y_usd", "worst_year_5y_usd", "deepest_drop_5y_usd", "longest_gap_5y_months",
-                    "net_2011_21_usd", "worst_year_2011_21_usd", "verdict"])
+                    "net_2011_21_usd", "worst_year_2011_21_usd", "deepest_drop_2011_21_usd", "verdict"])
         for n in names:
             if fam[n] == "placebo":
                 continue
             w.writerow([n.split()[0], NAME[n], KIND[fam[n]], round(mean[n]["last 5y"]["M"]), round(mean[n]["last 5y"]["W"]),
                         round(mean[n]["last 5y"]["D"]), round(mean[n]["last 5y"]["gap"], 1), round(mean[n]["2011-21"]["M"]),
-                        round(mean[n]["2011-21"]["W"]), verdict[n]])
+                        round(mean[n]["2011-21"]["W"]), round(mean[n]["2011-21"]["D"]), verdict[n]])
     # every year, current rules vs N1 vs U1 (median of 12 start dates), both windows
     with open(os.path.join(out, "r6_years.csv"), "w", newline="") as fh:
         w = csv.writer(fh, lineterminator="\n")
@@ -215,7 +216,7 @@ def main(dd, out):
         w.writerow(["id", "structure", "accounts", "net_per_year_usd", "worst_full_year_usd", "losing_full_years", "total_net_5y_usd",
                     "deepest_drop_usd", "worst_12_months_usd", "longest_gap_months", "months_with_payout_pct", "eval_pass_pct",
                     "payouts", "current_rules_net_per_year_usd"])
-        cur = {r["id"]: r for r in csv.DictReader(open(os.path.join(HERE, "results_r5", "accounts_5y.csv")))}
+        cur = {r["id"]: r for r in csv.DictReader(open(os.path.join(HERE, "results_r5" + FEE_TAG, "accounts_5y.csv")))}
         for st in ("C", "B", "A"):
             for N in range(1, 6):
                 R = [res[(f"N1-{st}{N}", "5y", o)] for o in OFFSETS]

@@ -27,12 +27,13 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 //          so copy-trading never creates opposing positions across accounts (Lucid prohibits that). Lucid allows 5 funded
 //          accounts and 10 in all: keep the 5 funded slots full from evals running behind them.
 // BACKTEST at 50K, the last 5 years first: Nov 15 2021 - Nov 13 2026 (Nasdaq-100 / S&P 500 CFD minute data
-//          cross-checked against real MNQ futures; $1.34 commission; after Lucid's 10% and $115 evals): eval pass
-//          41.3%, median 9 sessions; 61.8% of funded accounts reach a payout; one account slot's first payout after a
-//          median 58 days (67.5% within 90 days); 5 funded 50K + 5 evals about $48-49k a year, a payout in 67% of
-//          months, longest gap 6.4 months, worst 12 months -$2.3k, every full year positive. By year (5 funded + 5
-//          evals): 2022 +$38.7k, 2023 +$11.1k, 2024 +$84.1k, 2025 +$24.8k, 2026 to Nov 13 +$81.8k. The last 4 years
-//          alone (from Nov 14 2022): eval pass 42.9%, first payout median 69 days, about $49k a year.
+//          cross-checked against real MNQ futures; $1.34 commission; after Lucid's 10% and evals at $80.50, a
+//          discount-code price; list price $115): eval pass 41.3%, median 9 sessions; 61.8% of funded accounts reach a
+//          payout; one account slot's first payout after a median 58 days (67.5% within 90 days); 5 funded 50K + 5
+//          evals about $51-52k a year ($48-49k with $115 evals), a payout in 67% of months, longest gap 6.4 months,
+//          worst 12 months +$1.3k, every full year positive. By year (5 funded + 5 evals): 2022 +$42.5k, 2023 +$13.6k,
+//          2024 +$87.2k, 2025 +$28.5k, 2026 to Nov 13 +$84.2k. The last 4 years alone (from Nov 14 2022): eval pass
+//          42.9%, first payout median 69 days, about $52k a year.
 //          Real MNQ futures, Sep 9 - Nov 17 2026 (50 sessions; far too short to prove anything): one funded 50K account
 //          +$17.0k from 71 trades; 30 of 46 finished evals passed, but every eval started Oct 19 - Nov 6 failed.
 //          NOT live-tested; past results do not guarantee future payouts. Full study: backtest/onr in the MMT repo.
@@ -692,7 +693,7 @@ if showPanel and barstate.islast
     string sigTxt = na(score) ? "warming up" : (str.tostring(score, "#.##") + " (" + (sigSide == 1 ? "BUY tonight" : sigSide == -1 ? "SELL tonight" : "no overnight trade") + ", needs |score| >= 0.72; final after the 16:00 close)")
     string warn = tfMin == 0 or tfMin > 5 ? "Use a 1-5 minute chart" : (onBars == 0 ? "No overnight bars on this chart: switch it to the 24h (ETH) session" : (isEval and cushion < 50.0 * M ? "Eval cushion below $" + str.tostring(50.0 * M, "#") + ": this eval can no longer trade - buy a new one" : (not isEval and nPay >= 5 ? "5 of 5 payouts taken: this account is finished - refill the slot from an eval" : (not isEval and cushion < 200.0 * M ? "ABANDON: cushion < $" + str.tostring(200.0 * M, "#") + " - buy a new eval" : (eligible ? "REQUEST $" + str.tostring(payAmt, "#") + " PAYOUT NOW (the maximum allowed: 50% of profit, cap $" + str.tostring(PAYCAP, "#") + ")" : "-")))))
     table.cell(T, 0, 0, "ONR Book v2.2", bgcolor = color.new(color.navy, 0), text_color = color.white)
-    table.cell(T, 1, 0, "Backtest Nov 2021 - Nov 2026 (50K figures): eval pass 41%, first payout median 58 days, 5 funded + 5 evals ~$48-49k/yr (every full year positive), longest gap ~6 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    table.cell(T, 1, 0, "Backtest Nov 2021 - Nov 2026 (50K, $80.50 evals): eval pass 41%, first payout median 58 days, 5 funded + 5 evals ~$51-52k/yr (every full year positive), longest gap ~6 mo | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))

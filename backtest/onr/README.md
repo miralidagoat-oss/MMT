@@ -24,9 +24,11 @@ futures, including several Lucid accounts side by side.
   year); across copy-traded accounts, an eval's 09:35 trade against a funded account's IB short is the cross-account
   hedging Lucid prohibits (~22 days a year). v2.1 places the IB order only on the drive's side on drive days.
 - **The last 5 years first** (Nov 15 2021 – Nov 13 2026, the window now given priority): 5 funded 50K accounts with
-  5 evals in reserve netted $49,103 a year, and every full year was positive. The worst was 2023 at +$11,081, when
-  only 23% of evals passed. 1 funded + 1 eval made $10,488 a year. Rounds 3–5 re-scored on these 5 years: none of 18
-  changes passed. See "The last 5 years first" below.
+  5 evals in reserve netted $49,103 a year at the $115 list price, and $52,274 at the user's $80.50 discount price.
+  Every full year was positive; the worst was 2023 ($11,081, or $13,565 at $80.50), when only 23% of evals passed.
+  - Rounds 3–5 re-scored on these 5 years: none of 18 changes passed.
+  - Round 6 (no overnight trade, or the eval's IB breakout in its place) did not pass either.
+  - See "The last 5 years first", "Research round 6" and "At your eval price" below.
 - **Last 4 years only** (Nov 2022 – Nov 2026): same conclusions; 5 funded 50K accounts with
   max-allowed payouts netted ~$51k a year (25K: ~$32k), with 2023 the drought year. See "Last 4 years only" below.
 - **Dry spells cannot be removed completely.** About half of them were times the strategy itself lost money; the
@@ -500,6 +502,53 @@ All 18 changes, 9 from round 3, 8 from round 4 and 1 from round 5, are in `resul
 `results_r5/decisions.txt`. **None passed.** Under the original round-4 rule (2011–18 and 2019–26), the funded "skip
 overnight sells" change (H5-S) passed 2011–18 on money and failed 2019–26, so it is rejected there too. The rules stay.
 
+### Research round 6 (pre-registered in `PREREG_R6.md`): the strategy without its overnight trade
+
+`research6.py DATA results_r6`. Three ways to drop the 18:10 ET overnight trade, and one replacement: with no overnight trade, an eval that sees no 09:35 drive takes the 10:30 IB breakout instead, with its usual bracket. 5 funded + 5 evals, mean of 12 start dates, rule 5Y with round 5's noise bands. The engine change (`engine.ib_entry`, `EvalAccount(ib_fallback=True)`) is off by default; the current rules reproduce exactly (901 fingerprints, 7,459 50K checks).
+
+| Setup | Last 5 years: net a year | Last 5 years: worst year | Last 5 years: deepest drop | Longest wait | 2011–21: net a year | 2011–21: worst year | 2011–21: deepest drop |
+|---|---|---|---|---|---|---|---|
+| Current rules | $49,103 | $11,081 | −$8,855 | 6.4 mo | $27,984 | −$5,122 | −$20,490 |
+| No overnight trade at all | $46,188 | $9,898 | −$6,210 | 6.4 mo | $27,611 | −$7,819 | −$25,759 |
+| Funded accounts skip it | $50,674 | $6,207 | −$7,130 | 6.8 mo | $26,846 | −$2,419 | −$18,059 |
+| Evals skip it (round 3's D1) | $48,724 | $12,451 | −$7,820 | 6.4 mo | $26,437 | −$13,334 | −$33,159 |
+| No overnight trade; eval takes the 10:30 IB instead | $51,522 | $18,903 | −$4,831 | 2.9 mo | $25,318 | −$8,080 | −$38,208 |
+
+**None passed** (`results_r6/decisions.txt`); under the original rule (2011–18 and 2019–26) neither family passes either.
+- Dropping the overnight trade made less ($46,188 against $49,103 a year) with a slightly lower worst year.
+- The IB replacement looked steadier over the last 5 years: worst year $18,903, longest wait 2.9 months.
+  Those gains are inside the noise band, and in 2011–21 it was worse, with a deepest drop of −$38,208 against −$20,490.
+
+**The overnight trade's own share** (`results_r6/overnight_share.csv`, after commission). Over the last 5 years one funded account trading every session made:
+- $9,593 from 402 overnight trades;
+- $47,965 from the 09:35 pyramid;
+- $41,187 from the IB breakout.
+
+The eval plan's 302 overnight trades made $19,765 (+65 a trade). Its 434 trades at 09:35 made $64,347 (+148 a trade).
+
+### At your eval price: $80.50 instead of $115
+
+A Lucid Flex 50K eval costs $80.50 with the user's discount code. The eval price only changes the bookkeeping (net = 90% of payouts − price × evals bought), never a trade, so every study was run again with `ONR_EVAL_FEE_50K=80.50` into the `*_fee8050` folders.
+- Trades, payouts and eval counts are identical at both prices.
+- The decisions are unchanged: rounds 4, 5 and 6 adopt nothing at $80.50 either, with their noise bands recomputed at that price.
+- The dashboard shows the $80.50 figures. The last 5 years:
+
+| Setup | Net a year | Worst full year | Total, 5 years | Worst 12 months | Most cash out |
+|---|---|---|---|---|---|
+| 1 account in all | $7,784 | $1,199 | $38,030 | −$31 | −$369 |
+| 2 accounts in all | $14,376 | $2,182 | $70,239 | $18 | −$738 |
+| 3 accounts in all | $20,873 | $3,338 | $101,982 | $852 | −$1,100 |
+| 4 accounts in all | $27,309 | $4,494 | $133,432 | $1,766 | −$1,449 |
+| 5 accounts in all | $34,945 | $5,650 | $170,740 | $3,164 | −$1,744 |
+| 1 funded + 1 eval | $11,266 | $796 | $55,041 | −$1,239 | −$738 |
+| 2 funded + 2 evals | $21,081 | $3,966 | $102,996 | −$103 | −$1,449 |
+| 3 funded + 3 evals | $31,850 | $7,681 | $155,613 | $827 | −$2,033 |
+| 4 funded + 4 evals | $42,996 | $9,664 | $210,076 | $936 | −$2,589 |
+| **5 funded + 5 evals (current)** | $52,274 | $13,565 | $255,401 | $1,287 | −$2,999 |
+
+Year by year, 5 funded + 5 evals at $80.50: 2021 (from Nov 15) −$1,127 · 2022 $42,452 · 2023 $13,565 · 2024 $87,152 · 2025 $28,471 · 2026 (to Nov 13) $84,184.
+
+
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
 | Leg | Trades | Mean R | t | Years positive | Real vs random sides |
@@ -576,6 +625,16 @@ python3 research5.py ../../data ../../data results_r5 accounts && python3 report
 python3 fetch_dukascopy.py ../../data/duk_idx USA500IDXUSD 2026-11-09 2026-11-16   # S&P CFD past HistData's end
 python3 prep_spx_ext.py ../../data ../../data/duk_idx ../../data_live/SPXUSD.npz   # + NSXUSD.npz, MNQ_5m_60d.npz
 python3 mnq_real50k.py ../../data_live && python3 export_charts.py ../../data_live results_charts
+python3 research6.py ../../data results_r6
+python3 report50k.py ../../data results_50k_5y 2021-11-15 && python3 make_kpis.py results_50k_5y results_50k_5y/kpis.csv "Nov 15 2021 - Nov 13 2026" "2022-2025"
+# the same at the $80.50 eval price (the dashboard's figures); the trades are identical
+export ONR_EVAL_FEE_50K=80.50
+python3 research4.py ../../data results_r4_fee8050 && python3 report4.py results_r4_fee8050 results_r4_fee8050
+python3 research5.py ../../data ../../data results_r5_fee8050 accounts && python3 report5.py results_r5_fee8050
+python3 research6.py ../../data results_r6_fee8050
+python3 report50k.py ../../data results_50k_fee8050 && python3 make_kpis.py results_50k_fee8050 results_50k_fee8050/kpis.csv "Nov 14 2022 - Nov 13 2026" "2023-2025" results_50k_fee8050
+python3 report50k.py ../../data results_50k_5y_fee8050 2021-11-15 && python3 make_kpis.py results_50k_5y_fee8050 results_50k_5y_fee8050/kpis.csv "Nov 15 2021 - Nov 13 2026" "2022-2025"
+python3 export_charts.py ../../data_live results_charts_fee8050
 ```
 
 Limits: the CFD is a proxy for MNQ before Sep 2026 (validated on the overlap only); TradingView's own fills on 1–5

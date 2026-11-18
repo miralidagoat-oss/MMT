@@ -11,6 +11,7 @@ one-account drivers and portfolio.py runs several accounts side by side.
 """
 import datetime as dt
 import math
+import os
 
 import numpy as np
 
@@ -28,6 +29,11 @@ RULES = {25: dict(target=1250.0, mll=1000.0, qday=100.0, paycap=1000.0, evalmax=
          50: dict(target=3000.0, mll=2000.0, qday=150.0, paycap=2000.0, evalmax=40, fundmax=20, price=115.0),
          100: dict(target=6000.0, mll=3000.0, qday=200.0, paycap=2500.0, evalmax=60, fundmax=30, price=215.0),
          150: dict(target=9000.0, mll=4500.0, qday=250.0, paycap=3000.0, evalmax=100, fundmax=40, price=323.0)}
+# The 50K eval price: $115 is Lucid's list price. ONR_EVAL_FEE_50K sets another one, e.g. 80.50 with a discount code.
+# Only the bookkeeping uses it (net = 90% of payouts - fee x evals bought); no trading decision does, so a run at another
+# price takes exactly the same trades. Results at another price go to folders tagged FEE_TAG (e.g. "_fee8050").
+RULES[50]["price"] = float(os.environ.get("ONR_EVAL_FEE_50K", RULES[50]["price"]))
+FEE_TAG = "" if RULES[50]["price"] == 115.0 else "_fee" + f"{RULES[50]['price']:.2f}".replace(".", "")
 
 
 def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0, size=25, k=1.0):

@@ -6,12 +6,15 @@ series extended with ES futures bars (prep_spx_ext.py), so the sessions after th
 
 usage: export_charts.py DATA_DIR OUT_DIR
 
-Costs: $1.34 per MNQ round turn (inside every trade's net), Lucid keeps 10% of each payout, $115 per eval (list price).
+Costs: $1.34 per MNQ round turn (inside every trade's net), Lucid keeps 10% of each payout, and the 50K eval price of
+account.RULES per eval ($115 list; ONR_EVAL_FEE_50K sets another, e.g. 80.50 with a discount code). The eval price
+changes no trade, only "net to you", so the checks below are on counts and gross amounts.
 Commission per trade = the same trade replayed with commission 0, minus the trade with $1.34 (commission never changes
 a fill or a decision of the day, so the two runs take the same trades). The script checks its totals against
 mnq_real50k.py and report50k.py before writing.
 """
 import csv
+import json
 import os
 import sys
 
@@ -19,7 +22,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import account  # noqa: E402
-from account import RULES, EvalAccount, FundedAccount, funded_size, run_eval, run_funded  # noqa: E402
+from account import FEE_TAG, RULES, EvalAccount, FundedAccount, funded_size, run_eval, run_funded  # noqa: E402
 from account import is_half  # noqa: E402
 from engine import PV, Sessions, bracket_exit, load_npz, news_night, rth_sessions  # noqa: E402
 from portfolio import pool  # noqa: E402
@@ -32,7 +35,7 @@ F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, com
 LEG = {"on": "Overnight", "pyr": "Pyramid", "ib": "IB breakout"}
 WHY = {"stop": "stop", "target": "target", "time": "time exit", "stop-fillbar": "stop (fill bar)", "none": "time exit"}
 # the real-MNQ totals mnq_real50k.py prints for the same data (checked before anything is written)
-REAL = dict(trades=71, net=16955, slot_payouts=[1136, 1280, 2000], slot_cash=3859.4, pool=(15, 21677, 10, 18359.3))
+REAL = dict(trades=71, net=16955, slot_payouts=[1136, 1280, 2000], slot_evals=1, pool=(15, 21677, 10))
 
 # ---- cost bookkeeping: wrap the leg functions the account module calls (results are passed through unchanged)
 TRADES = []   # (gross, net, exit reason) of each funded-leg trade, in call order
@@ -330,10 +333,12 @@ def main(dd, out):
     ja = journey(R, m0, len(R.days))
     j_paid = PAID[0]
     j_pay = [x[3] for x in ja if x[3] > 0]
-    assert [round(p) for p in j_pay] == REAL["slot_payouts"] and abs(ja[-1][5] - REAL["slot_cash"]) < 1.0, (j_pay, ja[-1])
+    slot_cash = SPLIT * sum(j_pay) - FEE * REAL["slot_evals"]
+    assert [round(p) for p in j_pay] == REAL["slot_payouts"] and abs(ja[-1][5] - slot_cash) < 0.01, (j_pay, ja[-1], slot_cash)
+    assert sum(x[4] for x in ja) == REAL["slot_evals"], ja
     write(out, "real_account", JC, ja)
     rp, rs = pool_rows(R, m0, len(R.days))
-    assert (rs["payouts"], round(rs["gross"]), rs["evals"]) == REAL["pool"][:3] and abs(rs["net"] - REAL["pool"][3]) < 1.0, rs
+    assert (rs["payouts"], round(rs["gross"]), rs["evals"]) == REAL["pool"] and abs(rs["net"] - (SPLIT * rs["gross"] - FEE * rs["evals"])) < 0.01, rs
     write(out, "real_pool", PC, rp)
 
     # ================= last 4 years (CFD minute bars)
@@ -350,7 +355,8 @@ def main(dd, out):
     write(out, "book_trades", TC, bt)
     write(out, "book_days", DC, bd)
     bp, bs = pool_rows(S, k4, len(S.days))
-    assert abs(bs["net"] - 201371) < 2.0, bs  # kpis.csv pool_total
+    first = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "results_50k" + FEE_TAG, "summary.json")))
+    assert abs(bs["net"] - first["pool"]["first_path_total"]) < 2.0, (bs, first["pool"]["first_path_total"])  # report50k.py, same price
     PAID[0] = 0.0
     js = journey(S, k4, len(S.days))
     s_paid = PAID[0]
@@ -400,13 +406,13 @@ def main(dd, out):
     sl = "One account slot (new eval whenever one ends)"
     block("slot_payouts", sl, "Payouts requested", rpay, spay, apay)
     block("slot_lucid", sl, "Lucid's 10% share", -(1 - SPLIT) * rpay, -(1 - SPLIT) * spay, -(1 - SPLIT) * apay)
-    block("slot_fees", sl, "Eval fees at $115", -FEE * rev, -FEE * sev, -FEE * aev)
+    block("slot_fees", sl, f"Eval fees at ${FEE:,.2f}".replace(".00", ""), -FEE * rev, -FEE * sev, -FEE * aev)
     block("slot_net", sl, "Net to you", SPLIT * rpay - FEE * rev, SPLIT * spay - FEE * sev, SPLIT * apay - FEE * aev)
     block("slot_comm", sl, "Commission paid in the accounts (already taken out before the payouts)", -j_paid, -s_paid, -a_paid)
     pl = "5 funded accounts + evals"
     block("pool_payouts", pl, "Payouts requested", rs["gross"], bs["gross"], aps["gross"])
     block("pool_lucid", pl, "Lucid's 10% share", -(1 - SPLIT) * rs["gross"], -(1 - SPLIT) * bs["gross"], -(1 - SPLIT) * aps["gross"])
-    block("pool_fees", pl, "Eval fees at $115", -FEE * rs["evals"], -FEE * bs["evals"], -FEE * aps["evals"])
+    block("pool_fees", pl, f"Eval fees at ${FEE:,.2f}".replace(".00", ""), -FEE * rs["evals"], -FEE * bs["evals"], -FEE * aps["evals"])
     block("pool_net", pl, "Net to you", rs["net"], bs["net"], aps["net"])
     block("pool_comm", pl, "Commission paid in the accounts (already taken out before the payouts)", -rs["paid"], -bs["paid"],
           -aps["paid"])
@@ -452,8 +458,10 @@ def main(dd, out):
         K.append(["real", f"real_{key}_net", f"{name} net", v.sum(), "usd", ""])
     K += all_k
     shown = {"usd": lambda v: round(v), "pct": lambda v: round(v, 1), "count": lambda v: int(round(v))}  # as printed
+    price_row = ["setup", "eval_price", "Eval price, Lucid Flex 50K, used for every figure", FEE, "usd",
+                 "Lucid's list price" if FEE == 115.0 else "with a discount code; list price $115"]
     write(out, "real_kpis", ["section", "metric", "label", "value", "unit", "note"],
-          [[a, b, c, shown[u](v), u, n] for a, b, c, v, u, n in K])
+          [[a, b, c, shown[u](v), u, n] for a, b, c, v, u, n in K] + [price_row])
     lg = []
     for name in ("Overnight", "Pyramid", "IB breakout"):
         sel = [t for t in rt if t[2] == name]
@@ -462,8 +470,9 @@ def main(dd, out):
     lg.append(["All trades", len(rt), round(100 * np.mean([t[8] > 0 for t in rt]), 1), round(sum(t[6] for t in rt)),
                round(sum(t[7] for t in rt)), round(sum(t[8] for t in rt))])
     write(out, "real_legs", ["trade_type", "trades", "win_pct", "gross_usd", "commission_usd", "net_usd"], lg)
-    print(f"checks passed: real {REAL['trades']} trades {REAL['net']:+,.0f}; account payouts {REAL['slot_payouts']}, net "
-          f"{REAL['slot_cash']:,.0f}; pool {REAL['pool']}; 4-year book by year = years.csv; 4-year pool net = $201,371")
+    print(f"checks passed at ${FEE:.2f} an eval: real {REAL['trades']} trades {REAL['net']:+,.0f}; account payouts "
+          f"{REAL['slot_payouts']}, net {slot_cash:,.2f}; pool (payouts, gross, evals) {REAL['pool']}; 4-year book by year = "
+          f"years.csv; 4-year pool net = report50k's {first['pool']['first_path_total']:,.0f}")
 
 
 if __name__ == "__main__":

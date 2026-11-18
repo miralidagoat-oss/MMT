@@ -15,7 +15,8 @@ Part 2 (decisions): families T (eval-buying throttle), R (risk level), V (eval r
   against BASE and four placebos, with the decision rule of PREREG_R4.md applied mechanically.
 
 The two instrumented simulators reproduce portfolio() and pool() exactly (checked at start-up: same payouts, same
-eval purchases). Lucid Flex 50K, $1.34 per MNQ round turn, $115 per eval, 90% split, maximum-allowed payouts.
+eval purchases). Lucid Flex 50K, $1.34 per MNQ round turn, the 50K eval price of account.RULES ($115 list;
+ONR_EVAL_FEE_50K sets another), 90% split, maximum-allowed payouts.
 """
 import csv
 import datetime as dt

@@ -18,7 +18,8 @@ accounts  The last 5 years (2021-11-15 -> 2026-11-13) first.
           Part 2 (decisions): every account-level change of rounds 3-5 against BASE (B5 = 5 funded + 5 evals in
           reserve) and 8 placebos, rule 5Y of the addendum; for round 5's own changes (S, M) also the original rule.
 
-Lucid Flex 50K, $1.34 per micro round turn, $115 per eval, 90% split, maximum-allowed payouts (as round 4).
+Lucid Flex 50K, $1.34 per micro round turn, the 50K eval price of account.RULES ($115 list; ONR_EVAL_FEE_50K sets
+another, and the reference files are then read from the folders tagged FEE_TAG), 90% split, maximum-allowed payouts.
 """
 import datetime as dt
 import json
@@ -31,7 +32,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import engine  # noqa: E402
 import research4 as R4  # noqa: E402
-from account import is_half  # noqa: E402
+from account import FEE_TAG, is_half  # noqa: E402
 from engine import PV, Sessions, ib_breakout, load_npz, pyramid  # noqa: E402
 from research4 import E_KW, F_KW, FEE, OFFSETS, SPLIT, gate_for, sim_pool, sim_slots  # noqa: E402
 
@@ -45,7 +46,21 @@ FULL5 = {"2011-18": [str(y) for y in range(2012, 2019)], "2019-26": [str(y) for 
 P_ALL = [("2011-18", "2011-01-01", "2018-12-31"), ("2019-26", "2019-01-01", "2026-12-31"),
          ("2011-21", "2011-01-01", "2021-11-14"), ("all years", "2011-01-01", "2026-12-31")]
 P_5Y = [("last 5y", START5, "2026-12-31")]
-R4_BANDS = {"2011-18": dict(M=4535.0, W=5605.0), "2019-26": dict(M=3644.0, W=5434.0)}  # results_r4/decisions.txt
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def r4_bands():
+    """Round 4's noise bands (largest placebo move of net a year and worst year, B5 = BASE) from its runs.json, at this
+    run's eval price; at $115 they are results_r4/decisions.txt's 4,535 / 5,605 and 3,644 / 5,434."""
+    r4 = json.load(open(os.path.join(HERE, "results_r4" + FEE_TAG, "runs.json")))
+    names = sorted({k.split("|")[0] for k in r4})
+    out = {}
+    for p in ("2011-18", "2019-26"):
+        mean = lambda n, k: float(np.mean([r4[f"{n}|all|{o}"]["periods"][p][k] for o in OFFSETS]))  # noqa: E731
+        out[p] = {k: max(abs(mean(x, k) - mean("B5", k)) for x in names if x.startswith("P ")) for k in ("M", "W")}
+    if not FEE_TAG:
+        assert [round(out[p][k]) for p in out for k in ("M", "W")] == [4535, 5605, 3644, 5434], out
+    return out
 BLOCKS = (("2011-18", "2011-01-01", "2018-12-31"), ("2019-26", "2019-01-01", "2026-12-31"),
           ("2011-21", "2011-01-01", "2021-11-14"), ("last 5y", START5, "2026-12-31"))
 _S = {}
@@ -412,7 +427,7 @@ def accounts(dd, rd, out):
                 mean[n][lab] = {k: float(np.mean([res[(n, w, o)]["periods"][lab][k] for o in OFFSETS]))
                                 for k in ("M", "W", "L", "D", "worst12", "gap")}
     for lab, w in (("2011-18", "all"), ("2019-26", "all")):  # BASE = round 4's B5, to the dollar
-        r4 = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "results_r4", "runs.json")))
+        r4 = json.load(open(os.path.join(HERE, "results_r4" + FEE_TAG, "runs.json")))
         for k in ("M", "W"):
             v4 = float(np.mean([r4[f"B5|all|{o}"]["periods"][lab][k] for o in OFFSETS]))
             assert abs(mean["BASE"][lab][k] - v4) < 0.01, (lab, k, mean["BASE"][lab][k], v4)
@@ -464,6 +479,7 @@ def accounts(dd, rd, out):
         say("  more than one family passes: their combination must be run and must beat each (pre-registered); "
             "not run in this pass")
 
+    R4_BANDS = r4_bands()
     say("\nOriginal rule (PREREG_R4/R5) for round 5's own changes: variant chosen on 2011-18, must pass 2011-18 and "
         "2019-26 against BASE with round 4's bands")
     for f in sorted({fam[n] for n in names if fam[n] == "S" or fam[n].startswith("M-")}):
