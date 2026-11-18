@@ -118,3 +118,23 @@ Checks before use:
 If the Dukascopy download cannot be completed, crude is tested only to Nov 2023 and cannot be adopted, because its
 account test needs the last 5 years. Gold is HistData XAUUSD for the whole span (2010 - Nov 2026), checked against
 Yahoo GC=F.
+
+### 3. Data quality note (added 2026-11-18, before any gold or crude result)
+
+**Clock fix.** HistData labels its XAUUSD sessions an hour early in the weeks when US and European daylight saving
+differ. This is the same fault as in its index CFDs, and it gets the same fix: those sessions are moved +60 minutes.
+The fix was chosen by correlation with Yahoo GC=F:
+
+| Weeks | Without the fix | With the fix |
+|---|---|---|
+| Daylight-saving | 0.877 | 0.987 |
+| Standard time | 0.984 | 0.984 |
+
+WTIUSD gets the same three-way clock check.
+
+**Missing minutes.** HistData XAUUSD misses large parts of the day session on 115 days, from February to July 2023: a
+median of 150 of the 310 minutes, for example 09:00-11:00 and 12:00-13:00. The rule for any gold or crude day that
+has less than 90% of its day-session minutes:
+- **Dukascopy has that day:** the day session is filled from Dukascopy (UTC 1-minute bid candles), after checking
+  that the two sources agree on the complete days around it (clock and price level).
+- **Dukascopy does not:** the day session is removed, so that day is not traded and does not count in the ADR.
