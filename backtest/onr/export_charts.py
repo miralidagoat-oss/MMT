@@ -18,7 +18,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import account  # noqa: E402
-from account import RULES, EvalAccount, FundedAccount, funded_size, run_eval  # noqa: E402
+from account import RULES, EvalAccount, FundedAccount, funded_size, run_eval, run_funded  # noqa: E402
 from engine import Sessions, load_npz, rth_sessions  # noqa: E402
 from portfolio import pool  # noqa: E402
 
@@ -168,6 +168,105 @@ def pool_rows(S, k0, k1):
                       net=SPLIT * gross - FEE * len(run["eval_buys"]))
 
 
+def every_year(S, out, at, ad, ap, ja, ev, fu):
+    """years_all.csv (one row per calendar year plus 'All'), months_all.csv and the full-history single figures.
+    at/ad: one funded account's trades/sessions; ap: 5 funded + evals by session; ja: one account slot by session;
+    ev/fu: an eval / a funded account started on every session (results by start year)."""
+    yof = lambda d: d[:4]  # noqa: E731
+    years = sorted({yof(x[0]) for x in ad})
+    sy = {k: day(S.days[k])[:4] for k in ev}
+
+    def stats(y):
+        sel = (lambda d: yof(d) == y) if y else (lambda d: True)
+        tr = [t for t in at if sel(t[1])]
+        dd_ = [x for x in ad if sel(x[0])]
+        traded = np.array([x[6] for x in dd_ if x[3] > 0])
+        run = np.cumsum([x[6] for x in dd_])
+        drop = float((run - np.maximum.accumulate(np.r_[0.0, run])[1:]).min()) if len(run) else 0.0
+        legs = {name: sum(t[8] for t in tr if t[2] == name) for name in ("Overnight", "Pyramid", "IB breakout")}
+        adr = [x[1] for x in dd_ if x[1] != ""]
+        mnq = [x[2] for x in dd_ if x[2]]
+        done = [r for k, r in ev.items() if (not y or sy[k] == y) and r["result"] != "open"]
+        passed = [r["days"] for r in done if r["result"] == "pass"]
+        fr = [r for k, r in fu.items() if (not y or sy[k] == y) and r["result"] != "open"]
+        pp = [x for x in ap if sel(x[0])]
+        months = sorted({x[0][:7] for x in pp})
+        paid_m = {x[0][:7] for x in pp if x[1] > 0}
+        sj = [x for x in ja if sel(x[0])]
+        s_pay = [x[3] for x in sj if x[3] > 0]
+        s_ev = sum(x[4] for x in sj)
+        first, last = pd_(dd_[0][0]), pd_(dd_[-1][0])
+        return [y or "All", f"{first:%b} {first.day}" + ("" if y else f" {first.year}") + f" - {last:%b} {last.day}"
+                + ("" if y else f" {last.year}"), len(dd_),
+                len(tr), round(100 * np.mean([t[8] > 0 for t in tr]), 1) if tr else 0.0,
+                round(sum(t[6] for t in tr)), round(sum(t[7] for t in tr)), round(sum(t[8] for t in tr)),
+                round(legs["Overnight"]), round(legs["Pyramid"]), round(legs["IB breakout"]),
+                round(float(np.mean(adr)), 1), round(float(np.mean(mnq)), 2), len(traded),
+                round(100 * np.mean(traded > 0), 1), round(100 * np.mean(traded >= RULES[50]["qday"]), 1),
+                round(float(traded.max())), round(float(traded.min())), round(drop),
+                len(done), round(100 * len(passed) / len(done), 1) if done else 0.0,
+                float(np.median(passed)) if passed else 0.0,
+                len(fr), round(100 * np.mean([len(r["payouts"]) > 0 for r in fr]), 1) if fr else 0.0,
+                round(float(np.mean([len(r["payouts"]) for r in fr])), 2) if fr else 0.0,
+                round(float(np.mean([sum(r["amounts"]) for r in fr]))) if fr else 0,
+                sum(x[1] for x in pp), round(sum(x[2] for x in pp)), round(sum(x[3] for x in pp)), sum(x[4] for x in pp),
+                round(sum(x[5] for x in pp)), round(sum(x[6] for x in pp)), round(100 * len(paid_m) / len(months), 1),
+                len(s_pay), s_ev, round(SPLIT * sum(s_pay) - FEE * s_ev)]
+
+    cols = ["year", "period", "sessions", "trades", "win_pct", "gross_usd", "commission_usd", "net_usd", "overnight_usd",
+            "pyramid_usd", "ib_usd", "avg_range_points", "avg_mnq_per_leg", "days_traded", "days_positive_pct",
+            "days_qualifying_pct", "best_day_usd", "worst_day_usd", "deepest_drop_usd", "evals_started", "eval_pass_pct",
+            "eval_median_sessions", "funded_started", "funded_paid_pct", "funded_avg_payouts", "funded_avg_payout_usd",
+            "pool_payouts", "pool_payouts_usd", "pool_lucid_usd", "pool_evals", "pool_fees_usd", "pool_net_usd",
+            "pool_months_paid_pct", "slot_payouts", "slot_evals", "slot_net_usd"]
+    rows = [stats(y) for y in years] + [stats(None)]
+    write(out, "years_all", cols, rows)
+
+    # months: one funded account, 5 funded + evals, one account slot
+    mo = {}
+    for x in ad:
+        m = mo.setdefault(x[0][:7], dict(sessions=0, trades=0, net=0.0, run=0.0))
+        m["sessions"] += 1
+        m["trades"] += x[3]
+        m["net"] += x[6]
+        m["run"] = x[7]
+    for x in ap:
+        m = mo[x[0][:7]]
+        m["pp"] = m.get("pp", 0) + x[1]
+        m["pu"] = m.get("pu", 0.0) + x[2]
+        m["pe"] = m.get("pe", 0) + x[4]
+        m["pn"] = m.get("pn", 0.0) + x[6]
+        m["pr"] = x[7]
+    for x in ja:
+        mo[x[0][:7]]["cash"] = x[5]
+    write(out, "months_all", ["month", "sessions", "trades", "net_usd", "running_net_usd", "pool_payouts", "pool_payouts_usd",
+                              "pool_evals", "pool_net_usd", "pool_running_usd", "slot_cash_usd"],
+          [[k, m["sessions"], m["trades"], r2(m["net"]), r2(m["run"]), m.get("pp", 0), round(m.get("pu", 0.0)),
+            m.get("pe", 0), round(m.get("pn", 0.0)), round(m.get("pr", 0.0)), round(m.get("cash", 0.0))] for k, m in sorted(mo.items())])
+    yr = rows[:-1]
+    span = (pd_(ad[-1][0]) - pd_(ad[0][0])).days / 365.25
+    tot = rows[-1]
+    return [["all", "all_years_n", "Calendar years in the backtest", len(yr), "count", ""],
+            ["all", "all_years_pos", "Years one funded account ended positive", sum(r[7] > 0 for r in yr), "count", ""],
+            ["all", "all_book_net", "One funded account, all years, after commission", tot[7], "usd", ""],
+            ["all", "all_book_year", "One funded account, per year", tot[7] / span, "usd", ""],
+            ["all", "all_book_comm", "Commission paid, one funded account, all years", -tot[6], "usd", ""],
+            ["all", "all_book_trades", "Trades, one funded account, all years", tot[3], "count", ""],
+            ["all", "all_best_year", "Best year, one funded account", max(r[7] for r in yr), "usd", ""],
+            ["all", "all_worst_year", "Worst year, one funded account", min(r[7] for r in yr), "usd", ""],
+            ["all", "all_pool_net", "5 funded + evals, all years, net to you", tot[31], "usd", ""],
+            ["all", "all_pool_year", "5 funded + evals, per year", tot[31] / span, "usd", ""],
+            ["all", "all_pool_years_pos", "Years the 5 funded accounts ended positive", sum(r[31] > 0 for r in yr), "count", ""],
+            ["all", "all_slot_net", "One account slot, all years, net to you", tot[35], "usd", ""],
+            ["all", "all_eval_rate", "Eval pass rate, all years", tot[20], "pct", ""],
+            ["all", "all_funded_paid", "Funded accounts reaching a payout, all years", tot[23], "pct", ""]]
+
+
+def pd_(s):
+    import datetime
+    return datetime.date.fromisoformat(s)
+
+
 def main(dd, out):
     os.makedirs(out, exist_ok=True)
     TC = ["trade", "date", "trade_type", "side", "mnq_traded", "exit", "gross_usd", "commission_usd", "net_usd",
@@ -222,6 +321,28 @@ def main(dd, out):
     s_paid = PAID[0]
     write(out, "slot_4y", JC, js)
 
+    # ================= every year, 2011 - 2026 (CFD minute bars): one continuous run from the first full session
+    k0 = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in S.days]))
+    ka = range(k0, len(S.days))
+    print(f"every year: {day(S.days[k0])} -> {day(S.days[-1])}, {len(ka)} sessions")
+    at, ad = book(S, ka)
+    yr_net = {}
+    for t in at:
+        yr_net[t[1][:4]] = yr_net.get(t[1][:4], 0.0) + t[8]
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "results_50k", "book_years_full_history.csv")) as f:
+        for r in csv.DictReader(f):  # report50k.py's yearly totals of the same account
+            assert abs(yr_net[r["year"]] - float(r["net_usd"])) < 1.0, (r, yr_net[r["year"]])
+    write(out, "all_trades", TC, at)
+    write(out, "all_days", DC, ad)
+    ap, aps = pool_rows(S, k0, len(S.days))
+    PAID[0] = 0.0
+    ja_all = journey(S, k0, len(S.days))
+    a_paid = PAID[0]
+    write(out, "slot_all", JC, [x for x in ja_all if x[3] > 0 or x[4] or x[6]] + [ja_all[-1]])
+    ev_all = {k: run_eval(S, k, **E_KW) for k in ka}
+    fu_all = {k: run_funded(S, k, **F_KW) for k in ka}
+    all_k = every_year(S, out, at, ad, ap, ja_all, ev_all, fu_all)
+
     # ================= costs, side by side
     def jsum(rows):
         pay = sum(x[3] for x in rows)
@@ -230,28 +351,31 @@ def main(dd, out):
 
     rpay, rev = jsum(ja)
     spay, sev = jsum(js)
+    apay, aev = jsum(ja_all)
     cost = []
 
-    def block(item_id, setup, item, a, b):
-        cost.append([item_id, setup, item, round(a), round(b)])  # whole dollars, as the page prints them
+    def block(item_id, setup, item, a, b, c):
+        cost.append([item_id, setup, item, round(a), round(b), round(c)])  # whole dollars, as the page prints them
 
     bk = "One funded account, every session"
-    block("book_gross", bk, "Trading profit before commission", sum(t[6] for t in rt), sum(t[6] for t in bt))
-    block("book_comm", bk, "Commission at $1.34 per MNQ round turn", sum(t[7] for t in rt), sum(t[7] for t in bt))
-    block("book_net", bk, "Trading profit after commission", sum(t[8] for t in rt), sum(t[8] for t in bt))
+    block("book_gross", bk, "Trading profit before commission", sum(t[6] for t in rt), sum(t[6] for t in bt), sum(t[6] for t in at))
+    block("book_comm", bk, "Commission at $1.34 per MNQ round turn", sum(t[7] for t in rt), sum(t[7] for t in bt),
+          sum(t[7] for t in at))
+    block("book_net", bk, "Trading profit after commission", sum(t[8] for t in rt), sum(t[8] for t in bt), sum(t[8] for t in at))
     sl = "One account slot (new eval whenever one ends)"
-    block("slot_payouts", sl, "Payouts requested", rpay, spay)
-    block("slot_lucid", sl, "Lucid's 10% share", -(1 - SPLIT) * rpay, -(1 - SPLIT) * spay)
-    block("slot_fees", sl, "Eval fees at $115", -FEE * rev, -FEE * sev)
-    block("slot_net", sl, "Net to you", SPLIT * rpay - FEE * rev, SPLIT * spay - FEE * sev)
-    block("slot_comm", sl, "Commission paid in the accounts (already taken out before the payouts)", -j_paid, -s_paid)
+    block("slot_payouts", sl, "Payouts requested", rpay, spay, apay)
+    block("slot_lucid", sl, "Lucid's 10% share", -(1 - SPLIT) * rpay, -(1 - SPLIT) * spay, -(1 - SPLIT) * apay)
+    block("slot_fees", sl, "Eval fees at $115", -FEE * rev, -FEE * sev, -FEE * aev)
+    block("slot_net", sl, "Net to you", SPLIT * rpay - FEE * rev, SPLIT * spay - FEE * sev, SPLIT * apay - FEE * aev)
+    block("slot_comm", sl, "Commission paid in the accounts (already taken out before the payouts)", -j_paid, -s_paid, -a_paid)
     pl = "5 funded accounts + evals"
-    block("pool_payouts", pl, "Payouts requested", rs["gross"], bs["gross"])
-    block("pool_lucid", pl, "Lucid's 10% share", -(1 - SPLIT) * rs["gross"], -(1 - SPLIT) * bs["gross"])
-    block("pool_fees", pl, "Eval fees at $115", -FEE * rs["evals"], -FEE * bs["evals"])
-    block("pool_net", pl, "Net to you", rs["net"], bs["net"])
-    block("pool_comm", pl, "Commission paid in the accounts (already taken out before the payouts)", -rs["paid"], -bs["paid"])
-    write(out, "costs", ["item_id", "setup", "item", "real_60d_usd", "last_4y_usd"], cost)
+    block("pool_payouts", pl, "Payouts requested", rs["gross"], bs["gross"], aps["gross"])
+    block("pool_lucid", pl, "Lucid's 10% share", -(1 - SPLIT) * rs["gross"], -(1 - SPLIT) * bs["gross"], -(1 - SPLIT) * aps["gross"])
+    block("pool_fees", pl, "Eval fees at $115", -FEE * rs["evals"], -FEE * bs["evals"], -FEE * aps["evals"])
+    block("pool_net", pl, "Net to you", rs["net"], bs["net"], aps["net"])
+    block("pool_comm", pl, "Commission paid in the accounts (already taken out before the payouts)", -rs["paid"], -bs["paid"],
+          -aps["paid"])
+    write(out, "costs", ["item_id", "setup", "item", "real_60d_usd", "last_4y_usd", "all_years_usd"], cost)
 
     # ================= single figures for the new sections
     rn = np.array([t[8] for t in rt])
@@ -289,6 +413,7 @@ def main(dd, out):
         K.append(["real", f"real_{key}_n", f"{name} trades", len(v), "count", ""])
         K.append(["real", f"real_{key}_win", f"{name} winners", 100 * np.mean(v > 0), "pct", ""])
         K.append(["real", f"real_{key}_net", f"{name} net", v.sum(), "usd", ""])
+    K += all_k
     shown = {"usd": lambda v: round(v), "pct": lambda v: round(v, 1), "count": lambda v: int(round(v))}  # as printed
     write(out, "real_kpis", ["section", "metric", "label", "value", "unit", "note"],
           [[a, b, c, shown[u](v), u, n] for a, b, c, v, u, n in K])
