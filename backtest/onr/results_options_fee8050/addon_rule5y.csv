@@ -1,0 +1,10 @@
+addon_price_per_eval_usd,last5y_net_per_year_usd,last5y_net_vs_current_usd,last5y_worst_full_year_usd,last5y_worst_year_vs_current_usd,y2011_21_net_per_year_usd,y2011_21_net_vs_current_usd,y2011_21_worst_full_year_usd,y2011_21_worst_year_vs_current_usd,last5y_route,y2011_21_not_worse_than_band,rule_5y
+0.0,64211,11937,24765,11200,35924,4295,3253,4235,consistency,yes,pass
+5.0,63740,11467,24385,10820,35375,3745,2623,3605,consistency,yes,pass
+10.0,63270,10996,24005,10440,34825,3196,1993,2975,consistency,yes,pass
+15.0,62799,10526,23625,10060,34275,2646,1363,2345,consistency,yes,pass
+20.0,62329,10055,23245,9680,33725,2096,733,1715,inside the band,yes,fail
+25.0,61858,9585,22865,9300,33176,1546,103,1085,inside the band,yes,fail
+30.0,61388,9114,22485,8920,32626,997,-527,455,inside the band,yes,fail
+40.0,60447,8173,21725,8160,31527,-103,-1787,-805,inside the band,yes,fail
+50.0,59506,7233,20965,7400,30427,-1202,-3047,-2065,inside the band,yes,fail

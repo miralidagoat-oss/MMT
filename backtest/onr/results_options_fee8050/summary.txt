@@ -1,0 +1,39 @@
+Lucid Flex 50K, $1.34 per MNQ round turn, evals at $80.50
+
+1. Eval pass rate by option (evals started on every session)
+  2011-20       default (40% rule, wide bracket, news skip)    34.8% of  2549, median 11 sessions to pass
+  2011-20       50% consistency add-on                         34.4% of  2549, median 9 sessions to pass
+  2011-20       medium bracket x0.75                           31.0% of  2549, median 10 sessions to pass
+  2011-20       tight bracket x0.5                             22.1% of  2549, median 11 sessions to pass
+  2011-20       no news skip                                   31.1% of  2549, median 10 sessions to pass
+  2021-26       default (40% rule, wide bracket, news skip)    40.9% of  1517, median 10 sessions to pass
+  2021-26       50% consistency add-on                         42.8% of  1516, median 8 sessions to pass
+  2021-26       medium bracket x0.75                           38.0% of  1517, median 8 sessions to pass
+  2021-26       tight bracket x0.5                             37.0% of  1517, median 7 sessions to pass
+  2021-26       no news skip                                   39.5% of  1515, median 9 sessions to pass
+  last 5 years  default (40% rule, wide bracket, news skip)    41.3% of  1292, median 9 sessions to pass
+  last 5 years  50% consistency add-on                         44.2% of  1291, median 8 sessions to pass
+  last 5 years  medium bracket x0.75                           41.5% of  1292, median 8 sessions to pass
+  last 5 years  tight bracket x0.5                             39.5% of  1292, median 7 sessions to pass
+  last 5 years  no news skip                                   39.9% of  1290, median 8 sessions to pass
+  all years     default (40% rule, wide bracket, news skip)    37.1% of  4066, median 10 sessions to pass
+  all years     50% consistency add-on                         37.6% of  4065, median 9 sessions to pass
+  all years     medium bracket x0.75                           33.6% of  4066, median 9 sessions to pass
+  all years     tight bracket x0.5                             27.7% of  4066, median 9 sessions to pass
+  all years     no news skip                                   34.2% of  4064, median 9 sessions to pass
+
+2. The 50% add-on, 5 funded + 5 evals, mean of 12 start dates (research round 5/6 machinery, rule 5Y)
+  current rules: last 5 years net $52,274 a year, worst full year $13,565; 2011-21 $31,629, $-982
+  noise bands (8 placebos): last 5 years net 11,504, worst year 9,953; 2011-21 1,859, 6,103
+  add-on $ 0.00 an eval: last 5 years net $ 64,211 (+11,937), worst year $ 24,765 (+11,200) | 2011-21 net $ 35,924 (+4,295), worst year $  3,253 (+4,235) -> pass (consistency)
+  add-on $ 5.00 an eval: last 5 years net $ 63,740 (+11,467), worst year $ 24,385 (+10,820) | 2011-21 net $ 35,375 (+3,745), worst year $  2,623 (+3,605) -> pass (consistency)
+  add-on $10.00 an eval: last 5 years net $ 63,270 (+10,996), worst year $ 24,005 (+10,440) | 2011-21 net $ 34,825 (+3,196), worst year $  1,993 (+2,975) -> pass (consistency)
+  add-on $15.00 an eval: last 5 years net $ 62,799 (+10,526), worst year $ 23,625 (+10,060) | 2011-21 net $ 34,275 (+2,646), worst year $  1,363 (+2,345) -> pass (consistency)
+  add-on $20.00 an eval: last 5 years net $ 62,329 (+10,055), worst year $ 23,245 (+9,680) | 2011-21 net $ 33,725 (+2,096), worst year $    733 (+1,715) -> fail (inside the band)
+  add-on $25.00 an eval: last 5 years net $ 61,858 (+9,585), worst year $ 22,865 (+9,300) | 2011-21 net $ 33,176 (+1,546), worst year $    103 (+1,085) -> fail (inside the band)
+  add-on $30.00 an eval: last 5 years net $ 61,388 (+9,114), worst year $ 22,485 (+8,920) | 2011-21 net $ 32,626 (+997), worst year $   -527 (+455) -> fail (inside the band)
+  add-on $40.00 an eval: last 5 years net $ 60,447 (+8,173), worst year $ 21,725 (+8,160) | 2011-21 net $ 31,527 (-103), worst year $ -1,787 (-805) -> fail (inside the band)
+  add-on $50.00 an eval: last 5 years net $ 59,506 (+7,233), worst year $ 20,965 (+7,400) | 2011-21 net $ 30,427 (-1,202), worst year $ -3,047 (-2,065) -> fail (inside the band)
+  rule 5Y passes up to an add-on price of $16.41 an eval
+  evals bought a year with the add-on, last 5 years: 94.1
+  descriptive check, not pre-registered

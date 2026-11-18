@@ -2,7 +2,7 @@
 indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2.2 (2026-11-17). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
+// ONR BOOK v2.2 (2026-11-18). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
 // ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K (input, default 50K). The $ amounts below are for 25K; every one scales
 //          with the account's max loss (x2 at 50K, x3 at 100K, x4.5 at 150K). Target, qualifying day and payout cap
 //          follow Lucid's table. At 50K: stop <= $1,200, day budget $1,200, qualifying day $150, payout cap $2,000.
@@ -29,11 +29,12 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 // BACKTEST at 50K, the last 5 years first: Nov 15 2021 - Nov 13 2026 (Nasdaq-100 / S&P 500 CFD minute data
 //          cross-checked against real MNQ futures; $1.34 commission; after Lucid's 10% and evals at $80.50, a
 //          discount-code price; list price $115): eval pass 41.3%, median 9 sessions; 61.8% of funded accounts reach a
-//          payout; one account slot's first payout after a median 58 days (67.5% within 90 days); 5 funded 50K + 5
-//          evals about $51-52k a year ($48-49k with $115 evals), a payout in 67% of months, longest gap 6.4 months,
-//          worst 12 months +$1.3k, every full year positive. By year (5 funded + 5 evals): 2022 +$42.5k, 2023 +$13.6k,
-//          2024 +$87.2k, 2025 +$28.5k, 2026 to Nov 13 +$84.2k. The last 4 years alone (from Nov 14 2022): eval pass
-//          42.9%, first payout median 69 days, about $52k a year.
+//          payout; one account slot's first payout after a median 58 days (67.5% within 90 days). 5 funded 50K + 5
+//          evals (up to 10 accounts in all, one new eval a day): about $51-52k a year ($48-49k with $115 evals), a payout
+//          in 67% of months, longest gap 6.4 months, worst 12 months +$1.3k, every full year positive. By year: Nov 15 -
+//          Dec 31 2021 -$1.1k (start-up: evals bought, no payout yet), 2022 +$42.5k, 2023 +$13.6k, 2024 +$87.2k, 2025
+//          +$28.5k, 2026 to Nov 13 +$84.2k. The last 4 years alone (from Nov 14 2022): eval pass 42.9%, first payout
+//          median 69 days, about $52k a year.
 //          Real MNQ futures, Sep 9 - Nov 17 2026 (50 sessions; far too short to prove anything): one funded 50K account
 //          +$17.0k from 71 trades; 30 of 46 finished evals passed, but every eval started Oct 19 - Nov 6 failed.
 //          NOT live-tested; past results do not guarantee future payouts. Full study: backtest/onr in the MMT repo.
@@ -41,13 +42,13 @@ indicator("ONR Book v2.2 - Lucid Flex (overnight reversion + opening drive)", sh
 
 grpA = "Account - update before each session"
 phase = input.string("EVAL", "Phase", options = ["EVAL", "FUNDED"], group = grpA)
-acctSize = input.string("50K", "Account size (Lucid Flex)", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets Lucid's target, max loss, qualifying-day amount and payout cap for that size, and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Backtest Nov 2022 - Nov 2026 (5 funded accounts, max-allowed payouts): 50K made ~58% more than 25K with the same worst 12 months (about -$2.7k); 100K/150K made more still but cost ~$21-22k of evals in their worst 12 months.")
+acctSize = input.string("50K", "Account size (Lucid Flex)", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets Lucid's target, max loss, qualifying-day amount and payout cap for that size, and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Backtest Nov 2022 - Nov 2026 (5 funded accounts + evals, max-allowed payouts, list eval prices $65 / $115 / $215 / $323): 50K made ~58% more than 25K with about the same worst 12 months (-$2.7k vs -$2.6k); 100K and 150K made more still, but their worst 12 months were about -$21k and -$22k.")
 pnlNow = input.float(0.0, "P&L now ($ vs account start; funded: after payouts)", group = grpA)
 peakEod = input.float(0.0, "Highest end-of-day P&L so far ($)", minval = 0.0, group = grpA)
 bestDay = input.float(0.0, "EVAL: best single day so far ($)", minval = 0.0, group = grpA)
-consOpt = input.string("40% (standard)", "EVAL: consistency rule you bought", options = ["40% (standard)", "50% (paid add-on)"], group = grpA, tooltip = "Backtest: the paid 50% add-on did not raise the pass rate (42.0% vs 42.9% in 2011-20, 49.0% vs 50.4% in 2021-26).")
-widthOpt = input.string("Wide x1.0 (recommended)", "EVAL: bracket width", options = ["Wide x1.0 (recommended)", "Medium x0.75", "Tight x0.5 (old)"], group = grpA, tooltip = "Wide = fewer contracts with a wider stop and target (at a 650-point range: 2 MNQ at 50K, 1 at 25K, stop ~300 pts). Backtest pass rate 43% / 50% (2011-20 / 2021-26) vs 34% / 36% for the tight bracket.")
-newsSkip = input.bool(true, "EVAL: no overnight trade into Thursday / first-Friday 08:30 news", group = grpA, tooltip = "Skips the 18:10 overnight eval trade on Wednesday evenings (jobless claims Thursday 08:30) and on the evening before the first Friday of the month (jobs report; the release occasionally falls on another day). The 09:35 opening drive can still trade that day. Eval only. Backtest effect is small: +1 to +3 points of pass rate.")
+consOpt = input.string("40% (standard)", "EVAL: consistency rule you bought", options = ["40% (standard)", "50% (paid add-on)"], group = grpA, tooltip = "Pick what you bought at checkout (it applies to the eval only). Backtest at 50K, last 5 years, 5 funded + 5 evals at $80.50: the 50% add-on passed 44.2% of evals vs 41.3% and made about $11.9k a year more before its own price (2011-21: +$4.3k). By the study's noise rule it is worth it below about $16 per eval. A descriptive check, not a pre-registered test.")
+widthOpt = input.string("Wide x1.0 (recommended)", "EVAL: bracket width", options = ["Wide x1.0 (recommended)", "Medium x0.75", "Tight x0.5 (old)"], group = grpA, tooltip = "Wide = fewer contracts with a wider stop and target (at a 650-point range: 2 MNQ at 50K, 1 at 25K, stop ~300 pts). Backtest pass rate at 50K, last 5 years: wide 41.3%, medium 41.5%, tight 39.5%; 2011-20: 34.8%, 31.0%, 22.1%.")
+newsSkip = input.bool(true, "EVAL: no overnight trade into Thursday / first-Friday 08:30 news", group = grpA, tooltip = "Skips the 18:10 overnight eval trade on Wednesday evenings (jobless claims Thursday 08:30) and on the evening before the first Friday of the month (jobs report; the release occasionally falls on another day). The 09:35 opening drive can still trade that day. Eval only. Backtest at 50K: pass rate 41.3% with the skip vs 39.9% without over the last 5 years; 34.8% vs 31.1% in 2011-20.")
 nPay = input.int(0, "FUNDED: payouts taken", minval = 0, maxval = 5, group = grpA)
 qDays = input.int(0, "FUNDED: qualifying days since last payout (>= $100 / $150 / $200 / $250 by size)", minval = 0, group = grpA)
 pnlAfterPay = input.float(0.0, "FUNDED: P&L right after your last payout ($; 0 before the first)", group = grpA, tooltip = "Lucid also requires positive net profit since the last payout. Enter the P&L your account showed right after the last payout was taken.")
@@ -55,7 +56,7 @@ commIn = input.float(1.34, "Commission per MNQ round turn ($)", minval = 0.0, st
 fundSize = input.string("Auto (ADR-normalised)", "FUNDED: contracts per leg", options = ["Auto (ADR-normalised)", "Fixed 1 MNQ (v1)"], group = grpA, tooltip = "Auto = round(350 / ADR) MNQ per $1,000 of max loss. At 50K that is round(700 / ADR): 1 MNQ while NQ's daily range is above 467 points, 2 MNQ at 280-467, 3 MNQ at 200-280 and more below that (at most 10 / 20 / 30 / 40 MNQ for 25K / 50K / 100K / 150K). Fixed 1 MNQ is v1's sizing, which stalled payouts in low-range years.")
 grpL = "Live tracking (alarm levels) - update each weekend"
 liveDays = input.int(0, "Trading days since this funded account started trading ONR", minval = 0, group = grpL)
-livePnl = input.float(0.0, "Live ONR trade P&L since then ($, this one funded account)", group = grpL, tooltip = "Sum of this funded account's ONR trade results since it started (no eval fees, no payouts). The bands come from the backtest: one 50K funded account (scaled to your size), Nov 2022 - Nov 2026, 20,000 bootstrap paths - median, 5th percentile (yellow) and 1st percentile (red).")
+livePnl = input.float(0.0, "Live ONR trade P&L since then ($, this one funded account)", group = grpL, tooltip = "Sum of this funded account's ONR trade results since it started (no eval fees, no payouts). The bands come from the backtest: one 50K funded account (scaled to your size), Nov 2021 - Nov 2026, 20,000 bootstrap paths - median, 5th percentile (yellow) and 1st percentile (red).")
 grpD = "Data"
 sigSym = input.symbol("OANDA:SPX500USD", "S&P 500 CFD for the stretch score (the research used an S&P 500 CFD)", group = grpD)
 grpV = "Display"
@@ -80,7 +81,7 @@ int FUNDMAX = acctSize == "50K" ? 20 : acctSize == "100K" ? 30 : acctSize == "15
 float M = MLL / 1000.0
 string TZ = "America/New_York"
 float CONS = consOpt == "50% (paid add-on)" ? 0.5 : 0.4      // best day must stay <= CONS x total profit at the pass
-float TPCAP = TARGET * CONS                                    // eval target cap per day (25K: $500 at 40%, $625 at 50%)
+float TPCAP = TARGET * CONS                                    // eval target cap per day (25K: $500 at 40%, $625 at 50%; 50K: $1,200 / $1,500)
 float SPAN = widthOpt == "Tight x0.5 (old)" ? 0.5 : (widthOpt == "Medium x0.75" ? 0.75 : 1.0)   // eval bracket width (stop + target) in ADRs
 
 // ---------- trade log (last 30 closed trades)
@@ -643,7 +644,7 @@ alertcondition(buyNow, "ONR BUY", "ONR: BUY signal - check the alert message / p
 alertcondition(sellNow, "ONR SELL", "ONR: SELL signal - check the alert message / panel for size, stop and target")
 
 // ---------- live alarm levels: block bootstrap (10-session blocks, 20,000 paths) of one 50K funded account's daily trade P&L,
-// Nov 2022 - Nov 2026 backtest (v2.2 rules, $1.34 commission); median, 5th pct = yellow, 1st pct = red; scaled by size
+// Nov 2021 - Nov 2026 backtest (v2.2 rules, $1.34 commission); median, 5th pct = yellow, 1st pct = red; scaled by size
 f_interp(float d, array<float> xs, array<float> ys) =>
     float out = array.get(ys, 0)
     if d >= array.get(xs, array.size(xs) - 1)
@@ -656,9 +657,9 @@ f_interp(float d, array<float> xs, array<float> ys) =>
                 out := array.get(ys, k) + (array.get(ys, k + 1) - array.get(ys, k)) * (d - x0) / (x1 - x0)
     out
 var array<float> AX = array.from(20.0, 40.0, 60.0, 120.0, 250.0)
-var array<float> AMED = array.from(1309.0, 2785.0, 4340.0, 8760.0, 18683.0)
-var array<float> AYEL = array.from(-3538.0, -4112.0, -4383.0, -3566.0, 100.0)
-var array<float> ARED = array.from(-5359.0, -6883.0, -7776.0, -8929.0, -7284.0)
+var array<float> AMED = array.from(1354.0, 2831.0, 4190.0, 8623.0, 18314.0)
+var array<float> AYEL = array.from(-3300.0, -4055.0, -4160.0, -3261.0, 923.0)
+var array<float> ARED = array.from(-5202.0, -6555.0, -7376.0, -7956.0, -5903.0)
 
 // ---------- next step on the clock (ET and PT)
 f_nextStep(bool ev) =>

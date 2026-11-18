@@ -29,6 +29,10 @@ futures, including several Lucid accounts side by side.
   - Rounds 3–5 re-scored on these 5 years: none of 18 changes passed.
   - Round 6 (no overnight trade, or the eval's IB breakout in its place) did not pass either.
   - See "The last 5 years first", "Research round 6" and "At your eval price" below.
+- **Final review (Nov 18):** the indicator and the backtest match line by line. The indicator's tooltips now give 50K
+  numbers and its live alarm uses the last 5 years. One new finding: Lucid's paid 50% consistency add-on raised
+  5 funded + 5 evals by about $11.9k a year over the last 5 years before its own price (+$4.3k a year in 2011–21).
+  By rule 5Y it is worth buying below about $16 an eval. See "Final review" below.
 - **Last 4 years only** (Nov 2022 – Nov 2026): same conclusions; 5 funded 50K accounts with
   max-allowed payouts netted ~$51k a year (25K: ~$32k), with 2023 the drought year. See "Last 4 years only" below.
 - **Dry spells cannot be removed completely.** About half of them were times the strategy itself lost money; the
@@ -548,6 +552,63 @@ A Lucid Flex 50K eval costs $80.50 with the user's discount code. The eval price
 
 Year by year, 5 funded + 5 evals at $80.50: 2021 (from Nov 15) −$1,127 · 2022 $42,452 · 2023 $13,565 · 2024 $87,152 · 2025 $28,471 · 2026 (to Nov 13) $84,184.
 
+### Final review (Nov 18 2026): the indicator against the backtest, line by line
+
+Every line of `indicators/onr_book.pine` was checked against `engine.py` and `account.py`:
+- the S&P score's 14 features and their z constants (equal to 6 decimals);
+- the session clock (an event fires on the first bar whose close reaches its minute), the ADR, the IB range and the half days;
+- every entry, stop, target and fill: a gap through a stop fills at the open, a target needs a tick through, and the stop wins a tie;
+- the pyramid's add (at the open after a gap) and its trail;
+- the IB orders: only on the drive's side, and a stop inside the fill bar counts;
+- the eval bracket, the funded day budget, the cushion levels, the sizes and the payout rules.
+
+No logic difference was found. The regression checks are unchanged (901 fingerprints, 7,459 50K checks), and the script still parses with no undeclared names. What changed in the indicator (no trade changes):
+- **Tooltips at 50K.** Three tooltips quoted 25K pass rates from the first study (the 50% add-on, the bracket width, the news skip). They now give the 50K numbers below (`options50k.py`). The size tooltip now says its figures use list eval prices.
+- **Header.** It now says what "5 funded + 5 evals" means (up to 10 accounts in all, one new eval a day) and includes the start-up weeks, Nov 15 – Dec 31 2021 (−$1.1k).
+- **Live alarm bands.** These now come from the last 5 years, like every other figure, instead of the last 4. They are slightly tighter, so the alarm turns yellow or red a little sooner.
+
+| Trading days | Typical | Yellow below | Red below | Before (last 4 years): typical / yellow / red |
+|---|---|---|---|---|
+| 20 | $1,354 | −$3,300 | −$5,202 | $1,309 / −$3,538 / −$5,359 |
+| 40 | $2,831 | −$4,055 | −$6,555 | $2,785 / −$4,112 / −$6,883 |
+| 60 | $4,190 | −$4,160 | −$7,376 | $4,340 / −$4,383 / −$7,776 |
+| 120 | $8,623 | −$3,261 | −$7,956 | $8,760 / −$3,566 / −$8,929 |
+| 250 | $18,314 | $923 | −$5,903 | $18,683 / $100 / −$7,284 |
+
+Eval options at 50K, evals started on every session (`results_options_fee8050/options_pass_rates.csv`):
+
+| Option | Last 5 years | 2011–20 | 2021–26 |
+|---|---|---|---|
+| Default: 40% rule, wide bracket, news skip | 41.3% | 34.8% | 40.9% |
+| 50% consistency add-on | 44.2% | 34.4% | 42.8% |
+| Medium bracket ×0.75 | 41.5% | 31.0% | 38.0% |
+| Tight bracket ×0.5 | 39.5% | 22.1% | 37.0% |
+| No news skip | 39.9% | 31.1% | 39.5% |
+
+**New: the paid 50% consistency add-on helps at 50K.** The first study (25K, one account, $500 payouts) found no gain, and that conclusion was carried forward without a retest. At 50K with 5 funded + 5 evals and max-allowed payouts, it is worth having.
+- **What it changes:** the eval passes when the best day is at most 50% of the total profit, instead of 40%. The bracket's target cap rises from $1,200 to $1,500, so the same $1,200 stop is spread over slightly more contracts. The indicator already does both when "EVAL: consistency rule you bought" is set to "50% (paid add-on)".
+- **How it was scored:** research round 5/6's machinery and rule 5Y, unchanged (12 start dates, 8-placebo noise bands). Its price per eval is not known here, so each price was scored.
+
+| Add-on price per eval | Last 5 years: net a year | Worst full year | 2011–21: net a year | Worst full year | Rule 5Y |
+|---|---|---|---|---|---|
+| (none: current rules) | $52,274 | $13,565 | $31,629 | −$982 | |
+| $0 | $64,211 (+$11,937) | $24,765 (+$11,200) | $35,924 (+$4,295) | $3,253 (+$4,235) | passes |
+| $10 | $63,270 (+$10,996) | $24,005 (+$10,440) | $34,825 (+$3,196) | $1,993 (+$2,975) | passes |
+| $15 | $62,799 (+$10,526) | $23,625 (+$10,060) | $34,275 (+$2,646) | $1,363 (+$2,345) | passes |
+| $20 | $62,329 (+$10,055) | $23,245 (+$9,680) | $33,725 (+$2,096) | $733 (+$1,715) | inside the noise band |
+| $30 | $61,388 (+$9,114) | $22,485 (+$8,920) | $32,626 (+$997) | −$527 (+$455) | inside the noise band |
+| $40 | $60,447 (+$8,173) | $21,725 (+$8,160) | $31,527 (−$103) | −$1,787 (−$805) | inside the noise band |
+
+Evals at $80.50.
+- **Rule 5Y:** it passes up to an add-on price of $16.41 an eval ($15.50 with $115 evals; `results_options/`).
+  - Up to about $33 it is still ahead on net and on the worst year in both periods, but by less than the noise band.
+  - Above about $39 it makes less than the current rules in 2011–21.
+  - Each $10 of add-on price costs about $940 a year (94 evals a year).
+- **The price:** Lucid's help centre confirms the rule (50% instead of 40%, evaluation only, chosen at checkout) but does not give a price. Check it at checkout.
+- **Caveat:** this check was run after the add-on's first numbers had been seen, so it is a descriptive result, not a pre-registered one.
+
+`options50k.py DATA results_options_fee8050` (with `ONR_EVAL_FEE_50K=80.50`) reproduces both tables.
+
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
@@ -635,6 +696,8 @@ python3 research6.py ../../data results_r6_fee8050
 python3 report50k.py ../../data results_50k_fee8050 && python3 make_kpis.py results_50k_fee8050 results_50k_fee8050/kpis.csv "Nov 14 2022 - Nov 13 2026" "2023-2025" results_50k_fee8050
 python3 report50k.py ../../data results_50k_5y_fee8050 2021-11-15 && python3 make_kpis.py results_50k_5y_fee8050 results_50k_5y_fee8050/kpis.csv "Nov 15 2021 - Nov 13 2026" "2022-2025"
 python3 export_charts.py ../../data_live results_charts_fee8050
+python3 options50k.py ../../data results_options_fee8050   # the indicator's eval options and the 50% add-on (final review)
+unset ONR_EVAL_FEE_50K && python3 options50k.py ../../data results_options
 ```
 
 Limits: the CFD is a proxy for MNQ before Sep 2026 (validated on the overlap only); TradingView's own fills on 1–5

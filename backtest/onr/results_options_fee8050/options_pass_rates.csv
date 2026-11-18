@@ -1,0 +1,21 @@
+period,option,evals_finished,evals_passed,pass_pct,median_sessions_to_pass
+2011-20,"default (40% rule, wide bracket, news skip)",2549,888,34.8,11.0
+2011-20,50% consistency add-on,2549,878,34.4,9.0
+2011-20,medium bracket x0.75,2549,789,31.0,10.0
+2011-20,tight bracket x0.5,2549,564,22.1,11.0
+2011-20,no news skip,2549,792,31.1,10.0
+2021-26,"default (40% rule, wide bracket, news skip)",1517,620,40.9,10.0
+2021-26,50% consistency add-on,1516,649,42.8,8.0
+2021-26,medium bracket x0.75,1517,576,38.0,8.0
+2021-26,tight bracket x0.5,1517,562,37.0,7.0
+2021-26,no news skip,1515,599,39.5,9.0
+last 5 years,"default (40% rule, wide bracket, news skip)",1292,534,41.3,9.0
+last 5 years,50% consistency add-on,1291,571,44.2,8.0
+last 5 years,medium bracket x0.75,1292,536,41.5,8.0
+last 5 years,tight bracket x0.5,1292,510,39.5,7.0
+last 5 years,no news skip,1290,515,39.9,8.0
+all years,"default (40% rule, wide bracket, news skip)",4066,1508,37.1,10.0
+all years,50% consistency add-on,4065,1527,37.6,9.0
+all years,medium bracket x0.75,4066,1365,33.6,9.0
+all years,tight bracket x0.5,4066,1126,27.7,9.0
+all years,no news skip,4064,1391,34.2,9.0
