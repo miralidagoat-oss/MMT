@@ -1,0 +1,6 @@
+setup,name,family,net_5y_usd,worst_year_5y_usd,deepest_drop_5y_usd,longest_gap_5y_months,net_2011_21_usd,worst_year_2011_21_usd,verdict
+BASE,Current rules (5 funded + 5 evals),Current rules,49103,11081,-8855,6.4,27984,-5122,The rules in use
+N1,No overnight trade at all,No overnight trade,46188,9898,-6210,6.4,27611,-7819,Not better than the noise in the last 5 years
+N2,Funded accounts skip the overnight trade,No overnight trade,50674,6207,-7130,6.8,26846,-2419,Not better than the noise in the last 5 years
+N3,Evals skip the overnight trade,No overnight trade,48724,12451,-7820,6.4,26437,-13334,Not better than the noise in the last 5 years
+U1,No overnight trade; the eval takes the 10:30 IB breakout instead,Replacement,51522,18903,-4831,2.9,25318,-8080,Not better than the noise in the last 5 years

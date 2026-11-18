@@ -284,6 +284,25 @@ def pyramid(S, d, side, slip=0.0, stop=0.35, add=0.15, trail=0.25, n=1, comm=1.0
     return pnl(w.xc - side * slip), "time"
 
 
+def ib_entry(S, d, only_side=0):
+    """The IB stop-order fill of session d, by ib_breakout's own rules: (side, entry price, bar index) or None when
+    nothing fills before the orders expire or both sides are touched in one bar (round 6: the eval's IB fallback)."""
+    r = S.S[d]
+    if "ib" not in r:
+        return None
+    o, h, l, c, t = r["rng"]
+    ib = r["ib"]
+    buy, sell = ib["H"] + TK, ib["L"] - TK
+    for j in range(ib["arm"] + 1, ib["end"] + 1):
+        hu = h[j] >= buy and only_side >= 0
+        hd = l[j] <= sell and only_side <= 0
+        if hu and hd:
+            return None
+        if hu or hd:
+            return (1, max(buy, o[j]), j) if hu else (-1, min(sell, o[j]), j)
+    return None
+
+
 def ib_breakout(S, d, slip=0.0, stop=0.25, tgt=0.5, n=1, comm=1.0, only_side=0):
     """only_side=+1/-1 arms just that stop order (v2.1: on opening-drive days only the drive's side, so no account
     ever holds a position opposite to another leg or another copy-traded account)."""

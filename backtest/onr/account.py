@@ -14,7 +14,7 @@ import math
 
 import numpy as np
 
-from engine import PV, bracket_exit, funded_on, ib_breakout, news_night, pyramid
+from engine import PV, Win, bracket_exit, funded_on, ib_breakout, ib_entry, news_night, pyramid
 from holidays import half_day
 
 
@@ -56,14 +56,15 @@ class EvalAccount:
 
     def __init__(self, S, cons=0.4, span=1.0, news=True, slip=0.0, comm=1.0, side_override=None,
                  legs=("on", "od"), thr=None, od_k=0.10, improved=False, book_mult=0, adr_ref=350.0, size=25,
-                 on_long_only=False, risk_k=1.0):
+                 on_long_only=False, risk_k=1.0, ib_fallback=False):
         """book_mult=0: v1/v2 eval (one bracket trade a day). book_mult=k: trade the funded book (overnight, pyramid,
         IB with the drive) at k x the funded size under the same $600 day budget. risk_k: bracket stop and target caps
-        x risk_k (round 3, C)."""
+        x risk_k (round 3, C). ib_fallback (round 6, U1): on a session with no trade so far (no 09:35 drive), take the
+        10:30 IB breakout (OCO, engine.ib_entry) with the same bracket, held to 16:00; a stop inside the fill bar counts."""
         self.S, self.cons, self.span, self.news, self.slip, self.comm = S, cons, span, news, slip, comm
         self.side_override, self.legs, self.thr, self.od_k, self.improved = side_override, legs, thr, od_k, improved
         self.book_mult, self.adr_ref, self.size, self.on_long_only = book_mult, adr_ref, size, on_long_only
-        self.risk_k = risk_k
+        self.risk_k, self.ib_fallback = risk_k, ib_fallback
         self.R = RULES[size]
         self.m = self.R["mll"] / 1000.0
         self.pnl = self.peak = self.best = 0.0
@@ -131,6 +132,22 @@ class EvalAccount:
                                              self.comm, self.size, self.risk_k)
                     E = r["od"]["E"] + side * self.slip
                     px, _ = bracket_exit(r["od"]["w"], side, E, sd, td, self.slip)
+                    day = (px - E) * side * n * PV - n * self.comm
+                    traded = True
+            if not traded and self.ib_fallback and not (self.improved and is_half(d)):
+                f = ib_entry(S, d, 0)
+                if f is not None:
+                    side, E0, j = f
+                    n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved,
+                                             self.comm, self.size, self.risk_k)
+                    E = E0 + side * self.slip
+                    o, h, l, c, _ = r["rng"]
+                    if (side == 1 and E - l[j] >= sd) or (side == -1 and h[j] - E >= sd):
+                        px = E - side * sd - side * self.slip  # stopped inside the fill bar (as ib_breakout)
+                    else:
+                        e = r["ib"]["eod"]
+                        px, _ = bracket_exit(Win(o[j + 1:e + 1], h[j + 1:e + 1], l[j + 1:e + 1], c[j + 1:e + 1]), side, E,
+                                             sd, td, self.slip)
                     day = (px - E) * side * n * PV - n * self.comm
                     traded = True
         self.trades += traded
