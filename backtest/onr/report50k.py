@@ -4,6 +4,8 @@
 Primary window: the last 4 years (Nov 14 2022 -> Nov 13 2026). 2011-2026 and real MNQ futures (Sep-Nov 2026) as context.
 usage: report50k.py DATA_DIR OUT_DIR [WINDOW_START]   (writes CSV tables + summary.json into OUT_DIR and prints the
        summary; WINDOW_START defaults to 2022-11-14, e.g. 2021-11-15 for the last 5 years)
+Environment: ONR_EVAL_FEE_50K sets the eval price (account.py); ONR_EVAL_CONS=0.5 runs every eval with Lucid's paid
+50% consistency add-on (results_50k_5y_addon_fee8050).
 """
 import csv
 import functools
@@ -28,7 +30,10 @@ account.ib_breakout = functools.lru_cache(maxsize=None)(engine.ib_breakout)
 SIZE = 50
 COMM = 1.34
 FEE = RULES[SIZE]["price"]
-E_KW = dict(improved=True, comm=COMM, size=SIZE)
+# ONR_EVAL_CONS=0.5: evals bought with Lucid's paid 50% consistency add-on (pass rule and the bracket's target cap use
+# 50% instead of 40%). Unset, E_KW is exactly as before.
+CONS = float(os.environ.get("ONR_EVAL_CONS", "0.4"))
+E_KW = dict(improved=True, comm=COMM, size=SIZE, **({} if CONS == 0.4 else dict(cons=CONS)))
 F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM, size=SIZE, payout_max=True)
 W0 = "2022-11-14"
 S = None
@@ -133,7 +138,8 @@ def main(dd, out):
     wdays = days[k0:]
     yrs_window = (days[-1] - days[k0]) / 365.25
     summary = dict(window=[str(day(days[k0])), str(day(days[-1]))], size="Lucid Flex 50K", commission=COMM,
-                   eval_price=FEE, payout_policy="maximum allowed (50% of profit, cap $2,000)")
+                   eval_price=FEE, payout_policy="maximum allowed (50% of profit, cap $2,000)",
+                   **({} if CONS == 0.4 else dict(eval_consistency=CONS)))
     print(f"window {day(days[k0])} -> {day(days[-1])} ({len(wdays)} sessions)", flush=True)
 
     # ---------------- continuous funded book: legs, years, daily P&L

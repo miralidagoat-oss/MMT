@@ -609,6 +609,42 @@ Evals at $80.50.
 
 `options50k.py DATA results_options_fee8050` (with `ONR_EVAL_FEE_50K=80.50`) reproduces both tables.
 
+#### The full backtest with the add-on (`addon50k.py`, `results_addon_fee8050/`; the dashboard's "50% add-on" page)
+
+The same 5-year report with every eval bought with the add-on (`ONR_EVAL_CONS=0.5 report50k.py` → `results_50k_5y_addon_fee8050/`), side by side with the current rules. Evals at $80.50, before the add-on's own price:
+
+| Last 5 years | Current rules (40%) | With the 50% add-on |
+|---|---|---|
+| Eval pass rate (an eval started on every session) | 41.3% | 44.2% |
+| Sessions to pass: median / 90th percentile | 9 / 20 | 8 / 17 |
+| Funded accounts that reach a payout | 61.8% | 63.1% |
+| Paid to you per funded account, average | $1,946 | $2,112 |
+| One account slot: first payout, median / within 90 days | 58 days / 67.5% | 54 days / 71.9% |
+| 5 funded + 5 evals: net a year | $52,274 | $64,211 |
+| Worst full year / worst 12 months | $13,565 / $1,287 | $24,765 / $8,006 |
+| Longest wait for a payout | 6.4 months | 6.1 months |
+| Total, 5 years / most cash out of pocket | $255,401 / −$2,999 | $313,734 / −$2,603 |
+
+By year, 5 funded + 5 evals (median of 12 start dates):
+
+| Year | Current | With the add-on | Difference |
+|---|---|---|---|
+| 2022 | $42,452 | $49,106 | +$6,655 |
+| 2023 | $13,565 | $24,765 | +$11,200 |
+| 2024 | $87,152 | $105,901 | +$18,750 |
+| 2025 | $28,471 | $42,411 | +$13,940 |
+| 2026 (to Nov 13) | $84,184 | $92,304 | +$8,120 |
+
+Since 2011 (start Feb 15 2011), the add-on made more in 12 of 16 years and less in 4: 2012 −$677, 2013 −$3,431, 2018 −$2,765 and 2021 −$2,591.
+
+**Real MNQ futures, Sep 9 – Nov 17 2026: the add-on did worse.** More evals passed (33 of 47 against 30 of 46). But one account bought on Sep 9 netted $104 against $3,894, and 5 funded + 5 evals netted $5,479 against $18,705 (25 evals bought against 10). The reason is timing:
+- With the add-on, the Sep 9 eval passed on Sep 28 instead of Sep 30, so its funded account met a different run of days.
+- Its first payout on Oct 16 was $563 instead of $1,136. After the payout the cushion was thin, and the Oct 19 loss took it below the $400 abandon level.
+- Its next three evals each ran out of cushion before a fifth one passed on Nov 16.
+- Under the current rules, the same account was funded two sessions later and survived Oct 19.
+
+This is one 50-session path; the 5-year figures come from about 1,300 sessions and many start dates. The step-by-step table is `addon_journey.csv`. The current-rules figures equal `export_charts.py`'s checked ones.
+
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
@@ -697,6 +733,8 @@ python3 report50k.py ../../data results_50k_fee8050 && python3 make_kpis.py resu
 python3 report50k.py ../../data results_50k_5y_fee8050 2021-11-15 && python3 make_kpis.py results_50k_5y_fee8050 results_50k_5y_fee8050/kpis.csv "Nov 15 2021 - Nov 13 2026" "2022-2025"
 python3 export_charts.py ../../data_live results_charts_fee8050
 python3 options50k.py ../../data results_options_fee8050   # the indicator's eval options and the 50% add-on (final review)
+ONR_EVAL_CONS=0.5 python3 report50k.py ../../data results_50k_5y_addon_fee8050 2021-11-15   # every eval with the 50% add-on
+python3 addon50k.py ../../data_live results_addon_fee8050   # add-on vs current rules, side by side (dashboard page)
 unset ONR_EVAL_FEE_50K && python3 options50k.py ../../data results_options
 ```
 
