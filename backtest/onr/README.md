@@ -842,8 +842,19 @@ Under Lucid's rules, 1 to 5 funded accounts with as many evals make $12,789, $23
 - **Header and panel.** Both now quote these figures (real futures, Lucid's rules).
 - **Older tooltips.** The ones that still quote CFD results now say so.
 
+**With the add-on's own price (Nov 20).** The user buys the 50% add-on for $10 extra per eval, so each eval costs $90.50. `ONR_ADDON_FEE_50K=10` charges that $10 on the add-on runs' evals only (`results_live_fee8050_addon10/`). The trades are identical; only the accounting changes.
+
+| 5 funded + 5 evals, each account closed after its 4th payout | 50% add-on ($90.50 an eval) | 40% rule ($80.50) |
+|---|---|---|
+| Net a year | $59,716 | $60,318 |
+| Worst full year | $38,345 | $34,341 |
+| Worst 12 months | +$31,535 | +$23,173 |
+
+The website's main view is now this setup: the 50% add-on at $90.50, each account closed after its 4th payout. The table of 1 to 5 accounts and the yearly chart show the same setup.
+
 ```bash
 ONR_EVAL_FEE_50K=80.50 python3 live50k.py ../../data_fut results_live_fee8050
+ONR_EVAL_FEE_50K=80.50 ONR_ADDON_FEE_50K=10 python3 live50k.py ../../data_fut results_live_fee8050_addon10
 ```
 
 

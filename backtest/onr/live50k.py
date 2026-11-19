@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Lucid's maximum (5 funded + 5 evals) with Lucid's move-to-live rule, on real NQ futures.
 
-usage: ONR_EVAL_FEE_50K=80.50 python3 live50k.py FUT_DATA_DIR OUT_DIR
+usage: ONR_EVAL_FEE_50K=80.50 [ONR_ADDON_FEE_50K=10] python3 live50k.py FUT_DATA_DIR OUT_DIR
   FUT_DATA_DIR: NQFUT.npz (prep_nqfut.py) and SPXUSD.npz.
+  ONR_ADDON_FEE_50K: what the 50% consistency add-on adds to each eval's price (default 0: not counted). It is charged
+  on the add-on runs' evals only; like the eval price it changes the bookkeeping, not a single trade.
 
 Every earlier pool backtest let the 10 accounts cycle for ever: an account that took its 5th payout simply ended and
 the next passed eval took its slot. Lucid's help centre (read Nov 19 2026) says otherwise:
@@ -63,6 +65,7 @@ START5 = "2021-11-15"
 PERIODS = {"5y": [("last 5y", START5, "2026-12-31")], "all": [("since 2019", "2019-01-01", "2026-12-31")]}
 FULL = {"last 5y": ["2022", "2023", "2024", "2025"], "since 2019": ["2020", "2021", "2022", "2023", "2024", "2025"]}
 CASH = ("payout", "live_wd", "bonus")
+ADDON_FEE = float(os.environ.get("ONR_ADDON_FEE_50K", "0"))
 _G = {}
 
 
@@ -197,28 +200,28 @@ def sim_live(S, k0, k1, ek, fk, live=True, restart="all", N=N_FUNDED, max_total=
     return ev, "".join(phases)
 
 
-def cash(kind, v, split_live):
+def cash(kind, v, split_live, fee=FEE):
     """$ to the trader of one event: sim payouts 90%, live withdrawals at the live split, the bonus 90/10, eval bought
-    -price, refund +price."""
+    -price, refund +price (fee: the price of one eval, the add-on's included where it applies)."""
     if kind == "payout" or kind == "bonus":
         return SPLIT * v
     if kind == "live_wd":
         return split_live * v
     if kind == "buy":
-        return -FEE
+        return -fee
     if kind == "refund":
-        return v
+        return fee
     return 0.0
 
 
-def metrics(S, ev, phases, k_start, k_stop, split_live, periods):
+def metrics(S, ev, phases, k_start, k_stop, split_live, periods, fee=FEE):
     """research4.run_metrics with live withdrawals, bonuses and refunds counted as cash (equal to it when none occur:
     checked), plus the live phase's own figures."""
     days = [iso(S.days[k]) for k in range(k_start, k_stop)]
     net = np.zeros(k_stop - k_start)
     pays = []
     for k, kind, _, v in ev:
-        net[k - k_start] += cash(kind, v, split_live)
+        net[k - k_start] += cash(kind, v, split_live, fee)
         if kind in CASH:
             pays.append(k)
     run = np.cumsum(net)
@@ -234,11 +237,11 @@ def metrics(S, ev, phases, k_start, k_stop, split_live, periods):
         y = yrs[iso(S.days[k])[:4]]
         if kind == "payout":
             y["sim_payouts"] += 1
-            y["sim_payouts_net"] += cash(kind, v, split_live)
+            y["sim_payouts_net"] += cash(kind, v, split_live, fee)
         elif kind == "live_wd":
-            y["live_wd_net"] += cash(kind, v, split_live)
+            y["live_wd_net"] += cash(kind, v, split_live, fee)
         elif kind == "bonus":
-            y["bonus_net"] += cash(kind, v, split_live)
+            y["bonus_net"] += cash(kind, v, split_live, fee)
         elif kind == "buy":
             y["evals_bought"] += 1
         elif kind == "pass":
@@ -326,7 +329,8 @@ def _job(args):
     k0 = start(window, off)
     kw, fx = MODELS[model]
     ev, ph = sim_live(S, k0, len(S.days), ek, dict(F_KW, **fx), N=N, max_total=2 * N, **kw)
-    res = {f"split{int(100 * s)}": metrics(S, ev, ph, k0, len(S.days), s, PERIODS[window]) for s in (0.8, 0.9)}
+    fee = FEE + (ADDON_FEE if cons == 0.5 else 0.0)
+    res = {f"split{int(100 * s)}": metrics(S, ev, ph, k0, len(S.days), s, PERIODS[window], fee) for s in (0.8, 0.9)}
     return (model, cons, window, off, N), res
 
 
@@ -371,7 +375,7 @@ def main(dd, out):
     _init(dd)
     S = _G["S"]
     print(f"futures sessions {len(S.days)}: first tradable {iso(S.days[_G['k0']])}, last 5 years from {iso(S.days[_G['k5']])}, "
-          f"last {iso(S.days[-1])}; eval price ${FEE:.2f}", flush=True)
+          f"last {iso(S.days[-1])}; eval price ${FEE:.2f}, add-on +${ADDON_FEE:.2f} on the add-on's evals", flush=True)
     self_check()
     jobs = [(m, c, w, o, 5) for m in MODELS for c in (0.4, 0.5) for w in ("5y", "all") for o in OFFSETS]
     jobs += [(m, c, "5y", o, n) for m in ("cycle", "live", "stop4") for c in (0.4, 0.5) for o in OFFSETS for n in (1, 2, 3, 4)]
@@ -456,8 +460,8 @@ def main(dd, out):
     # ---- the website's overview: N funded + N evals under Lucid's rule (live split 80%), and 5 + 5 the other ways
     lrows = []
     for cons, tag in ((0.4, ""), (0.5, "-addon")):
-        for model, n, rid in ([("live", n, f"B{n}{tag}") for n in range(1, 6)]
-                              + [("stop4", 5, f"B5{tag}-stop4"), ("cycle", 5, f"B5{tag}-cycle")]):
+        for model, n, rid in ([("live", n, f"B{n}{tag}") for n in range(1, 6)] + [("stop4", n, f"B{n}{tag}-stop4") for n in range(1, 6)]
+                              + [("cycle", 5, f"B5{tag}-cycle")]):
             R = [res_n[(model, cons, "5y", o, n)]["split80"] for o in OFFSETS]
             g = lambda key: float(np.mean([r["periods"]["last 5y"][key] for r in R]))  # noqa: E731
             ev = lambda key: float(np.mean([r["evals"][key] for r in R]))  # noqa: E731
@@ -474,12 +478,13 @@ def main(dd, out):
                           round(100 * float(np.mean(mv > 0)), 1), round(float(np.percentile(mv, 50))), round(float(np.percentile(mv, 10))),
                           round(float(np.mean([x["moves"] for x in L])), 2), round(float(np.mean([x["opened"] for x in L])), 2),
                           round(float(np.median(fm))) if fm else "",
-                          round(float(np.mean([sum(lv["bonus"] > 0 for lv in x["lives"]) for x in L])), 2)])
+                          round(float(np.mean([sum(lv["bonus"] > 0 for lv in x["lives"]) for x in L])), 2),
+                          round(FEE + (ADDON_FEE if cons == 0.5 else 0.0), 2)])
     write(out, "lucid_5y.csv", ["id", "accounts", "eval_rule", "model", "net_per_year_usd", "worst_full_year_usd", "losing_full_years",
                                 "deepest_drop_usd", "worst_12_months_usd", "longest_gap_months", "months_with_payout_pct",
                                 "evals_per_year", "most_cash_out_usd", "total_net_5y_usd", "eval_pass_pct", "months_positive_pct",
                                 "month_p50_usd", "month_p10_usd", "moves_live", "live_accounts_opened", "first_move_days_median",
-                                "live_bonuses_paid"], lrows)
+                                "live_bonuses_paid", "eval_price_usd"], lrows)
     wy = []
     for y in ("2021", "2022", "2023", "2024", "2025", "2026"):
         row = [y if y not in ("2021", "2026") else y + (" (from Nov 15)" if y == "2021" else " (to Nov 17)")]
