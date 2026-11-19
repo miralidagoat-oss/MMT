@@ -35,6 +35,11 @@ futures, including several Lucid accounts side by side.
   Feb-Jul 2023, which made 2023 look worse than it was. On futures the 50% add-on passes more evals and pays sooner,
   but its income gain shrinks to about +$0.6k a year. The website, the indicator's panel and its live alarm bands
   now use these futures results. See "Real NQ futures" below.
+- **Lucid's move-to-live rule (Nov 19):** 5 funded + 5 evals is already Lucid's maximum (10 accounts per household,
+  at most 5 funded). But Lucid moves a trader live after a Flex account's 5th payout, closing every sim account, and
+  the earlier pool figures let accounts cycle instead. Under the rule the maximum makes about $50k a year on real
+  futures (not $62k). Closing each account right after its 4th payout keeps the pool cycling: about $60k, if Lucid
+  does not move you live for other reasons. See "Lucid's move-to-live rule" below.
 - **Final review (Nov 18):** the indicator and the backtest match line by line. The indicator's tooltips now give 50K
   numbers and its live alarm uses the last 5 years. One new finding: Lucid's paid 50% consistency add-on raised
   5 funded + 5 evals by about $11.9k a year over the last 5 years before its own price (+$4.3k a year in 2011–21).
@@ -762,6 +767,71 @@ Its panel quotes the futures backtest.
 
 ```bash
 ONR_EVAL_FEE_50K=80.50 python3 futures_site.py ../../data_fut results_futsite_fee8050
+```
+
+### Lucid's move-to-live rule: what the maximum really makes (`live50k.py` → `results_live_fee8050/`)
+
+**The most accounts Lucid allows.** Lucid's help centre ("Maximum Number of Accounts", Aug 26 2026) allows 10 accounts per household across evaluations and funded accounts, at most 5 of them funded, plus up to 5 LucidLive accounts. So 5 funded + 5 evals, the plan's default, is already the maximum.
+
+**What every earlier pool figure assumed.** The accounts cycled for ever: an account that took its 5th payout simply ended, and a passed eval took its slot.
+
+**What Lucid's rules say instead:**
+- After its 5th payout a LucidFlex account's trader "will be moved live" ("LucidFlex Payouts", Jul 28 2026).
+- When a trader is moved live, every simulated account closes, funded and evals alike (live structure, Oct 4 2026).
+- Each funded account with at least one payout becomes a live account. It starts at $0 with a $2,000 end-of-day drawdown, which locks at $100 once live profits reach $2,000.
+- Live accounts have no consistency rule and allow daily payouts.
+- A one-time Live Bonus ($2,000 at 50K, 90/10) is paid once live profits reach $2,100, the first time a trader goes live.
+- After losing a live account, a trader may buy evals again after 2 weeks.
+
+**The model** (`live50k.py`'s docstring; fixed before the runs):
+- The pool runs as before (`research4.sim_pool`) until the first 5th payout.
+- Then the move: funded accounts with a payout go live; the others close, refunded when at least half their drawdown remains; evals in reserve are lost; unpaid sim profit is lost.
+- Live accounts trade the funded plan with `FundedAccount`'s own code. Once locked, they keep a $2,000 cushion and withdraw the rest daily at an 80% split, and close at the plan's $400 abandon level.
+- 2 weeks after the last live account is gone, the pool starts again from nothing.
+
+The run checks itself:
+- With the rule switched off it gives `sim_pool`'s events exactly.
+- It reproduces the website's $62,231.
+
+Last 5 years on real futures, mean of 12 start dates, evals at $80.50:
+
+| 5 funded + 5 evals | 40% rule: net a year | worst full year | worst 12 months | 50% add-on: net a year | worst full year | worst 12 months |
+|---|---|---|---|---|---|---|
+| Accounts cycle for ever (earlier model; not Lucid's rules) | $62,231 | $34,341 | +$23,173 | $62,701 | $40,889 | +$33,148 |
+| **Lucid's rules: moved live at the first 5th payout** (live split 80%) | **$50,096** | $32,857 | +$23,173 | **$48,924** | $38,508 | +$20,014 |
+| Same, live split 90% (reported since March 2026) | $50,304 | $33,014 | +$23,173 | $49,197 | $38,652 | +$20,014 |
+| Each account closed right after its 4th payout (never moved live) | $60,318 | $34,341 | +$23,173 | $60,675 | $39,506 | +$32,730 |
+
+**What happens under the rule:**
+- **When:** the first 5th payout comes after a median 265 days (add-on: 122). Over 5 years you are moved live 5 times.
+- **Live accounts:** each move opens up to 5 live accounts, 21 over the 5 years. They are identical copies trading the same plan, so they rise and fall together. They close at the $400 cushion after a median 10 sessions (add-on: 19).
+- **Withdrawals:** only 60 of 252 live accounts withdrew anything (add-on: 115 of 259), on average $484 gross ($621).
+- **Live Bonus:** never earned with the 40% rule. With the add-on, the first set earned it in 2022: 5 × $1,800.
+- **Cost of each move:** the evals in reserve, the unpaid sim profit and the weeks it takes to rebuild: 2 weeks' wait, then new evals, one a day.
+- **Restart rule:** letting evals start again beside the remaining live accounts changes nothing, because the live accounts end together.
+
+By year (median of the 12 start dates):
+
+| Year | Lucid's rules | Closed after the 4th payout | Cycling for ever | Times moved live |
+|---|---|---|---|---|
+| 2022 | $43,075 | $41,538 | $41,787 | 1 |
+| 2023 | $34,341 | $34,341 | $34,341 | 0 |
+| 2024 | $75,951 | $95,077 | $100,641 | 2 |
+| 2025 | $32,857 | $48,530 | $39,684 | 1 |
+| 2026 (to Nov 17) | $59,509 | $76,305 | $88,704 | 1 |
+
+Under Lucid's rules, 1 to 5 funded accounts with as many evals make $12,789, $23,516, $31,946, $40,883 and $50,096 a year (`lucid_5y.csv`). Since Aug 2019 (`live_summary.csv`, window "all"), the rule takes 5 funded + 5 evals from $59,133 to $48,326, and closing at the 4th payout gives $55,729.
+
+**What it means:**
+- The maximum setup makes about $50k a year under Lucid's stated rules, not $62k.
+- Closing each funded account right after its 4th payout keeps the 10 accounts cycling and recovers most of the difference ($60k).
+  - Lucid's risk team decides who goes live, and can move a trader for other reasons, such as lifetime payouts or sim performance. So this is not guaranteed.
+  - It gives up the live accounts and the one-time bonus.
+- The add-on still changes income by less than the noise. Under the rule it brings the first move live forward (122 vs 265 days) and makes $1.2k a year less.
+- The indicator's trades are unchanged; only how the accounts are run differs.
+
+```bash
+ONR_EVAL_FEE_50K=80.50 python3 live50k.py ../../data_fut results_live_fee8050
 ```
 
 

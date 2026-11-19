@@ -1,0 +1,15 @@
+id,accounts,eval_rule,model,net_per_year_usd,worst_full_year_usd,losing_full_years,deepest_drop_usd,worst_12_months_usd,longest_gap_months,months_with_payout_pct,evals_per_year,most_cash_out_usd,total_net_5y_usd,eval_pass_pct,months_positive_pct,month_p50_usd,month_p10_usd,moves_live,live_accounts_opened,first_move_days_median,live_bonuses_paid
+B1,1,40% (standard),Lucid's rules: moved live at the first 5th payout,12789,8607,0.0,-1368,5674,6.4,55.2,17.2,-745,62623,47.4,55.3,448,-242,5.0,5.0,265,0.0
+B2,2,40% (standard),Lucid's rules: moved live at the first 5th payout,23516,14262,0.0,-2818,11268,6.4,56.9,37.3,-1456,115151,43.6,57.0,449,-483,5.0,9.0,265,0.0
+B3,3,40% (standard),Lucid's rules: moved live at the first 5th payout,31946,22965,0.0,-4025,14657,5.9,60.3,52.3,-2039,156430,46.7,60.4,1514,-724,5.0,12.0,265,0.0
+B4,4,40% (standard),Lucid's rules: moved live at the first 5th payout,40883,27911,0.0,-5796,19937,5.9,60.3,71.9,-2589,200194,43.9,57.0,2319,-966,5.0,17.0,265,0.0
+B5,5,40% (standard),Lucid's rules: moved live at the first 5th payout,50096,32857,0.0,-7084,23173,5.9,60.3,88.6,-2999,245310,44.5,55.3,3006,-1127,5.0,21.0,265,0.0
+B5-stop4,5,40% (standard),Each account closed after its 4th payout,60318,34341,0.0,-7084,23173,5.9,65.3,96.8,-2999,295368,42.8,60.4,3783,-1127,0.0,0.0,,0.0
+B5-cycle,5,40% (standard),Accounts cycle for ever (not Lucid's rules),62231,34341,0.0,-7084,23173,5.9,65.3,94.4,-2999,304735,43.1,60.4,4773,-1127,0.0,0.0,,0.0
+B1-addon,1,50% add-on,Lucid's rules: moved live at the first 5th payout,13008,5296,0.0,-1375,4002,5.9,59.4,21.2,-912,63678,36.5,59.6,611,-242,3.17,3.17,1077,1.0
+B2-addon,2,50% add-on,Lucid's rules: moved live at the first 5th payout,22509,15783,0.0,-2496,13431,5.9,65.0,40.4,-1503,110237,39.9,65.2,1734,-564,3.92,7.83,122,2.0
+B3-addon,3,50% add-on,Lucid's rules: moved live at the first 5th payout,31304,25633,0.0,-3542,11499,5.9,63.3,57.9,-1925,153312,41.9,63.6,1800,-805,4.92,12.75,122,2.75
+B4-addon,4,50% add-on,Lucid's rules: moved live at the first 5th payout,39936,32052,0.0,-4910,13664,5.9,63.5,76.0,-2328,195577,43.4,63.7,2232,-966,4.92,16.67,122,3.67
+B5-addon,5,50% add-on,Lucid's rules: moved live at the first 5th payout,48924,38508,0.0,-6118,20014,5.9,63.5,92.1,-2603,239584,44.4,63.7,3382,-1127,4.92,21.58,122,4.58
+B5-addon-stop4,5,50% add-on,Each account closed after its 4th payout,60675,39506,0.0,-6118,32730,5.9,66.8,95.9,-2603,297121,46.8,67.2,3753,-1127,0.0,0.0,,0.0
+B5-addon-cycle,5,50% add-on,Accounts cycle for ever (not Lucid's rules),62701,40889,0.0,-6118,33148,5.9,68.5,93.9,-2603,307046,46.6,68.9,3994,-1127,0.0,0.0,,0.0
