@@ -1,0 +1,1 @@
+path from 2021-11-15 to 2026-11-17: 8035 trades (2147 eval, 5888 funded), 492 evals bought, 220 passed, 257 payouts ($372,546 gross), net to you $295,686; events = research4.sim_pool's; trades recomputed to within $9.72e-12
