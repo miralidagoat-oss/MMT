@@ -1,0 +1,7 @@
+id,setup,eval_pass_5y_pct,evals_5y,net_per_year_5y_usd,worst_full_year_5y_usd,worst_12_months_5y_usd,longest_gap_5y_months,months_with_payout_5y_pct,payouts_5y,total_net_5y_usd,eval_pass_2011_21_pct,net_per_year_2011_21_usd,worst_full_year_2011_21_usd,losing_full_years_2011_21
+nq,NQ (MNQ): current rules,41.3,1292,52274,13565,1287,6.4,67.0,230.0,255401,34.9,31629,-982,1.0
+nq_mom,NQ (MNQ): without the overnight trade,40.2,1285,48956,12485,3041,6.4,65.3,210.1,239189,35.6,30940,-3644,1.0
+spx,S&P 500 (MES): the whole book,35.6,1288,27130,3337,558,6.2,51.9,141.0,132545,32.0,13587,-10568,2.0
+spx_mom,S&P 500 (MES): without the overnight trade,24.1,1288,5044,-9551,-11068,10.7,23.4,61.0,24632,32.3,14660,3140,0.0
+crude,Crude oil (MCL): pyramid and IB legs,26.6,1280,19179,-5311,-5311,6.2,41.9,133.0,93961,32.4,19252,-2420,2.0
+gold,Gold (MGC): pyramid and IB legs,23.4,1223,-260,-4435,-8130,15.6,23.4,46.0,-1285,32.4,8171,-6491,3.0

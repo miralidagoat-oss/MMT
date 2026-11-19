@@ -1,0 +1,133 @@
+id,window,year,net_usd
+nq,last 5 years,2021,-1127
+nq,last 5 years,2022,42452
+nq,last 5 years,2023,13565
+nq,last 5 years,2024,87152
+nq,last 5 years,2025,28471
+nq,last 5 years,2026,84184
+nq,all years,2011,25539
+nq,all years,2012,24048
+nq,all years,2013,16312
+nq,all years,2014,43760
+nq,all years,2015,8258
+nq,all years,2016,-982
+nq,all years,2017,28848
+nq,all years,2018,46137
+nq,all years,2019,33206
+nq,all years,2020,38302
+nq,all years,2021,70771
+nq,all years,2022,42452
+nq,all years,2023,13565
+nq,all years,2024,87152
+nq,all years,2025,28471
+nq,all years,2026,84184
+nq_mom,last 5 years,2021,-1127
+nq_mom,last 5 years,2022,51085
+nq_mom,last 5 years,2023,12485
+nq_mom,last 5 years,2024,67281
+nq_mom,last 5 years,2025,57876
+nq_mom,last 5 years,2026,50911
+nq_mom,all years,2011,10721
+nq_mom,all years,2012,12544
+nq_mom,all years,2013,24187
+nq_mom,all years,2014,62067
+nq_mom,all years,2015,11199
+nq_mom,all years,2016,-3644
+nq_mom,all years,2017,51342
+nq_mom,all years,2018,19855
+nq_mom,all years,2019,59045
+nq_mom,all years,2020,27171
+nq_mom,all years,2021,61702
+nq_mom,all years,2022,51085
+nq_mom,all years,2023,12485
+nq_mom,all years,2024,67281
+nq_mom,all years,2025,57876
+nq_mom,all years,2026,50911
+spx,last 5 years,2021,-805
+spx,last 5 years,2022,12243
+spx,last 5 years,2023,3337
+spx,last 5 years,2024,71135
+spx,last 5 years,2025,10252
+spx,last 5 years,2026,35899
+spx,all years,2011,20456
+spx,all years,2012,5533
+spx,all years,2013,12939
+spx,all years,2014,15714
+spx,all years,2015,29650
+spx,all years,2016,24612
+spx,all years,2017,-6386
+spx,all years,2018,21410
+spx,all years,2019,-10568
+spx,all years,2020,20394
+spx,all years,2021,8197
+spx,all years,2022,12243
+spx,all years,2023,3337
+spx,all years,2024,71135
+spx,all years,2025,10252
+spx,all years,2026,35899
+spx_mom,last 5 years,2021,-886
+spx_mom,last 5 years,2022,-9780
+spx_mom,last 5 years,2023,-3032
+spx_mom,last 5 years,2024,48509
+spx_mom,last 5 years,2025,-2100
+spx_mom,last 5 years,2026,-8556
+spx_mom,all years,2011,3896
+spx_mom,all years,2012,18514
+spx_mom,all years,2013,3140
+spx_mom,all years,2014,19109
+spx_mom,all years,2015,24403
+spx_mom,all years,2016,11750
+spx_mom,all years,2017,6585
+spx_mom,all years,2018,54386
+spx_mom,all years,2019,8671
+spx_mom,all years,2020,8024
+spx_mom,all years,2021,-4959
+spx_mom,all years,2022,-9780
+spx_mom,all years,2023,-3032
+spx_mom,all years,2024,48509
+spx_mom,all years,2025,-2100
+spx_mom,all years,2026,-8556
+crude,last 5 years,2021,-1046
+crude,last 5 years,2022,42294
+crude,last 5 years,2023,-5311
+crude,last 5 years,2024,32209
+crude,last 5 years,2025,17999
+crude,last 5 years,2026,7221
+crude,all years,2011,17120
+crude,all years,2012,68099
+crude,all years,2013,11753
+crude,all years,2014,-998
+crude,all years,2015,31582
+crude,all years,2016,18102
+crude,all years,2017,-2420
+crude,all years,2018,8098
+crude,all years,2019,2149
+crude,all years,2020,9637
+crude,all years,2021,43600
+crude,all years,2022,42294
+crude,all years,2023,-5311
+crude,all years,2024,32209
+crude,all years,2025,17999
+crude,all years,2026,7221
+gold,last 5 years,2021,-1530
+gold,last 5 years,2022,-757
+gold,last 5 years,2023,340
+gold,last 5 years,2024,6401
+gold,last 5 years,2025,-4435
+gold,last 5 years,2026,-2310
+gold,all years,2011,-7084
+gold,all years,2012,-2265
+gold,all years,2013,21760
+gold,all years,2014,1432
+gold,all years,2015,63793
+gold,all years,2016,6285
+gold,all years,2017,-6491
+gold,all years,2018,1055
+gold,all years,2019,3702
+gold,all years,2020,-414
+gold,all years,2021,3344
+gold,all years,2022,-757
+gold,all years,2023,340
+gold,all years,2024,6401
+gold,all years,2025,-4435
+gold,all years,2026,-2310

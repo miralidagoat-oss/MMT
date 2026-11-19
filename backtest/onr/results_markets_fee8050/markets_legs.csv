@@ -1,0 +1,41 @@
+market_id,market,leg,period,r_per_trade,t_stat,trades
+nq,NQ (MNQ),Overnight trade,2011-18,0.02,0.6,653
+nq,NQ (MNQ),Overnight trade,2019-26,0.028,0.8,650
+nq,NQ (MNQ),Overnight trade,2011-21,0.017,0.6,901
+nq,NQ (MNQ),Overnight trade,last 5y,0.039,0.9,402
+nq,NQ (MNQ),09:35 pyramid,2011-18,0.139,2.8,857
+nq,NQ (MNQ),09:35 pyramid,2019-26,0.195,4.4,927
+nq,NQ (MNQ),09:35 pyramid,2011-21,0.168,4.1,1202
+nq,NQ (MNQ),09:35 pyramid,last 5y,0.169,3.1,582
+nq,NQ (MNQ),IB breakout with the drive,2011-18,0.027,0.8,1460
+nq,NQ (MNQ),IB breakout with the drive,2019-26,0.137,4.0,1424
+nq,NQ (MNQ),IB breakout with the drive,2011-21,0.047,1.6,1979
+nq,NQ (MNQ),IB breakout with the drive,last 5y,0.158,3.7,905
+spx,S&P 500 (MES),Overnight trade,2011-18,0.065,1.9,653
+spx,S&P 500 (MES),Overnight trade,2019-26,0.042,1.1,650
+spx,S&P 500 (MES),Overnight trade,2011-21,0.06,1.9,901
+spx,S&P 500 (MES),Overnight trade,last 5y,0.039,0.9,402
+spx,S&P 500 (MES),09:35 pyramid,2011-18,0.054,1.1,687
+spx,S&P 500 (MES),09:35 pyramid,2019-26,0.088,2.0,796
+spx,S&P 500 (MES),09:35 pyramid,2011-21,0.074,1.8,1001
+spx,S&P 500 (MES),09:35 pyramid,last 5y,0.067,1.2,482
+spx,S&P 500 (MES),IB breakout with the drive,2011-18,0.003,0.1,1583
+spx,S&P 500 (MES),IB breakout with the drive,2019-26,0.073,2.2,1491
+spx,S&P 500 (MES),IB breakout with the drive,2011-21,0.006,0.2,2115
+spx,S&P 500 (MES),IB breakout with the drive,last 5y,0.105,2.5,959
+crude,Crude oil (MCL),09:35 pyramid,2011-18,0.017,0.4,758
+crude,Crude oil (MCL),09:35 pyramid,2019-26,0.058,1.4,861
+crude,Crude oil (MCL),09:35 pyramid,2011-21,0.004,0.1,1091
+crude,Crude oil (MCL),09:35 pyramid,last 5y,0.109,2.0,528
+crude,Crude oil (MCL),IB breakout with the drive,2011-18,0.028,0.8,1650
+crude,Crude oil (MCL),IB breakout with the drive,2019-26,-0.007,-0.2,1597
+crude,Crude oil (MCL),IB breakout with the drive,2011-21,0.015,0.5,2216
+crude,Crude oil (MCL),IB breakout with the drive,last 5y,0.001,0.0,1031
+gold,Gold (MGC),09:35 pyramid,2011-18,-0.012,-0.3,633
+gold,Gold (MGC),09:35 pyramid,2019-26,-0.017,-0.4,599
+gold,Gold (MGC),09:35 pyramid,2011-21,-0.015,-0.4,871
+gold,Gold (MGC),09:35 pyramid,last 5y,-0.013,-0.2,361
+gold,Gold (MGC),IB breakout with the drive,2011-18,-0.007,-0.2,1636
+gold,Gold (MGC),IB breakout with the drive,2019-26,0.027,0.9,1665
+gold,Gold (MGC),IB breakout with the drive,2011-21,-0.011,-0.4,2246
+gold,Gold (MGC),IB breakout with the drive,last 5y,0.055,1.4,1055

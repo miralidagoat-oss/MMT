@@ -1,0 +1,9 @@
+id,market,period,actual_net_per_year_usd,coinflip_net_per_year_usd,coinflip_lowest_usd,coinflip_highest_usd,signals_add_usd,actual_worst_full_year_usd,coinflip_worst_full_year_usd
+nq,NQ (MNQ),last 5 years,52274,23437,18629,30951,28837,13565,6239
+nq,NQ (MNQ),2011-21,31629,17626,11917,28562,14003,-982,-6097
+spx,S&P 500 (MES),last 5 years,27130,15885,10755,19010,11245,3337,2135
+spx,S&P 500 (MES),2011-21,13587,6354,5231,7799,7233,-10568,-8022
+crude,Crude oil (MCL),last 5 years,19179,7344,3961,12035,11835,-5311,-6314
+crude,Crude oil (MCL),2011-21,19252,6950,6097,7974,12302,-2420,-11313
+gold,Gold (MGC),last 5 years,-260,8642,7242,9384,-8902,-4435,-3474
+gold,Gold (MGC),2011-21,8171,4532,1202,7475,3639,-6491,-7056
