@@ -33,7 +33,8 @@ futures, including several Lucid accounts side by side.
   strategy holds up: about $61k a year for 5 funded + 5 evals over the last 5 years, worst 12 months +$23k (40%) /
   +$33k (add-on). The CFD it was built on matched the futures trade by trade, except that the CFD misses parts of
   Feb-Jul 2023, which made 2023 look worse than it was. On futures the 50% add-on passes more evals and pays sooner,
-  but its income gain shrinks to about +$0.6k a year. See "Real NQ futures" below.
+  but its income gain shrinks to about +$0.6k a year. The website, the indicator's panel and its live alarm bands
+  now use these futures results. See "Real NQ futures" below.
 - **Final review (Nov 18):** the indicator and the backtest match line by line. The indicator's tooltips now give 50K
   numbers and its live alarm uses the last 5 years. One new finding: Lucid's paid 50% consistency add-on raised
   5 funded + 5 evals by about $11.9k a year over the last 5 years before its own price (+$4.3k a year in 2011–21).
@@ -720,6 +721,47 @@ ONR_EVAL_FEE_50K=80.50 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py ..
 ONR_EVAL_FEE_50K=80.50 ONR_EVAL_CONS=0.5 python3 report50k.py ../../data results_cfd19_addon_fee8050 2019-09-03
 ONR_EVAL_FEE_50K=80.50 python3 report50k.py ../../data results_cfd19_fee8050 2019-09-03
 python3 nqfut_check.py ../../data_fut ../../data results_nqfut_check
+```
+
+#### The website and the indicator now use real futures (`futures_site.py` -> `results_futsite_fee8050/`)
+
+The dashboard's 5-year pages now run on the futures series instead of the CFD. Research round 5's machinery runs unchanged; only its NQ sessions are swapped for `NQFUT.npz` at 5-minute bars. The pages cover:
+- 1-5 funded accounts: 12 start dates, round 4's structures A, B and C;
+- the add-on against the 40% rule, with the 8 placebo runs;
+- every year;
+- the trade-by-trade check;
+- a data page.
+
+Mean of the 12 start dates, last 5 years, 5 funded + 5 evals at $80.50:
+
+| | 40% rule | 50% add-on (before its price) |
+|---|---|---|
+| Net a year | $62,231 | $62,701 |
+| Worst full year | $34,341 (2023) | $40,889 |
+| Worst 12 months | +$23,173 | +$33,148 |
+| Eval pass rate | 42.5% | 46.2% |
+| First payout after the first eval, median | 64 days | 54 days |
+
+The add-on's +$470 a year is far inside the noise band of the 8 placebo runs ($4,981), and its worst-year gain (+$6,548) is inside that band too ($8,864). So round 5's rule does not adopt it for income at any price. On the earlier futures years, Aug 30 2019 - Nov 14 2021, the gain was +$5,255 a year. The case for buying it is the pass rate, the sooner first payout and the better worst 12 months.
+
+**The indicator follows.** Its live alarm bands now come from `results_nqfut_5y_fee8050/alarm_bands.csv`: one 50K funded account on real futures, last 5 years, 20,000 block-bootstrap paths.
+
+| Day | Median | Yellow below | Red below |
+|---|---|---|---|
+| 20 | $1,504 | -$3,165 | -$4,924 |
+| 250 | $20,110 | +$2,689 | -$4,078 |
+
+Its panel quotes the futures backtest.
+
+**Chart drawing (Nov 19 2026, both indicator files; no trading logic changed).**
+- Each trade is drawn like TradingView's position tool, from its entry bar to its exit bar: a red box from the entry to the stop, a green box from the entry to the target, and a gray entry line.
+- A compact BUY / SELL label with the contract count marks each entry. A label with the result in $, commission included, marks each exit. Hovering a label shows the prices.
+- The funded overnight trade and the pyramid have no fixed target, so they get only the red box. The pyramid's moving stop stays an orange line, and its add is labelled ADD.
+- The old triangles and stop / target lines are gone. Purple lines still show the IB stop orders while they wait to fill.
+- A "Show stop / target boxes" input turns the boxes off.
+
+```bash
+ONR_EVAL_FEE_50K=80.50 python3 futures_site.py ../../data_fut results_futsite_fee8050
 ```
 
 
