@@ -830,6 +830,18 @@ Under Lucid's rules, 1 to 5 funded accounts with as many evals make $12,789, $23
 - The add-on still changes income by less than the noise. Under the rule it brings the first move live forward (122 vs 265 days) and makes $1.2k a year less.
 - The indicator's trades are unchanged; only how the accounts are run differs.
 
+**The indicator follows this from v2.3 (both editions).** The trades, sizes, stops and targets are unchanged.
+- **Payout plan.** A new input, "FUNDED: payout plan", defaults to "Close after the 4th payout".
+  - The 4th payout request says it is the last one.
+  - Once 4 payouts are entered, the panel says to close the account and refill the slot from an eval.
+  - "Take the 5th payout" restores the old behaviour, and the panel then says Lucid moves you live.
+- **LIVE phase.** A new Phase, LIVE, trades a LucidLive account with exactly the funded plan.
+  - Its drawdown trails the end-of-day P&L from $0 by the size's max loss. It locks at +$100 once live profit reaches it, or at the first live payout.
+  - The panel says to withdraw nothing before the lock, then everything above the max loss + $100.
+  - It says to stop trading the account below the $400 cushion; once no live account is left, Lucid lets you buy evals again after 2 weeks.
+- **Header and panel.** Both now quote these figures (real futures, Lucid's rules).
+- **Older tooltips.** The ones that still quote CFD results now say so.
+
 ```bash
 ONR_EVAL_FEE_50K=80.50 python3 live50k.py ../../data_fut results_live_fee8050
 ```
