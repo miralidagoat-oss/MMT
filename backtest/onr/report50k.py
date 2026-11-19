@@ -5,7 +5,8 @@ Primary window: the last 4 years (Nov 14 2022 -> Nov 13 2026). 2011-2026 and rea
 usage: report50k.py DATA_DIR OUT_DIR [WINDOW_START]   (writes CSV tables + summary.json into OUT_DIR and prints the
        summary; WINDOW_START defaults to 2022-11-14, e.g. 2021-11-15 for the last 5 years)
 Environment: ONR_EVAL_FEE_50K sets the eval price (account.py); ONR_EVAL_CONS=0.5 runs every eval with Lucid's paid
-50% consistency add-on (results_50k_5y_addon_fee8050).
+50% consistency add-on (results_50k_5y_addon_fee8050). ONR_NQ_FILE / ONR_NQ_TF read another NQ file from DATA_DIR
+and its bar size in minutes (default NSXUSD.npz, 1), e.g. NQFUT.npz, 5 for real NQ futures (prep_nqfut.py).
 """
 import csv
 import functools
@@ -37,6 +38,8 @@ E_KW = dict(improved=True, comm=COMM, size=SIZE, **({} if CONS == 0.4 else dict(
 F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM, size=SIZE, payout_max=True)
 W0 = "2022-11-14"
 S = None
+NQ_FILE = os.environ.get("ONR_NQ_FILE", "NSXUSD.npz")
+NQ_TF = int(os.environ.get("ONR_NQ_TF", "1"))
 
 
 def day(d):
@@ -58,7 +61,7 @@ def tstat(x):
 
 def build(dd):
     global S
-    S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
+    S = Sessions(load_npz(os.path.join(dd, NQ_FILE)), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=NQ_TF)
     return S
 
 
@@ -139,7 +142,8 @@ def main(dd, out):
     yrs_window = (days[-1] - days[k0]) / 365.25
     summary = dict(window=[str(day(days[k0])), str(day(days[-1]))], size="Lucid Flex 50K", commission=COMM,
                    eval_price=FEE, payout_policy="maximum allowed (50% of profit, cap $2,000)",
-                   **({} if CONS == 0.4 else dict(eval_consistency=CONS)))
+                   **({} if CONS == 0.4 else dict(eval_consistency=CONS)),
+                   **({} if (NQ_FILE, NQ_TF) == ("NSXUSD.npz", 1) else dict(nq_file=NQ_FILE, nq_bar_minutes=NQ_TF)))
     print(f"window {day(days[k0])} -> {day(days[-1])} ({len(wdays)} sessions)", flush=True)
 
     # ---------------- continuous funded book: legs, years, daily P&L

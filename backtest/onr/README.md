@@ -29,6 +29,11 @@ futures, including several Lucid accounts side by side.
   - Rounds 3–5 re-scored on these 5 years: none of 18 changes passed.
   - Round 6 (no overnight trade, or the eval's IB breakout in its place) did not pass either.
   - See "The last 5 years first", "Research round 6" and "At your eval price" below.
+- **Real NQ futures (Nov 19):** on a user-supplied 5-year NQ futures file (repaired, gap to Nov 2026 filled), the
+  strategy holds up: about $61k a year for 5 funded + 5 evals over the last 5 years, worst 12 months +$23k (40%) /
+  +$33k (add-on). The CFD it was built on matched the futures trade by trade, except that the CFD misses parts of
+  Feb-Jul 2023, which made 2023 look worse than it was. On futures the 50% add-on passes more evals and pays sooner,
+  but its income gain shrinks to about +$0.6k a year. See "Real NQ futures" below.
 - **Final review (Nov 18):** the indicator and the backtest match line by line. The indicator's tooltips now give 50K
   numbers and its live alarm uses the last 5 years. One new finding: Lucid's paid 50% consistency add-on raised
   5 funded + 5 evals by about $11.9k a year over the last 5 years before its own price (+$4.3k a year in 2011–21).
@@ -646,6 +651,76 @@ Since 2011 (start Feb 15 2011), the add-on made more in 12 of 16 years and less 
 This is one 50-session path; the 5-year figures come from about 1,300 sessions and many start dates. The step-by-step table is `addon_journey.csv`. The current-rules figures equal `export_charts.py`'s checked ones.
 
 `indicators/onr_book_addon50.pine` is the same indicator for an eval bought with the add-on: identical trading logic, with "EVAL: consistency rule you bought" defaulting to 50% and the add-on's backtest in its header and panel. Its tooltips for the bracket width and the news skip still quote the 40%-rule pass rates; those options were not re-run with the add-on.
+
+### Real NQ futures: a 5-year 5-minute file (Nov 19 2026)
+
+The user supplied `NQ_5Years_8_11_2024.csv`: NQ futures, 5-minute bars, Aug 11 2019 -> Aug 9 2024, additively back-adjusted (a constant added per contract period, so every move and range in points is intact). `prep_nqfut.py` repairs it and fills the gap to Nov 2026. `NQFUT.npz.json` records every step.
+
+**What was wrong with the file, and the repair**
+- **Labels are bar end times.** The busiest bars are labelled 09:35 and 08:35, and sessions run 18:05 -> 17:00. Every label moves back 5 minutes.
+- **Mixed clocks.** For most of Aug 2019 - Nov 2022 the file is on Central European time, New York + 6 hours (+5 when the US and Europe change clocks on different dates). Unshifted, its 5-minute moves correlate about 0.0 with the market (0.99 shifted). Each contiguous block of bars gets the whole-hour offset that best matches the CFD; 1,869 of 1,909 blocks align at 0.80 or better. The rest (1,750 bars, 0.5%) are dropped.
+- **A missing hour each day.** On those days the export also dropped one New York day-session hour (11:00 or 12:00), apparently while removing what it took for CME's 17:00-18:00 halt. Bars missing inside 09:30-16:00 are filled from the CFD at the futures' price level: 22% of 2019's day-session bars, 21% of 2020's, 27% of 2021's, 24% of 2022's, and none in 2023-24.
+- **The result.** After the repair, every month correlates 0.985-0.999 with the CFD, and the futures' day ranges match the CFD's within 0.7% every year.
+- **The fill after Aug 9 2024.** The HistData CFD, made into 5-minute bars, through the Sep 9 2026 session; then real MNQ (Yahoo) to 12:40 ET on Nov 17 2026. Every join is at an 18:00 session start.
+
+**A defect in the CFD.** HistData's NSXUSD misses large parts of the day session on 117 days in Feb-Jul 2023 (half its sessions in those months). The futures file is complete there. Every earlier backtest used that CFD, so its 2023, the "drought year", was partly a data artifact.
+
+**Trade by trade, real futures vs the CFD** (`nqfut_check.py` -> `results_nqfut_check/`; Aug 30 2019 -> Aug 9 2024, 1,260 sessions; one funded account trading the whole book every day, and an eval started every session):
+
+| Period | One funded account a year: futures / CFD 5-min / CFD 1-min | Daily P&L correlation (futures vs CFD) | Same trade side | Eval pass, 40%: futures / CFD | Eval pass, add-on: futures / CFD |
+|---|---|---|---|---|---|
+| All but Feb-Jul 2023 | $17,676 / $18,118 / $18,639 | 0.97 | 97.9% | 37.1% / 36.8% | 39.5% / 39.0% |
+| 2023 | $6,308 / -$2,095 / -$3,154 | 0.78 | 90.5% | 32.4% / 25.0% | 41.4% / 32.8% |
+
+So the CFD is a faithful proxy where its data is complete. The 1-minute and 5-minute CFD agree too (daily correlation 0.99).
+
+**The backtest on real futures** (`ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 report50k.py`; evals at $80.50, $1.34 commission, after Lucid's 10%, before the add-on's own price). Median of 10 start dates in the first 6 weeks; by-year figures are the first path.
+
+| | Futures, Sep 2019 - Nov 2026: add-on | 40% | Futures, last 5 years: add-on | 40% | CFD, last 5 years: add-on | 40% |
+|---|---|---|---|---|---|---|
+| Eval pass rate | 43.5% | 41.0% | 46.2% | 42.5% | 44.2% | 41.3% |
+| Sessions to pass, median | 8 | 10 | 8 | 9 | 8 | 9 |
+| Funded accounts that reach a payout | 58.9% | 56.1% | 58.8% | 55.7% | 63.1% | 61.8% |
+| One account slot: first payout median / within 90 days | 55 d / 71.6% | 64 d / 63.6% | 54 d / 74.8% | 64 d / 64.2% | 54 d / 71.9% | 58 d / 67.5% |
+| 5 funded + 5 evals: net a year | $61,259 | $59,239 | $61,908 | $61,345 | $63,368 | $51,500 |
+| Worst 12 months | +$33,004 | +$23,173 | +$33,148 | +$23,173 | +$8,006 | +$1,287 |
+| Longest wait for a payout | 7.6 mo | 6.1 mo | 5.9 mo | 5.9 mo | 6.1 mo | 6.4 mo |
+| 2x costs + 1 tick: net a year | $55,815 | $53,361 | $57,862 | $52,895 | $59,562 | $53,128 |
+| One funded account trading every day, a year | $20,697 | $20,697 | $21,081 | $21,081 | $19,773 | $19,773 |
+
+By year, 5 funded + 5 evals on real futures (add-on / 40%):
+
+| Year | Add-on | 40% |
+|---|---|---|
+| 2019 (from Sep 3) | $8,110 | $4,202 |
+| 2020 | $55,598 | $45,651 |
+| 2021 | $68,917 | $69,032 |
+| 2022 | $41,521 | $41,787 |
+| 2023 | $41,253 | $34,341 |
+| 2024 | $94,741 | $100,641 |
+| 2025 | $50,250 | $39,684 |
+| 2026 (to Nov 17) | $80,184 | $88,704 |
+
+Every full year is positive. On the CFD, 2023 was $24,765 / $13,565.
+
+**What changes**
+- **The strategy holds up on real futures.** The last 5 years make about $61k a year with either rule.
+- **The add-on.** On real futures its income gain is about +$0.6k a year over the last 5 years (+$2.0k over the full window), inside the noise; on the CFD it was +$11.9k, inflated partly by the CFD's 2023 defect and partly by path noise. Year by year the gap swings from -$8.5k to +$10.6k with small data changes. It still passes more evals (46.2% vs 42.5%), pays the first payout about 10 days sooner (median 54 vs 64 days), and improves the worst 12 months (+$33.1k vs +$23.2k). It is worth buying for those, but not for a promised income gain.
+- **Data sources by period:** Sep 2019 - Aug 9 2024 real NQ futures (2019-22 with the CFD-filled hour); Aug 12 2024 - Sep 9 2026 the CFD; Sep 10 - Nov 17 2026 real MNQ.
+
+Reproduce (the CSV is not committed: it is the user's file):
+
+```bash
+python3 -I prep_nqfut.py NQ_5Years_8_11_2024.csv ../../data/NSXUSD.npz ../../data/MNQ_5m_60d.npz ../../data_fut/NQFUT.npz
+ln -s ../data_live/SPXUSD.npz ../../data_fut/SPXUSD.npz
+ONR_EVAL_FEE_50K=80.50 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 ONR_EVAL_CONS=0.5 python3 report50k.py ../../data_fut results_nqfut_addon_fee8050 2019-09-03
+ONR_EVAL_FEE_50K=80.50 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py ../../data_fut results_nqfut_fee8050 2019-09-03
+ONR_EVAL_FEE_50K=80.50 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 ONR_EVAL_CONS=0.5 python3 report50k.py ../../data_fut results_nqfut_5y_addon_fee8050 2021-11-15
+ONR_EVAL_FEE_50K=80.50 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py ../../data_fut results_nqfut_5y_fee8050 2021-11-15
+ONR_EVAL_FEE_50K=80.50 ONR_EVAL_CONS=0.5 python3 report50k.py ../../data results_cfd19_addon_fee8050 2019-09-03
+ONR_EVAL_FEE_50K=80.50 python3 report50k.py ../../data results_cfd19_fee8050 2019-09-03
+python3 nqfut_check.py ../../data_fut ../../data results_nqfut_check
+```
 
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
