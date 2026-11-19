@@ -5,7 +5,11 @@ The S&P stretch score still comes from an S&P 500 CFD (as in the indicator); DAT
 series extended past its end with another S&P source (prep_spx_ext.py), and the run says which sessions, if any, had
 to reuse an older score. The ADR's first 14 sessions are seeded from the Nasdaq CFD because the Yahoo window starts
 mid-stream. Everything traded is real MNQ.
-usage: mnq_real50k.py DATA_DIR      (needs MNQ_5m_60d.npz, NSXUSD.npz, SPXUSD.npz from prep_data.py)
+usage: [ONR_EVAL_CONS=0.5] [ONR_MAX_PAY=4] mnq_real50k.py DATA_DIR
+  (needs MNQ_5m_60d.npz, NSXUSD.npz, SPXUSD.npz from prep_data.py)
+ONR_EVAL_CONS: the eval's consistency rule (default 0.4; 0.5 = Lucid's paid add-on). ONR_MAX_PAY: payouts a funded
+account takes before it is closed (default 5; 4 = indicator v2.3's default plan, which never takes the 5th payout that
+moves a trader live). report50k.py and export_charts.py read the same two variables.
 """
 import os
 import sys
@@ -17,8 +21,11 @@ from account import RULES, EvalAccount, FundedAccount, funded_size, run_eval  # 
 from engine import Sessions, load_npz, rth_sessions  # noqa: E402
 from portfolio import pool  # noqa: E402
 
-E_KW = dict(improved=True, comm=1.34, size=50)
-F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=1.34, size=50, payout_max=True)
+CONS = float(os.environ.get("ONR_EVAL_CONS", "0.4"))
+MAXPAY = int(os.environ.get("ONR_MAX_PAY", "5"))
+E_KW = dict(improved=True, comm=1.34, size=50, **({} if CONS == 0.4 else dict(cons=CONS)))
+F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=1.34, size=50, payout_max=True,
+            **({} if MAXPAY == 5 else dict(max_pay=MAXPAY)))
 FEE = RULES[50]["price"]
 LEG = {"on": "Overnight", "pyr": "Pyramid", "ib": "IB breakout"}
 

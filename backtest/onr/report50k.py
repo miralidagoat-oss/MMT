@@ -7,6 +7,7 @@ usage: report50k.py DATA_DIR OUT_DIR [WINDOW_START]   (writes CSV tables + summa
 Environment: ONR_EVAL_FEE_50K sets the eval price (account.py); ONR_EVAL_CONS=0.5 runs every eval with Lucid's paid
 50% consistency add-on (results_50k_5y_addon_fee8050). ONR_NQ_FILE / ONR_NQ_TF read another NQ file from DATA_DIR
 and its bar size in minutes (default NSXUSD.npz, 1), e.g. NQFUT.npz, 5 for real NQ futures (prep_nqfut.py).
+ONR_MAX_PAY=4 closes each funded account right after its 4th payout (indicator v2.3's default plan).
 """
 import csv
 import functools
@@ -35,7 +36,11 @@ FEE = RULES[SIZE]["price"]
 # 50% instead of 40%). Unset, E_KW is exactly as before.
 CONS = float(os.environ.get("ONR_EVAL_CONS", "0.4"))
 E_KW = dict(improved=True, comm=COMM, size=SIZE, **({} if CONS == 0.4 else dict(cons=CONS)))
-F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM, size=SIZE, payout_max=True)
+# ONR_MAX_PAY=4: each funded account is closed right after its 4th payout (indicator v2.3's default payout plan, so no
+# 5th payout moves the trader to a live account). Unset, F_KW is exactly as before (Lucid's 5-payout limit).
+MAXPAY = int(os.environ.get("ONR_MAX_PAY", "5"))
+F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM, size=SIZE, payout_max=True,
+            **({} if MAXPAY == 5 else dict(max_pay=MAXPAY)))
 W0 = "2022-11-14"
 S = None
 NQ_FILE = os.environ.get("ONR_NQ_FILE", "NSXUSD.npz")
@@ -143,6 +148,7 @@ def main(dd, out):
     summary = dict(window=[str(day(days[k0])), str(day(days[-1]))], size="Lucid Flex 50K", commission=COMM,
                    eval_price=FEE, payout_policy="maximum allowed (50% of profit, cap $2,000)",
                    **({} if CONS == 0.4 else dict(eval_consistency=CONS)),
+                   **({} if MAXPAY == 5 else dict(max_payouts_per_account=MAXPAY)),
                    **({} if (NQ_FILE, NQ_TF) == ("NSXUSD.npz", 1) else dict(nq_file=NQ_FILE, nq_bar_minutes=NQ_TF)))
     print(f"window {day(days[k0])} -> {day(days[-1])} ({len(wdays)} sessions)", flush=True)
 

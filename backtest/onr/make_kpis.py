@@ -4,9 +4,10 @@
 usage: make_kpis.py REPORT_DIR OUT_CSV WINDOW_TEXT FULL_YEARS_TEXT [YEARS_MONTHLY_DIR]
   e.g. make_kpis.py results_50k_5y results_50k_5y/kpis.csv "Nov 15 2021 - Nov 13 2026" "2022-2025"
 Same metrics, labels and units as the dashboard's 4-year kpis.csv (made by the same code earlier), without the
-real-MNQ rows: those come from export_charts.py's real_kpis.csv. With YEARS_MONTHLY_DIR (the 4-year report only), also
-the dashboard's years.csv and monthly.csv from the same report.
+real-MNQ rows: those come from export_charts.py's real_kpis.csv. With YEARS_MONTHLY_DIR, also the dashboard's
+years.csv, monthly.csv and distributions.csv from the same report (the study window's report).
 """
+import datetime
 import csv
 import json
 import os
@@ -51,7 +52,9 @@ def main(rd, out, window, full_years):
     add("funded", "funded_avg_net", "Net withdrawn per funded account, average (after 10%)", f["avg_withdrawn_net"], "usd")
     add("funded", "funded_first_days", "Days from funding to first payout, median (when one comes)", f["days_to_first_payout"]["median"], "days")
     add("funded", "funded_first_days_p90", "Days from funding to first payout, 90th percentile", f["days_to_first_payout"]["p90"], "days")
-    add("funded", "funded_done", "Funded accounts that reach all 5 payouts", f["outcome_pct"]["done"], "pct")
+    mp = int(s.get("max_payouts_per_account", 5))
+    add("funded", "funded_done", "Funded accounts that reach all 5 payouts" if mp == 5 else
+        f"Funded accounts closed after their {mp}th payout (the payout plan)", f["outcome_pct"]["done"], "pct")
     add("funded", "funded_abandoned", "Funded accounts that end below the cushion level",
         f["outcome_pct"]["abandon"] + f["outcome_pct"]["blown"], "pct")
     add("funded", "funded_life", "Funded account life, median", f["median_life_days"], "days")
@@ -79,9 +82,10 @@ def main(rd, out, window, full_years):
 
 
 def years_monthly(rd, od):
-    """The dashboard's years.csv and monthly.csv (4-year window) from report50k.py's tables."""
+    """The dashboard's years.csv, monthly.csv and distributions.csv (the study window) from report50k.py's tables."""
     def rows(fn):
         return list(csv.DictReader(open(os.path.join(rd, fn))))
+    w0, w1 = (datetime.date.fromisoformat(x) for x in json.load(open(os.path.join(rd, "summary.json")))["window"])
     py = {r["year"]: r for r in rows("pool_years.csv")}
     by = {r["year"]: r for r in rows("book_years.csv")}
     ey = {r["year_started"]: r for r in rows("eval_pass_by_year.csv")}
@@ -90,7 +94,8 @@ def years_monthly(rd, od):
         w.writerow(["year", "period", "pool_net_usd", "pool_payouts", "book_net_usd", "overnight_usd", "pyramid_usd", "ib_usd",
                     "eval_pass_pct", "evals_started"])
         for y in sorted(py):
-            per = "Nov 14 - Dec 31" if y == "2022" else ("Jan 1 - Nov 13" if y == "2026" else "full year")
+            per = (f"{w0:%b} {w0.day} - Dec 31" if y == str(w0.year) else
+                   f"Jan 1 - {w1:%b} {w1.day}" if y == str(w1.year) else "full year")
             w.writerow([y, per, py[y]["net_usd_first_path"], py[y]["payouts_first_path"], by[y]["net_usd"], by[y]["overnight_usd"],
                         by[y]["pyramid_usd"], by[y]["ib_usd"], ey[y]["pass_pct"], ey[y]["evals"]])
     with open(os.path.join(od, "monthly.csv"), "w", newline="") as fh:
@@ -98,7 +103,16 @@ def years_monthly(rd, od):
         w.writerow(["month", "net_usd", "cumulative_usd", "payouts", "evals_bought"])
         for r in rows("pool_monthly.csv"):
             w.writerow([r["month"], r["net_usd"], r["cumulative_usd"], r["payouts"], r["evals_bought"]])
-    print(f"wrote {od}/years.csv and monthly.csv")
+    dist = [["sessions_to_pass", i, r["sessions"], int(r["evals"])] for i, r in enumerate(rows("eval_sessions_to_pass.csv"))]
+    dist += [["payouts_per_funded_account", i, r["payouts_before_the_account_ends"], float(r["pct_of_funded_accounts"])]
+             for i, r in enumerate(rows("funded_payout_count.csv"))]
+    dist += [["daily_pnl", i, f"{int(r['from_usd'])} to {int(r['to_usd'])}", int(r["days"])]
+             for i, r in enumerate(rows("daily_pnl_hist.csv"))]
+    with open(os.path.join(od, "distributions.csv"), "w", newline="") as fh:
+        w = csv.writer(fh, lineterminator="\n")
+        w.writerow(["chart", "order", "bucket", "value"])
+        w.writerows(dist)
+    print(f"wrote {od}/years.csv, monthly.csv and distributions.csv")
 
 
 if __name__ == "__main__":

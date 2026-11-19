@@ -154,7 +154,9 @@ def self_check(S):
 
 
 # ---------------------------------------------------------------------------------------------- metrics of one run
-def run_metrics(S, ev, k_start, k_stop, full_years, periods):
+def run_metrics(S, ev, k_start, k_stop, full_years, periods, fee=None):
+    """fee: the price of one eval (default FEE, the 50K price of account.RULES)."""
+    fee = FEE if fee is None else fee
     days = [day(S, k) for k in range(k_start, k_stop)]
     net = np.zeros(k_stop - k_start)
     pays = []
@@ -163,7 +165,7 @@ def run_metrics(S, ev, k_start, k_stop, full_years, periods):
             net[k - k_start] += SPLIT * v
             pays.append(k)
         elif kind == "buy":
-            net[k - k_start] -= FEE
+            net[k - k_start] -= fee
     run = np.cumsum(net)
     # yearly detail
     yrs = {}

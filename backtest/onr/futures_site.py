@@ -233,7 +233,7 @@ def fut_tables(out, fd):
            for k, v in R.items()}
     yrows = []
     for y in sorted(pool["fut_current"]):
-        per = "from Sep 3" if y == "2019" else ("to Nov 17 (CFD: Nov 13)" if y == "2026" else "full year")
+        per = "from Sep 3" if y == "2019" else ("to Nov 17; CFD to Nov 13" if y == "2026" else "full year")
         src = ("real NQ futures" if y <= "2023" else "real futures to Aug 9, then the CFD" if y == "2024"
                else "the CFD" if y == "2025" else "the CFD to Sep 9, then real MNQ")
         yrows.append([y, per, src, round(pool["fut_current"][y]), round(pool["fut_addon"][y]), round(pool["cfd_current"][y]),

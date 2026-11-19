@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Every number behind the dashboard's charts, with the costs itemised, at Lucid Flex 50K with the shipped v2.2 rules:
-the 60 days of real MNQ futures (Yahoo 5-minute bars; the window is printed when it runs) and the last 4 years
-(Nasdaq-100 CFD minute bars, Nov 14 2022 - Nov 13 2026). For the real-MNQ part, DATA_DIR's SPXUSD.npz may be the CFD
-series extended with ES futures bars (prep_spx_ext.py), so the sessions after the CFD's end have their own S&P score.
+"""Every number behind the dashboard's charts, with the costs itemised, at Lucid Flex 50K with the indicator's rules:
+the 60 days of real MNQ futures (Yahoo 5-minute bars; the window is printed when it runs), the study window and every
+year since 2011 (Nasdaq-100 CFD minute bars). For the real-MNQ part, DATA_DIR's SPXUSD.npz may be the CFD series
+extended with ES futures bars (prep_spx_ext.py), so the sessions after the CFD's end have their own S&P score.
 
-usage: export_charts.py DATA_DIR OUT_DIR
+usage: export_charts.py DATA_DIR OUT_DIR [FUT_DATA_DIR REPORT_DIR]
+  Without FUT_DATA_DIR the study window is the last 4 years on the CFD (Nov 14 2022 - Nov 13 2026), checked against
+  results_50k<FEE_TAG> (the default plan only). With FUT_DATA_DIR (NQFUT.npz from prep_nqfut.py, SPXUSD.npz) it is the
+  last 5 years on real NQ futures, 5-minute bars, from Nov 15 2021, checked against REPORT_DIR: report50k.py's run of
+  the same plan on the same series and window (its book by year and its first pool path).
+Plan: ONR_EVAL_CONS (the eval's consistency rule, default 0.4; 0.5 = Lucid's paid add-on) and ONR_MAX_PAY (payouts
+a funded account takes before it is closed, default 5; 4 = indicator v2.3's default plan), as in report50k.py.
 
 Costs: $1.34 per MNQ round turn (inside every trade's net), Lucid keeps 10% of each payout, and the 50K eval price of
 account.RULES per eval ($115 list; ONR_EVAL_FEE_50K sets another, e.g. 80.50 with a discount code). The eval price
@@ -30,12 +36,22 @@ from portfolio import pool  # noqa: E402
 COMM = 1.34
 FEE = RULES[50]["price"]
 SPLIT = 0.9
-E_KW = dict(improved=True, comm=COMM, size=50)
-F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM, size=50, payout_max=True)
+CONS = float(os.environ.get("ONR_EVAL_CONS", "0.4"))
+MAXPAY = int(os.environ.get("ONR_MAX_PAY", "5"))
+E_KW = dict(improved=True, comm=COMM, size=50, **({} if CONS == 0.4 else dict(cons=CONS)))
+F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM, size=50, payout_max=True,
+            **({} if MAXPAY == 5 else dict(max_pay=MAXPAY)))
 LEG = {"on": "Overnight", "pyr": "Pyramid", "ib": "IB breakout"}
 WHY = {"stop": "stop", "target": "target", "time": "time exit", "stop-fillbar": "stop (fill bar)", "none": "time exit"}
-# the real-MNQ totals mnq_real50k.py prints for the same data (checked before anything is written)
-REAL = dict(trades=71, net=16955, slot_payouts=[1136, 1280, 2000], slot_evals=1, pool=(15, 21677, 10))
+# the real-MNQ totals mnq_real50k.py prints for the same data, by plan (eval consistency, payouts per account), checked
+# before anything is written; read from mnq_real50k.py's output with ONR_EVAL_CONS / ONR_MAX_PAY set (Nov 19 2026). In
+# these 50 sessions no account reached a 4th payout, so the payout plan changes nothing here.
+REAL_BY_PLAN = {(0.4, 5): dict(trades=71, net=16955, slot_payouts=[1136, 1280, 2000], slot_evals=1, pool=(15, 21677, 10)),
+                (0.4, 4): dict(trades=71, net=16955, slot_payouts=[1136, 1280, 2000], slot_evals=1, pool=(15, 21677, 10)),
+                (0.5, 5): dict(trades=71, net=16955, slot_payouts=[563], slot_evals=5, pool=(10, 8324, 25)),
+                (0.5, 4): dict(trades=71, net=16955, slot_payouts=[563], slot_evals=5, pool=(10, 8324, 25))}
+REAL = REAL_BY_PLAN[(CONS, MAXPAY)]
+ORD = {1: "1st", 2: "2nd", 3: "3rd"}
 
 # ---- cost bookkeeping: wrap the leg functions the account module calls (results are passed through unchanged)
 TRADES = []   # (gross, net, exit reason) of each funded-leg trade, in call order
@@ -128,7 +144,7 @@ def eval_plan(S, ks):
             leg, side, rec = "Opening drive (OD), 09:35 ET", sd_, r["od"]
         else:
             continue
-        n, stop_pts, tgt_pts = _eval_bracket(adr, 2000.0, 0.0, 0.0, 0.4, 1.0, True, COMM, 50)
+        n, stop_pts, tgt_pts = _eval_bracket(adr, 2000.0, 0.0, 0.0, CONS, 1.0, True, COMM, 50)
         E = rec["E"]
         px, why = bracket_exit(rec["w"], side, E, stop_pts, tgt_pts)
         gross = (px - E) * side * n * PV
@@ -172,7 +188,8 @@ def journey(S, k0, k1):
             cash += SPLIT * amt
             note = f"payout {fu.npay} requested" if amt > 0 else ""
             if evn == "done":
-                note += "; 5th payout: account finished"
+                note += ("; 5th payout: account finished" if MAXPAY == 5
+                         else f"; {ORD.get(MAXPAY, f'{MAXPAY}th')} payout taken: account closed (the payout plan)")
             elif evn == "blown":
                 note = "max loss hit: account closed"
             rows.append([day(S.days[k]), f"funded {nacct}", r2(fu.pnl), r2(amt), 0, r2(cash), note.strip("; ")])
@@ -303,7 +320,7 @@ def pd_(s):
     return datetime.date.fromisoformat(s)
 
 
-def main(dd, out):
+def main(dd, out, fd=None, report_dir=None):
     os.makedirs(out, exist_ok=True)
     TC = ["trade", "date", "trade_type", "side", "mnq_traded", "exit", "gross_usd", "commission_usd", "net_usd",
           "running_net_usd"]
@@ -341,26 +358,41 @@ def main(dd, out):
     assert (rs["payouts"], round(rs["gross"]), rs["evals"]) == REAL["pool"] and abs(rs["net"] - (SPLIT * rs["gross"] - FEE * rs["evals"])) < 0.01, rs
     write(out, "real_pool", PC, rp)
 
-    # ================= last 4 years (CFD minute bars)
+    # ================= the study window: the last 4 years on the CFD, or the last 5 years on real NQ futures
     S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
-    k4 = int(np.searchsorted(S.days, np.datetime64("2022-11-14").astype(int)))
-    k4s = range(k4, len(S.days))
-    print(f"4 years: {day(S.days[k4])} -> {day(S.days[-1])}, {len(k4s)} sessions")
-    bt, bd = book(S, k4s)
+    if fd is None:
+        assert (CONS, MAXPAY) == (0.4, 5), "the CFD 4-year study is checked against results_50k: the default plan only"
+        ST, NY, SS = "4y", 4, S
+        k4 = int(np.searchsorted(SS.days, np.datetime64("2022-11-14").astype(int)))
+    else:
+        ST, NY = "5y", 5
+        SS = Sessions(load_npz(os.path.join(fd, "NQFUT.npz")), load_npz(os.path.join(fd, "SPXUSD.npz")), tf=5)
+        k4 = int(np.searchsorted(SS.days, np.datetime64("2021-11-15").astype(int)))
+    k4s = range(k4, len(SS.days))
+    print(f"study window ({ST}): {day(SS.days[k4])} -> {day(SS.days[-1])}, {len(k4s)} sessions")
+    bt, bd = book(SS, k4s)
     by_year = {}
     for t in bt:
         by_year[t[1][:4]] = by_year.get(t[1][:4], 0.0) + t[8]
-    want = {"2022": 4044, "2023": -3204, "2024": 27634, "2025": 15355, "2026": 35600}  # years.csv book_net_usd
-    assert all(abs(by_year[y] - v) < 1.0 for y, v in want.items()), by_year
+    if fd is None:
+        want = {"2022": 4044, "2023": -3204, "2024": 27634, "2025": 15355, "2026": 35600}  # years.csv book_net_usd
+        first = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "results_50k" + FEE_TAG, "summary.json")))
+    else:  # report50k.py's run of this plan on the same series and window
+        first = json.load(open(os.path.join(report_dir, "summary.json")))
+        assert first["nq_file"] == "NQFUT.npz" and first["nq_bar_minutes"] == 5 and first["window"][0] == "2021-11-15", first
+        assert first["window"][1] == day(SS.days[-1]) and first["eval_price"] == FEE, (first["window"], first["eval_price"])
+        assert first.get("eval_consistency", 0.4) == CONS and first.get("max_payouts_per_account", 5) == MAXPAY, first
+        want = {r["year"]: float(r["net_usd"]) for r in csv.DictReader(open(os.path.join(report_dir, "book_years.csv")))}
+        assert sorted(want) == sorted(by_year), (sorted(want), sorted(by_year))
+    assert all(abs(by_year[y] - v) < 1.0 for y, v in want.items()), (by_year, want)
     write(out, "book_trades", TC, bt)
     write(out, "book_days", DC, bd)
-    bp, bs = pool_rows(S, k4, len(S.days))
-    first = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "results_50k" + FEE_TAG, "summary.json")))
+    bp, bs = pool_rows(SS, k4, len(SS.days))
     assert abs(bs["net"] - first["pool"]["first_path_total"]) < 2.0, (bs, first["pool"]["first_path_total"])  # report50k.py, same price
     PAID[0] = 0.0
-    js = journey(S, k4, len(S.days))
+    js = journey(SS, k4, len(SS.days))
     s_paid = PAID[0]
-    write(out, "slot_4y", JC, js)
+    write(out, f"slot_{ST}", JC, js)
 
     # ================= every year, 2011 - 2026 (CFD minute bars): one continuous run from the first full session
     k0 = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in S.days]))
@@ -416,7 +448,7 @@ def main(dd, out):
     block("pool_net", pl, "Net to you", rs["net"], bs["net"], aps["net"])
     block("pool_comm", pl, "Commission paid in the accounts (already taken out before the payouts)", -rs["paid"], -bs["paid"],
           -aps["paid"])
-    write(out, "costs", ["item_id", "setup", "item", "real_60d_usd", "last_4y_usd", "all_years_usd"], cost)
+    write(out, "costs", ["item_id", "setup", "item", "real_60d_usd", f"last_{ST}_usd", "all_years_usd"], cost)
 
     # ================= single figures for the new sections
     rn = np.array([t[8] for t in rt])
@@ -445,11 +477,11 @@ def main(dd, out):
          ["real", "real_pool_net", "Net to you, 5 funded accounts + evals", rs["net"], "usd", ""],
          ["real", "real_pool_payouts", "Payouts, 5 funded accounts + evals", rs["payouts"], "count", ""],
          ["real", "real_pool_evals", "Evals bought, 5 funded accounts + evals", rs["evals"], "count", ""],
-         ["4y", "book_commission", "Commission paid, one funded account, 4 years", -sum(t[7] for t in bt), "usd", ""],
-         ["4y", "book_trades_n", "Trades, one funded account, 4 years", len(bt), "count", ""],
-         ["4y", "pool_total_net", "Net to you, 5 funded + evals, 4 years", bs["net"], "usd", ""],
-         ["4y", "pool_total_payouts", "Payouts, 5 funded + evals, 4 years", bs["payouts"], "count", ""],
-         ["4y", "pool_total_evals", "Evals bought, 5 funded + evals, 4 years", bs["evals"], "count", ""]]
+         [ST, "book_commission", f"Commission paid, one funded account, {NY} years", -sum(t[7] for t in bt), "usd", ""],
+         [ST, "book_trades_n", f"Trades, one funded account, {NY} years", len(bt), "count", ""],
+         [ST, "pool_total_net", f"Net to you, 5 funded + evals, {NY} years", bs["net"], "usd", ""],
+         [ST, "pool_total_payouts", f"Payouts, 5 funded + evals, {NY} years", bs["payouts"], "count", ""],
+         [ST, "pool_total_evals", f"Evals bought, 5 funded + evals, {NY} years", bs["evals"], "count", ""]]
     for name, v in sorted(legs.items()):
         key = {"Overnight": "on", "Pyramid": "pyr", "IB breakout": "ib"}[name]
         v = np.array(v)
@@ -458,8 +490,11 @@ def main(dd, out):
         K.append(["real", f"real_{key}_net", f"{name} net", v.sum(), "usd", ""])
     K += all_k
     shown = {"usd": lambda v: round(v), "pct": lambda v: round(v, 1), "count": lambda v: int(round(v))}  # as printed
+    addon = float(os.environ.get("ONR_ADDON_FEE_50K", "0"))  # the part of FEE that pays for the add-on (the note only)
     price_row = ["setup", "eval_price", "Eval price, Lucid Flex 50K, used for every figure", FEE, "usd",
-                 "Lucid's list price" if FEE == 115.0 else "with a discount code; list price $115"]
+                 "Lucid's list price" if FEE == 115.0 else
+                 f"${FEE - addon:.2f} with a discount code + ${addon:.0f} for the 50% consistency add-on; list price $115"
+                 if addon else "with a discount code; list price $115"]
     write(out, "real_kpis", ["section", "metric", "label", "value", "unit", "note"],
           [[a, b, c, shown[u](v), u, n] for a, b, c, v, u, n in K] + [price_row])
     lg = []
@@ -470,10 +505,11 @@ def main(dd, out):
     lg.append(["All trades", len(rt), round(100 * np.mean([t[8] > 0 for t in rt]), 1), round(sum(t[6] for t in rt)),
                round(sum(t[7] for t in rt)), round(sum(t[8] for t in rt))])
     write(out, "real_legs", ["trade_type", "trades", "win_pct", "gross_usd", "commission_usd", "net_usd"], lg)
-    print(f"checks passed at ${FEE:.2f} an eval: real {REAL['trades']} trades {REAL['net']:+,.0f}; account payouts "
-          f"{REAL['slot_payouts']}, net {slot_cash:,.2f}; pool (payouts, gross, evals) {REAL['pool']}; 4-year book by year = "
-          f"years.csv; 4-year pool net = report50k's {first['pool']['first_path_total']:,.0f}")
+    print(f"checks passed at ${FEE:.2f} an eval (eval consistency {CONS:.0%}, {MAXPAY} payouts an account): real "
+          f"{REAL['trades']} trades {REAL['net']:+,.0f}; account payouts {REAL['slot_payouts']}, net {slot_cash:,.2f}; pool "
+          f"(payouts, gross, evals) {REAL['pool']}; {NY}-year book by year = report50k's; {NY}-year pool net = report50k's "
+          f"{first['pool']['first_path_total']:,.0f}")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(*sys.argv[1:5])

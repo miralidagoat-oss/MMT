@@ -842,7 +842,7 @@ Under Lucid's rules, 1 to 5 funded accounts with as many evals make $12,789, $23
 - **Header and panel.** Both now quote these figures (real futures, Lucid's rules).
 - **Older tooltips.** The ones that still quote CFD results now say so.
 
-**With the add-on's own price (Nov 20).** The user buys the 50% add-on for $10 extra per eval, so each eval costs $90.50. `ONR_ADDON_FEE_50K=10` charges that $10 on the add-on runs' evals only (`results_live_fee8050_addon10/`). The trades are identical; only the accounting changes.
+**With the add-on's own price (Nov 19).** The user buys the 50% add-on for $10 extra per eval, so each eval costs $90.50. `ONR_ADDON_FEE_50K=10` charges that $10 on the add-on runs' evals only (`results_live_fee8050_addon10/`). The trades are identical; only the accounting changes.
 
 | 5 funded + 5 evals, each account closed after its 4th payout | 50% add-on ($90.50 an eval) | 40% rule ($80.50) |
 |---|---|---|
@@ -855,6 +855,56 @@ The website's main view is now this setup: the 50% add-on at $90.50, each accoun
 ```bash
 ONR_EVAL_FEE_50K=80.50 python3 live50k.py ../../data_fut results_live_fee8050
 ONR_EVAL_FEE_50K=80.50 ONR_ADDON_FEE_50K=10 python3 live50k.py ../../data_fut results_live_fee8050_addon10
+```
+
+### The whole website on the user's plan (Nov 19 2026; `site_v23.py`, `results_v23_*`)
+
+Every page of the website now uses one plan:
+- the 50% consistency add-on on every eval at $90.50 ($80.50 with a discount code plus the add-on's $10);
+- each funded account closed right after its 4th payout;
+- up to 5 funded accounts and 10 in all, one new eval a day.
+
+The only exception is the Tests page. Its research rounds ran earlier, with the 40% rule, $80.50 evals and accounts that kept cycling, and the page says so. The Details page's study moved from the last 4 years on the CFD to the last 5 years on real futures.
+
+**What changed in the code** (each switch defaults to the old behaviour, so earlier results reproduce):
+- `report50k.py`, `export_charts.py` and `mnq_real50k.py` read `ONR_EVAL_CONS` (the eval's consistency rule) and `ONR_MAX_PAY` (payouts before an account is closed).
+- `export_charts.py` takes an optional futures data folder and the matching `report50k.py` folder. With them, the study window is the last 5 years on real futures. It is then checked against that report: book by year, first pool path, plan and price.
+- `export_charts.py` checks the 60 real-MNQ sessions against `mnq_real50k.py`'s counts for each plan (`REAL_BY_PLAN`).
+- `research5.metrics` and `research4.run_metrics` take the eval price per run, so one run can price the add-on at $90.50 and the 40% rule at $80.50.
+- `make_kpis.py` also writes the distributions table and labels each year from the report's own window.
+- `site_v23.py` makes the account tables and the add-on comparison (structures A, C and B, 1 to 5 accounts, 12 start dates):
+  - on real futures over the last 5 years;
+  - on the CFD for every year since 2011;
+  - the 60 real-MNQ sessions for both plans.
+
+**Checks that passed before anything was published:**
+- 5 funded + 5 evals here equals `live50k.py`'s B5-addon-stop4: $59,716 a year, worst full year $38,345. The 40% comparison equals its B5-stop4: $60,318.
+- `export_charts.py`'s 5-year study equals `report50k.py`'s run of the same plan, in book by year and in the first pool path ($290,766).
+- Both plans' 60 real-MNQ sessions equal `mnq_real50k.py`'s counts. In those 50 sessions no account reached a 4th payout, so the payout plan changes nothing there.
+- On the page, every one of the 79 drawings runs and every single figure equals its data cell. No link is broken, and nothing overflows at phone width.
+
+**What the plan makes (last 5 years on real futures, mean of 12 start dates):**
+
+| Accounts | Net a year | Worst full year | Months with a payout |
+|---|---|---|---|
+| 5 funded + 5 evals | $59,716 | $38,345 | 66.8% |
+| 5 accounts in all, one new eval a day | $39,695 | $26,101 | 61.8% |
+| 5 accounts bought the same day, copy-traded in lockstep | $38,154 | $27,064 | 49.7% |
+
+- **Accounts bought the same day.** They make about the same a year as accounts bought one a day, but they pay out together. They paid in fewer months, and over every year since 2011 on the CFD their longest wait for a payout was 17.5 months against 8.6.
+- **The add-on at $10.** It costs $602 a year against the 40% rule and pays for itself up to $3.72 an eval. Both are inside the $5,739 noise band. It raises the worst full year by $4,004 and the worst 12 months from $23,173 to $31,535.
+- **Every year since 2011 on the CFD.** 5 funded + 5 evals made $39,413 a year with no losing full year; the worst was 2016's $1,993.
+- **The last 60 days on real MNQ.** The add-on did worse in this one path: +$5,229 for 5 funded + 5 evals against +$18,705 with the 40% rule. Its evals passed sooner (70.2% vs 65.2%), and its funded accounts met a worse run of days.
+- **Double commission plus a tick of slippage** (the 5-year study, median of 10 start dates): $51,422 a year against $58,902.
+
+```bash
+ONR_MAX_PAY=4 ONR_EVAL_FEE_50K=90.50 ONR_EVAL_CONS=0.5 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py ../../data_fut results_v23_nqfut_5y_addon 2021-11-15
+ONR_MAX_PAY=4 ONR_EVAL_FEE_50K=80.50 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py ../../data_fut results_v23_nqfut_5y 2021-11-15
+# the same two from 2019-09-03 (results_v23_nqfut_addon, results_v23_nqfut) and on the CFD (../../data: results_v23_cfd19_addon, results_v23_cfd19)
+ONR_EVAL_FEE_50K=90.50 ONR_EVAL_CONS=0.5 ONR_MAX_PAY=4 ONR_ADDON_FEE_50K=10 python3 export_charts.py ../../data_live results_v23_charts ../../data_fut results_v23_nqfut_5y_addon
+python3 make_kpis.py results_v23_nqfut_5y_addon results_v23_charts/kpis.csv "Nov 15 2021 - Nov 17 2026" "2022-2025" results_v23_charts
+ONR_MAX_PAY=4 python3 site_v23.py ../../data_fut ../../data ../../data_live results_v23_site
+ONR_MAX_PAY=4 python3 site_v23.py --fut-tables ../../data_fut results_v23_site
 ```
 
 

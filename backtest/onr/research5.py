@@ -178,8 +178,10 @@ def _init(dd, rd, keys):
             _S[name] = load_market(rd, spx, name)
 
 
-def metrics(evs, full_years, periods):
-    """research4.run_metrics on the merged calendar of one or more markets (checked equal for one market)."""
+def metrics(evs, full_years, periods, fee=None):
+    """research4.run_metrics on the merged calendar of one or more markets (checked equal for one market).
+    fee: the price of one eval (default FEE, the 50K price of account.RULES)."""
+    fee = FEE if fee is None else fee
     cal = sorted({iso(S.days[k]) for _, S, k0, _ in evs for k in range(k0, len(S.days))})
     pos = {d: i for i, d in enumerate(cal)}
     E = [(iso(S.days[k]), kind, (key, aid), v) for key, S, _, ev in evs for k, kind, aid, v in ev]
@@ -190,7 +192,7 @@ def metrics(evs, full_years, periods):
             net[pos[d]] += SPLIT * v
             pays.append(pos[d])
         elif kind == "buy":
-            net[pos[d]] -= FEE
+            net[pos[d]] -= fee
     run = np.cumsum(net)
     yrs = {}
     for i, d in enumerate(cal):
@@ -271,9 +273,10 @@ def run_parts(parts, sd):
 
 
 def _job(args):
-    name, parts, window, off = args
+    """args: (name, parts, window, offset[, eval price]); without a price the run uses FEE."""
+    name, parts, window, off = args[:4]
     evs = run_parts(parts, start_day(window, off))
-    return (name, window, off), metrics(evs, FULL5, P_ALL if window == "all" else P_5Y)
+    return (name, window, off), metrics(evs, FULL5, P_ALL if window == "all" else P_5Y, args[4] if len(args) > 4 else None)
 
 
 def self_check():

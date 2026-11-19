@@ -1,0 +1,132 @@
+{
+ "window": [
+  "2021-11-15",
+  "2026-11-17"
+ ],
+ "size": "Lucid Flex 50K",
+ "commission": 1.34,
+ "eval_price": 90.5,
+ "payout_policy": "maximum allowed (50% of profit, cap $2,000)",
+ "eval_consistency": 0.5,
+ "max_payouts_per_account": 4,
+ "nq_file": "NQFUT.npz",
+ "nq_bar_minutes": 5,
+ "book": {
+  "trades": 1716,
+  "net_per_year": 21081.0,
+  "days_traded": 1202,
+  "pct_days_positive": 44.9,
+  "pct_days_qualifying": 38.7,
+  "avg_day": 87.8,
+  "median_day": -66.4,
+  "best_day": 7078.0,
+  "worst_day": -1198.0,
+  "daily_sharpe": 1.96
+ },
+ "eval": {
+  "started": 1280,
+  "pass_pct": 46.2,
+  "sessions_to_pass": {
+   "p25": 5.0,
+   "median": 8.0,
+   "p75": 12.0,
+   "p90": 17.0
+  },
+  "sessions_to_fail_median": 5.0,
+  "evals_per_funded_account": 2.17,
+  "eval_cost_per_funded_account": 196.0
+ },
+ "funded": {
+  "accounts": 519,
+  "pct_with_a_payout": 58.8,
+  "avg_payouts": 1.18,
+  "avg_withdrawn_net": 1625.0,
+  "days_to_first_payout": {
+   "median": 15.0,
+   "p75": 18.0,
+   "p90": 21.0
+  },
+  "outcome_pct": {
+   "blown": 0.0,
+   "abandon": 86.1,
+   "done": 13.9,
+   "open": 0.0
+  },
+  "median_life_days": 20.0
+ },
+ "first_payout": {
+  "starts": 1149,
+  "pct_paid_by_end": 100.0,
+  "pct_within_30_days": 23.2,
+  "pct_within_60_days": 56.2,
+  "pct_within_90_days": 74.8,
+  "pct_within_180_days": 98.1,
+  "pct_within_365_days": 100.0,
+  "median_days": 54.0,
+  "avg_evals_before": 4.37
+ },
+ "pool": {
+  "paths": 10,
+  "net_per_year_median": 58902.0,
+  "net_per_year_range": [
+   58097.0,
+   59648.0
+  ],
+  "payouts_per_year": 51.9,
+  "evals_per_year": 97.1,
+  "pct_months_net_positive": 67.2,
+  "pct_months_with_a_payout": 67.2,
+  "monthly_net_percentiles": {
+   "10": -1267.0,
+   "25": -543.0,
+   "50": 3631.0,
+   "75": 8186.0,
+   "90": 13279.0
+  },
+  "pct_full_years_positive": 100.0,
+  "longest_gap_months": {
+   "median": 5.9,
+   "max": 5.9
+  },
+  "worst_12_months": 30126.0,
+  "first_path_max_drawdown": 5792.0,
+  "first_path_total": 290766.0
+ },
+ "stress_2x_costs_1_tick": {
+  "net_per_year_median": 51422.0,
+  "longest_gap_max": 5.9,
+  "worst_12_months": 21235.0
+ },
+ "alarm_bands": [
+  [
+   20,
+   1504.0,
+   -3165.0,
+   -4924.0
+  ],
+  [
+   40,
+   3113.0,
+   -3671.0,
+   -6197.0
+  ],
+  [
+   60,
+   4716.0,
+   -3599.0,
+   -6852.0
+  ],
+  [
+   120,
+   9647.0,
+   -2441.0,
+   -7077.0
+  ],
+  [
+   250,
+   20110.0,
+   2689.0,
+   -4078.0
+  ]
+ ]
+}

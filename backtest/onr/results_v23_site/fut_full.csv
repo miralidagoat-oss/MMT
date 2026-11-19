@@ -1,0 +1,17 @@
+metric,label,fut_current,fut_addon,cfd_current,cfd_addon,unit
+eval_pass,Eval pass rate (an eval started on every session),41.0,43.5,40.4,42.4,pct
+eval_days_median,"Sessions to pass, median",10.0,8.0,10.0,8.0,sessions
+funded_paid,Funded accounts that reach a payout,56.1,58.9,61.4,63.9,pct
+funded_avg_net,"Paid to you per funded account, average",1556.0,1630.0,1836.0,1908.0,usd
+slot_first_median,"One account slot: first payout, median",64.0,55.0,59.0,56.0,days
+slot_within_90,One account slot: first payout within 90 days,63.6,71.6,67.3,71.3,pct
+pool_net_year,5 funded + 5 evals: net a year (median of 10 start dates),55859.0,56924.0,50727.0,55512.0,usd
+pool_worst_12m,5 funded + 5 evals: worst 12 months,23173.0,29221.0,1287.0,6996.0,usd
+pool_gap,5 funded + 5 evals: longest wait for a payout,6.8,8.4,6.4,6.1,months
+pool_months_paid,5 funded + 5 evals: months with a payout,61.0,63.4,63.7,68.3,pct
+pool_years_positive,5 funded + 5 evals: full years positive (2020-2025),100.0,100.0,100.0,100.0,pct
+pool_total,5 funded + 5 evals: total over the period (first start date),399834.0,409339.0,361029.0,394219.0,usd
+pool_max_dd,5 funded + 5 evals: deepest drop (first start date),-7245.0,-9231.0,-5620.0,-5340.0,usd
+stress_net_year,2x commission + 1 tick slippage: net a year,49589.0,50716.0,49580.0,51650.0,usd
+book_net_year,One funded account trading every day: net a year,20697.0,20697.0,20727.0,20727.0,usd
+book_worst_day,One funded account trading every day: worst day,-1276.0,-1276.0,-2308.0,-2308.0,usd

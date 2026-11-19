@@ -1,0 +1,4 @@
+leg,trades,trades_per_year,win_pct,avg_win_usd,avg_loss_usd,profit_factor,avg_trade_usd,net_usd_per_year,t_stat
+Overnight reversion (18:10 -> 09:30),583,80.9,49.6,512.0,-453.0,1.11,25.3,2045.0,0.97
+Opening-drive pyramid (09:35),760,105.5,31.8,833.0,-233.0,1.67,106.2,11196.0,4.38
+IB breakout with the drive (10:30-13:00),1153,160.0,44.9,506.0,-329.0,1.26,46.6,7456.0,3.51
