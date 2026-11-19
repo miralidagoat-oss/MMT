@@ -1,0 +1,9 @@
+year,period,futures_data,fut_current_usd,fut_addon_usd,cfd_current_usd,cfd_addon_usd,fut_book_usd,cfd_book_usd,fut_pass_current_pct,cfd_pass_current_pct,fut_pass_addon_pct,cfd_pass_addon_pct
+2019,from Sep 3,real NQ futures,4202,8110,4150,4249,8436,11696,27.1,47.1,35.3,35.3
+2020,full year,real NQ futures,45651,55598,38928,65073,15704,15415,37.5,35.5,40.9,42.5
+2021,full year,real NQ futures,69032,68917,70771,68180,20674,24863,36.7,33.2,30.1,30.1
+2022,full year,real NQ futures,41787,41521,42452,49106,24007,21777,38.2,39.1,43.6,43.0
+2023,full year,real NQ futures,34341,41253,13565,24765,6408,-3204,32.9,24.9,41.9,32.7
+2024,full year,"real futures to Aug 9, then the CFD",100641,94741,87152,105901,28494,27634,55.5,57.0,55.1,56.3
+2025,full year,the CFD,39684,50250,28471,42411,13795,15355,42.3,42.3,47.3,47.3
+2026,to Nov 17 (CFD: Nov 13),"the CFD to Sep 9, then real MNQ",88704,80184,84184,92304,31625,35600,49.3,49.5,49.1,47.9

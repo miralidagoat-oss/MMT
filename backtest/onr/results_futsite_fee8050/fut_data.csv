@@ -1,0 +1,10 @@
+id,source,from,to,bars,note
+fut,Real NQ futures (the 5-year file),2019-08-11,2024-08-09,343210,clock repaired; 5-minute moves vs the market 0.985 to 0.999 by month
+fill2019,  2019: day-session bars filled from the CFD,,,1692,22.2% of 7611
+fill2020,  2020: day-session bars filled from the CFD,,,4038,20.8% of 19423
+fill2021,  2021: day-session bars filled from the CFD,,,5376,27.5% of 19578
+fill2022,  2022: day-session bars filled from the CFD,,,4440,24.4% of 18174
+fill2023,  2023: day-session bars filled from the CFD,,,1,0.0% of 19687
+fill2024,  2024: day-session bars filled from the CFD,,,0,0.0% of 12111
+cfd,"HistData Nasdaq-100 CFD, made into 5-minute bars",2024-08-11,2026-09-09,141904,the gap after the file ends
+mnq,"Real MNQ futures (Yahoo Finance, 5-minute)",2026-09-09,2026-11-17,13407,to 12:40 ET on Nov 17 2026
