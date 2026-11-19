@@ -645,6 +645,8 @@ Since 2011 (start Feb 15 2011), the add-on made more in 12 of 16 years and less 
 
 This is one 50-session path; the 5-year figures come from about 1,300 sessions and many start dates. The step-by-step table is `addon_journey.csv`. The current-rules figures equal `export_charts.py`'s checked ones.
 
+`indicators/onr_book_addon50.pine` is the same indicator for an eval bought with the add-on: identical trading logic, with "EVAL: consistency rule you bought" defaulting to 50% and the add-on's backtest in its header and panel. Its tooltips for the bracket width and the news skip still quote the 40%-rule pass rates; those options were not re-run with the add-on.
+
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
