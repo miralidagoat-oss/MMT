@@ -1059,6 +1059,20 @@ Each change alone from A: Topstep's fees $56,984 (−$2,732); Topstep's account 
 - **Topstep's account rules** add $4-7k a year. The max loss locks at $0 instead of +$100, and the Combine passes with a 55% best day instead of 50%.
 - **Topstep's fees** cost $2-3k a year more than your $90.50 Lucid evals, mostly the $149 activation of each XFA.
 
+**Starting cash** (`startcash.py` → `results_startcash/`). The plan is started on many dates: every 5 sessions on futures prices (271 starts, Aug 30 2019 to Dec 6 2024) and every 10 sessions on the CFD (357 starts, Feb 2011 to Nov 2024). Each start runs 2 years. "Cash out of pocket" is the lowest the running total of payouts minus every fee went.
+
+Topstep 50K, Standard payouts, No Activation Fee path ($95 a month), futures starts:
+- **Typical start:** median $2,090; back above $0 after a median 38 sessions.
+- **How much was enough:** $5,000 for 80% of starts, $7,500 for 91%, $10,000 for 97%, $12,000 for all of them.
+- **Worst start:** Aug 5 2020 needed $11,115. Its first payout came Apr 23 2021, and the running total was back above $0 by May 14 2021.
+- **Bad timing since 2011:** starting Sep 2023, just before the Oct 2023 - Feb 2024 slump, needed about $10.3k.
+- **After 2 years:** every futures start was ahead (median $132k, worst $74k).
+
+The other setups:
+- **$49 path:** median $1,823, worst $10,203.
+- **Lucid plan:** median $1,810, worst $10,408.
+- **CFD starts since 2011:** $12,000 was enough for every Topstep start. 1 of 357 Topstep starts was behind after 2 years (8 of 357 for the Lucid plan).
+
 **Website v18 (Topstep tab):** what changed on the page:
 - **Fee-path finding:** at 50K the No Activation Fee path made more in every window.
 - **Two new sections:** "Why Topstep made more" (`topstep_why.py`) and "25K at both firms" (`topstep25k.py`, with each year).

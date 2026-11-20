@@ -1,0 +1,7 @@
+data,plan,setup,starts,first_start,last_start,cash_low_median_usd,cash_low_p10_usd,cash_low_worst_usd,worst_start,worst_low_date,worst_back_above_zero,break_even_sessions_median,never_back_within_2_years,net_after_2_years_median_usd,net_after_2_years_worst_usd
+futures,topstep-standard,"Topstep 50K, $49 a month + $149 activation",271,2019-08-30,2024-12-06,-1823,-5767,-10203,2020-08-05,2021-04-22,2021-05-13,37,0,132753,72056
+futures,topstep-noact,"Topstep 50K, $95 a month, no activation",271,2019-08-30,2024-12-06,-2090,-7146,-11115,2020-08-05,2021-04-22,2021-05-14,38,0,132361,74047
+futures,lucid-addon,"Lucid 50K, add-on ($90.50 evals), closed after the 4th payout",271,2019-08-30,2024-12-06,-1810,-6697,-10408,2020-08-05,2021-04-22,2021-05-13,38,0,98003,65748
+CFD,topstep-standard,"Topstep 50K, $49 a month + $149 activation",357,2011-02-15,2024-11-25,-2215,-4625,-9117,2023-09-05,2024-03-19,2024-04-12,58,0,59280,-744
+CFD,topstep-noact,"Topstep 50K, $95 a month, no activation",357,2011-02-15,2024-11-25,-2470,-5643,-10165,2023-09-05,2024-03-19,2024-04-24,61,0,62707,-1394
+CFD,lucid-addon,"Lucid 50K, add-on ($90.50 evals), closed after the 4th payout",357,2011-02-15,2024-11-25,-2534,-6615,-12412,2015-06-30,2016-10-21,not within 2 years,54,5,70062,-11554
