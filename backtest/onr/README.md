@@ -1024,6 +1024,25 @@ ONR_TS_PAYMIN=125 python3 topstep_sim.py ../../data_fut ../../data results_topst
 python3 topstep_sim.py --tables ../../data_fut ../../data results_topstep
 ```
 
+**Month by month** (`topstep_months.py` → `results_topstep/topstep_months.csv`, `topstep_month_stats.csv`; website v17, Topstep tab).
+- **What it re-runs:** the same 216 pools, keeping every calendar month of every configuration and window.
+- **Each month shows:** net to you as the median, lowest and highest of the 12 start dates, then the first start date's month in full: Combines bought, passed and failed; XFAs started and lost; payouts (count, gross, Topstep's 10%); Combine and activation fees; net; running total; and the accounts open at the month's end.
+- **Checks:** each run's daily cash equals `topstep_sim.cash_flows`, and its months add up to `runs.json`'s years exactly.
+
+The first start date over the last 5 years:
+
+| Setup | Months up | With a payout | Typical month | Worst month | Best month | Longest losing run |
+|---|---|---|---|---|---|---|
+| 50K, Standard payouts | 42 of 61 | 43 | $5,399 | -$2,323 (Jan 2024) | $19,800 (Dec 2024) | 5 months |
+| 150K, Standard payouts | 38 of 61 | 39 | $11,362 | -$4,873 (Jan 2024) | $67,500 (Aug 2024) | 5 months |
+| 50K, Consistency payouts | 23 of 61 (31 flat) | 23 | $0 | -$1,129 | $27,000 | 3 months |
+
+Both rows use Standard fees.
+
+```bash
+python3 topstep_months.py ../../data_fut ../../data results_topstep
+```
+
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
