@@ -1100,7 +1100,7 @@ Since 2011 (CFD):
 - **The 5-Combines-a-month limit** binds in 68% of months on the Standard path, and it is what made 2023 weak.
 - **Topstep 50K** (about $78k a year) makes more than twice as much as either 25K.
 
-**Indicator v2.4: a Topstep mode** (both editions, `indicators/onr_book.pine` and `onr_book_addon50.pine`).
+**Indicator v2.4 / v2.5: a Topstep mode** (both editions, `indicators/onr_book.pine` and `onr_book_addon50.pine`).
 
 A new first input, "Prop firm" (Topstep or Lucid Flex), defaults to Topstep. A Trading Combine is Phase EVAL, and an XFA is Phase FUNDED. The trades, stops, targets and every $ limit are unchanged: Topstep's profit target and max loss equal Lucid's at 50K / 100K / 150K.
 
@@ -1119,6 +1119,20 @@ At Topstep the indicator uses exactly the rules of the Topstep backtest (`ek`, `
 - **Lucid-only items** are labelled: the add-on input, the payout plan, and the LIVE phase. A Topstep live account is flagged as not modelled.
 
 With "Prop firm" on Lucid Flex every formula reduces to v2.3's.
+
+**v2.5 adds Topstep's 25K** (the Labs $25K Static account), exactly as `topstep25k.py`:
+- $2,000 profit target;
+- a static $1,000 max loss: -$1,000 from the start, and $0 after the first XFA payout;
+- each day's risk capped at the $500 daily loss limit: the eval stop with commission included, and the funded day budget;
+- at most 20 MNQ, with funded legs at most 6;
+- a $4,000 payout cap on either path.
+
+v2.4's "Topstep sells 50K / 100K / 150K" warning is gone.
+
+**Checks:**
+- Both editions parse.
+- The constants for every firm, size and payout path equal `topstep_sim.py`, `topstep25k.py` and `account.RULES`.
+- The 25K bracket, floors and day budget equal the 25K backtest on 120,000 random states.
 
 **Checks:**
 - Both editions parse with `pynescript`, with no undeclared identifiers.

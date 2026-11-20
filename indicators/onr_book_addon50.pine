@@ -1,11 +1,11 @@
 //@version=6
-indicator("ONR Book v2.4 (50% add-on) - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book 50%", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("ONR Book v2.5 (50% add-on) - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book 50%", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2.4, 50% CONSISTENCY ADD-ON EDITION (2026-11-20). Chart: MNQ1! (or NQ1!), 1-5 minute bars, 24h (ETH)
+// ONR BOOK v2.5, 50% CONSISTENCY ADD-ON EDITION (2026-11-20). Chart: MNQ1! (or NQ1!), 1-5 minute bars, 24h (ETH)
 // session. Sizes in MNQ ($2/pt). Same trading logic as onr_book.pine: only "LUCID EVAL: consistency rule you bought"
 // defaults to the 50% add-on, and the Lucid backtest text below leads with the add-on's figures.
-// ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K or Topstep 50K / 100K / 150K (inputs "Prop firm" and "Account size",
+// ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K or Topstep 25K / 50K / 100K / 150K (inputs "Prop firm" and "Account size",
 //          default Topstep 50K; TOPSTEP below). The $ amounts below are for 25K; every one scales
 //          with the account's max loss (x2 at 50K, x3 at 100K, x4.5 at 150K). Target, qualifying day and payout cap
 //          follow the firm's table. At Lucid 50K: stop <= $1,200, eval target <= $1,500 with the add-on, day budget $1,200,
@@ -32,11 +32,12 @@ indicator("ONR Book v2.4 (50% add-on) - Lucid Flex / Topstep (overnight reversio
 //          rule, payouts any day. Withdraw nothing before the lock (a payout locks it at once), then everything above
 //          the max loss + $100, keeping that cushion. Stop trading it below a $200 cushion; once no live account is
 //          left, Lucid lets you buy evals again after 2 weeks. Lucid only: a Topstep live account is not modelled.
-// TOPSTEP: input "Prop firm" = Topstep. Trading Combine = Phase EVAL, Express Funded Account (XFA) = Phase FUNDED. The
-//          trades and every $ limit are the same (Topstep's profit target and max loss equal Lucid's at 50K / 100K /
-//          150K). What changes, exactly as in the backtest (backtest/onr/topstep_sim.py; Topstep's help centre, read
-//          Nov 20 2026):
-//          - the max loss stops trailing at the start balance ($0; Lucid +$100), and in an XFA it is $0 after any payout;
+// TOPSTEP: input "Prop firm" = Topstep. Trading Combine = Phase EVAL, Express Funded Account (XFA) = Phase FUNDED. At
+//          50K / 100K / 150K the trades and every $ limit are the same as at Lucid (the same profit target and max
+//          loss); 25K differs (below). What changes, exactly as in the backtests (backtest/onr/topstep_sim.py and
+//          topstep25k.py; Topstep's help centre, read Nov 20 2026):
+//          - 50K / 100K / 150K: the max loss stops trailing at the start balance ($0; Lucid +$100), and in an XFA it is
+//            $0 after any payout;
 //          - Combine: each day's target is capped at 50% of the profit target (the add-on setting; nothing to buy at
 //            Topstep); it passes at the target with the best day <= 55% of the profit; at most 50 / 100 / 150 MNQ;
 //          - XFA, Standard payouts (recommended): 5 winning days of $150 or more at every size, then 50% of the
@@ -46,10 +47,17 @@ indicator("ONR Book v2.4 (50% add-on) - Lucid Flex / Topstep (overnight reversio
 //          - no payout limit: an XFA trades until it fails;
 //          - funded legs at most 6 / 10 / 10 MNQ: the backtest's assumption for Topstep's Scaling Plan, whose table could
 //            not be read. Check your XFA's limit.
+//          - 25K is Topstep's "Labs $25K Static" account: $2,000 target; a STATIC $1,000 max loss (it never trails; $0
+//            after the first XFA payout); a $500 daily loss limit in the Combine and the XFA, which the plan meets by
+//            capping each day's risk at $500 (the eval stop, commission included, and the funded day budget; $600
+//            otherwise at 25K); at most 20 MNQ (funded legs at most 6); XFA payout cap $4,000 on either path. The
+//            Combine costs $75 once, expires 90 days after purchase and cannot be reset; up to 5 can be bought a month.
 //          Topstep may call a trader up to a live account at its discretion, which closes every XFA: not modelled.
 //          BACKTEST, the last 5 years on real NQ futures prices, 5 XFAs + 5 Combines, Standard payouts and fees: about
 //          $77.1k a year at 50K (worst full year +$37.3k), $103.3k at 100K (+$28.7k), $168.5k at 150K (+$36.6k);
 //          Consistency payouts $54.5k / $55.3k / $95.3k. A best case: the call-up to live is not in it.
+//          25K ($75 Combines, at most 5 a month): Standard payouts $31.7k a year (worst full year +$4.7k), Consistency
+//          $35.5k (+$14.3k); Lucid 25K with the add-on made $29.8k (+$17.2k).
 // ADR = average 09:30-16:00 NQ range of the last 14 full sessions.
 // CHART  : every trade is drawn like TradingView's position tool, from its entry bar to its exit bar: red box = entry to
 //          stop, green box = entry to target, gray line = entry. A BUY / SELL label marks each entry and a label with
@@ -76,9 +84,9 @@ indicator("ONR Book v2.4 (50% add-on) - Lucid Flex / Topstep (overnight reversio
 // =====================================================================================================================
 
 grpA = "Account - update before each session"
-firm = input.string("Topstep", "Prop firm", options = ["Topstep", "Lucid Flex"], group = grpA, tooltip = "Topstep: Trading Combine = Phase EVAL, Express Funded Account (XFA) = Phase FUNDED; 50K / 100K / 150K. Sets Topstep's rules as the backtest used them: the max loss stops trailing at the start balance ($0) and is $0 in an XFA after any payout; the Combine passes at the target with the best day <= 55% (the plan caps each day at 50%) and holds at most 50 / 100 / 150 MNQ; the XFA payout path's rules and caps; no payout limit; at most 6 / 10 / 10 MNQ per funded leg (the backtest's Scaling Plan assumption: check your XFA's limit). Lucid Flex: Lucid's rules. Backtest, last 5 years on real NQ futures prices, 5 funded + 5 evals: Topstep 50K with Standard payouts ~$77.1k a year vs ~$59.7k for Lucid 50K with the add-on, each account closed after its 4th payout. Topstep's discretionary call-up to a live account (it closes every XFA) is not modelled, so its figure is a best case.")
+firm = input.string("Topstep", "Prop firm", options = ["Topstep", "Lucid Flex"], group = grpA, tooltip = "Topstep: Trading Combine = Phase EVAL, Express Funded Account (XFA) = Phase FUNDED; 25K (Topstep Labs $25K Static: a static $1,000 max loss and a $500 daily loss limit) / 50K / 100K / 150K. Sets Topstep's rules as the backtests used them: the max loss stops trailing at the start balance ($0) and is $0 in an XFA after any payout; the Combine passes at the target with the best day <= 55% (the plan caps each day at 50%) and holds at most 50 / 100 / 150 MNQ; the XFA payout path's rules and caps; no payout limit; at most 6 / 10 / 10 MNQ per funded leg (the backtest's Scaling Plan assumption: check your XFA's limit). Lucid Flex: Lucid's rules. Backtest, last 5 years on real NQ futures prices, 5 funded + 5 evals: Topstep 50K with Standard payouts ~$77.1k a year vs ~$59.7k for Lucid 50K with the add-on, each account closed after its 4th payout. Topstep's discretionary call-up to a live account (it closes every XFA) is not modelled, so its figure is a best case.")
 phase = input.string("EVAL", "Phase", options = ["EVAL", "FUNDED", "LIVE"], group = grpA, tooltip = "EVAL: an evaluation (one bracket trade a day); at Topstep, a Trading Combine. FUNDED: a sim-funded account (the 3-trade book); at Topstep, an Express Funded Account (XFA). LIVE: a LucidLive account, after Lucid moves you live: it trades exactly the FUNDED plan; only the drawdown and payout guidance differ. Lucid only: a Topstep live account is not modelled.")
-acctSize = input.string("50K", "Account size", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets the firm's target, max loss, qualifying-day amount, payout cap and position limits for that size (Topstep sells 50K, 100K and 150K), and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Lucid backtest Nov 2022 - Nov 2026 on the CFD data, accounts cycling (40% rule, 5 funded accounts + evals, max-allowed payouts, list eval prices $65 / $115 / $215 / $323): 50K made ~58% more than 25K with about the same worst 12 months (-$2.7k vs -$2.6k); 100K and 150K made more still, but their worst 12 months were about -$21k and -$22k.")
+acctSize = input.string("50K", "Account size", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets the firm's target, max loss, qualifying-day amount, payout cap and position limits for that size (Topstep 25K = the Labs $25K Static account: $2,000 target, a static $1,000 max loss, a $500 daily loss limit, 20 MNQ, payout cap $4,000), and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Lucid backtest Nov 2022 - Nov 2026 on the CFD data, accounts cycling (40% rule, 5 funded accounts + evals, max-allowed payouts, list eval prices $65 / $115 / $215 / $323): 50K made ~58% more than 25K with about the same worst 12 months (-$2.7k vs -$2.6k); 100K and 150K made more still, but their worst 12 months were about -$21k and -$22k.")
 pnlNow = input.float(0.0, "P&L now ($ vs account start; funded / live: after payouts)", group = grpA)
 peakEod = input.float(0.0, "Highest end-of-day P&L so far ($)", minval = 0.0, group = grpA)
 bestDay = input.float(0.0, "Best day so far ($): EVAL since the start; Topstep Consistency XFA since the last payout", minval = 0.0, group = grpA, tooltip = "EVAL (a Lucid eval or a Topstep Combine): your best day since the account started; it sets the profit you need. FUNDED at Topstep on the Consistency payout path: your best day since the last payout (since the start before the first): no day may be above 40% of the profit since then. Not used otherwise.")
@@ -110,18 +118,20 @@ float TK = 0.25
 float COMM = commIn   // $ per MNQ round turn
 float THR = 0.7187
 float ADRREF = 350.0  // funded Auto size = round(ADRREF x M / ADR) MNQ
-// The firm's rules by size: Lucid Flex (help centre, Nov 2026) or Topstep (help centre, read Nov 20 2026; Topstep sells
-// 50K / 100K / 150K). Profit target and max loss are the same at both. M scales every $ limit of the plan with the max loss.
+// The firm's rules by size: Lucid Flex (help centre, Nov 2026) or Topstep (help centre, read Nov 20 2026; 25K is the Labs
+// $25K Static account). M scales every $ limit of the plan with the max loss.
 bool TS = firm == "Topstep"
 bool TSCONS = TS and tsPath == "Consistency"   // Topstep XFA payout path: Consistency (else Standard)
-float TARGET = acctSize == "50K" ? 3000.0 : acctSize == "100K" ? 6000.0 : acctSize == "150K" ? 9000.0 : 1250.0
+bool TSLAB = TS and acctSize == "25K"   // Topstep Labs $25K Static: static max loss, $500 daily loss limit
+float TARGET = TSLAB ? 2000.0 : acctSize == "50K" ? 3000.0 : acctSize == "100K" ? 6000.0 : acctSize == "150K" ? 9000.0 : 1250.0
 float MLL = acctSize == "50K" ? 2000.0 : acctSize == "100K" ? 3000.0 : acctSize == "150K" ? 4500.0 : 1000.0
 float QDAY = TS ? 150.0 : acctSize == "50K" ? 150.0 : acctSize == "100K" ? 200.0 : acctSize == "150K" ? 250.0 : 100.0
-float PAYCAP = TS ? (TSCONS ? (acctSize == "100K" ? 4000.0 : acctSize == "150K" ? 6000.0 : 3000.0) : (acctSize == "100K" ? 3000.0 : acctSize == "150K" ? 5000.0 : 2000.0)) : (acctSize == "50K" ? 2000.0 : acctSize == "100K" ? 2500.0 : acctSize == "150K" ? 3000.0 : 1000.0)
-int EVALMAX = TS ? (acctSize == "100K" ? 100 : acctSize == "150K" ? 150 : 50) : (acctSize == "50K" ? 40 : acctSize == "100K" ? 60 : acctSize == "150K" ? 100 : 20)
+float PAYCAP = TSLAB ? 4000.0 : TS ? (TSCONS ? (acctSize == "100K" ? 4000.0 : acctSize == "150K" ? 6000.0 : 3000.0) : (acctSize == "100K" ? 3000.0 : acctSize == "150K" ? 5000.0 : 2000.0)) : (acctSize == "50K" ? 2000.0 : acctSize == "100K" ? 2500.0 : acctSize == "150K" ? 3000.0 : 1000.0)
+int EVALMAX = TS ? (acctSize == "25K" ? 20 : acctSize == "100K" ? 100 : acctSize == "150K" ? 150 : 50) : (acctSize == "50K" ? 40 : acctSize == "100K" ? 60 : acctSize == "150K" ? 100 : 20)
 int FUNDMAX = TS ? (acctSize == "100K" or acctSize == "150K" ? 10 : 6) : (acctSize == "50K" ? 20 : acctSize == "100K" ? 30 : acctSize == "150K" ? 40 : 10)
 float LOCK = TS ? 0.0 : 100.0   // where the trailing max loss stops: Topstep at the start balance, Lucid at +$100
 float M = MLL / 1000.0
+float DAYCAP = TSLAB ? 500.0 : 600.0 * M   // the day's risk cap: Topstep 25K's $500 daily loss limit, else $600 per $1,000 of max loss
 string TZ = "America/New_York"
 float CONS = TS ? 0.5 : (consOpt == "50% (paid add-on)" ? 0.5 : 0.4)   // the plan keeps the eval's best day <= CONS x the profit
 float PASSCONS = TS ? 0.55 : CONS                                     // the firm's best-day rule at the pass (Topstep 55%)
@@ -357,14 +367,15 @@ string FTAG = isLive ? "LIVE" : "FUNDED"
 // a Lucid live account's drawdown trails from $0 and locks at +$100 once live profit reaches the max loss, or at its first payout
 bool liveLocked = isLive and not TS and (nPay > 0 or peakEod >= MLL)
 // eval / funded: the trailing max loss stops at LOCK (Lucid +$100, Topstep $0) once the end-of-day peak is the max loss
-// above it, or after a payout (Topstep: an XFA's max loss is $0 after any payout; a Combine has no payouts)
-float floorLvl = isLive and not TS ? (liveLocked ? 100.0 : peakEod - MLL) : (((nPay > 0 and not (TS and isEval)) or peakEod >= MLL + LOCK) ? LOCK : peakEod - MLL)
+// above it, or after a payout (Topstep: an XFA's max loss is $0 after any payout; a Combine has no payouts).
+// Topstep 25K (Labs Static): the max loss never trails: -$1,000 from the start, $0 after the first XFA payout.
+float floorLvl = TSLAB ? ((nPay > 0 and not isEval) ? 0.0 : -MLL) : isLive and not TS ? (liveLocked ? 100.0 : peakEod - MLL) : (((nPay > 0 and not (TS and isEval)) or peakEod >= MLL + LOCK) ? LOCK : peakEod - MLL)
 float cushion = pnlNow - floorLvl
-float room = math.min(600.0 * M, cushion - 10.0 * M)
+float room = math.min(DAYCAP, cushion - 10.0 * M)
 bool fundAuto = fundSize == "Auto (ADR-normalised)"
 int nF = fundAuto and not na(adr) ? int(math.max(1, math.min(FUNDMAX, math.round(ADRREF * M / adr)))) : 1
 f_bracket(float a) =>
-    float sl = math.min(600.0 * M, cushion - 5.0 * M)
+    float sl = math.min(DAYCAP, cushion - 5.0 * M)
     float need = math.max(TARGET, bestDay / CONS)
     float tp = math.max(20.0 * M, math.min(TPCAP, math.max(need - pnlNow, 0.0) + 15.0 * M))
     int n = int(math.max(1.0, math.min(EVALMAX, math.round((sl + tp) / (SPAN * a * PV)))))
@@ -839,9 +850,9 @@ if showPanel and barstate.islast
     float payAmt = math.min(PAYCAP, 0.5 * pnlNow)  // the maximum the firm allows: 50% of the profit (the balance) up to the size's cap
     string bracketTxt = (SPAN == 1.0 ? "wide" : SPAN == 0.75 ? "medium" : "tight") + " bracket" + (newsSkip ? ", news skip" : "")
     string needTxt = " | " + acctSize + " | need $" + str.tostring(math.max(TARGET, bestDay / PASSCONS) - pnlNow, "#") + " more"
-    string evalTxt = TS ? "COMBINE (Topstep: best day <= 55%; plan days <= 50%, " + bracketTxt + ")" + needTxt : "EVAL (" + (CONS == 0.5 ? "50%" : "40%") + " rule, " + bracketTxt + ")" + needTxt
+    string evalTxt = TS ? "COMBINE (Topstep" + (TSLAB ? " 25K Static, max loss fixed at -$1,000, $500 daily loss limit" : "") + ": best day <= 55%; plan days <= 50%, " + bracketTxt + ")" + needTxt : "EVAL (" + (CONS == 0.5 ? "50%" : "40%") + " rule, " + bracketTxt + ")" + needTxt
     string tsPayTxt = TSCONS ? "days traded " + str.tostring(qDays) + "/3 | best day $" + str.tostring(bestDay, "#") + " (max 40% = $" + str.tostring(math.max(0.4 * sincePay, 0.0), "#") + ")" : "winning days (>= $150) " + str.tostring(qDays) + "/5"
-    string fundTxt = TS ? "XFA " + acctSize + " (Topstep, " + (TSCONS ? "Consistency" : "Standard") + " payouts) | payouts " + str.tostring(nPay) + " (no limit) | " + tsPayTxt + " | since last payout $" + str.tostring(sincePay, "#") : "FUNDED " + acctSize + " | payouts " + str.tostring(nPay) + "/" + str.tostring(PAYMAX) + " | qualifying days (>= $" + str.tostring(QDAY, "#") + ") " + str.tostring(qDays) + "/5 | since last payout $" + str.tostring(sincePay, "#")
+    string fundTxt = TS ? "XFA " + acctSize + (TSLAB ? " Static" : "") + " (Topstep, " + (TSCONS ? "Consistency" : "Standard") + " payouts) | payouts " + str.tostring(nPay) + " (no limit) | " + tsPayTxt + " | since last payout $" + str.tostring(sincePay, "#") : "FUNDED " + acctSize + " | payouts " + str.tostring(nPay) + "/" + str.tostring(PAYMAX) + " | qualifying days (>= $" + str.tostring(QDAY, "#") + ") " + str.tostring(qDays) + "/5 | since last payout $" + str.tostring(sincePay, "#")
     string liveTxt = TS ? "LIVE at Topstep: not modelled (trades the FUNDED plan)" : "LIVE " + acctSize + " | live P&L $" + str.tostring(pnlNow, "#") + " | drawdown " + (liveLocked ? "locked at +$100" : "trailing $" + str.tostring(MLL, "#") + " until live profit reaches it") + " | keep a $" + str.tostring(MLL, "#") + " cushion"
     string acct = isEval ? evalTxt : (isLive ? liveTxt : fundTxt)
     string sigTxt = na(score) ? "warming up" : (str.tostring(score, "#.##") + " (" + (sigSide == 1 ? "BUY tonight" : sigSide == -1 ? "SELL tonight" : "no overnight trade") + ", needs |score| >= 0.72; final after the 16:00 close)")
@@ -850,12 +861,10 @@ if showPanel and barstate.islast
         warn := "Use a 1-5 minute chart"
     else if onBars == 0
         warn := "No overnight bars on this chart: switch it to the 24h (ETH) session"
-    else if TS and acctSize == "25K"
-        warn := "Topstep sells 50K, 100K and 150K accounts: set Account size to yours"
     else if TS and isLive
         warn := "Topstep live account: not modelled. The trades are the FUNDED plan; follow Topstep's own drawdown and payout rules"
     else if isEval and cushion < 50.0 * M
-        warn := TS ? "Combine cushion below $" + str.tostring(50.0 * M, "#") + ": this Combine can no longer trade - reset it or start a new one" : "Eval cushion below $" + str.tostring(50.0 * M, "#") + ": this eval can no longer trade - buy a new one"
+        warn := TS ? "Combine cushion below $" + str.tostring(50.0 * M, "#") + ": this Combine can no longer trade - " + (TSLAB ? "buy a new one (the 25K cannot be reset)" : "reset it or start a new one") : "Eval cushion below $" + str.tostring(50.0 * M, "#") + ": this eval can no longer trade - buy a new one"
     else if isFunded and nPay >= PAYMAX
         warn := PAYMAX == 4 ? "4 payouts taken: CLOSE this account now (a 5th payout moves you live and Lucid closes ALL your sim accounts) - refill the slot from an eval" : "5 payouts taken: Lucid moves you live and closes every sim account - set Phase to LIVE on each live account"
     else if not isEval and cushion < 200.0 * M
@@ -866,12 +875,12 @@ if showPanel and barstate.islast
         warn := "WITHDRAW $" + str.tostring(pnlNow - MLL - 100.0, "#") + " (everything above $" + str.tostring(MLL + 100.0, "#") + ", keeping a $" + str.tostring(MLL, "#") + " cushion)"
     else if isLive and not liveLocked
         warn := "LIVE: no withdrawal until live profit reaches $" + str.tostring(MLL, "#") + " (a payout before that locks the drawdown at +$100 at once)"
-    table.cell(T, 0, 0, "ONR Book v2.4 (50%)", bgcolor = color.new(color.navy, 0), text_color = color.white)
-    table.cell(T, 1, 0, TS ? "Backtest Nov 2021 - Nov 2026 on real NQ futures prices, Topstep, 5 XFAs + 5 Combines, Standard payouts and fees: 50K ~$77.1k/yr (worst full year +$37.3k), 100K ~$103.3k (+$28.7k), 150K ~$168.5k (+$36.6k); Consistency payouts ~$54.5k / $55.3k / $95.3k | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on real NQ futures (50K, $80.50 evals, 50% add-on): eval pass 46.2%, first payout median 54 days; 5 funded + 5 evals closing each account after its 4th payout ~$60.7k/yr before the add-on's price (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$48.9k/yr | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    table.cell(T, 0, 0, "ONR Book v2.5 (50%)", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 1, 0, TS ? "Backtest Nov 2021 - Nov 2026 on real NQ futures prices, Topstep, 5 XFAs + 5 Combines, Standard payouts and fees: 50K ~$77.1k/yr (worst full year +$37.3k), 100K ~$103.3k (+$28.7k), 150K ~$168.5k (+$36.6k); Consistency payouts ~$54.5k / $55.3k / $95.3k; 25K Static (5 Combines a month): Standard ~$31.7k (+$4.7k), Consistency ~$35.5k (+$14.3k) | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on real NQ futures (50K, $80.50 evals, 50% add-on): eval pass 46.2%, first payout median 54 days; 5 funded + 5 evals closing each account after its 4th payout ~$60.7k/yr before the add-on's price (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$48.9k/yr | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    table.cell(T, 1, 2, "$" + str.tostring(cushion, "#") + " / $" + str.tostring(math.max(room, 0.0), "#") + (isEval ? "" : " | " + (isLive ? "live" : "funded") + " size " + str.tostring(nF) + " MNQ per leg" + (fundAuto ? (TS ? " (auto, Topstep cap " + str.tostring(FUNDMAX) + ")" : " (auto)") : " (fixed)")), text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 2, "$" + str.tostring(cushion, "#") + " / $" + str.tostring(math.max(room, 0.0), "#") + (TSLAB ? " ($500 daily loss limit)" : "") + (isEval ? "" : " | " + (isLive ? "live" : "funded") + " size " + str.tostring(nF) + " MNQ per leg" + (fundAuto ? (TS ? " (auto, Topstep cap " + str.tostring(FUNDMAX) + ")" : " (auto)") : " (fixed)")), text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 3, "S&P stretch score", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 3, sigTxt, text_color = sigSide == 0 ? color.white : color.yellow, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 4, "NQ ADR (14 RTH days)", text_color = color.white, bgcolor = color.new(color.gray, 40))
