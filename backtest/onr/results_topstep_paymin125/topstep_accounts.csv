@@ -1,0 +1,7 @@
+id,size,payout_path,accounts,with_payout_pct,payouts_median,payouts_mean,payouts_max,paid_per_account_usd,life_median_sessions,longest_wait_median_sessions,longest_wait_max_sessions,still_open_pct,open_balance_mean_usd
+50-standard,50K,Standard payouts (5 days of $150),104,56.7,1.0,1.25,9,1821,14.0,10.0,46,0.0,0
+50-consistency,50K,Consistency payouts (40%),104,47.1,0.0,1.83,18,4943,19.0,15.0,311,8.7,40704
+100-standard,100K,Standard payouts (5 days of $150),104,56.7,1.0,1.29,11,2710,14.0,10.5,47,0.0,0
+100-consistency,100K,Consistency payouts (40%),104,43.3,0.0,2.05,16,7704,18.5,14.5,305,14.4,69748
+150-standard,150K,Standard payouts (5 days of $150),104,57.7,1.0,1.53,14,5054,14.0,10.0,39,0.0,0
+150-consistency,150K,Consistency payouts (40%),104,43.3,0.0,2.24,20,12706,17.5,14.5,287,14.4,104110

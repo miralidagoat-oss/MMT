@@ -20,16 +20,22 @@ payouts: Topstep has no payout limit. Its discretionary call-up to a live accoun
 modelled.
 Not modelled: the optional Daily Loss Limit and its limited-time doubled caps, the monthly reset credit, and the
 Scaling Plan tiers (its table could not be read). Each funded leg is capped at 6 / 10 / 10 micros, so three legs fit
-the tiers we believe start at 20 / 30 / 30 micros: an assumption. It binds only when NQ's daily range is below about
-108 / 100 / 150 points: over the last 5 years never at 50K and 100K and on a few 2023-24 days at 150K, but often in
-2019-2020 and in every CFD year before 2018, so the windows reaching back there are conservative.
+the tiers we believe start at 20 / 30 / 30 micros: an assumption. It binds when NQ's daily range is below about
+108 / 100 / 150 points: over the last 5 years never at 50K and 100K and on 6 days at 150K, but on most sessions of
+2019 and of every CFD year before 2020 (topstep_cap.csv), so the windows reaching back there trade smaller than Lucid's
+plan, whose caps are 20 / 30 / 40.
 Payout requests: as the indicator's panel says, once an account is $1,000 up, half the profit up to Topstep's cap
 (Topstep's own minimum is $125: ONR_TS_PAYMIN=125 tests requesting that early).
 Costs: each Combine attempt pays the month's price when it starts and again every 30 days while it is open; each XFA
 pays the activation fee on the Standard path.
 Runs: 12 start dates (research4.OFFSETS) in each window: real NQ futures over the last 5 years and from Aug 30 2019,
 and the Nasdaq-100 CFD from Feb 2011. Lucid's plan (results_scale_sizes) is the reference.
-Writes topstep.csv (mean of the 12 start dates per window, size, payout path and fee path) and runs.json.
+Writes runs.json and, from it (also alone: topstep_sim.py --tables FUT_DATA_DIR CFD_DATA_DIR OUT_DIR):
+  topstep.csv          mean of the 12 start dates per window, size, payout path and fee path (36 rows, with ids)
+  topstep_years.csv    net by calendar year, median / lowest / highest of the 12 start dates
+  topstep_accounts.csv one XFA started every 10 sessions over the last 5 years, traded alone: what each path does
+  topstep_rules.csv    the rules above, as used
+  topstep_cap.csv      sessions where the funded leg cap binds, by data set and year
 """
 import csv
 import datetime as dt
@@ -43,6 +49,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import research4 as R4  # noqa: E402
 import research5 as R5  # noqa: E402
+from account import FundedAccount  # noqa: E402
 from engine import Sessions, load_npz  # noqa: E402
 
 SIZES = (50, 100, 150)
@@ -201,9 +208,125 @@ def main(fd, dd, out):
             res.update(dict(pool.map(_job, jobs, chunksize=2)))
         print(f"{kind}: {len(jobs)} runs", flush=True)
     json.dump({"|".join(map(str, k)): v for k, v in res.items()}, open(os.path.join(out, "runs.json"), "w"))
+    write_tables(out, fd, dd)
+
+
+WIN_LABEL = {"last 5y": "futures, last 5 years", "2019-26": "futures, from Aug 30 2019", "all years": "CFD, from Feb 2011"}
+WIN_ID = {"last 5y": "5y", "2019-26": "2019", "all years": "2011"}
+FIRST = {"last 5y": "from Nov 15", "2019-26": "from Aug 30", "all years": "from Feb 15"}
+LAST = {"last 5y": "to Nov 17", "2019-26": "to Nov 17", "all years": "to Nov 13"}
+
+
+def write_csv(out, name, rows):
+    with open(os.path.join(out, name), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+    print(f"wrote {name}: {len(rows)} rows", flush=True)
+
+
+def accounts(fd):
+    """Funded accounts (XFA) started every 10 sessions over the last 5 years on real futures, each traded alone to its
+    end or to the end of the data: what each payout path does to one account."""
+    S = load("fut", fd)
+    k0 = int(np.searchsorted(S.days, np.datetime64(START5).astype(int)))
     rows = []
+    for size in SIZES:
+        for path in ("standard", "consistency"):
+            npay, life, wait, opened, bal_open, paid_usd = [], [], [], 0, [], []
+            for ks in range(k0, len(S.days) - 250, 10):
+                f = FundedAccount(S, **fk(size, path))
+                k, last, longest, amt_sum, evn = ks, ks, 0, 0.0, None
+                while k < len(S.days):
+                    evn, amt = f.step(S.days[k])
+                    if amt > 0:
+                        longest, last, amt_sum = max(longest, k - last), k, amt_sum + amt
+                    if evn is not None:
+                        break
+                    k += 1
+                k = min(k, len(S.days) - 1)
+                longest = max(longest, k - last)
+                npay.append(f.npay)
+                life.append(k - ks + (1 if evn is not None else 0))
+                wait.append(longest)
+                paid_usd.append(amt_sum)
+                if evn is None:
+                    opened += 1
+                    bal_open.append(f.pnl)
+            n = len(npay)
+            rows.append(dict(id=f"{size}-{path}", size=f"{size}K", payout_path=PAY_LABEL[path], accounts=n,
+                             with_payout_pct=round(100 * float(np.mean([x > 0 for x in npay])), 1),
+                             payouts_median=float(np.median(npay)), payouts_mean=round(float(np.mean(npay)), 2), payouts_max=int(max(npay)),
+                             paid_per_account_usd=round(float(np.mean(paid_usd))), life_median_sessions=float(np.median(life)),
+                             longest_wait_median_sessions=float(np.median(wait)), longest_wait_max_sessions=int(max(wait)),
+                             still_open_pct=round(100 * opened / n, 1),
+                             open_balance_mean_usd=round(float(np.mean(bal_open))) if bal_open else 0))
+    return rows
+
+
+def rules_rows():
+    def r(rid, item, vals, unit, note=""):
+        return dict(id=rid, item=item, k50=vals[0], k100=vals[1], k150=vals[2], unit=unit, note=note)
+    return [r("price_standard", "Trading Combine per month, Standard fee path", [PRICE["standard"][s] for s in SIZES], "usd", "a reset costs the same"),
+            r("price_noact", "Trading Combine per month, No Activation Fee path", [PRICE["noact"][s] for s in SIZES], "usd", "a reset costs the same"),
+            r("target", "Combine profit target", [TS[s]["target"] for s in SIZES], "usd"),
+            r("mll", "Combine Maximum Loss Limit, end-of-day trailing", [TS[s]["mll"] for s in SIZES], "usd", "stops trailing at the starting balance"),
+            r("best_day", "Combine best-day limit", [55, 55, 55], "pct", "of the total profit; above it the target rises to the best day / 0.55"),
+            r("min_days", "Combine minimum trading days", [2, 2, 2], "count", "always met under the best-day limit"),
+            r("max_micros", "Combine maximum position, micros", [TS[s]["evalmax"] for s in SIZES], "count", "or minis at 10 micros each"),
+            r("activation", "XFA activation fee, Standard fee path", [ACTIVATION["standard"]] * 3, "usd", "$0 on the No Activation Fee path"),
+            r("xfa_mll", "XFA Maximum Loss Limit, end-of-day trailing", [TS[s]["mll"] for s in SIZES], "usd",
+              "the XFA starts at a $0 balance; the limit stops trailing at $0 and is $0 after any payout"),
+            r("cap_standard", "XFA payout cap, Standard payout path", [CAP["standard"][s] for s in SIZES], "usd",
+              "after 5 winning days since the last payout; up to 50% of the balance"),
+            r("qday", "Winning day on the Standard payout path", [TS[s]["qday"] for s in SIZES], "usd", "or more"),
+            r("cap_consistency", "XFA payout cap, Consistency payout path", [CAP["consistency"][s] for s in SIZES], "usd",
+              "after 3 traded days, the best day at most 40% of the profit since the last payout; up to 50% of the balance"),
+            r("pay_min", "Minimum payout", [125, 125, 125], "usd", f"the backtest requests once an account is ${2 * PAY_MIN:,.0f} up"),
+            r("split", "Profit split to you", [90, 90, 90], "pct"),
+            r("max_xfa", "Funded accounts (XFA) at once", [5, 5, 5], "count", "Combines: no limit")]
+
+
+def cap_rows(fd, dd):
+    """How often the funded leg cap binds: sessions where the indicator's size, round(350 x max loss / $1,000 / ADR) MNQ
+    a leg, is above 6 / 10 / 10 micros, by data set and calendar year from the first tradable session, plus the last 5
+    years on futures. The median ADR (NQ points) shows why: NQ moved far fewer points before 2020."""
+    from account import funded_size
+    rows = []
+    for kind, data, name in (("fut", fd, "futures"), ("cfd", dd, "CFD")):
+        S = load(kind, data)
+        k0, k5 = first_tradable(S), int(np.searchsorted(S.days, np.datetime64(START5).astype(int)))
+        groups = {}
+        for k in range(k0, len(S.days)):
+            adr = S.S[S.days[k]]["adr"]
+            if np.isnan(adr):
+                continue
+            keys = [iso(S, k)[:4]] + (["last 5y"] if kind == "fut" and k >= k5 else [])
+            for g in keys:
+                groups.setdefault(g, []).append((k, adr))
+        for g in sorted(groups, key=lambda x: (x == "last 5y", x)):
+            ks = groups[g]
+            first, last = (dt.date.fromisoformat(iso(S, ks[j][0])) for j in (0, -1))
+            day = lambda x: f"{x:%b} {x.day}"  # noqa: E731
+            label = (f"Last 5 years ({day(first)} {first.year} to {day(last)} {last.year})" if g == "last 5y" else
+                     g + (f" (from {day(first)})" if ks[0][0] == k0 else f" (to {day(last)})" if ks[-1][0] == len(S.days) - 1 else ""))
+            row = dict(id=f"{kind}-{g.replace(' ', '')}", data=name, period=label, sessions=len(ks),
+                       median_adr_points=round(float(np.median([a for _, a in ks])), 1))
+            for size in SIZES:
+                m = TS[size]["mll"] / 1000.0
+                row[f"capped_{size}k"] = sum(funded_size(a, 350.0 * m, nmax=10 ** 6) > TS[size]["fundmax"] for _, a in ks)
+            rows.append(row)
+    return rows
+
+
+def write_tables(out, fd, dd=None):
+    raw = json.load(open(os.path.join(out, "runs.json")))
+    res = {}
+    for key, v in raw.items():
+        kind, window, off, size, path = key.split("|")
+        res[(kind, window, int(off), int(size), path)] = v
+    rows, yrows = [], []
     for (kind, window), (lab, _, _, _) in WINDOWS.items():
-        label = {"last 5y": "futures, last 5 years", "2019-26": "futures, from Aug 30 2019", "all years": "CFD, from Feb 2011"}[lab]
         for size in SIZES:
             for path in ("standard", "consistency"):
                 for fee_path in ("standard", "noact"):
@@ -211,7 +334,9 @@ def main(fd, dd, out):
                     g = lambda key: float(np.mean([r["periods"][lab][key] for r in R]))  # noqa: E731
                     ev = lambda key: float(np.mean([r["evals"][key] for r in R]))  # noqa: E731
                     fu = lambda key: float(np.mean([r["funded"][key] for r in R]))  # noqa: E731
-                    rows.append(dict(window=label, size=f"{size}K", payout_path=PAY_LABEL[path], fee_path=FEE_LABEL[fee_path],
+                    cid = f"{size}-{path}-{fee_path}"
+                    rows.append(dict(id=f"{WIN_ID[lab]}-{cid}", window_id=WIN_ID[lab], config=cid, window=WIN_LABEL[lab],
+                                     size=f"{size}K", payout_path=PAY_LABEL[path], fee_path=FEE_LABEL[fee_path],
                                      net_per_year_usd=round(g("M")), worst_full_year_usd=round(g("W")),
                                      losing_full_years=round(g("L"), 2), deepest_drop_usd=round(g("D")),
                                      worst_12_months_usd=round(g("worst12")), longest_gap_months=round(g("gap"), 1),
@@ -221,15 +346,26 @@ def main(fd, dd, out):
                                      funded_with_payout_pct=round(100 * fu("with_payout") / max(fu("started"), 1e-9), 1),
                                      payouts=round(fu("payouts"), 1),
                                      average_payout_usd=round(fu("payouts_usd") / max(fu("payouts"), 1e-9))))
-    with open(os.path.join(out, "topstep.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
+                    years = sorted({y for r in R for y in r["years"]})
+                    for y in years:
+                        v = [r["years"][y] for r in R if y in r["years"]]
+                        yl = y + (f" ({FIRST[lab]})" if y == years[0] else f" ({LAST[lab]})" if y == years[-1] else "")
+                        yrows.append(dict(window_id=WIN_ID[lab], config=cid, size=f"{size}K", payout_path=PAY_LABEL[path],
+                                          fee_path=FEE_LABEL[fee_path], year=y, year_label=yl, net_median_usd=round(float(np.median(v))),
+                                          net_low_usd=round(min(v)), net_high_usd=round(max(v))))
+    write_csv(out, "topstep.csv", rows)
+    write_csv(out, "topstep_years.csv", yrows)
+    write_csv(out, "topstep_rules.csv", rules_rows())
+    write_csv(out, "topstep_accounts.csv", accounts(fd))
+    if dd is not None:
+        write_csv(out, "topstep_cap.csv", cap_rows(fd, dd))
     for r in rows:
-        print(f"{r['window']:26s} {r['size']:>5s} {r['payout_path'][:11]:11s} {r['fee_path'][:13]:13s} net ${r['net_per_year_usd']:>8,}/yr "
-              f"worst yr ${r['worst_full_year_usd']:>8,} worst 12m ${r['worst_12_months_usd']:>8,} drop ${r['deepest_drop_usd']:>8,} "
-              f"cash out ${r['most_cash_out_usd']:>7,} pass {r['eval_pass_pct']}% avg payout ${r['average_payout_usd']:,}", flush=True)
+        print(f"{r['id']:22s} net ${r['net_per_year_usd']:>8,}/yr worst yr ${r['worst_full_year_usd']:>8,} worst 12m "
+              f"${r['worst_12_months_usd']:>8,} drop ${r['deepest_drop_usd']:>8,} cash out ${r['most_cash_out_usd']:>7,}", flush=True)
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    if sys.argv[1] == "--tables":  # topstep_sim.py --tables FUT_DATA_DIR CFD_DATA_DIR OUT_DIR: the tables again from runs.json
+        write_tables(sys.argv[4], sys.argv[2], sys.argv[3])
+    else:
+        main(*sys.argv[1:4])

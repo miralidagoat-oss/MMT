@@ -1,37 +1,37 @@
-window,size,payout_path,fee_path,net_per_year_usd,worst_full_year_usd,losing_full_years,deepest_drop_usd,worst_12_months_usd,longest_gap_months,months_with_payout_pct,evals_per_year,most_cash_out_usd,eval_pass_pct,funded_with_payout_pct,payouts,average_payout_usd
-"futures, last 5 years",50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),75855,31415,0.0,-6702,22975,5.9,71.8,75.9,-1783,45.0,71.6,294.9,1562
-"futures, last 5 years",50K,Standard payouts (5 days of $150),No Activation Fee path,77169,32280,0.0,-7505,24804,5.9,71.8,75.9,-3091,45.0,71.6,294.9,1562
-"futures, last 5 years",50K,Consistency payouts (40%),Standard path ($/month + $149 activation),54534,27000,0.0,-2065,22796,7.6,37.8,11.6,-1873,34.4,87.4,107.8,2805
-"futures, last 5 years",50K,Consistency payouts (40%),No Activation Fee path,54445,27000,0.0,-3254,23148,7.6,37.8,11.6,-3246,34.4,87.4,107.8,2805
-"futures, last 5 years",100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),99711,28106,0.0,-10981,6189,5.9,68.5,100.1,-3573,35.1,58.7,278.8,2244
-"futures, last 5 years",100K,Standard payouts (5 days of $150),No Activation Fee path,99636,25527,0.0,-12218,4948,5.9,68.5,100.1,-5258,35.1,58.7,278.8,2244
-"futures, last 5 years",100K,Consistency payouts (40%),Standard path ($/month + $149 activation),55314,36000,0.0,-3845,0,12.4,30.0,10.6,-3845,22.9,100.0,80.9,3805
-"futures, last 5 years",100K,Consistency payouts (40%),No Activation Fee path,54995,36000,0.0,-5488,0,12.4,30.0,10.6,-5488,22.9,100.0,80.9,3805
-"futures, last 5 years",150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),169864,36570,0.0,-18552,25475,5.9,68.5,95.0,-7039,33.9,59.5,299.9,3520
-"futures, last 5 years",150K,Standard payouts (5 days of $150),No Activation Fee path,171575,37109,0.0,-18091,26072,5.9,68.5,95.0,-8006,33.9,59.5,299.9,3520
-"futures, last 5 years",150K,Consistency payouts (40%),Standard path ($/month + $149 activation),95334,54000,0.0,-7562,0,13.2,30.1,11.2,-7562,25.8,100.0,93.0,5724
-"futures, last 5 years",150K,Consistency payouts (40%),No Activation Fee path,95278,54000,0.0,-8473,0,13.2,30.1,11.2,-8473,25.8,100.0,93.0,5724
-"futures, from Aug 30 2019",50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),72187,31415,0.0,-7448,24286,6.3,70.4,80.6,-2837,39.9,60.4,396.4,1613
-"futures, from Aug 30 2019",50K,Standard payouts (5 days of $150),No Activation Fee path,73062,32280,0.0,-8064,26294,6.3,70.4,80.6,-3383,39.9,60.4,396.4,1613
-"futures, from Aug 30 2019",50K,Consistency payouts (40%),Standard path ($/month + $149 activation),41333,27000,0.0,-3833,0,14.0,23.5,11.6,-3125,34.8,48.6,113.8,2944
-"futures, from Aug 30 2019",50K,Consistency payouts (40%),No Activation Fee path,41293,27000,0.0,-4101,0,14.0,23.5,11.6,-3570,34.8,48.6,113.8,2944
-"futures, from Aug 30 2019",100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),91566,28106,0.0,-13956,6189,5.9,67.7,104.2,-3709,32.7,57.6,372.2,2274
-"futures, from Aug 30 2019",100K,Standard payouts (5 days of $150),No Activation Fee path,91180,25527,0.0,-16632,4948,5.9,67.7,104.2,-4528,32.7,57.6,372.2,2274
-"futures, from Aug 30 2019",100K,Consistency payouts (40%),Standard path ($/month + $149 activation),52947,36000,0.0,-4372,0,13.0,28.5,8.4,-4211,33.6,49.2,107.2,3986
-"futures, from Aug 30 2019",100K,Consistency payouts (40%),No Activation Fee path,52843,36000,0.0,-4981,0,13.0,28.5,8.4,-4981,33.6,49.2,107.2,3986
-"futures, from Aug 30 2019",150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),144001,33993,0.0,-23411,14189,5.9,66.2,102.1,-7333,31.9,59.4,386.5,3469
-"futures, from Aug 30 2019",150K,Standard payouts (5 days of $150),No Activation Fee path,145582,34926,0.0,-24004,15108,5.9,66.2,102.1,-7119,31.9,59.4,386.5,3469
-"futures, from Aug 30 2019",150K,Consistency payouts (40%),Standard path ($/month + $149 activation),85516,53235,0.0,-7665,0,13.2,27.2,8.4,-7483,41.4,57.0,117.7,5883
-"futures, from Aug 30 2019",150K,Consistency payouts (40%),No Activation Fee path,85677,53279,0.0,-7615,0,13.2,27.2,8.4,-7577,41.4,57.0,117.7,5883
-"CFD, from Feb 2011",50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),38536,-3655,2.0,-7847,-6416,6.5,61.7,80.3,-3357,41.6,62.4,665.7,1244
-"CFD, from Feb 2011",50K,Standard payouts (5 days of $150),No Activation Fee path,39549,-4309,2.0,-6745,-5130,6.5,61.7,80.3,-3387,41.6,62.4,665.7,1244
-"CFD, from Feb 2011",50K,Consistency payouts (40%),Standard path ($/month + $149 activation),26026,-99,0.25,-3395,-99,28.0,19.7,7.4,-3395,39.8,74.1,177.4,2624
-"CFD, from Feb 2011",50K,Consistency payouts (40%),No Activation Fee path,26069,-48,0.25,-3365,-48,28.0,19.7,7.4,-3254,39.8,74.1,177.4,2624
-"CFD, from Feb 2011",100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),51519,-7828,2.0,-15050,-9487,6.1,68.8,111.2,-7318,32.0,63.1,663.3,1787
-"CFD, from Feb 2011",100K,Standard payouts (5 days of $150),No Activation Fee path,50973,-10652,2.0,-19865,-12269,6.1,68.8,111.2,-11546,32.0,63.1,663.3,1787
-"CFD, from Feb 2011",100K,Consistency payouts (40%),Standard path ($/month + $149 activation),34806,-1291,0.58,-7138,-1746,36.5,20.0,13.1,-6564,29.4,55.4,189.8,3354
-"CFD, from Feb 2011",100K,Consistency payouts (40%),No Activation Fee path,34665,-2002,0.58,-8350,-2749,36.5,20.0,13.1,-7493,29.4,55.4,189.8,3354
-"CFD, from Feb 2011",150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),73901,-19433,5.0,-67028,-24155,5.9,65.1,110.1,-66543,30.1,74.9,698.6,2527
-"CFD, from Feb 2011",150K,Standard payouts (5 days of $150),No Activation Fee path,75364,-19361,5.0,-62152,-24633,5.9,65.1,110.1,-61198,30.1,74.9,698.6,2527
-"CFD, from Feb 2011",150K,Consistency payouts (40%),Standard path ($/month + $149 activation),54385,0,0.0,-11034,-1475,29.2,18.9,6.2,-11009,30.0,79.3,177.7,5469
-"CFD, from Feb 2011",150K,Consistency payouts (40%),No Activation Fee path,54418,0,0.0,-11126,-1462,29.2,18.9,6.2,-10954,30.0,79.3,177.7,5469
+id,window_id,config,window,size,payout_path,fee_path,net_per_year_usd,worst_full_year_usd,losing_full_years,deepest_drop_usd,worst_12_months_usd,longest_gap_months,months_with_payout_pct,evals_per_year,most_cash_out_usd,eval_pass_pct,funded_with_payout_pct,payouts,average_payout_usd
+5y-50-standard-standard,5y,50-standard-standard,"futures, last 5 years",50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),75855,31415,0.0,-6702,22975,5.9,71.8,75.9,-1783,45.0,71.6,294.9,1562
+5y-50-standard-noact,5y,50-standard-noact,"futures, last 5 years",50K,Standard payouts (5 days of $150),No Activation Fee path,77169,32280,0.0,-7505,24804,5.9,71.8,75.9,-3091,45.0,71.6,294.9,1562
+5y-50-consistency-standard,5y,50-consistency-standard,"futures, last 5 years",50K,Consistency payouts (40%),Standard path ($/month + $149 activation),54534,27000,0.0,-2065,22796,7.6,37.8,11.6,-1873,34.4,87.4,107.8,2805
+5y-50-consistency-noact,5y,50-consistency-noact,"futures, last 5 years",50K,Consistency payouts (40%),No Activation Fee path,54445,27000,0.0,-3254,23148,7.6,37.8,11.6,-3246,34.4,87.4,107.8,2805
+5y-100-standard-standard,5y,100-standard-standard,"futures, last 5 years",100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),99711,28106,0.0,-10981,6189,5.9,68.5,100.1,-3573,35.1,58.7,278.8,2244
+5y-100-standard-noact,5y,100-standard-noact,"futures, last 5 years",100K,Standard payouts (5 days of $150),No Activation Fee path,99636,25527,0.0,-12218,4948,5.9,68.5,100.1,-5258,35.1,58.7,278.8,2244
+5y-100-consistency-standard,5y,100-consistency-standard,"futures, last 5 years",100K,Consistency payouts (40%),Standard path ($/month + $149 activation),55314,36000,0.0,-3845,0,12.4,30.0,10.6,-3845,22.9,100.0,80.9,3805
+5y-100-consistency-noact,5y,100-consistency-noact,"futures, last 5 years",100K,Consistency payouts (40%),No Activation Fee path,54995,36000,0.0,-5488,0,12.4,30.0,10.6,-5488,22.9,100.0,80.9,3805
+5y-150-standard-standard,5y,150-standard-standard,"futures, last 5 years",150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),169864,36570,0.0,-18552,25475,5.9,68.5,95.0,-7039,33.9,59.5,299.9,3520
+5y-150-standard-noact,5y,150-standard-noact,"futures, last 5 years",150K,Standard payouts (5 days of $150),No Activation Fee path,171575,37109,0.0,-18091,26072,5.9,68.5,95.0,-8006,33.9,59.5,299.9,3520
+5y-150-consistency-standard,5y,150-consistency-standard,"futures, last 5 years",150K,Consistency payouts (40%),Standard path ($/month + $149 activation),95334,54000,0.0,-7562,0,13.2,30.1,11.2,-7562,25.8,100.0,93.0,5724
+5y-150-consistency-noact,5y,150-consistency-noact,"futures, last 5 years",150K,Consistency payouts (40%),No Activation Fee path,95278,54000,0.0,-8473,0,13.2,30.1,11.2,-8473,25.8,100.0,93.0,5724
+2019-50-standard-standard,2019,50-standard-standard,"futures, from Aug 30 2019",50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),72187,31415,0.0,-7448,24286,6.3,70.4,80.6,-2837,39.9,60.4,396.4,1613
+2019-50-standard-noact,2019,50-standard-noact,"futures, from Aug 30 2019",50K,Standard payouts (5 days of $150),No Activation Fee path,73062,32280,0.0,-8064,26294,6.3,70.4,80.6,-3383,39.9,60.4,396.4,1613
+2019-50-consistency-standard,2019,50-consistency-standard,"futures, from Aug 30 2019",50K,Consistency payouts (40%),Standard path ($/month + $149 activation),41333,27000,0.0,-3833,0,14.0,23.5,11.6,-3125,34.8,48.6,113.8,2944
+2019-50-consistency-noact,2019,50-consistency-noact,"futures, from Aug 30 2019",50K,Consistency payouts (40%),No Activation Fee path,41293,27000,0.0,-4101,0,14.0,23.5,11.6,-3570,34.8,48.6,113.8,2944
+2019-100-standard-standard,2019,100-standard-standard,"futures, from Aug 30 2019",100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),91566,28106,0.0,-13956,6189,5.9,67.7,104.2,-3709,32.7,57.6,372.2,2274
+2019-100-standard-noact,2019,100-standard-noact,"futures, from Aug 30 2019",100K,Standard payouts (5 days of $150),No Activation Fee path,91180,25527,0.0,-16632,4948,5.9,67.7,104.2,-4528,32.7,57.6,372.2,2274
+2019-100-consistency-standard,2019,100-consistency-standard,"futures, from Aug 30 2019",100K,Consistency payouts (40%),Standard path ($/month + $149 activation),52947,36000,0.0,-4372,0,13.0,28.5,8.4,-4211,33.6,49.2,107.2,3986
+2019-100-consistency-noact,2019,100-consistency-noact,"futures, from Aug 30 2019",100K,Consistency payouts (40%),No Activation Fee path,52843,36000,0.0,-4981,0,13.0,28.5,8.4,-4981,33.6,49.2,107.2,3986
+2019-150-standard-standard,2019,150-standard-standard,"futures, from Aug 30 2019",150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),144001,33993,0.0,-23411,14189,5.9,66.2,102.1,-7333,31.9,59.4,386.5,3469
+2019-150-standard-noact,2019,150-standard-noact,"futures, from Aug 30 2019",150K,Standard payouts (5 days of $150),No Activation Fee path,145582,34926,0.0,-24004,15108,5.9,66.2,102.1,-7119,31.9,59.4,386.5,3469
+2019-150-consistency-standard,2019,150-consistency-standard,"futures, from Aug 30 2019",150K,Consistency payouts (40%),Standard path ($/month + $149 activation),85516,53235,0.0,-7665,0,13.2,27.2,8.4,-7483,41.4,57.0,117.7,5883
+2019-150-consistency-noact,2019,150-consistency-noact,"futures, from Aug 30 2019",150K,Consistency payouts (40%),No Activation Fee path,85677,53279,0.0,-7615,0,13.2,27.2,8.4,-7577,41.4,57.0,117.7,5883
+2011-50-standard-standard,2011,50-standard-standard,"CFD, from Feb 2011",50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),38536,-3655,2.0,-7847,-6416,6.5,61.7,80.3,-3357,41.6,62.4,665.7,1244
+2011-50-standard-noact,2011,50-standard-noact,"CFD, from Feb 2011",50K,Standard payouts (5 days of $150),No Activation Fee path,39549,-4309,2.0,-6745,-5130,6.5,61.7,80.3,-3387,41.6,62.4,665.7,1244
+2011-50-consistency-standard,2011,50-consistency-standard,"CFD, from Feb 2011",50K,Consistency payouts (40%),Standard path ($/month + $149 activation),26026,-99,0.25,-3395,-99,28.0,19.7,7.4,-3395,39.8,74.1,177.4,2624
+2011-50-consistency-noact,2011,50-consistency-noact,"CFD, from Feb 2011",50K,Consistency payouts (40%),No Activation Fee path,26069,-48,0.25,-3365,-48,28.0,19.7,7.4,-3254,39.8,74.1,177.4,2624
+2011-100-standard-standard,2011,100-standard-standard,"CFD, from Feb 2011",100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),51519,-7828,2.0,-15050,-9487,6.1,68.8,111.2,-7318,32.0,63.1,663.3,1787
+2011-100-standard-noact,2011,100-standard-noact,"CFD, from Feb 2011",100K,Standard payouts (5 days of $150),No Activation Fee path,50973,-10652,2.0,-19865,-12269,6.1,68.8,111.2,-11546,32.0,63.1,663.3,1787
+2011-100-consistency-standard,2011,100-consistency-standard,"CFD, from Feb 2011",100K,Consistency payouts (40%),Standard path ($/month + $149 activation),34806,-1291,0.58,-7138,-1746,36.5,20.0,13.1,-6564,29.4,55.4,189.8,3354
+2011-100-consistency-noact,2011,100-consistency-noact,"CFD, from Feb 2011",100K,Consistency payouts (40%),No Activation Fee path,34665,-2002,0.58,-8350,-2749,36.5,20.0,13.1,-7493,29.4,55.4,189.8,3354
+2011-150-standard-standard,2011,150-standard-standard,"CFD, from Feb 2011",150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),73901,-19433,5.0,-67028,-24155,5.9,65.1,110.1,-66543,30.1,74.9,698.6,2527
+2011-150-standard-noact,2011,150-standard-noact,"CFD, from Feb 2011",150K,Standard payouts (5 days of $150),No Activation Fee path,75364,-19361,5.0,-62152,-24633,5.9,65.1,110.1,-61198,30.1,74.9,698.6,2527
+2011-150-consistency-standard,2011,150-consistency-standard,"CFD, from Feb 2011",150K,Consistency payouts (40%),Standard path ($/month + $149 activation),54385,0,0.0,-11034,-1475,29.2,18.9,6.2,-11009,30.0,79.3,177.7,5469
+2011-150-consistency-noact,2011,150-consistency-noact,"CFD, from Feb 2011",150K,Consistency payouts (40%),No Activation Fee path,54418,0,0.0,-11126,-1462,29.2,18.9,6.2,-10954,30.0,79.3,177.7,5469

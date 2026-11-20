@@ -12,8 +12,8 @@ eval ($115 -> $80.50); the same 30% is assumed at every size. The 50% consistenc
 (12.4% of $80.50); the same share is assumed at the other sizes. Prices are only bookkeeping: no trade depends on one.
 Runs: real NQ futures over the last 5 years (from Nov 15 2021) and from Aug 30 2019, and the Nasdaq-100 CFD from Feb
 2011 (every year), each with the add-on and with the 40% rule. Runs already in OUT_DIR/runs.json are reused.
-Writes sizes.csv (one row per window, size and rule), sizes_years.csv (net by calendar year, median of the 12 start
-dates) and runs.json.
+Writes sizes.csv (one row per window, size and rule), sizes_years.csv (net by calendar year, median / lowest / highest of
+the 12 start dates) and runs.json; window ids, configs and year labels follow topstep_sim.py's tables.
 """
 import csv
 import json
@@ -84,21 +84,25 @@ def main(fd, dd, out):
     m50 = float(np.mean([res[("F50-addon", "5y", o)]["periods"]["last 5y"]["M"] for o in OFF]))
     assert abs(m50 - 59716) < 1.0, m50
     print(f"check passed: 50K with the add-on = the website's plan (${m50:,.0f} a year)", flush=True)
-    spec = [("futures, last 5 years", "F", "5y", "last 5y", [str(y) for y in range(2022, 2026)], ("addon", "40")),
-            ("futures, from Aug 30 2019", "F", "all", "2019-26", [str(y) for y in range(2020, 2026)], ("addon", "40")),
-            ("CFD, from Feb 2011", "C", "all", "all years", [str(y) for y in range(2012, 2026)], ("addon", "40"))]
+    # window ids, configs and year labels as in topstep_sim.py's tables, so the website can set the two side by side
+    spec = [("futures, last 5 years", "5y", "F", "5y", "last 5y", [str(y) for y in range(2022, 2026)], "from Nov 15", "to Nov 17"),
+            ("futures, from Aug 30 2019", "2019", "F", "all", "2019-26", [str(y) for y in range(2020, 2026)], "from Aug 30", "to Nov 17"),
+            ("CFD, from Feb 2011", "2011", "C", "all", "all years", [str(y) for y in range(2012, 2026)], "from Feb 15", "to Nov 13")]
     rows, yrows = [], []
-    for label, p, w, per, fy, tags in spec:
+    for label, wid, p, w, per, fy, first, last in spec:
         for s in SIZES:
-            for tag in tags:
+            for tag in ("addon", "40"):
                 R = [res[(f"{p}{s}-{tag}", w, o)] for o in OFF]
-                rows.append(dict(window=label, size=f"{s}K", rule="50% add-on" if tag == "addon" else "40% rule",
+                rule = "50% add-on" if tag == "addon" else "40% rule"
+                rows.append(dict(id=f"{wid}-{s}-{tag}", window_id=wid, config=f"{s}-{tag}", window=label, size=f"{s}K", rule=rule,
                                  eval_price_usd=round(PRICE[s] + (ADDON[s] if tag == "addon" else 0.0), 2),
                                  **summarise(R, per, fy)))
-                for y in sorted({y for r in R for y in r["years"]}):
+                years = sorted({y for r in R for y in r["years"]})
+                for y in years:
                     v = [r["years"][y]["net"] for r in R if y in r["years"]]
-                    yrows.append(dict(window=label, size=f"{s}K", rule="50% add-on" if tag == "addon" else "40% rule",
-                                      year=y, net_median_usd=round(float(np.median(v))), net_low_usd=round(min(v)),
+                    yl = y + (f" ({first})" if y == years[0] else f" ({last})" if y == years[-1] else "")
+                    yrows.append(dict(window_id=wid, config=f"{s}-{tag}", window=label, size=f"{s}K", rule=rule,
+                                      year=y, year_label=yl, net_median_usd=round(float(np.median(v))), net_low_usd=round(min(v)),
                                       net_high_usd=round(max(v))))
     for name, data in (("sizes.csv", rows), ("sizes_years.csv", yrows)):
         with open(os.path.join(out, name), "w", newline="") as f:
