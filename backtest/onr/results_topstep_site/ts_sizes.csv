@@ -1,0 +1,6 @@
+id,accounts,net_per_year_usd,worst_full_year_usd,losing_full_years,deepest_drop_usd,worst_12_months_usd,longest_gap_months,months_with_payout_pct,evals_per_year,most_cash_out_usd,total_net_5y_usd,eval_pass_pct,months_positive_pct,month_p50_usd,month_p10_usd,funded_with_payout_pct,payouts,average_payout_usd
+B1,1,15305,9824,0.0,-1623,6900,5.9,67.2,17.4,-1077,74929,40.9,67.6,1266,-380,64.5,59.3,1562
+B2,2,30529,18060,0.0,-2945,13990,5.9,70.2,34.7,-1773,149508,40.8,70.6,2147,-665,67.3,116.8,1582
+B3,3,47814,26571,0.0,-4180,20725,5.9,71.8,48.1,-2272,234154,42.5,70.6,3600,-855,69.2,178.8,1599
+B4,4,61990,32252,0.0,-5795,25511,5.9,71.8,62.6,-2747,303567,43.8,70.6,4922,-1140,69.3,233.8,1586
+B5,5,78409,38028,0.0,-7220,30466,5.9,71.8,75.5,-3091,383965,44.9,70.6,6163,-1330,71.5,294.0,1589

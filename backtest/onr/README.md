@@ -1168,6 +1168,94 @@ v2.4's "Topstep sells 50K / 100K / 150K" warning is gone.
 - The drawdown floor and the payout readiness and amount equal `EvalAccount` / `FundedAccount` on 200,000 random states.
 
 
+### The website on your Topstep plan (Nov 20 2026; `topstep_report.py` → `results_topstep_report/`, `topstep_charts.py` → `results_topstep_site/`)
+
+The website (v19) now leads with the user's Topstep plan, with Lucid beside it:
+- **The plan:** Topstep 50K, the No Activation Fee path ($95 a Combine for every 30 days it is open), Standard payouts, 5 XFAs with 5 Combines behind them.
+- **Overview:** every figure has Lucid's next to it, plus a side-by-side table and 1 to 5 XFAs.
+- **Every year, Real futures and Details:** these pages now run on Topstep data.
+- **Lucid:** the old Lucid overview and the accounts study are now one page, Lucid. The add-on page is now "Lucid add-on".
+
+Two new scripts make the Topstep data, using the same definitions as the Lucid scripts they mirror.
+
+**`topstep_report.py`** follows `report50k.py`'s definitions, using Topstep's rules (`topstep_sim.ek(50)`, `fk(50, "standard")`) and fees:
+- a Combine bought on every session of the last 5 years;
+- the XFA of every Combine that passed by May 13 2026;
+- one account slot from every session to its first payout;
+- 5 XFAs + 5 Combines from 10 start dates;
+- the double-cost stress test.
+
+`make_kpis.py`'s code then writes `kpis.csv`, `years.csv`, `monthly.csv` and `distributions.csv` in Topstep's words.
+
+Checks:
+- The book equals the Lucid plan's year by year. No contract limit binds at 50K in these 5 years: Combines peaked at 9 MNQ.
+- The first pool path equals `topstep_sim.py`'s run to the cent ($382,201).
+- The alarm bands are the Lucid plan's.
+
+**`topstep_charts.py`** makes `export_charts.py`'s datasets with Topstep's accounts and fees:
+- the 60 sessions of real MNQ;
+- the last 5 years' slot;
+- every year since Feb 15 2011 with the 6-micro cap per XFA leg;
+- the cost table;
+- 1 to 5 XFAs (`ts_sizes.csv`).
+
+Each Combine's $95 renewal falls on the first session 30, 60, … days after purchase while it is open, the same rule as `topstep_sim.cash_flows`.
+
+Checks:
+- The 60-day and 5-year books equal the Lucid plan's trade by trade, and so does the every-year book from 2021.
+- The 5-year pool equals `topstep_report.py`'s first path.
+- The CFD pool equals `topstep_sim.py`'s CFD run from the same date ($680,733).
+- Every slot's cash equals `topstep_sim.cash_flows` on its own events.
+- The 5 + 5 row equals `topstep.csv`'s `5y-50-standard-noact`.
+
+Last 5 years (`topstep_report.py`'s definitions; Lucid from `results_v23_nqfut_5y_addon`):
+
+| | Topstep, your plan | Lucid, add-on |
+|---|---|---|
+| Combine / eval pass rate (one bought every session) | 46.6% | 46.2% |
+| Sessions to pass, median | 8 | 8 |
+| First payout after the first Combine / eval, median | 54 days | 54 days |
+| Funded accounts that reach a payout | 59.0% | 58.8% |
+| Payouts per funded account, average | 1.59 | 1.18 |
+| Paid to you per funded account | $2,304 | $1,625 |
+| Fees per funded account | $212 | $196 |
+| 5 + 5, net a year (median of 10 start dates) | $77,368 | $58,902 |
+| The same with 2x commission and 1 tick of slippage | $70,948 | $51,422 |
+
+1 to 5 XFAs, each with a Combine behind it (mean of 12 start dates), against Lucid's N funded + N evals:
+
+| | 1 + 1 | 2 + 2 | 3 + 3 | 4 + 4 | 5 + 5 |
+|---|---|---|---|---|---|
+| Topstep, net a year | $15,305 | $30,529 | $47,814 | $61,990 | $78,409 |
+| Topstep, most cash out of pocket | -$1,077 | -$1,773 | -$2,272 | -$2,747 | -$3,091 |
+| Lucid, net a year | $12,045 | $24,303 | $38,087 | $48,386 | $59,716 |
+
+Every year since Feb 15 2011 (CFD), with the 6-micro cap:
+- **One XFA trading every session** made $186,388, against $232,257 for a Lucid funded account, whose cap is 20.
+  - Before 2020 NQ's range was small, so Topstep's cap held every leg at 6 MNQ. That cut both profit and commission: in 2017 one XFA kept $3,494 of $6,935, while the larger Lucid trades kept $555 of $9,275.
+- **5 XFAs + 5 Combines** netted $680,733 ($43,241 a year, every year positive), against $615,533 for Lucid's 5 + 5.
+- **One account slot** netted $124,226, against $102,462 at Lucid.
+
+The 60 sessions of real MNQ: the two plans took the same trades, passed as many Combines as evals and requested the same payouts. They differ only in fees: $5,117 against $5,229 for 5 + 5.
+
+The page's main script is now its own document (`files/app.js`, 90 KB), loaded with `<script src>`. The page document is 207 KB of its 256 KB limit, and the v18 page was 256 KB with the script inside it.
+
+The harness passed on the published version:
+- all 102 drawings ran;
+- every figure equals its data cell, including figures that name a row by several columns;
+- no broken links or duplicate ids;
+- the tabs work;
+- no sideways scroll at 390 px.
+
+Changes to the datasets:
+- **Added:** 17 Topstep datasets (`ts_*`).
+- **Retired:** 12 Lucid datasets the page no longer draws: `all_days`, `all_trades`, `slot_all`, `history`, `months_all`, `real_account`, `real_evals`, `real_pool`, `slot_5y`, `years`, `monthly` and `distributions`. Their files stay in `results_v23_charts/` and `results_v23_nqfut_5y_addon/`.
+
+```bash
+python3 topstep_report.py ../../data_fut results_v23_nqfut_5y_addon results_topstep_report
+python3 topstep_charts.py ../../data_live ../../data_fut results_v23_charts results_topstep_report results_topstep_site
+```
+
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
 | Leg | Trades | Mean R | t | Years positive | Real vs random sides |
