@@ -1,0 +1,7 @@
+data,milestone,starts,reached,not_reached,months_median,months_p75,months_p90,months_worst,months_best,safe_pct
+futures,"switch to 150K ($30,000 saved after tax)",51,51,0,12.5,14.0,15.2,19.8,5.5,
+futures,"$16,000 car paid in cash above the reserve",51,51,0,17.4,20.3,22.0,23.9,11.6,100.0
+futures,"$32,000 car paid in cash above the reserve",51,51,0,20.4,24.4,27.7,31.9,12.8,100.0
+CFD,"switch to 150K ($30,000 saved after tax)",153,153,0,15.7,20.9,33.2,42.0,5.6,
+CFD,"$16,000 car paid in cash above the reserve",153,153,0,24.4,33.6,41.4,52.9,11.4,100.0
+CFD,"$32,000 car paid in cash above the reserve",153,153,0,31.1,47.5,54.0,64.2,12.8,100.0
