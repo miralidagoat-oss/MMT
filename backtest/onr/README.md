@@ -656,7 +656,7 @@ Since 2011 (start Feb 15 2011), the add-on made more in 12 of 16 years and less 
 
 This is one 50-session path; the 5-year figures come from about 1,300 sessions and many start dates. The step-by-step table is `addon_journey.csv`. The current-rules figures equal `export_charts.py`'s checked ones.
 
-`indicators/onr_book_addon50.pine` is the same indicator for an eval bought with the add-on: identical trading logic, with "EVAL: consistency rule you bought" defaulting to 50% and the add-on's backtest in its header and panel. Its tooltips for the bracket width and the news skip still quote the 40%-rule pass rates; those options were not re-run with the add-on.
+`indicators/onr_book_addon50.pine` is the same indicator for an eval bought with the add-on: identical trading logic, with "EVAL: consistency rule you bought" (from v2.4 "LUCID EVAL: ...") defaulting to 50% and the add-on's backtest in its header and panel. Its tooltips for the bracket width and the news skip still quote the 40%-rule pass rates; those options were not re-run with the add-on.
 
 ### Real NQ futures: a 5-year 5-minute file (Nov 19 2026)
 
@@ -1042,6 +1042,32 @@ Both rows use Standard fees.
 ```bash
 python3 topstep_months.py ../../data_fut ../../data results_topstep
 ```
+
+**Indicator v2.4: a Topstep mode** (both editions, `indicators/onr_book.pine` and `onr_book_addon50.pine`).
+
+A new first input, "Prop firm" (Topstep or Lucid Flex), defaults to Topstep. A Trading Combine is Phase EVAL, and an XFA is Phase FUNDED. The trades, stops, targets and every $ limit are unchanged: Topstep's profit target and max loss equal Lucid's at 50K / 100K / 150K.
+
+At Topstep the indicator uses exactly the rules of the Topstep backtest (`ek`, `fk` and `TS` in `topstep_sim.py`):
+- **Max loss:** stops trailing at the start balance ($0); in an XFA it is $0 after any payout.
+- **Combine:**
+  - each day's target is capped at 50% of the profit target;
+  - the "need" shown is Topstep's pass rule: the target, with the best day at most 55%;
+  - at most 50 / 100 / 150 MNQ.
+- **XFA payouts:** a new input, "TOPSTEP FUNDED: XFA payout path".
+  - Standard: 5 winning days of $150 or more at every size, cap $2,000 / $3,000 / $5,000.
+  - Consistency: 3 traded days, the best day since the last payout at most 40% of the profit since then, cap $3,000 / $4,000 / $6,000.
+  - Both: the request comes once the XFA is $1,000 up and up since the last payout, for 50% of the balance up to the cap.
+- **No payout limit:** "Payouts taken" now goes to 99, and the close-after-the-4th guidance is Lucid only.
+- **Funded legs:** at most 6 / 10 / 10 MNQ, the panel showing the cap.
+- **Lucid-only items** are labelled: the add-on input, the payout plan, and the LIVE phase. A Topstep live account is flagged as not modelled.
+
+With "Prop firm" on Lucid Flex every formula reduces to v2.3's.
+
+**Checks:**
+- Both editions parse with `pynescript`, with no undeclared identifiers.
+- The constants, read from the Pine source for every firm, size and payout path, equal `topstep_sim.TS` / `CAP` and `account.RULES`.
+- The Pine Combine bracket equals `account.eval_bracket` with Topstep's rules on 20,000 random states.
+- The drawdown floor and the payout readiness and amount equal `EvalAccount` / `FundedAccount` on 200,000 random states.
 
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
