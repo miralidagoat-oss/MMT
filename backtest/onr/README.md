@@ -1059,6 +1059,19 @@ Each change alone from A: Topstep's fees $56,984 (−$2,732); Topstep's account 
 - **Topstep's account rules** add $4-7k a year. The max loss locks at $0 instead of +$100, and the Combine passes with a 55% best day instead of 50%.
 - **Topstep's fees** cost $2-3k a year more than your $90.50 Lucid evals, mostly the $149 activation of each XFA.
 
+**Website v18 (Topstep tab):** what changed on the page:
+- **Fee-path finding:** at 50K the No Activation Fee path made more in every window.
+- **Two new sections:** "Why Topstep made more" (`topstep_why.py`) and "25K at both firms" (`topstep25k.py`, with each year).
+- **Instructions:** "Running the indicator at Topstep" now describes v2.5's Topstep setting.
+- **A correction:** Topstep's fees cost more, not less, on the Standard fee path. The $149 activation per XFA outweighs the cheaper Combines.
+- **Headers:** the summary tables' headers are now written by the page's drawings.
+- **Page size:** the page is stored without indentation or comment-only lines to stay under the 256 KB document limit.
+
+**Checks:**
+- Every cell of the 24 Topstep tables and every figure and claim in the text checked against these CSVs: 6,255 checks, 0 failures.
+- All 36 month-by-month views are unchanged.
+- The page harness found no problems, including at phone width.
+
 **25K at both firms** (`topstep25k.py` → `results_topstep25k/`; Lucid from `results_scale_sizes/`).
 
 Topstep's 25K is the Topstep Labs "$25K Static Trading Combine" (help centre, read Nov 20 2026):
