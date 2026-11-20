@@ -954,6 +954,63 @@ From Aug 30 2019 on futures, 150K with the 40% rule made $79,881 a year, against
 python3 scale_sizes.py ../../data_fut ../../data results_scale_sizes
 ```
 
+### Topstep: every configuration (Nov 20 2026; `topstep_sim.py` → `results_topstep/`)
+
+**Topstep's rules** (help.topstep.com, read Nov 20 2026):
+
+| | 50K | 100K | 150K |
+|---|---|---|---|
+| Combine per month, Standard / No Activation Fee path (a reset costs the same) | $49 / $95 | $99 / $149 | $199 / $229 |
+| Target / end-of-day drawdown (locks at the start balance) | $3,000 / $2,000 | $6,000 / $3,000 | $9,000 / $4,500 |
+| Combine best-day limit | 55% | 55% | 55% |
+| XFA payout cap, Standard path (5 winning days of $150+) | $2,000 | $3,000 | $5,000 |
+| XFA payout cap, Consistency path (3 days, best day ≤ 40% of the profit since the last payout) | $3,000 | $4,000 | $6,000 |
+
+At every size:
+- **XFA:** starts at $0; its drawdown locks at $0 and is set to $0 after any payout.
+- **Fees and payouts:** a $149 activation fee per XFA on the Standard fee path; a $125 minimum payout; a 90% split.
+- **Limits:** up to 5 XFAs, and no payout-count limit.
+
+**Code changes.** `account.py` gained optional firm rules: `rules`, `lock`, `pass_cons`, `pay_min`, `pay_path`. The defaults are Lucid's. The pools, evals and funded accounts recorded beforehand are identical after the change.
+
+**The model.** The plan runs as at Lucid: 5 funded + 5 Combines, one new Combine a session, and the indicator's 50% eval setting under Topstep's 55%.
+- **Payouts:** requests follow the indicator: once an account is $1,000 up, half the profit up to Topstep's cap. Requesting at Topstep's $125 minimum did slightly worse ($75,855 a year at 50K, `results_topstep_paymin125/`).
+- **No payout limit:** accounts are not closed after a set number of payouts.
+- **Costs:** each Combine pays its monthly price at the start and every 30 days it is open; each XFA pays its activation fee.
+
+**Not modelled:**
+- **Topstep's call-up to a live account.** It is discretionary, closes every XFA and cannot be declined.
+- **Smaller items:** the optional Daily Loss Limit, the monthly reset credit, and the Scaling Plan tiers. The tier table could not be read, so funded legs are capped at 6 / 10 / 10 micros. That cap never binds at 50K and 100K over the last 5 years, and binds on a few days at 150K; it binds often before 2018.
+
+Last 5 years on real futures, mean of 12 start dates:
+
+| Configuration | Net a year | Worst full year | Worst 12 months | Deepest drop | Most cash out |
+|---|---|---|---|---|---|
+| 50K, Standard payouts, Standard fees | $77,107 | $37,288 | +$28,898 | -$6,555 | -$1,783 |
+| 50K, Standard payouts, No Activation Fee | $78,409 | $38,028 | +$30,466 | -$7,220 | -$3,091 |
+| 100K, Standard payouts, Standard fees | $103,326 | $28,749 | +$12,024 | -$10,949 | -$3,573 |
+| 150K, Standard payouts, Standard fees | $168,547 | $36,570 | +$25,475 | -$18,552 | -$7,039 |
+| 150K, Standard payouts, No Activation Fee | $170,264 | $37,109 | +$26,072 | -$18,091 | -$8,006 |
+| 50K / 100K / 150K, Consistency payouts | $54,534 / $55,314 / $95,334 | | +$22,796 / $0 / $0 | | |
+| Lucid 50K add-on, closed after the 4th payout (the plan) | $59,716 | $38,345 | +$31,535 | -$6,878 | -$2,926 |
+| Lucid 150K, 40% rule | $92,775 | $36,770 | +$20,359 | -$17,636 | -$9,986 |
+
+Every year since 2011 (CFD), Standard payouts, Standard fees:
+- 50K made $42,160 a year with a worst year of +$5,372; the Lucid plan made $39,413 with +$1,993.
+- 150K made $77,859 a year, with a worst year of -$17,535 and a -$34,832 drop.
+
+**What it means:**
+- **Standard payouts at every size.** On the Consistency path the 40% rule traps money in the accounts: one 50K XFA went 304 sessions without a payout while its balance grew past $55k. When the 5 XFAs stall together, a whole year passes with nothing paid.
+- **Topstep beats Lucid on paper** because XFAs keep paying until they fail; Lucid's plan closes each account after its 4th payout to avoid going live. Winning days need only $150 at every size, the 150K cap is $5,000, and Combines cost less.
+- **The figures are a best case.** Topstep's call-up to Live, likely at these profits, would close all 5 XFAs.
+- **50K** gives the most per unit of risk. **150K** makes the most, with Lucid-150K-sized swings. **100K** has the weakest worst 12 months.
+- **The two fee paths net within ~$1.7k a year.** The Standard fee path needs less cash up front.
+
+```bash
+python3 topstep_sim.py ../../data_fut ../../data results_topstep
+ONR_TS_PAYMIN=125 python3 topstep_sim.py ../../data_fut ../../data results_topstep_paymin125
+```
+
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
