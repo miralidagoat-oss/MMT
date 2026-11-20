@@ -1059,6 +1059,47 @@ Each change alone from A: Topstep's fees $56,984 (−$2,732); Topstep's account 
 - **Topstep's account rules** add $4-7k a year. The max loss locks at $0 instead of +$100, and the Combine passes with a 55% best day instead of 50%.
 - **Topstep's fees** cost $2-3k a year more than your $90.50 Lucid evals, mostly the $149 activation of each XFA.
 
+**25K at both firms** (`topstep25k.py` → `results_topstep25k/`; Lucid from `results_scale_sizes/`).
+
+Topstep's 25K is the Topstep Labs "$25K Static Trading Combine" (help centre, read Nov 20 2026):
+- **Combine:**
+  - $75 one time, no resets; expires after 90 days;
+  - $2,000 target and a STATIC $1,000 max loss;
+  - a mandatory $500 daily loss limit;
+  - best day <= 55%;
+  - 20 micros;
+  - at most 5 bought a month;
+  - free activation.
+- **XFA:**
+  - static $1,000 max loss, $0 after the first payout;
+  - a $500 daily loss limit;
+  - 20 micros, no scaling;
+  - a $4,000 payout cap.
+- **Assumed:** the 25K page states no other payout rule, so Topstep's general XFA rules are used: 5 winning days of $150 (Standard) or 3 days at 40% (Consistency), 50% of the balance, 90% split.
+
+`account.py` gained `dll` and `max_days` for evals and `lock_after_pay` for funded accounts. A static max loss is `lock = -mll`. The defaults leave every earlier pool, eval and funded account identical (checked against the reference events saved before the first Topstep change).
+
+The daily loss limit is met by capping each day's planned risk at $500. No Combine or XFA day lost more than $500 in 38,525 account-days.
+
+Last 5 years, 5 funded + 5 evals, mean of 12 start dates:
+
+| 25K | Net a year | Worst full year | Worst 12 months | Deepest drop | Most cash out |
+|---|---|---|---|---|---|
+| Topstep, Standard payouts ($75 Combines, 5 a month) | $31,736 | $4,747 (2023) | $1,018 | -$2,288 | -$1,981 |
+| Topstep, Consistency payouts | $35,527 | $14,309 | $10,589 | -$2,194 | -$2,131 |
+| Topstep, Standard, without the 5-a-month limit | $38,026 | $20,654 | $16,117 | -$4,362 | -$3,131 |
+| Lucid, add-on ($51.15 evals, assumed price) | $29,812 | $17,238 | $11,962 | -$3,887 | -$1,641 |
+| Lucid, 40% rule ($45.50, assumed) | $31,251 | $16,672 | $13,278 | -$3,504 | -$1,638 |
+
+Since 2011 (CFD):
+- Topstep: Standard $20,477 (worst year +$243); Consistency $21,495 (worst year -$2,113, 2018).
+- Lucid: add-on $20,753 (+$2,147); 40% rule $19,814 (+$24).
+
+**What it means:**
+- **At 25K the firms are about even.** At 50K Topstep led by about $18k a year.
+- **The 5-Combines-a-month limit** binds in 68% of months on the Standard path, and it is what made 2023 weak.
+- **Topstep 50K** (about $78k a year) makes more than twice as much as either 25K.
+
 **Indicator v2.4: a Topstep mode** (both editions, `indicators/onr_book.pine` and `onr_book_addon50.pine`).
 
 A new first input, "Prop firm" (Topstep or Lucid Flex), defaults to Topstep. A Trading Combine is Phase EVAL, and an XFA is Phase FUNDED. The trades, stops, targets and every $ limit are unchanged: Topstep's profit target and max loss equal Lucid's at 50K / 100K / 150K.

@@ -36,12 +36,14 @@ RULES[50]["price"] = float(os.environ.get("ONR_EVAL_FEE_50K", RULES[50]["price"]
 FEE_TAG = "" if RULES[50]["price"] == 115.0 else "_fee" + f"{RULES[50]['price']:.2f}".replace(".", "")
 
 
-def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0, size=25, k=1.0, R=None):
+def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0, size=25, k=1.0, R=None, dll=None):
     """k scales the stop cap and the per-trade target cap (round 3, hypothesis C: timid play). R: another firm's rules
-    (default Lucid's RULES[size])."""
+    (default Lucid's RULES[size]). dll: a daily loss limit the stop must stay inside (Topstep Labs: $500 at 25K)."""
     R = RULES[size] if R is None else R
     m = R["mll"] / 1000.0
     sl = min(600.0 * m * k, cushion - 5.0 * m)
+    if dll is not None:
+        sl = min(sl, dll)
     need = max(R["target"], best / cons)
     tp = max(20.0 * m, min(R["target"] * cons * k, max(need - pnl, 0.0) + 15.0 * m))
     n = int(max(1.0, min(float(R["evalmax"]), math.floor((sl + tp) / (span * adr * PV) + 0.5))))
@@ -63,7 +65,8 @@ class EvalAccount:
 
     def __init__(self, S, cons=0.4, span=1.0, news=True, slip=0.0, comm=1.0, side_override=None,
                  legs=("on", "od"), thr=None, od_k=0.10, improved=False, book_mult=0, adr_ref=350.0, size=25,
-                 on_long_only=False, risk_k=1.0, ib_fallback=False, rules=None, lock=100.0, pass_cons=None):
+                 on_long_only=False, risk_k=1.0, ib_fallback=False, rules=None, lock=100.0, pass_cons=None, dll=None,
+                 max_days=None):
         """book_mult=0: v1/v2 eval (one bracket trade a day). book_mult=k: trade the funded book (overnight, pyramid,
         IB with the drive) at k x the funded size under the same $600 day budget. risk_k: bracket stop and target caps
         x risk_k (round 3, C). ib_fallback (round 6, U1): on a session with no trade so far (no 09:35 drive), take the
@@ -76,6 +79,9 @@ class EvalAccount:
         # Lucid +$100, Topstep $0) and pass_cons (the firm's best-day share when it differs from the indicator's cons)
         self.R = RULES[size] if rules is None else rules
         self.lock, self.pass_cons = lock, (cons if pass_cons is None else pass_cons)
+        # dll: the stop stays inside a daily loss limit; max_days: calendar days from the first session to expiry (a fail)
+        # (a static max loss is lock = -mll: the floor then sits at -mll from the start and never moves)
+        self.dll, self.max_days, self.d0 = dll, max_days, None
         self.m = self.R["mll"] / 1000.0
         self.pnl = self.peak = self.best = 0.0
         self.trades = 0
@@ -112,6 +118,10 @@ class EvalAccount:
 
     def step(self, d):
         S, r = self.S, self.S.S[d]
+        if self.d0 is None:
+            self.d0 = int(d)
+        if self.max_days is not None and int(d) - self.d0 >= self.max_days:
+            return "fail"  # expired before passing
         fl = self.lock if self.peak >= self.R["mll"] + self.lock else self.peak - self.R["mll"]
         cushion = self.pnl - fl
         if cushion < (200.0 if self.book_mult else 50.0) * self.m:  # book mode: same abandon level as funded
@@ -128,7 +138,7 @@ class EvalAccount:
                     side = self.side_override(d, "on")
                 if side != 0 and not (self.news and news_night(d)) and not (self.on_long_only and side < 0):
                     n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved,
-                                             self.comm, self.size, self.risk_k, R=self.R)
+                                             self.comm, self.size, self.risk_k, R=self.R, dll=self.dll)
                     E = r["on"]["E"] + side * self.slip
                     px, _ = bracket_exit(r["on"]["w"], side, E, sd, td, self.slip)
                     day = (px - E) * side * n * PV - n * self.comm
@@ -139,7 +149,7 @@ class EvalAccount:
                     side = self.side_override(d, "od")
                 if side != 0:
                     n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved,
-                                             self.comm, self.size, self.risk_k, R=self.R)
+                                             self.comm, self.size, self.risk_k, R=self.R, dll=self.dll)
                     E = r["od"]["E"] + side * self.slip
                     px, _ = bracket_exit(r["od"]["w"], side, E, sd, td, self.slip)
                     day = (px - E) * side * n * PV - n * self.comm
@@ -149,7 +159,7 @@ class EvalAccount:
                 if f is not None:
                     side, E0, j = f
                     n, sd, td = eval_bracket(adr, cushion, self.best, self.pnl, self.cons, self.span, self.improved,
-                                             self.comm, self.size, self.risk_k, R=self.R)
+                                             self.comm, self.size, self.risk_k, R=self.R, dll=self.dll)
                     E = E0 + side * self.slip
                     o, h, l, c, _ = r["rng"]
                     if (side == 1 and E - l[j] >= sd) or (side == -1 and h[j] - E >= sd):
@@ -180,7 +190,7 @@ class FundedAccount:
                  abandon=200.0, thr=None, on_stop=0.5, record=None, adr_ref=None, comm=1.0, improved=False,
                  ib_with_drive=False, payout_max=False, size=25, on_long_only=False, cycle_rule=False,
                  cushion_frac=None, add2=None, rules=None, lock=100.0, pay_min=500.0, pay_path="days", pay_cons=0.4,
-                 pay_days=3):
+                 pay_days=3, lock_after_pay=None):
         """cushion_frac=f (round 3, A): day budget min(day_budget x M, f x cushion) and contracts scaled by
         min(1, f x cushion / (day_budget x M)), at least 1. add2 (round 3, E): second pyramid add at add2 x ADR."""
         self.cushion_frac, self.add2 = cushion_frac, add2
@@ -193,6 +203,8 @@ class FundedAccount:
         # sessions and the largest day <= pay_cons x the net profit since the last payout)
         self.R = RULES[size] if rules is None else rules
         self.lock, self.pay_min, self.pay_path, self.pay_cons, self.pay_days = lock, pay_min, pay_path, pay_cons, pay_days
+        # where the floor sits after a payout (default: lock); a static max loss is lock = -mll, lock_after_pay = 0
+        self.lock_after_pay = lock if lock_after_pay is None else lock_after_pay
         self.td, self.maxday = 0, 0.0
         self.m = self.R["mll"] / 1000.0
         self.pnl = self.peak = 0.0
@@ -202,7 +214,10 @@ class FundedAccount:
     def step(self, d):
         S, r = self.S, self.S.S[d]
         m = self.m
-        fl = self.lock if (self.npay > 0 or self.peak >= self.R["mll"] + self.lock) else self.peak - self.R["mll"]
+        if self.npay > 0:
+            fl = self.lock_after_pay
+        else:
+            fl = self.lock if self.peak >= self.R["mll"] + self.lock else self.peak - self.R["mll"]
         cushion = self.pnl - fl
         if cushion < self.abandon * m:
             return "dead", 0.0
