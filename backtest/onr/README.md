@@ -1043,6 +1043,22 @@ Both rows use Standard fees.
 python3 topstep_months.py ../../data_fut ../../data results_topstep
 ```
 
+**Why Topstep made more** (`topstep_why.py` → `results_topstep_why/why.csv`). The 50K Lucid plan is turned into the Topstep plan one rule at a time, over the last 5 years (mean of 12 start dates, same trades):
+
+| Step | Net a year | Payouts a year (average) | Fees a year | Evals bought a year |
+|---|---|---|---|---|
+| A. Lucid plan: add-on, closed after the 4th payout, $90.50 evals | $59,716 | 52.4 ($1,449) | $8,679 | 95.9 |
+| B. A without the payout limit | $72,537 | 57.0 ($1,559) | $7,380 | 81.5 |
+| C. B with Topstep's fees ($49 a month per Combine, $149 per XFA) | $70,502 | 57.0 ($1,559) | $9,415 | 81.5 |
+| D. C with Topstep's account rules = the Topstep plan | $77,107 | 60.0 ($1,589) | $8,746 | 75.5 |
+
+Each change alone from A: Topstep's fees $56,984 (−$2,732); Topstep's account rules $64,079 (+$4,363).
+
+**What it means:**
+- **The payout limit** is most of the gap (+$12.8k). Lucid's plan closes a working account after its 4th payout, because a 5th moves you live. That account's later payouts are lost, and an eval must be bought to replace it. That edge is exactly what Topstep's discretionary call-up to live could take away.
+- **Topstep's account rules** add $4-7k a year. The max loss locks at $0 instead of +$100, and the Combine passes with a 55% best day instead of 50%.
+- **Topstep's fees** cost $2-3k a year more than your $90.50 Lucid evals, mostly the $149 activation of each XFA.
+
 **Indicator v2.4: a Topstep mode** (both editions, `indicators/onr_book.pine` and `onr_book_addon50.pine`).
 
 A new first input, "Prop firm" (Topstep or Lucid Flex), defaults to Topstep. A Trading Combine is Phase EVAL, and an XFA is Phase FUNDED. The trades, stops, targets and every $ limit are unchanged: Topstep's profit target and max loss equal Lucid's at 50K / 100K / 150K.
