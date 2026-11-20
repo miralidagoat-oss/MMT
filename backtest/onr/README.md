@@ -907,6 +907,53 @@ ONR_MAX_PAY=4 python3 site_v23.py ../../data_fut ../../data ../../data_live resu
 ONR_MAX_PAY=4 python3 site_v23.py --fut-tables ../../data_fut results_v23_site
 ```
 
+### Scaling up: bigger accounts (Nov 20 2026; `scale_sizes.py` → `results_scale_sizes/`)
+
+**The constraint.** Lucid allows at most 5 funded accounts per household ("Different types of funded accounts combined may not exceed 5 accounts total"). So the user's 5 funded + 5 evals is already the most accounts. Within Lucid, the remaining lever is the account size.
+
+**Rules at each size.** Lucid's help centre (read Nov 20 2026) confirms the rules `account.RULES` and the indicator use at every LucidFlex size:
+
+| | 25K | 50K | 100K | 150K |
+|---|---|---|---|---|
+| Profit target | $1,250 | $3,000 | $6,000 | $9,000 |
+| End-of-day max loss | $1,000 | $2,000 | $3,000 | $4,500 |
+| Qualifying day | $100 | $150 | $200 | $250 |
+| Payout cap | $1,000 | $2,000 | $2,500 | $3,000 |
+| Max position | 20 MNQ | 40 MNQ | 60 MNQ | 100 MNQ |
+
+At every size: a $500 minimum payout, a 90% split, and a 5-payout limit.
+
+**The model.** The plan runs unchanged at each size: one new eval a day, each funded account closed after its 4th payout, and every dollar limit scaled by max loss / $1,000.
+
+**Prices and their assumptions.** Lucid's list prices are $65 / $115 / $215 / $323. The help centre gives no prices, and the pricing page refused the fetch.
+- The user's 30% discount is assumed at every size: $45.50 / $80.50 / $150.50 / $226.10.
+- The add-on is assumed to cost the same 12.4% of the eval price as the user's $10 at 50K.
+- Prices change no trade.
+
+5 funded + 5 evals, mean of 12 start dates:
+
+| Size, rule | Eval | Last 5 years (futures): net a year | worst full year | worst 12 months | deepest drop | most cash out | 2011-2026 (CFD): net a year | worst full year |
+|---|---|---|---|---|---|---|---|---|
+| 25K, add-on | $51.15 | $29,812 | $17,238 | +$11,962 | -$3,887 | -$1,641 | $20,753 | $2,147 |
+| **50K, add-on (the plan)** | $90.50 | **$59,716** | $38,345 | +$31,535 | -$6,878 | -$2,926 | **$39,413** | **$1,993** |
+| 100K, 40% rule | $150.50 | $64,720 | $31,168 | +$22,234 | -$12,190 | -$6,572 | $37,046 | -$3,815 |
+| 100K, add-on | $169.20 | $70,510 | $19,918 | +$7,640 | -$12,690 | -$6,970 | $38,805 | -$11,582 |
+| **150K, 40% rule** | $226.10 | **$92,775** | $36,770 | +$20,359 | -$17,636 | -$9,986 | **$49,902** | **-$16,858** |
+| 150K, add-on | $254.19 | $90,240 | $26,009 | +$6,912 | -$17,793 | -$8,984 | $54,349 | -$24,608 |
+
+From Aug 30 2019 on futures, 150K with the 40% rule made $79,881 a year, against $56,695 for the plan.
+
+**What it means:**
+- **150K is the only size that clearly makes more**, about +$33k a year over the last 5 years. It is not better every year: in 2023 it made $36,770 against $40,233.
+- **Its swings are about 2.5 times deeper.** It needs about $10k of eval fees before payouts catch up. Over 2011-2026 it had a losing year (2013: -$16,858); the plan's worst year was +$1,993 (2016).
+- **At 150K the 40% rule is steadier than the add-on**, and cheaper.
+- **100K adds little** to 50K over the long history, with twice the drop. **25K makes half.**
+- 50K with the add-on reproduces the website's $59,716 exactly (checked in the script).
+
+```bash
+python3 scale_sizes.py ../../data_fut ../../data results_scale_sizes
+```
+
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
