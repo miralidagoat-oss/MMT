@@ -1256,6 +1256,96 @@ python3 topstep_report.py ../../data_fut results_v23_nqfut_5y_addon results_tops
 python3 topstep_charts.py ../../data_live ../../data_fut results_v23_charts results_topstep_report results_topstep_site
 ```
 
+### Your plan: how to run and grow the accounts (Nov 21 2026; `plan_search.py` → `results_plan_search/`)
+
+`plan_search.py` asks which way of running and growing the accounts makes the most money for its risk.
+
+**The setup:**
+- Every payout stays in the business, and 30% of each payout to you is set aside for tax (an assumption).
+- "Spare cash" is business cash minus that set-aside.
+- A plan is a starting setup plus steps. Each step is taken the first session the spare cash reaches its amount.
+- Those amounts are reserves: each setup's deepest fall since Aug 30 2019 on real futures (5 funded + 5 evaluations, the worst of 12 start dates), rounded up:
+  - Topstep 50K $11,000, 150K $24,000;
+  - Lucid 50K $11,000, 150K $22,000.
+- **The range rule:** a new Topstep Combine is 150K only while NQ's 14-day range is at least 151 points, otherwise 50K. 151 is where a 150K XFA's 10-micro leg cap stops binding. Below it, a 150K account trades no more than a 100K.
+- **Start dates:** the first session of every month.
+  - Sep 2019 to Nov 2023 on real futures: 51 starts, a market like today's.
+  - Mar 2011 to Nov 2023 on the Nasdaq-100 CFD: 153 starts, including the quiet years.
+
+**Checks:**
+- The pool code equals `research4.sim_pool` with `topstep_sim.cash_flows` (both fee paths) or Lucid's flat price, session by session, for all 9 account types and two reserve sizes.
+- The reserves equal the deepest falls in `topstep_sim.py`'s and `scale_sizes.py`'s runs.
+- The earlier scratch runs of rounds 1 and 2, the car variants and the first ladder were reproduced exactly before 36 months was made an exact cut-off. Earlier chat figures had measured some plans at the end of month 36, about 37 months.
+
+**Round 1 (17 plans) and round 2 (14 plans).** Today's market; the money made is after every cost and the tax set-aside, at exactly 36 months:
+
+| Plan | Own money in, worst | Deepest fall | 3 years, typical | 3 years, worst | Quiet years: typical | Quiet years: deepest fall |
+|---|---|---|---|---|---|---|
+| Topstep 50K 5+5 only | $11,020 | -$11,020 | $133,280 | $93,572 | $71,299 | -$10,165 |
+| + Lucid 50K at $22k | $11,020 | -$20,206 | $201,576 | $145,510 | $114,280 | -$20,841 |
+| + Lucid, then Topstep 150K always | $11,020 | -$34,193 | $282,225 | $152,385 | $132,373 | -$55,605 |
+| + Lucid, then Topstep 150K by the range rule | $11,020 | -$33,350 | $273,863 | $152,519 | $137,668 | -$23,696 |
+| + Lucid, then both firms 150K | $11,020 | -$45,011 | $303,583 | $123,494 | $138,686 | -$61,964 |
+| Topstep 150K from day one | $31,153 | -$31,153 | $234,796 | $168,553 | $85,814 | -$71,148 |
+| **Lucid at $11k, Topstep 150K by range at $24k (the plan)** | **$11,020** | **-$34,303** | **$296,299** | **$169,028** | **$145,565** | **-$23,696** |
+
+What changed little: the Standard fee path, Lucid's 40% rule, and the range rule at 125, 175 or 200 points. What did not help, or helped only with more risk:
+- 3 or 7 Combines in reserve. 3 made less ($117,347 in 3 years against $133,280 for Topstep 50K alone). 7 needed more of your own money ($12,635) and fell deeper (-$36,880 against plan B's -$33,350), for about the same in today's market, though it made more in the quiet years ($164,946 against $137,668);
+- Lucid 150K by range: more in a typical start ($292,118 against plan B's $273,863), but deeper falls (-$43,219; -$39,431 in the quiet years) and a lower worst start ($147,660 against $152,519);
+- every step at once (up to $28,309 of your own money);
+- half the reserves without the range rule (quiet years: a deepest fall of -$55,724).
+
+**The car ($15,000).** The plan buys it at $50,000 of spare cash: the $35,000 that covers what is running, plus the car.
+- **When:** a typical 13.8 months after the first Combine; 9 in 10 by 18.9 months, the latest 22.9.
+- **Cushion afterwards:** spare cash never fell below $25,554, or $18,111 in the quiet years.
+
+Other timings:
+- **At $26,000 before Lucid (the previous answer):** never ran out of money, but once left only $936.
+- **At $40,000–45,000 after the steps:** one start went to -$529.
+- **Before 150K (at $37,000):** 3 starts went below zero, the worst to -$8,649.
+- **Before Lucid (car first, at $37,000 or $30,000):** 1 or 4 starts went below zero (1 or 8 in the quiet years), the worst to -$1,562 or -$6,223.
+
+**Steps of the plan** (`final_steps.csv`, today's market, typical / 9 in 10 by):
+- Lucid at $11k: 5.1 / 9.6 months.
+- Topstep 150K by range at $24k: 8.7 / 12.5 months.
+- The car: 13.8 / 18.9 months.
+
+**The first ladder** (1 XFA + 1 Combine, 2 + 2 at the first payout, 5 + 5 at $11k, Lucid at $22k, both firms 150K at $46k, the car at $61k):
+- needed at most $3,870;
+- made a typical $198,686 in 3 years (worst start $63,752; quiet years $58,780);
+- the car came at a typical 23.8 months.
+
+**Starting with only $500 or $1,000** (`budget.csv`). The plan's steps are unchanged; a start "runs out" when nothing is trading and the spare cash pays for neither a new evaluation nor a waiting activation. The rule: buy only while the spare cash covers the price, one more month of every open Combine and, on Topstep's Standard fee path, the $149 activation.
+
+The table uses every 5th session as a start, followed for 24 months (216 starts today's market / 659 quiet years); each cell is the share of starts that ran out:
+
+| Way in | $500 | $1,000 |
+|---|---|---|
+| Topstep 5+5 at once, No Activation Fee | 70% / 74% | 59% / 61% |
+| Topstep 5+5 at once, Standard fee path | 74% / 76% | 59% / 61% |
+| One Topstep Combine at a time, No Activation Fee | 69% / 66% | 55% / 49% |
+| One Topstep Combine at a time, Standard fee path | 76% / 71% | 51% / 51% |
+| **One Lucid 50K eval at a time, 40% rule ($80.50)** | **57% / 61%** | **40% / 40%** |
+| One Lucid 50K eval at a time, add-on ($90.50) | 71% / 69% | 48% / 51% |
+
+Combines bought on back-to-back days pass and fail together, so a small budget does better spread over time. A one-off eval price with no monthly renewal makes the money last longest.
+
+With $1,000 and Lucid one eval at a time:
+- the first payout came a median 2.1 months in when it came;
+- 5 Topstep XFAs were open by a median 3.6 months;
+- the car came a median 14.2 months in, for the starts that did not run out.
+
+**Indicator v2.6** adds the input "PLAN: my spare cash has reached $24,000 (150K step)" and the panel line "Next Topstep Combine".
+- Before the step it says 50K.
+- After it, 150K while NQ ADR is at least 151 points, otherwise 50K: the same rule as `Pool.pick`.
+- No trade, size or rule changes.
+- Both editions parse with `pynescript` with no undeclared or twice-declared names.
+
+```bash
+python3 plan_search.py ../../data_fut ../../data results_plan_search     # about 19 minutes on 4 cores
+python3 plan_search.py ../../data_fut ../../data results_plan_search --budget-only
+```
+
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
 | Leg | Trades | Mean R | t | Years positive | Real vs random sides |

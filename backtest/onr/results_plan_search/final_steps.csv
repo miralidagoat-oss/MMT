@@ -1,0 +1,7 @@
+data,step,starts,reached,p10_month,median_month,p90_month,latest_month
+futures,"Add Lucid 50K (spare cash $11,000)",51,51,2.5,5.1,9.6,11.9
+futures,"Topstep 150K by the range rule ($24,000)",51,51,4.7,8.7,12.5,13.7
+futures,"The $15,000 car ($50,000)",51,51,8.6,13.8,18.9,22.9
+CFD,"Add Lucid 50K (spare cash $11,000)",153,153,3.9,10.6,30.7,40.4
+CFD,"Topstep 150K by the range rule ($24,000)",153,153,7.1,16.2,36.7,45.1
+CFD,"The $15,000 car ($50,000)",153,153,11.6,23.5,55.0,70.8

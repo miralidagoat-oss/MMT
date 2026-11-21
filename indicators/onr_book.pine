@@ -1,8 +1,8 @@
 //@version=6
-indicator("ONR Book v2.5 - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("ONR Book v2.6 - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2.5 (2026-11-20). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
+// ONR BOOK v2.6 (2026-11-20). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
 // ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K or Topstep 25K / 50K / 100K / 150K (inputs "Prop firm" and "Account size",
 //          default Topstep 50K; TOPSTEP below). The $ amounts below are for 25K; every one scales
 //          with the account's max loss (x2 at 50K, x3 at 100K, x4.5 at 150K). Target, qualifying day and payout cap
@@ -66,6 +66,14 @@ indicator("ONR Book v2.5 - Lucid Flex / Topstep (overnight reversion + opening d
 //          so copy-trading never creates opposing positions across accounts (Lucid prohibits that). Lucid allows 10
 //          accounts per household, at most 5 of them funded: keep the 5 funded slots full from 5 evals behind them.
 //          Topstep allows up to 5 XFAs at once: the same plan, 5 XFAs with 5 Combines behind them.
+// YOUR PLAN (v2.6; backtest/onr/plan_search.py, 31 ways of running the accounts tested from 204 start dates): Topstep 50K,
+//          5 XFAs + 5 Combines from day one (No Activation Fee path, Standard payouts). Every payout stays in the
+//          business, 30% set aside for tax. At $11,000 of spare cash add Lucid 50K with the add-on (5 funded + 5 evals).
+//          At $24,000 each new Topstep Combine is 150K while NQ's 14-day range is at least 151 points, else 50K: below
+//          151 a 150K XFA's 10-MNQ leg cap binds and it trades no more than a 100K. Input "PLAN: 150K step" and the
+//          panel line "Next Topstep Combine" say which size to buy. Backtest on real NQ futures, 51 start dates from
+//          Sep 2019 to Nov 2023: a typical start made about $296k in 3 years (worst start $169k), after every fee and
+//          the 30% tax set-aside.
 // LUCID BACKTEST at 50K on real NQ futures, the last 5 years (Nov 15 2021 - Nov 17 2026; 5-minute bars, clock repaired; the
 //          Nasdaq-100 CFD and real MNQ fill Aug 2024 - Nov 2026), $1.34 commission, after Lucid's 10%, evals at $80.50
 //          (a discount-code price): 42.5% of evals pass (46.2% with the 50% add-on) and the first payout comes a median
@@ -94,6 +102,7 @@ qDays = input.int(0, "FUNDED: qualifying days since last payout (Lucid >= $100 /
 pnlAfterPay = input.float(0.0, "FUNDED: P&L right after your last payout ($; 0 before the first)", group = grpA, tooltip = "The panel asks for a payout only when the account is up since the last payout (Lucid's rule; the Topstep backtest used it too, and Topstep's Consistency path measures its 40% from here). Enter the P&L your account showed right after the last payout was taken.")
 payPlan = input.string("Close after the 4th payout (recommended)", "LUCID FUNDED: payout plan", options = ["Close after the 4th payout (recommended)", "Take the 5th payout (Lucid moves you live)"], group = grpA, tooltip = "Lucid only; Topstep has no payout limit. Lucid: a Flex account can take up to 5 payouts, after which the trader is moved to a live account and EVERY sim account (funded and evals) is closed. Backtest on real NQ futures, last 5 years, 5 funded + 5 evals at $80.50: closing each funded account right after its 4th payout (a passed eval takes its slot) made $60,318 a year with the 40% rule and $60,675 with the 50% add-on; taking the 5th payout and going live made $50,096 and $48,924, because the live accounts mostly closed within weeks and each move cost the evals in reserve. Lucid's risk team decides who goes live and may move a trader for other reasons, such as total payouts.")
 tsPath = input.string("Standard (recommended)", "TOPSTEP FUNDED: XFA payout path", options = ["Standard (recommended)", "Consistency"], group = grpA, tooltip = "Pick the path you chose when you activated this XFA. Standard: 5 winning days of $150 or more since the last payout, then up to 50% of the balance, cap $2,000 / $3,000 / $5,000 at 50K / 100K / 150K. Consistency: 3 traded days with no day above 40% of the profit since the last payout, cap $3,000 / $4,000 / $6,000. Backtest, last 5 years, 5 XFAs + 5 Combines: Standard ~$77.1k / $103.3k / $168.5k a year, Consistency ~$54.5k / $55.3k / $95.3k: its 40% rule holds payouts back for months.")
+plan150 = input.bool(false, "PLAN: my spare cash has reached $24,000 (150K step)", group = grpA, tooltip = "Your plan (backtest/onr/plan_search.py): Topstep 50K, 5 XFAs + 5 Combines from day one; Lucid 50K with the add-on once your spare cash (business cash after setting aside 30% of each payout for tax) reaches $11,000; from $24,000, each new Topstep Combine is 150K while NQ's 14-day range (the NQ ADR line) is at least 151 points, else 50K. Below 151 points a 150K XFA's legs are capped at 10 MNQ, so it trades no more than a 100K. Tick this once you reach $24,000: the panel line 'Next Topstep Combine' then says which size to buy. Accounts already open keep their size; set Account size to each account's own size.")
 commIn = input.float(1.34, "Commission per MNQ round turn ($)", minval = 0.0, step = 0.01, group = grpA, tooltip = "All-in cost per micro contract, in and out. Used for the eval stop (a full stop-out stays inside the $ limit) and for the simulated trade list. Prop-firm schedules quote about $1.24-$1.42; the backtest used $1.34.")
 fundSize = input.string("Auto (ADR-normalised)", "FUNDED: contracts per leg", options = ["Auto (ADR-normalised)", "Fixed 1 MNQ (v1)"], group = grpA, tooltip = "Auto = round(350 / ADR) MNQ per $1,000 of max loss. At 50K that is round(700 / ADR): 1 MNQ while NQ's daily range is above 467 points, 2 MNQ at 280-467, 3 MNQ at 200-280 and more below that (at most 10 / 20 / 30 / 40 MNQ for 25K / 50K / 100K / 150K at Lucid; 6 / 10 / 10 at Topstep 50K / 100K / 150K, the backtest's Scaling Plan assumption). Fixed 1 MNQ is v1's sizing, which stalled payouts in low-range years.")
 grpL = "Live tracking (alarm levels) - update each weekend"
@@ -871,7 +880,7 @@ if showPanel and barstate.islast
         warn := "WITHDRAW $" + str.tostring(pnlNow - MLL - 100.0, "#") + " (everything above $" + str.tostring(MLL + 100.0, "#") + ", keeping a $" + str.tostring(MLL, "#") + " cushion)"
     else if isLive and not liveLocked
         warn := "LIVE: no withdrawal until live profit reaches $" + str.tostring(MLL, "#") + " (a payout before that locks the drawdown at +$100 at once)"
-    table.cell(T, 0, 0, "ONR Book v2.5", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 0, 0, "ONR Book v2.6", bgcolor = color.new(color.navy, 0), text_color = color.white)
     table.cell(T, 1, 0, TS ? "Backtest Nov 2021 - Nov 2026 on real NQ futures prices, Topstep, 5 XFAs + 5 Combines, Standard payouts and fees: 50K ~$77.1k/yr (worst full year +$37.3k), 100K ~$103.3k (+$28.7k), 150K ~$168.5k (+$36.6k); Consistency payouts ~$54.5k / $55.3k / $95.3k; 25K Static (5 Combines a month): Standard ~$31.7k (+$4.7k), Consistency ~$35.5k (+$14.3k) | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on real NQ futures (50K, $80.50 evals): eval pass 42.5%, first payout median 64 days; 5 funded + 5 evals closing each account after its 4th payout ~$60.3k/yr (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$50.1k/yr | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
@@ -902,6 +911,9 @@ if showPanel and barstate.islast
     string alarmHead = liveDays == 0 ? "Live alarm" : (livePnl < rd ? "Live alarm: RED - STOP" : (livePnl < yl ? "Live alarm: YELLOW" : "Live alarm: GREEN"))
     table.cell(T, 0, 10, alarmHead, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 10, alarmTxt, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
+    string nextTs = not TS ? "Topstep plan only (Prop firm = Topstep)" : na(adr) ? "warming up (needs the NQ ADR)" : not plan150 ? "50K (150K from $24,000 of spare cash: tick PLAN: 150K step)" : adr >= 151.0 ? "150K (NQ ADR " + str.tostring(adr, "#") + " >= 151: a 150K XFA trades at full size)" : "50K (NQ ADR " + str.tostring(adr, "#") + " < 151: a 150K XFA would be capped at 10 MNQ a leg)"
+    table.cell(T, 0, 11, "Next Topstep Combine", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 11, nextTs, text_color = TS and plan150 and not na(adr) ? color.yellow : color.white, bgcolor = color.new(color.gray, 40))
 
 // ---------- last 30 trades (simulated on this chart's bars: fills estimated from bar highs/lows, commission input included)
 var table TL = table.new(logPos == "Bottom right" ? position.bottom_right : logPos == "Top left" ? position.top_left : logPos == "Middle left" ? position.middle_left : position.bottom_left, 7, 33, border_width = 1)
