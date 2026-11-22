@@ -2,8 +2,8 @@
 
 Two Pine Script v6 indicators:
 
-- **ONR Book v2.6** (`indicators/onr_book.pine`): Topstep 25K–150K or Lucid Flex 25K–150K plan for NQ / MNQ (overnight S&P-stretch reversion,
-  opening-drive pyramid, IB breakout). v2.6 adds your plan's Combine size: the panel line "Next Topstep Combine". Independent review, overfitting tests and a 2011–2026 + real-MNQ backtest are in
+- **ONR Book v2.6.1** (`indicators/onr_book.pine`): Topstep 25K–150K or Lucid Flex 25K–150K plan for NQ / MNQ (overnight S&P-stretch reversion,
+  opening-drive pyramid, IB breakout). v2.6 adds your plan's Combine size: the panel line "Next Topstep Combine"; v2.6.1 signals no new eval trades once the profit target is reached. Independent review, overfitting tests and a 2011–2026 + real-MNQ backtest are in
   [`backtest/onr/README.md`](backtest/onr/README.md).
 - **Alpha Predictive Limit Matrix** (below).
 

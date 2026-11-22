@@ -1341,6 +1341,8 @@ With $1,000 and Lucid one eval at a time:
 - No trade, size or rule changes.
 - Both editions parse with `pynescript` with no undeclared or twice-declared names.
 
+**Indicator v2.6.1** (review fix): once an eval's profit reaches its target, with the best day inside the firm's rule (Topstep 55%, Lucid the rule bought), it signals no new eval trades. The backtest's evals already stop at the pass; v2.6 kept signalling and showed a negative "need $-X more". The panel now says "profit target reached" and to set Phase to FUNDED once the firm confirms the pass. Topstep's 2-day Combine minimum is always met under its best-day rule (`topstep_sim.py`). Nothing else changes.
+
 ```bash
 python3 plan_search.py ../../data_fut ../../data results_plan_search     # about 19 minutes on 4 cores
 python3 plan_search.py ../../data_fut ../../data results_plan_search --budget-only

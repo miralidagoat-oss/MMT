@@ -1,8 +1,8 @@
 //@version=6
-indicator("ONR Book v2.6 (50% add-on) - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book 50%", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("ONR Book v2.6.1 (50% add-on) - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book 50%", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2.6, 50% CONSISTENCY ADD-ON EDITION (2026-11-20). Chart: MNQ1! (or NQ1!), 1-5 minute bars, 24h (ETH)
+// ONR BOOK v2.6.1, 50% CONSISTENCY ADD-ON EDITION (2026-11-21). Chart: MNQ1! (or NQ1!), 1-5 minute bars, 24h (ETH)
 // session. Sizes in MNQ ($2/pt). Same trading logic as onr_book.pine: only "LUCID EVAL: consistency rule you bought"
 // defaults to the 50% add-on, and the Lucid backtest text below leads with the add-on's figures.
 // ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K or Topstep 25K / 50K / 100K / 150K (inputs "Prop firm" and "Account size",
@@ -73,10 +73,10 @@ indicator("ONR Book v2.6 (50% add-on) - Lucid Flex / Topstep (overnight reversio
 //          5 XFAs + 5 Combines from day one (No Activation Fee path, Standard payouts). Every payout stays in the
 //          business, 30% set aside for tax. At $11,000 of spare cash add Lucid 50K with the add-on (5 funded + 5 evals).
 //          At $24,000 each new Topstep Combine is 150K while NQ's 14-day range is at least 151 points, else 50K: below
-//          151 a 150K XFA's 10-MNQ leg cap binds and it trades no more than a 100K. Input "PLAN: 150K step" and the
-//          panel line "Next Topstep Combine" say which size to buy. Backtest on real NQ futures, 51 start dates from
-//          Sep 2019 to Nov 2023: a typical start made about $296k in 3 years (worst start $169k), after every fee and
-//          the 30% tax set-aside.
+//          151 a 150K XFA's 10-MNQ leg cap binds and it trades no more than a 100K. The input "PLAN: my spare cash has
+//          reached $24,000" and the panel line "Next Topstep Combine" say which size to buy. Backtest on real NQ
+//          futures, 51 start dates from Sep 2019 to Nov 2023: a typical start made about $296k in 3 years (worst start
+//          $169k), after every fee and the 30% tax set-aside.
 // LUCID BACKTEST at 50K on real NQ futures, the last 5 years (Nov 15 2021 - Nov 17 2026; 5-minute bars, clock repaired; the
 //          Nasdaq-100 CFD and real MNQ fill Aug 2024 - Nov 2026), $1.34 commission, after Lucid's 10%, evals at $80.50
 //          (a discount-code price), the add-on's own price not included: 46.2% of evals pass with the add-on (42.5%
@@ -381,6 +381,11 @@ bool liveLocked = isLive and not TS and (nPay > 0 or peakEod >= MLL)
 float floorLvl = TSLAB ? ((nPay > 0 and not isEval) ? 0.0 : -MLL) : isLive and not TS ? (liveLocked ? 100.0 : peakEod - MLL) : (((nPay > 0 and not (TS and isEval)) or peakEod >= MLL + LOCK) ? LOCK : peakEod - MLL)
 float cushion = pnlNow - floorLvl
 float room = math.min(DAYCAP, cushion - 10.0 * M)
+// the eval has passed once the profit reaches the target with the best day inside the firm's rule (Topstep 55%, Lucid the
+// consistency rule you bought): no new eval trades from then on, as in the backtest, whose eval stops at the pass
+float evalNeed = math.max(TARGET, bestDay / PASSCONS) - pnlNow
+bool evalDone = isEval and evalNeed <= 0.0
+string DONETXT = "the profit target is reached - set Phase to FUNDED once " + (TS ? "Topstep" : "Lucid") + " confirms the pass"
 bool fundAuto = fundSize == "Auto (ADR-normalised)"
 int nF = fundAuto and not na(adr) ? int(math.max(1, math.min(FUNDMAX, math.round(ADRREF * M / adr)))) : 1
 f_bracket(float a) =>
@@ -666,12 +671,14 @@ if evON and not na(adr) and sigSide != 0
     // the session this overnight trade belongs to = the calendar day 6 hours after the 18:00 open (same rule as the research)
     int sessT = time + 6 * 3600000
     bool newsNight = newsSkip and (dayofweek(sessT, TZ) == dayofweek.thursday or (dayofweek(sessT, TZ) == dayofweek.friday and dayofmonth(sessT, TZ) <= 7))
-    if isEval and newsNight
+    if isEval and newsNight and not evalDone
         lastMsg := "OVERNIGHT " + sideTxt + " signal SKIPPED (08:30 news tomorrow) - the 09:35 drive can still trade"
         f_mark(sigSide == 1 ? 0 : 1, "news skip", "Overnight " + sideTxt + " signal skipped: 08:30 news tomorrow. The 09:35 opening drive can still trade.", color.gray)
         alert("ONR EVAL: overnight " + sideTxt + " signal skipped - 08:30 news tomorrow. No trade tonight; the 09:35 opening drive can still trade.", alert.freq_once_per_bar_close)
     else if isEval
-        if cushion >= 50.0 * M
+        if evalDone
+            lastMsg := "OVERNIGHT " + sideTxt + " signal NOT traded: " + DONETXT
+        else if cushion >= 50.0 * M
             [n, slp, tpp] = f_bracket(adr)
             eSide := sigSide
             eN := n
@@ -725,7 +732,7 @@ if evOD and not halfDay and not na(adr) and not na(rOpen)
     if odSide != 0
         string sTxt = odSide == 1 ? "BUY" : "SELL"
         if isEval
-            if not evalUsedToday and eSide == 0 and cushion >= 50.0 * M
+            if not evalUsedToday and eSide == 0 and not evalDone and cushion >= 50.0 * M
                 [n, slp, tpp] = f_bracket(adr)
                 eSide := odSide
                 eN := n
@@ -747,7 +754,7 @@ if evOD and not halfDay and not na(adr) and not na(rOpen)
                 f_entryLbl(odSide, n, "Eval opening drive " + sTxt + " " + str.tostring(n) + " MNQ @ " + str.tostring(close, format.mintick) + " | stop " + str.tostring(eStp, format.mintick) + " | target " + str.tostring(eTgt, format.mintick) + " | exit 16:00 ET")
                 alert("ONR EVAL: OPENING DRIVE " + sTxt + " " + str.tostring(n) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(eStp, format.mintick) + " | target " + str.tostring(eTgt, format.mintick) + " | exit 16:00 ET", alert.freq_once_per_bar_close)
             else if not evalUsedToday and eSide == 0
-                lastMsg := "OPENING DRIVE " + sTxt + " signal NOT traded: eval cushion below $" + str.tostring(50.0 * M, "#")
+                lastMsg := "OPENING DRIVE " + sTxt + " signal NOT traded: " + (evalDone ? DONETXT : "eval cushion below $" + str.tostring(50.0 * M, "#"))
         else
             float rk2 = 0.35 * adr * PV * nF
             if cushion >= 200.0 * M and usedRisk + rk2 <= room
@@ -858,7 +865,7 @@ if showPanel and barstate.islast
     bool eligible = isFunded and nPay < PAYMAX and payReady and pnlNow >= 1000.0 and sincePay > 0.0
     float payAmt = math.min(PAYCAP, 0.5 * pnlNow)  // the maximum the firm allows: 50% of the profit (the balance) up to the size's cap
     string bracketTxt = (SPAN == 1.0 ? "wide" : SPAN == 0.75 ? "medium" : "tight") + " bracket" + (newsSkip ? ", news skip" : "")
-    string needTxt = " | " + acctSize + " | need $" + str.tostring(math.max(TARGET, bestDay / PASSCONS) - pnlNow, "#") + " more"
+    string needTxt = " | " + acctSize + (evalNeed > 0.0 ? " | need $" + str.tostring(evalNeed, "#") + " more" : " | profit target reached")
     string evalTxt = TS ? "COMBINE (Topstep" + (TSLAB ? " 25K Static, max loss fixed at -$1,000, $500 daily loss limit" : "") + ": best day <= 55%; plan days <= 50%, " + bracketTxt + ")" + needTxt : "EVAL (" + (CONS == 0.5 ? "50%" : "40%") + " rule, " + bracketTxt + ")" + needTxt
     string tsPayTxt = TSCONS ? "days traded " + str.tostring(qDays) + "/3 | best day $" + str.tostring(bestDay, "#") + " (max 40% = $" + str.tostring(math.max(0.4 * sincePay, 0.0), "#") + ")" : "winning days (>= $150) " + str.tostring(qDays) + "/5"
     string fundTxt = TS ? "XFA " + acctSize + (TSLAB ? " Static" : "") + " (Topstep, " + (TSCONS ? "Consistency" : "Standard") + " payouts) | payouts " + str.tostring(nPay) + " (no limit) | " + tsPayTxt + " | since last payout $" + str.tostring(sincePay, "#") : "FUNDED " + acctSize + " | payouts " + str.tostring(nPay) + "/" + str.tostring(PAYMAX) + " | qualifying days (>= $" + str.tostring(QDAY, "#") + ") " + str.tostring(qDays) + "/5 | since last payout $" + str.tostring(sincePay, "#")
@@ -872,6 +879,8 @@ if showPanel and barstate.islast
         warn := "No overnight bars on this chart: switch it to the 24h (ETH) session"
     else if TS and isLive
         warn := "Topstep live account: not modelled. The trades are the FUNDED plan; follow Topstep's own drawdown and payout rules"
+    else if evalDone
+        warn := "No new trades on this " + (TS ? "Combine" : "eval") + ": " + DONETXT
     else if isEval and cushion < 50.0 * M
         warn := TS ? "Combine cushion below $" + str.tostring(50.0 * M, "#") + ": this Combine can no longer trade - " + (TSLAB ? "buy a new one (the 25K cannot be reset)" : "reset it or start a new one") : "Eval cushion below $" + str.tostring(50.0 * M, "#") + ": this eval can no longer trade - buy a new one"
     else if isFunded and nPay >= PAYMAX
@@ -884,7 +893,7 @@ if showPanel and barstate.islast
         warn := "WITHDRAW $" + str.tostring(pnlNow - MLL - 100.0, "#") + " (everything above $" + str.tostring(MLL + 100.0, "#") + ", keeping a $" + str.tostring(MLL, "#") + " cushion)"
     else if isLive and not liveLocked
         warn := "LIVE: no withdrawal until live profit reaches $" + str.tostring(MLL, "#") + " (a payout before that locks the drawdown at +$100 at once)"
-    table.cell(T, 0, 0, "ONR Book v2.6 (50%)", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 0, 0, "ONR Book v2.6.1 (50%)", bgcolor = color.new(color.navy, 0), text_color = color.white)
     table.cell(T, 1, 0, TS ? "Backtest Nov 2021 - Nov 2026 on real NQ futures prices, Topstep, 5 XFAs + 5 Combines, Standard payouts and fees: 50K ~$77.1k/yr (worst full year +$37.3k), 100K ~$103.3k (+$28.7k), 150K ~$168.5k (+$36.6k); Consistency payouts ~$54.5k / $55.3k / $95.3k; 25K Static (5 Combines a month): Standard ~$31.7k (+$4.7k), Consistency ~$35.5k (+$14.3k) | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on real NQ futures (50K, $80.50 evals, 50% add-on): eval pass 46.2%, first payout median 54 days; 5 funded + 5 evals closing each account after its 4th payout ~$60.7k/yr before the add-on's price (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$48.9k/yr | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
@@ -902,7 +911,7 @@ if showPanel and barstate.islast
     table.cell(T, 0, 7, "Action", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 7, warn, text_color = warn == "-" ? color.white : color.yellow, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 8, "Today's eval trigger", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    table.cell(T, 1, 8, isEval ? (evalUsedToday ? "used (one eval trade per day)" : (halfDay ? "half day: overnight trade only" : "waiting: 18:10 overnight -> 09:35 drive")) : "-", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 8, isEval ? (evalDone ? "none: the profit target is reached" : evalUsedToday ? "used (one eval trade per day)" : (halfDay ? "half day: overnight trade only" : "waiting: 18:10 overnight -> 09:35 drive")) : "-", text_color = color.white, bgcolor = color.new(color.gray, 40))
     string nxt = halfDay ? (timenow < halfEnd ? "HALF DAY (13:00 ET halt): exit the overnight trade at 09:30, no new trades, flat by 12:55 ET / 9:55 AM PT." : "Half day over (13:00 ET halt). Next: 18:10 ET / 3:10 PM PT overnight check once the next session opens.") : f_nextStep(isEval)
     table.cell(T, 0, 9, "Next step", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 9, nxt, text_color = halfDay ? color.orange : color.aqua, bgcolor = color.new(color.gray, 40))
@@ -915,7 +924,7 @@ if showPanel and barstate.islast
     string alarmHead = liveDays == 0 ? "Live alarm" : (livePnl < rd ? "Live alarm: RED - STOP" : (livePnl < yl ? "Live alarm: YELLOW" : "Live alarm: GREEN"))
     table.cell(T, 0, 10, alarmHead, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 10, alarmTxt, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
-    string nextTs = not TS ? "Topstep plan only (Prop firm = Topstep)" : na(adr) ? "warming up (needs the NQ ADR)" : not plan150 ? "50K (150K from $24,000 of spare cash: tick PLAN: 150K step)" : adr >= 151.0 ? "150K (NQ ADR " + str.tostring(adr, "#") + " >= 151: a 150K XFA trades at full size)" : "50K (NQ ADR " + str.tostring(adr, "#") + " < 151: a 150K XFA would be capped at 10 MNQ a leg)"
+    string nextTs = not TS ? "Topstep plan only (Prop firm = Topstep)" : na(adr) ? "warming up (needs the NQ ADR)" : not plan150 ? "50K (150K once your spare cash reaches $24,000: tick the PLAN input)" : adr >= 151.0 ? "150K (NQ ADR " + str.tostring(adr, "#") + " >= 151: a 150K XFA trades at full size)" : "50K (NQ ADR " + str.tostring(adr, "#") + " < 151: a 150K XFA would be capped at 10 MNQ a leg)"
     table.cell(T, 0, 11, "Next Topstep Combine", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 11, nextTs, text_color = TS and plan150 and not na(adr) ? color.yellow : color.white, bgcolor = color.new(color.gray, 40))
 
