@@ -1499,6 +1499,13 @@ full year, worst 12 months and longest wait for a payout, and the first-payout m
   is written by the `make_kpis.py` command in *Reproduce* and is now committed.
 - `results_car_timeline/` was left behind when its script was removed (a9e3309) and is deleted.
 
+**The website** (page version 22): 45 of its 71 datasets were replaced by the rerun files. The page text was corrected
+where it wrote a figure or a version itself: both trade counts (73 and 1,718), the Topstep-versus-Lucid sentence on the
+real-MNQ page (33 Combines passed against 32 Lucid evals now), and three mentions of the indicator version. A Nov 22 note
+was added under "Latest". The page harness passed with the new data: all 560 drawings ran, every figure equals its data
+cell, no link is broken and nothing overflows at phone width. Every sentence whose numbers changed was reread against
+the new values.
+
 **Indicator v2.6.2** (both editions): only texts and the live alarm bands change. The header and tooltips quote the
 repaired figures, and the bands are `results_nqfut_5y_fee8050/alarm_bands.csv`. No trade, size or rule changes. Both
 editions parse with `pynescript`, with no undeclared or twice-declared names.
