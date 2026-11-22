@@ -1348,6 +1348,64 @@ python3 plan_search.py ../../data_fut ../../data results_plan_search     # about
 python3 plan_search.py ../../data_fut ../../data results_plan_search --budget-only
 ```
 
+### A second indicator checked: "W+Z Funded" (Nov 22 2026; `wz_check.py` → `results_wz/`)
+
+The user pasted an indicator for funded accounts: a Williams breakout (OCO at the 09:30 open ± 0.3 × yesterday's RTH range, stop the other level or −$490 per MNQ, out at 15:59) and the Zarattini 5-minute candle (at 09:35 with the first 5 minutes; stop 0.10 ADR, target 1.0 ADR), 2 MNQ each at 50K, a −$1,200 day limit, and the plan "funded 50Ks: 3 run ONR, 2 run this". `wz_check.py` replicates its rules in the indicator's own bar order:
+- exactly on the 1-minute CFD (2011–2026);
+- on 5-minute bars for the futures file. On the CFD the 5-minute version came within about 4% of the exact one: Zarattini was identical and Williams slightly higher.
+
+Costs are $1.34 per MNQ round turn and 1 tick on stop and market fills, as written. Half days, early closes and days the CME is shut are skipped.
+
+**The two trades, 50K ($ after costs):**
+
+| Period | Williams | Zarattini | Both, per year |
+|---|---|---|---|
+| 2011–18, CFD | +$7,059 in 8 years (t 1.23) | −$140 (t −0.05) | +$885 |
+| 2019–23, CFD / futures | t 1.06 / 0.83 | t 2.42 / 2.23 | +$8,108 / +$7,818 |
+| 2024–26, CFD / futures | t 2.15 / 2.25 | t 1.73 / 1.27 | +$20,723 / +$19,575 |
+
+The indicator's "sealed 2024-26 t 2.40" for Zarattini does not reproduce: t 1.73 on the CFD, 1.27 on the futures file and 0.39 on its real-futures sessions alone (202). The 2.42 is 2019–23.
+
+Robustness:
+- Zarattini entered 2 or 3 minutes late: t 0.33 / 0.67 in 2019–23.
+- 4 ticks of slippage: 2011–18 becomes −$1,984 a year.
+- The day limit fired on 2 of 3,903 CFD days, and on 1 of 1,781 futures days.
+
+Overlap with ONR:
+- Zarattini trades the same first-5-minute direction as ONR's 09:35 pyramid.
+- Daily P&L correlation with ONR's funded book is +0.38 to +0.47, and about +0.5 by month.
+- In 2019–26, W+Z also lost in 21 of ONR's 30 losing months.
+
+**Pools of 5 funded + 5 evals** (evals trade ONR), futures file Nov 15 2021 → Nov 17 2026, mean of 12 start dates (`pools.json`):
+- Topstep: No Activation Fee Combines, Standard payouts.
+- Lucid: $80.50 evals, each account closed after its 4th payout.
+- W+Z accounts trade as written, with no cushion check, and the max loss is checked at each day's worst point (both firms enforce it intraday).
+
+| Funded | Topstep $/yr | Lucid $/yr | 3 years, Topstep / Lucid | Worst 12 months | Months with a payout |
+|---|---|---|---|---|---|
+| 5 ONR | $78,409 | $59,550 | $200,173 / $167,733 | $30,466 / $23,173 | 72% / 65% |
+| 3 ONR + 2 W+Z | $75,535 | $57,330 | $187,965 / $151,808 | $22,796 / $15,114 | 79% / 74% |
+| 5 W+Z | $58,344 | $39,693 | $131,159 / $100,658 | −$2,592 / −$325 | 52% / 57% |
+
+What each funded account did:
+- **Topstep:** a W+Z account paid $2,243 against ONR's $2,615, and 97% of W+Z accounts ended at the max loss.
+- **Lucid:** $1,202 against $1,679, and 92% ended at the max loss.
+
+Checked at the close only, the mix would still make less than 5 ONR: $77,946 against $78,409 at Topstep, $58,604 against $59,550 at Lucid.
+
+From Feb 2011 on the CFD, the mix made $38,537 against $43,241 (Topstep) and $33,146 against $36,784 (Lucid). The mixed pool code with no W+Z slot equals `research4.sim_pool` (checked).
+
+**A bad print in the futures file.** `NQFUT.npz` (from Yahoo's MNQ, and its NQ file too) has a 2026-10-30 15:00 ET bar with open = high = 29,562.00 after a 28,234.50 close (low 28,284.00, close 28,307.25). `wz_check.repair` sets its open to the previous close; no other bar matches. It inflated that day's range and the ADR of the next 14 sessions. Effect on published figures:
+- Lucid 5 + 5 over the last 5 years: $60,318 → $59,550 a year. Topstep unchanged at $78,409.
+- Real MNQ, Sep 9 – Nov 17 2026:
+  - one funded account +$16,977 (71 trades) → +$18,671 (73);
+  - Lucid evals passed 30 of 46 → 32 of 48, add-on 33 of 47 → 32 of 47, Topstep 33 of 47 unchanged.
+- The other results built on the file (the website, the indicator's texts, `plan_search.py`) have not yet been rerun with the repair.
+
+```bash
+python3 -I wz_check.py CFD_DIR FUT_DIR results_wz   # trades and periods; extra() and pools() in the same file
+```
+
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
 | Leg | Trades | Mean R | t | Years positive | Real vs random sides |

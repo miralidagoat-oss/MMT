@@ -1,0 +1,574 @@
+[
+ {
+  "data": "fut",
+  "firm": "topstep",
+  "funded": "5 ONR",
+  "starts": 12,
+  "per_year": 78409.07477860143,
+  "worst_full_year": 38027.74011607155,
+  "worst12": 30466.42771024936,
+  "drop": -7220.0,
+  "months_paid": 71.84010777791617,
+  "cash_low": -3090.9171970238053,
+  "three_years": 200172.68419585182,
+  "three_years_worst": 174858.1114233035,
+  "by_type": {
+   "onr": {
+    "accounts": 1935,
+    "payouts": 3528,
+    "paid": 5045247.977601307,
+    "blown": 0,
+    "done": 0,
+    "abandoned": 1875,
+    "open": 60
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "topstep",
+  "funded": "3 ONR + 2 W+Z",
+  "starts": 12,
+  "per_year": 75534.75018973163,
+  "worst_full_year": 32697.98420178569,
+  "worst12": 22795.867571428626,
+  "drop": -7220.0,
+  "months_paid": 78.53627391176136,
+  "cash_low": -3090.9171970238053,
+  "three_years": 187965.0857657214,
+  "three_years_worst": 163723.63079642825,
+  "by_type": {
+   "onr": {
+    "accounts": 1191,
+    "payouts": 2182,
+    "paid": 3114267.693892238,
+    "blown": 0,
+    "done": 0,
+    "abandoned": 1155,
+    "open": 36
+   },
+   "wz": {
+    "accounts": 780,
+    "payouts": 1068,
+    "paid": 1749782.0846828555,
+    "blown": 756,
+    "done": 0,
+    "abandoned": 0,
+    "open": 24
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "topstep",
+  "funded": "5 W+Z",
+  "starts": 12,
+  "per_year": 58344.04860270032,
+  "worst_full_year": 19065.411167856983,
+  "worst12": -2592.2420614286425,
+  "drop": -7315.0,
+  "months_paid": 51.89528753730016,
+  "cash_low": -3681.25,
+  "three_years": 131158.7543081249,
+  "three_years_worst": 107706.6681135713,
+  "by_type": {
+   "wz": {
+    "accounts": 2075,
+    "payouts": 2340,
+    "paid": 3831642.8307642844,
+    "blown": 2015,
+    "done": 0,
+    "abandoned": 0,
+    "open": 60
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "topstep",
+  "funded": "3 ONR + 2 W+Z (close-only max loss)",
+  "starts": 12,
+  "per_year": 77946.42074941412,
+  "worst_full_year": 41071.18877321419,
+  "worst12": 31169.072142857138,
+  "drop": -6840.0,
+  "months_paid": 81.88435697868395,
+  "cash_low": -3090.9171970238053,
+  "three_years": 198084.12100429277,
+  "three_years_worst": 173842.66603499962,
+  "by_type": {
+   "onr": {
+    "accounts": 1179,
+    "payouts": 2206,
+    "paid": 3194043.868749381,
+    "blown": 0,
+    "done": 0,
+    "abandoned": 1143,
+    "open": 36
+   },
+   "wz": {
+    "accounts": 648,
+    "payouts": 1140,
+    "paid": 1792347.888162855,
+    "blown": 624,
+    "done": 0,
+    "abandoned": 0,
+    "open": 24
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "topstep",
+  "funded": "5 W+Z (close-only max loss)",
+  "starts": 12,
+  "per_year": 67667.95479089023,
+  "worst_full_year": 27964.217382142724,
+  "worst12": 13090.69324857135,
+  "drop": -5985.0,
+  "months_paid": 63.61357827152923,
+  "cash_low": -3681.25,
+  "three_years": 156667.57019883924,
+  "three_years_worst": 132874.4482278571,
+  "by_type": {
+   "wz": {
+    "accounts": 1787,
+    "payouts": 2760,
+    "paid": 4333962.788369996,
+    "blown": 1727,
+    "done": 0,
+    "abandoned": 0,
+    "open": 60
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "lucid",
+  "funded": "5 ONR",
+  "starts": 12,
+  "per_year": 59550.07881883666,
+  "worst_full_year": 34340.97201785718,
+  "worst12": 23173.225464285846,
+  "drop": -7084.0,
+  "months_paid": 65.28761980499054,
+  "cash_low": -2998.625,
+  "three_years": 167732.56839255893,
+  "three_years_worst": 146905.97145602648,
+  "by_type": {
+   "onr": {
+    "accounts": 2400,
+    "payouts": 2976,
+    "paid": 3960307.672249822,
+    "blown": 0,
+    "done": 252,
+    "abandoned": 2088,
+    "open": 60
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "lucid",
+  "funded": "3 ONR + 2 W+Z",
+  "starts": 12,
+  "per_year": 57330.33232706721,
+  "worst_full_year": 22882.279026785716,
+  "worst12": 15113.570875000058,
+  "drop": -6354.343999999997,
+  "months_paid": 73.657827472297,
+  "cash_low": -2998.625,
+  "three_years": 151807.541830342,
+  "three_years_worst": 132796.10714437492,
+  "by_type": {
+   "onr": {
+    "accounts": 1440,
+    "payouts": 1836,
+    "paid": 2417788.3100721436,
+    "blown": 0,
+    "done": 156,
+    "abandoned": 1248,
+    "open": 36
+   },
+   "wz": {
+    "accounts": 1200,
+    "payouts": 960,
+    "paid": 1442021.8142571433,
+    "blown": 1104,
+    "done": 72,
+    "abandoned": 0,
+    "open": 24
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "lucid",
+  "funded": "5 W+Z",
+  "starts": 12,
+  "per_year": 39693.05341210632,
+  "worst_full_year": 6751.002071428516,
+  "worst12": -325.2083571429289,
+  "drop": -4815.727771428581,
+  "months_paid": 56.91741213768406,
+  "cash_low": -2998.625,
+  "three_years": 100658.25584988111,
+  "three_years_worst": 82556.42439714303,
+  "by_type": {
+   "wz": {
+    "accounts": 2868,
+    "payouts": 1920,
+    "paid": 2866824.274140001,
+    "blown": 2616,
+    "done": 192,
+    "abandoned": 0,
+    "open": 60
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "lucid",
+  "funded": "3 ONR + 2 W+Z (close-only max loss)",
+  "starts": 12,
+  "per_year": 58604.437091725034,
+  "worst_full_year": 25016.911448214272,
+  "worst12": 15787.661517857203,
+  "drop": -6198.5,
+  "months_paid": 73.657827472297,
+  "cash_low": -2998.625,
+  "three_years": 154439.8734770087,
+  "three_years_worst": 132886.03968723206,
+  "by_type": {
+   "onr": {
+    "accounts": 1488,
+    "payouts": 1848,
+    "paid": 2440931.905742144,
+    "blown": 0,
+    "done": 168,
+    "abandoned": 1284,
+    "open": 36
+   },
+   "wz": {
+    "accounts": 888,
+    "payouts": 996,
+    "paid": 1454145.0685007127,
+    "blown": 732,
+    "done": 132,
+    "abandoned": 0,
+    "open": 24
+   }
+  }
+ },
+ {
+  "data": "fut",
+  "firm": "lucid",
+  "funded": "5 W+Z (close-only max loss)",
+  "starts": 12,
+  "per_year": 50728.129629447234,
+  "worst_full_year": 10986.261199999934,
+  "worst12": 3669.2134285713387,
+  "drop": -4603.31314285714,
+  "months_paid": 61.93953673806794,
+  "cash_low": -2998.625,
+  "three_years": 123947.70652345242,
+  "three_years_worst": 104886.63979071431,
+  "by_type": {
+   "wz": {
+    "accounts": 2412,
+    "payouts": 2364,
+    "paid": 3443817.2505428535,
+    "blown": 2052,
+    "done": 300,
+    "abandoned": 0,
+    "open": 60
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "topstep",
+  "funded": "5 ONR",
+  "starts": 1,
+  "per_year": 43241.33674561874,
+  "worst_full_year": 5555.07672410711,
+  "worst12": -3832.1357285713793,
+  "drop": -6745.0,
+  "months_paid": 58.94736842105263,
+  "cash_low": -1900.0,
+  "three_years": 24683.502958035508,
+  "three_years_worst": 24683.502958035508,
+  "by_type": {
+   "onr": {
+    "accounts": 461,
+    "payouts": 634,
+    "paid": 787702.8851124103,
+    "blown": 3,
+    "done": 0,
+    "abandoned": 453,
+    "open": 5
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "topstep",
+  "funded": "3 ONR + 2 W+Z",
+  "starts": 1,
+  "per_year": 38536.92274772831,
+  "worst_full_year": 3495.4838973214137,
+  "worst12": 128.24676428573684,
+  "drop": -6650.0,
+  "months_paid": 65.78947368421052,
+  "cash_low": -1710.0,
+  "three_years": 16532.146170535587,
+  "three_years_worst": 16532.146170535587,
+  "by_type": {
+   "onr": {
+    "accounts": 297,
+    "payouts": 405,
+    "paid": 508774.7692032583,
+    "blown": 3,
+    "done": 0,
+    "abandoned": 291,
+    "open": 3
+   },
+   "wz": {
+    "accounts": 139,
+    "payouts": 159,
+    "paid": 196603.21039821403,
+    "blown": 137,
+    "done": 0,
+    "abandoned": 0,
+    "open": 2
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "topstep",
+  "funded": "5 W+Z",
+  "starts": 1,
+  "per_year": 25399.321206683097,
+  "worst_full_year": -3705.0,
+  "worst12": -4085.0,
+  "drop": -6080.0,
+  "months_paid": 37.36842105263158,
+  "cash_low": -2526.4897857144165,
+  "three_years": -1900.0,
+  "three_years_worst": -1900.0,
+  "by_type": {
+   "wz": {
+    "accounts": 352,
+    "payouts": 396,
+    "paid": 478892.42146044545,
+    "blown": 347,
+    "done": 0,
+    "abandoned": 0,
+    "open": 5
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "topstep",
+  "funded": "3 ONR + 2 W+Z (close-only max loss)",
+  "starts": 1,
+  "per_year": 39511.944929094105,
+  "worst_full_year": 3495.4838973214137,
+  "worst12": 128.24676428573684,
+  "drop": -6365.0,
+  "months_paid": 66.3157894736842,
+  "cash_low": -1710.0,
+  "three_years": 16532.146170535587,
+  "three_years_worst": 16532.146170535587,
+  "by_type": {
+   "onr": {
+    "accounts": 304,
+    "payouts": 408,
+    "paid": 507903.8629865619,
+    "blown": 3,
+    "done": 0,
+    "abandoned": 298,
+    "open": 3
+   },
+   "wz": {
+    "accounts": 108,
+    "payouts": 169,
+    "paid": 208738.54178357124,
+    "blown": 106,
+    "done": 0,
+    "abandoned": 0,
+    "open": 2
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "topstep",
+  "funded": "5 W+Z (close-only max loss)",
+  "starts": 1,
+  "per_year": 29899.716482527914,
+  "worst_full_year": -3040.0,
+  "worst12": -3040.0,
+  "drop": -5890.0,
+  "months_paid": 38.94736842105263,
+  "cash_low": -1900.0,
+  "three_years": -1900.0,
+  "three_years_worst": -1900.0,
+  "by_type": {
+   "wz": {
+    "accounts": 284,
+    "payouts": 442,
+    "paid": 534635.5332636151,
+    "blown": 279,
+    "done": 0,
+    "abandoned": 0,
+    "open": 5
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "lucid",
+  "funded": "5 ONR",
+  "starts": 1,
+  "per_year": 36784.27683221371,
+  "worst_full_year": -982.1092607145283,
+  "worst12": -7892.556392857181,
+  "drop": -10893.205403571701,
+  "months_paid": 52.63157894736842,
+  "cash_low": -5313.0,
+  "three_years": 71504.81898928554,
+  "three_years_worst": 71504.81898928554,
+  "by_type": {
+   "onr": {
+    "accounts": 656,
+    "payouts": 546,
+    "paid": 714321.702355178,
+    "blown": 6,
+    "done": 54,
+    "abandoned": 591,
+    "open": 5
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "lucid",
+  "funded": "3 ONR + 2 W+Z",
+  "starts": 1,
+  "per_year": 33145.54927818168,
+  "worst_full_year": 5610.723249999946,
+  "worst12": -3047.357310714413,
+  "drop": -6118.0,
+  "months_paid": 62.10526315789474,
+  "cash_low": -4427.5,
+  "three_years": 45746.80782946414,
+  "three_years_worst": 45746.80782946414,
+  "by_type": {
+   "onr": {
+    "accounts": 444,
+    "payouts": 361,
+    "paid": 478530.2856350886,
+    "blown": 4,
+    "done": 39,
+    "abandoned": 398,
+    "open": 3
+   },
+   "wz": {
+    "accounts": 147,
+    "payouts": 146,
+    "paid": 163213.23140678558,
+    "blown": 137,
+    "done": 8,
+    "abandoned": 0,
+    "open": 2
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "lucid",
+  "funded": "5 W+Z",
+  "starts": 1,
+  "per_year": 19911.233517808487,
+  "worst_full_year": -3300.5,
+  "worst12": -7020.455528571398,
+  "drop": -7905.955528571387,
+  "months_paid": 38.421052631578945,
+  "cash_low": -3864.0,
+  "three_years": -3864.0,
+  "three_years_worst": -3864.0,
+  "by_type": {
+   "wz": {
+    "accounts": 397,
+    "payouts": 357,
+    "paid": 391057.42156714224,
+    "blown": 370,
+    "done": 22,
+    "abandoned": 0,
+    "open": 5
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "lucid",
+  "funded": "3 ONR + 2 W+Z (close-only max loss)",
+  "starts": 1,
+  "per_year": 34124.82573608368,
+  "worst_full_year": 5688.506392857089,
+  "worst12": -3047.357310714413,
+  "drop": -6118.0,
+  "months_paid": 61.578947368421055,
+  "cash_low": -4427.5,
+  "three_years": 45746.80782946414,
+  "three_years_worst": 45746.80782946414,
+  "by_type": {
+   "onr": {
+    "accounts": 447,
+    "payouts": 366,
+    "paid": 484898.6844281243,
+    "blown": 5,
+    "done": 40,
+    "abandoned": 399,
+    "open": 3
+   },
+   "wz": {
+    "accounts": 123,
+    "payouts": 153,
+    "paid": 170087.7313349998,
+    "blown": 105,
+    "done": 16,
+    "abandoned": 0,
+    "open": 2
+   }
+  }
+ },
+ {
+  "data": "cfd",
+  "firm": "lucid",
+  "funded": "5 W+Z (close-only max loss)",
+  "starts": 1,
+  "per_year": 22762.78391838225,
+  "worst_full_year": -3300.5,
+  "worst12": -3944.5,
+  "drop": -5715.5,
+  "months_paid": 41.05263157894737,
+  "cash_low": -3944.5,
+  "three_years": -3944.5,
+  "three_years_worst": -3944.5,
+  "by_type": {
+   "wz": {
+    "accounts": 360,
+    "payouts": 391,
+    "paid": 430071.8587424995,
+    "blown": 322,
+    "done": 33,
+    "abandoned": 0,
+    "open": 5
+   }
+  }
+ }
+]
