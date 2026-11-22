@@ -11,11 +11,13 @@ Prices (Lucid's list prices in account.RULES, $65 / $115 / $215 / $323): the use
 eval ($115 -> $80.50); the same 30% is assumed at every size. The 50% consistency add-on costs the user $10 at 50K
 (12.4% of $80.50); the same share is assumed at the other sizes. Prices are only bookkeeping: no trade depends on one.
 Runs: real NQ futures over the last 5 years (from Nov 15 2021) and from Aug 30 2019, and the Nasdaq-100 CFD from Feb
-2011 (every year), each with the add-on and with the 40% rule. Runs already in OUT_DIR/runs.json are reused.
+2011 (every year), each with the add-on and with the 40% rule. Runs already in OUT_DIR/runs.json are reused when they
+were made on the same price files (OUT_DIR/runs_data.json keeps each data folder's sha256); any other run is made again.
 Writes sizes.csv (one row per window, size and rule), sizes_years.csv (net by calendar year, median / lowest / highest of
 the 12 start dates) and runs.json; window ids, configs and year labels follow topstep_sim.py's tables.
 """
 import csv
+import hashlib
 import json
 import os
 import sys
@@ -67,11 +69,23 @@ def summarise(R, period, full_years):
                 payouts=round(fu("payouts"), 1), average_payout_usd=round(fu("payouts_usd") / max(fu("payouts"), 1e-9)))
 
 
+def data_id(d, names):
+    """sha256 of the price files a run reads, so a saved run is reused only on the same data."""
+    h = hashlib.sha256()
+    for n in names:
+        with open(os.path.join(d, n), "rb") as fh:
+            h.update(fh.read())
+    return h.hexdigest()
+
+
 def main(fd, dd, out):
     os.makedirs(out, exist_ok=True)
     print("eval prices:", PRICE, "add-on (assumed except at 50K):", ADDON, flush=True)
-    rp = os.path.join(out, "runs.json")  # runs already made are reused: only missing ones run
+    rp, dp = os.path.join(out, "runs.json"), os.path.join(out, "runs_data.json")  # runs made on the same data are reused
+    ids = {"F": data_id(fd, ("NQFUT.npz", "SPXUSD.npz")), "C": data_id(dd, ("NSXUSD.npz", "SPXUSD.npz"))}
+    seen = json.load(open(dp)) if os.path.exists(dp) else {}
     res = {tuple(k.rsplit("|", 2)[:2]) + (int(k.rsplit("|", 1)[1]),): v for k, v in json.load(open(rp)).items()} if os.path.exists(rp) else {}
+    res = {k: v for k, v in res.items() if seen.get(k[0][0]) == ids[k[0][0]]}  # a run on other price files is made again
     for prefix, data, windows in (("F", fd, ("5y", "all")), ("C", dd, ("all",))):
         todo = [j for j in jobs(prefix, windows, ("addon", "40")) if (j[0], j[2], j[3]) not in res]
         if todo:
@@ -80,9 +94,10 @@ def main(fd, dd, out):
             print(f"ran {len(todo)} {prefix} jobs", flush=True)
     R4._init = V.FUT_INIT
     json.dump({f"{n}|{w}|{o}": v for (n, w, o), v in res.items()}, open(rp, "w"))
-    # 50K with the add-on is the website's plan: live50k.py / site_v23.py's $59,716 a year over the last 5 years
+    json.dump(ids, open(dp, "w"), indent=1)
+    # 50K with the add-on is the website's plan: live50k.py / site_v23.py's $59,272 a year over the last 5 years
     m50 = float(np.mean([res[("F50-addon", "5y", o)]["periods"]["last 5y"]["M"] for o in OFF]))
-    assert abs(m50 - 59716) < 1.0, m50
+    assert abs(m50 - 59272) < 1.0, m50
     print(f"check passed: 50K with the add-on = the website's plan (${m50:,.0f} a year)", flush=True)
     # window ids, configs and year labels as in topstep_sim.py's tables, so the website can set the two side by side
     spec = [("futures, last 5 years", "5y", "F", "5y", "last 5y", [str(y) for y in range(2022, 2026)], "from Nov 15", "to Nov 17"),

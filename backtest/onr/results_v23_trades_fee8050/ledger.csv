@@ -1655,13 +1655,19 @@ session,account,event,gross_usd,to_you_usd
 2026-11-02,E702,Eval failed,0.0,0.0
 2026-11-03,E704,Eval bought,-80.5,-80.5
 2026-11-04,E705,Eval bought,-80.5,-80.5
-2026-11-05,F696,Payout,1102.0,991.8
-2026-11-05,F697,Payout,1102.0,991.8
-2026-11-09,F700,Payout,1910.58,1719.52
-2026-11-09,E703,Eval passed,0.0,0.0
+2026-11-09,F696,Stopped: cushion below $400,0.0,0.0
+2026-11-09,F697,Stopped: cushion below $400,0.0,0.0
+2026-11-09,F700,Payout,2000.0,1800.0
+2026-11-10,F706,Funded account started,0.0,0.0
+2026-11-10,F707,Funded account started,0.0,0.0
+2026-11-10,E708,Eval bought,-80.5,-80.5
+2026-11-10,E703,Eval failed,0.0,0.0
 2026-11-10,E704,Eval failed,0.0,0.0
 2026-11-10,E705,Eval failed,0.0,0.0
-2026-11-11,E706,Eval bought,-80.5,-80.5
-2026-11-12,E707,Eval bought,-80.5,-80.5
-2026-11-16,E706,Eval passed,0.0,0.0
-2026-11-16,E707,Eval passed,0.0,0.0
+2026-11-11,E709,Eval bought,-80.5,-80.5
+2026-11-12,E710,Eval bought,-80.5,-80.5
+2026-11-13,E711,Eval bought,-80.5,-80.5
+2026-11-16,E712,Eval bought,-80.5,-80.5
+2026-11-16,E708,Eval passed,0.0,0.0
+2026-11-16,E709,Eval passed,0.0,0.0
+2026-11-16,E710,Eval passed,0.0,0.0

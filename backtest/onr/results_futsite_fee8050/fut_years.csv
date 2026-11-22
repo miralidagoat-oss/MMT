@@ -6,4 +6,4 @@ year,period,futures_data,fut_current_usd,fut_addon_usd,cfd_current_usd,cfd_addon
 2023,full year,real NQ futures,34341,41253,13565,24765,6408,-3204,32.9,24.9,41.9,32.7
 2024,full year,"real futures to Aug 9, then the CFD",100641,94741,87152,105901,28494,27634,55.5,57.0,55.1,56.3
 2025,full year,the CFD,39684,50250,28471,42411,13795,15355,42.3,42.3,47.3,47.3
-2026,to Nov 17 (CFD: Nov 13),"the CFD to Sep 9, then real MNQ",88704,80184,84184,92304,31625,35600,49.3,49.5,49.1,47.9
+2026,to Nov 17; CFD to Nov 13,"the CFD to Sep 9, then real MNQ",88704,79112,84184,92304,33319,35600,49.8,49.5,48.7,47.9

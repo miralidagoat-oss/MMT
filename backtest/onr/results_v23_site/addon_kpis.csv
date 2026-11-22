@@ -1,11 +1,11 @@
 metric,label,current,addon,unit,source
 eval_price,Eval price (with the add-on: $80.50 + $10),80.5,90.5,usd,setup
-eval_pass,Eval pass rate (an eval started on every session),42.5,46.2,pct,report
+eval_pass,Eval pass rate (an eval started on every session),42.5,46.1,pct,report
 eval_days_median,"Sessions to pass, median",9.0,8.0,sessions,report
-eval_days_p90,"Sessions to pass, 90th percentile",20.8,17.0,sessions,report
+eval_days_p90,"Sessions to pass, 90th percentile",20.6,17.0,sessions,report
 eval_fail_median,"Sessions to fail, median",7.0,5.0,sessions,report
 evals_per_funded,Evals bought per funded account,2.4,2.2,count,report
-fees_per_funded,Eval fees per funded account,190.0,196.0,usd,report
+fees_per_funded,Eval fees per funded account,189.0,196.0,usd,report
 funded_paid,Funded accounts that reach a payout,55.7,58.8,pct,report
 funded_avg_payouts,"Payouts per funded account, average",1.2,1.2,count,report
 funded_avg_net,"Paid to you per funded account, average (after Lucid's 10%)",1640.0,1625.0,usd,report
@@ -13,14 +13,14 @@ slot_first_median,"One account slot: days from the first eval to the first payou
 slot_within_30,One account slot: first payout within 30 days,17.4,23.2,pct,report
 slot_within_90,One account slot: first payout within 90 days,64.2,74.8,pct,report
 slot_evals_before,"One account slot: evals bought before the first payout, average",4.6,4.4,count,report
-pool_net_year,5 funded + 5 evals: net a year,60318.0,59716.0,usd,pool
+pool_net_year,5 funded + 5 evals: net a year,59550.0,59272.0,usd,pool
 pool_worst_year,5 funded + 5 evals: worst full year (2022-2025),34341.0,38345.0,usd,pool
 pool_worst_12m,5 funded + 5 evals: worst 12 months,23173.0,31535.0,usd,pool
 pool_gap,5 funded + 5 evals: longest wait for a payout,5.91,5.91,months,pool
 pool_months_paid,5 funded + 5 evals: months with a payout,65.29,66.82,pct,pool
 pool_deepest_drop,5 funded + 5 evals: deepest drop in cumulative net,-7084.0,-6878.0,usd,pool
-pool_total,"5 funded + 5 evals: total net, 5 years",295368.0,292423.0,usd,pool
+pool_total,"5 funded + 5 evals: total net, 5 years",291607.0,290248.0,usd,pool
 pool_cash_low,5 funded + 5 evals: most cash out of pocket,-2999.0,-2926.0,usd,pool
-pool_payouts,5 funded + 5 evals: payouts in 5 years,250.0,256.8,count,pool
-pool_evals_year,5 funded + 5 evals: evals bought a year,96.8,95.9,count,pool
-pool_pass_pct,5 funded + 5 evals: share of the evals it bought that passed,42.84,46.87,pct,pool
+pool_payouts,5 funded + 5 evals: payouts in 5 years,248.0,254.8,count,pool
+pool_evals_year,5 funded + 5 evals: evals bought a year,97.4,96.5,count,pool
+pool_pass_pct,5 funded + 5 evals: share of the evals it bought that passed,42.99,46.77,pct,pool

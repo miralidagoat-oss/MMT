@@ -33,12 +33,12 @@ futures, including several Lucid accounts side by side.
   strategy holds up: about $61k a year for 5 funded + 5 evals over the last 5 years, worst 12 months +$23k (40%) /
   +$33k (add-on). The CFD it was built on matched the futures trade by trade, except that the CFD misses parts of
   Feb-Jul 2023, which made 2023 look worse than it was. On futures the 50% add-on passes more evals and pays sooner,
-  but its income gain shrinks to about +$0.6k a year. The website, the indicator's panel and its live alarm bands
+  but its income gain shrinks to about +$0.3k a year. The website, the indicator's panel and its live alarm bands
   now use these futures results. See "Real NQ futures" below.
 - **Lucid's move-to-live rule (Nov 19):** 5 funded + 5 evals is already Lucid's maximum (10 accounts per household,
   at most 5 funded). But Lucid moves a trader live after a Flex account's 5th payout, closing every sim account, and
-  the earlier pool figures let accounts cycle instead. Under the rule the maximum makes about $50k a year on real
-  futures (not $62k). Closing each account right after its 4th payout keeps the pool cycling: about $60k, if Lucid
+  the earlier pool figures let accounts cycle instead. Under the rule the maximum makes about $49k a year on real
+  futures (not $62k). Closing each account right after its 4th payout keeps the pool cycling: about $59.6k, if Lucid
   does not move you live for other reasons. See "Lucid's move-to-live rule" below.
 - **Final review (Nov 18):** the indicator and the backtest match line by line. The indicator's tooltips now give 50K
   numbers and its live alarm uses the last 5 years. One new finding: Lucid's paid 50% consistency add-on raised
@@ -65,6 +65,10 @@ sessions, about 7% of 2019+ sessions. `prep_data.py` detects each session's open
 After the fix the CFD matches real MNQ futures: correlation of the 18:10→09:30 move 0.98, of the 09:30→09:35 drive
 0.9997, of 09:35→16:00 0.9998; replaying the same trades on CFD vs MNQ differs by ~$25 per trade on average.
 (The bug did not inflate the research much: overnight-signal t-stat 4.3 on raw vs 4.1 on fixed data.)
+
+**Bad prints (Nov 22 2026):** Yahoo's MNQ=F bar at 15:00 ET on Oct 30 2026 had a false high 1,229 points above the
+market, and the user's NQ export one false high on Jan 26 2021. Both are repaired at the source (`clean_prints.py`), and
+every ONR Book result was rerun on the repaired data. See *Two bad prints repaired*.
 
 ## Results
 
@@ -120,8 +124,11 @@ Daily Sharpe of the v2.1 funded book: 1.17 (2011–18), 1.82 (2019–26).
 ### Real MNQ futures, 5-min bars, 2026-09-09 → 2026-11-17 (50 sessions; v2.1 at 25K — the final 50K run is below)
 
 - Eval: 40 of 48 rolling starts passed (all 8 failures started Oct 28 – Nov 6).
-- Funded legs at 1 MNQ each, no budget: overnight 15 trades +$2,325, pyramid 23 trades +$5,608, IB 43 trades +$1,623.
-- Funded book with the day risk budget: v1 68 trades +$7,499; v2.1 65 trades +$7,568 (49% winners; 1 MNQ either way).
+- Funded legs at 1 MNQ each, no budget: overnight 15 trades +$2,425, pyramid 24 trades +$5,781, IB 43 trades +$1,784.
+- Funded book with the day risk budget: v1 69 trades +$8,289; v2.1 66 trades +$8,358 (49% and 50% winners; 1 MNQ
+  either way).
+- These are on the repaired data (*Two bad prints repaired*, below). Before the repair: legs +$2,325 / +$5,608 (23
+  trades) / +$1,623; book v1 68 trades +$7,499, v2.1 65 trades +$7,568.
 - 50 sessions in a strongly trending market say little about the future; the 15-year results matter more.
 
 ### Several accounts (`portfolio.py`)
@@ -201,7 +208,10 @@ Nov 13 2026, $1.34 per MNQ round turn, maximum-allowed payouts, eval at $115 lis
 | One account trading every session (no resets): net a year; daily Sharpe | $19,871; 1.84 |
 | Traded days positive; days of $150+ (qualifying) | 44.6%; 38.4% |
 | 2× commission + 1 tick slippage: 5×50K net a year; worst 12 months | $53,796; −$3,339 (noise exceeds the cost effect) |
-| Real MNQ futures Sep 9 – Nov 17 2026: evals passed; one account's trades | 32 of 48; +$17,568 on 71 trades |
+| Real MNQ futures Sep 9 – Nov 17 2026: evals passed; one account's trades | 32 of 48; +$19,211 on 73 trades |
+
+The real-MNQ row uses this run's own S&P file, which ends with the Nov 13 session, so its Nov 17 reuses Nov 13's score
+and has no overnight signal. `mnq_real50k.py` below uses the extended S&P series: +$18,649 on 73 trades.
 
 By calendar year (5 funded 50K + eval pool from Nov 14 2022; one account's trades split by leg):
 
@@ -228,42 +238,49 @@ signal. These weeks lie inside the research window (through the CFD), so this ch
 prices; it is not an out-of-sample test.
 
 **Correction (Nov 18 2026).** The first version of this run reused Nov 13's score for Nov 17, which gave no overnight
-signal. With Monday Nov 16's own score (+0.885, a buy, as the live indicator showed), Nov 17 has the overnight buy
-(+$32.66 at 1 MNQ) and the pyramid (+$1,495.43), and **no** IB breakout. The day's $1,200 risk budget was already used:
-the overnight trade took $647 and the pyramid $453, and the IB needed $323 more. The first version showed the IB
-(+$645.50) instead of the overnight trade, so it overstated Nov 17 by $612.84.
+signal. With Monday Nov 16's own score (+0.885, a buy, as the live indicator showed), Nov 17 has the overnight buy and
+the pyramid, and **no** IB breakout, because the day's $1,200 risk budget was already used. The first version showed the
+IB instead of the overnight trade and overstated Nov 17 by $612.84. On the repaired data (*Two bad prints repaired*,
+below) Nov 17 is the overnight buy +$32.66 at 1 MNQ and the pyramid +$1,560.59; the overnight trade took $597 of the
+budget and the pyramid $418, and the IB needed $298 more.
 
 | One funded 50K account, every session | Trades | Winners | Net |
 |---|---|---|---|
-| Overnight | 16 | 69% | +$4,510 |
-| Opening-drive pyramid | 22 | 45% | +$9,845 |
-| IB breakout | 33 | 45% | +$2,600 |
-| All | 71 | 51% | +$16,955 |
+| Overnight | 16 | 69% | +$4,304 |
+| Opening-drive pyramid | 23 | 43% | +$11,496 |
+| IB breakout | 34 | 44% | +$2,848 |
+| All | 73 | 49% | +$18,649 |
 
-- 47 traded days: 51% positive, 47% qualifying ($150+), best +$7,078 (Sep 21), worst −$810. Without Sep 21 the
-  account made about +$9,900. Weeks (Monday start): 9 of 11 positive, worst −$1,495 (week of Sep 28).
-- Size: 3 MNQ while the ADR was under 280, 2 MNQ at 286–421, 1 MNQ from Nov 2 (ADR 490–647).
-- Evals started on every session: 30 of 46 finished passed (65%, median 10 sessions); all 15 started Oct 19 – Nov 6
-  failed, then passes resumed. 4 were still open when the data ended.
-- One account bought Sep 9: eval passed Sep 30; payouts $1,136 (Oct 16), $1,280 (Oct 30), $2,000 (Nov 17); net
-  +$3,859 after the $115 eval, still open with +$3,624.
-- 5 funded 50K + eval pool: 15 payouts ($21,677 gross), 10 evals ($1,150), net +$18,360 in the 50 sessions.
+- 47 traded days: 53% positive, 47% qualifying ($150+), best +$7,078 (Sep 21), worst −$914. Without Sep 21 the
+  account made about +$11,600. Weeks (Monday start): 9 of 11 positive, worst −$1,495 (week of Sep 28).
+- Size: 3 MNQ while the ADR was under 280, 2 MNQ at 286–455, 1 MNQ at 481–597 (Nov 3, then from Nov 6).
+- Evals started on every session: 32 of 48 finished passed (67%, median 10 sessions); all 15 started Oct 19 – Nov 6
+  failed, then passes resumed. 2 were still open when the data ended.
+- One account bought Sep 9: eval passed Sep 30; payouts $1,136 (Oct 16) and $1,280 (Oct 30). Before Nov 5 its
+  cushion above the drawdown floor fell below $400 and it was given up; a second eval died Nov 9, a third passed
+  Nov 16. Net +$1,829 after 3 evals ($345); the new funded account was open with +$1,593.
+- 5 funded 50K + eval pool: 10 payouts ($11,677 gross), 16 evals ($1,840), net +$8,670 in the 50 sessions.
+- These figures are on the repaired data (*Two bad prints repaired*, below). Yahoo's bar at 15:00 ET on Oct 30 had a
+  false high 1,229 points above the market. It inflated that day's range by 702 points and the ADR by 50 points from
+  Nov 2, so the run traded 1 MNQ where it should have traded 2 on Nov 2, 4 and 5. Before the repair this run showed
+  +$16,955 on 71 trades for the funded account and +$18,360 for the pool: at the smaller size the account bought Sep 9
+  had stayed above the $400 cushion and taken a third payout on Nov 17.
 
 **Eval plan vs funded plan.** The table above is the funded plan, which the indicator draws with Phase = FUNDED: up to
 three trades a day, 1 MNQ each at today's range. With Phase = EVAL, the default, the indicator draws the eval plan:
-one trade a session, the 18:10 ET overnight trade if there is a signal and otherwise the 09:35 drive. It trades 2 MNQ
-with a fixed stop (299 points) and target (300 points). `export_charts.py` writes that plan session by session to
+one trade a session, the 18:10 ET overnight trade if there is a signal and otherwise the 09:35 drive. At these days'
+range it trades 2 MNQ with a fixed stop (299 points) and target (300 points). `export_charts.py` writes that plan session by session to
 `results_charts/real_eval_trades.csv`, and it matches the live chart:
 
 | Session | Eval | Funded |
 |---|---|---|
 | Nov 16 | 09:35 drive sell, target +$1,197.32 | pyramid sell, trailing stop −$216.84 |
-| Nov 17 | overnight buy from Nov 16 18:10 ET, out at 09:30 +$65.32 (the chart showed +$66: TradingView's feed differs by one tick) | overnight +$32.66, pyramid +$1,495.43, IB not placed |
-| Nov 18 (entered Nov 17 18:10 ET) | overnight buy, stopped −$1,200.00 | overnight buy at 1 MNQ, stopped about −$680 |
+| Nov 17 | overnight buy from Nov 16 18:10 ET, out at 09:30 +$65.32 (the chart showed +$66: TradingView's feed differs by one tick) | overnight +$32.66, pyramid +$1,560.59, IB not placed |
+| Nov 18 (entered Nov 17 18:10 ET) | overnight buy, stopped −$1,200.00 | overnight buy at 1 MNQ, stopped about −$630 |
 
 The Nov 18 entry is after the MNQ data ends. Yahoo refused downloads that day, so it was checked on Dukascopy's
 Nasdaq-100 CFD ticks instead. The price fell 495 points below the entry, past both stops: 299 points for the eval,
-340 points (0.5 ADR) for the funded account.
+315 points (0.5 ADR, with Nov 17's range from the CFD) for the funded account (340 points before the repair).
 
 ### Last 4 years only (Nov 14 2022 → Nov 13 2026): the numbers to rely on
 
@@ -648,11 +665,12 @@ By year, 5 funded + 5 evals (median of 12 start dates):
 
 Since 2011 (start Feb 15 2011), the add-on made more in 12 of 16 years and less in 4: 2012 −$677, 2013 −$3,431, 2018 −$2,765 and 2021 −$2,591.
 
-**Real MNQ futures, Sep 9 – Nov 17 2026: the add-on did worse.** More evals passed (33 of 47 against 30 of 46). But one account bought on Sep 9 netted $104 against $3,894, and 5 funded + 5 evals netted $5,479 against $18,705 (25 evals bought against 10). The reason is timing:
+**Real MNQ futures, Sep 9 – Nov 17 2026: the add-on did worse.** It passed a slightly larger share of evals (32 of 47 against 32 of 48). But one account bought on Sep 9 netted $104 against $1,933, and 5 funded + 5 evals netted $359 against $9,222 (27 evals bought against 16). The reason is timing:
 - With the add-on, the Sep 9 eval passed on Sep 28 instead of Sep 30, so its funded account met a different run of days.
 - Its first payout on Oct 16 was $563 instead of $1,136. After the payout the cushion was thin, and the Oct 19 loss took it below the $400 abandon level.
 - Its next three evals each ran out of cushion before a fifth one passed on Nov 16.
-- Under the current rules, the same account was funded two sessions later and survived Oct 19.
+- Under the current rules, the same account was funded two sessions later and survived Oct 19. It took a second payout on Oct 30 ($1,280), fell below the $400 level on Nov 4, and its third eval passed on Nov 16.
+- These are the repaired data's figures (*Two bad prints repaired*, below). Before the repair the current rules had kept the Sep 9 account through Nov 17 (3 payouts, net $3,894; pool $18,705 with 10 evals) and the add-on's pool netted $5,479 with 25 evals.
 
 This is one 50-session path; the 5-year figures come from about 1,300 sessions and many start dates. The step-by-step table is `addon_journey.csv`. The current-rules figures equal `export_charts.py`'s checked ones.
 
@@ -684,15 +702,15 @@ So the CFD is a faithful proxy where its data is complete. The 1-minute and 5-mi
 
 | | Futures, Sep 2019 - Nov 2026: add-on | 40% | Futures, last 5 years: add-on | 40% | CFD, last 5 years: add-on | 40% |
 |---|---|---|---|---|---|---|
-| Eval pass rate | 43.5% | 41.0% | 46.2% | 42.5% | 44.2% | 41.3% |
+| Eval pass rate | 43.5% | 41.1% | 46.1% | 42.5% | 44.2% | 41.3% |
 | Sessions to pass, median | 8 | 10 | 8 | 9 | 8 | 9 |
 | Funded accounts that reach a payout | 58.9% | 56.1% | 58.8% | 55.7% | 63.1% | 61.8% |
 | One account slot: first payout median / within 90 days | 55 d / 71.6% | 64 d / 63.6% | 54 d / 74.8% | 64 d / 64.2% | 54 d / 71.9% | 58 d / 67.5% |
-| 5 funded + 5 evals: net a year | $61,259 | $59,239 | $61,908 | $61,345 | $63,368 | $51,500 |
+| 5 funded + 5 evals: net a year | $61,110 | $59,239 | $61,692 | $61,345 | $63,368 | $51,500 |
 | Worst 12 months | +$33,004 | +$23,173 | +$33,148 | +$23,173 | +$8,006 | +$1,287 |
 | Longest wait for a payout | 7.6 mo | 6.1 mo | 5.9 mo | 5.9 mo | 6.1 mo | 6.4 mo |
-| 2x costs + 1 tick: net a year | $55,815 | $53,361 | $57,862 | $52,895 | $59,562 | $53,128 |
-| One funded account trading every day, a year | $20,697 | $20,697 | $21,081 | $21,081 | $19,773 | $19,773 |
+| 2x costs + 1 tick: net a year | $55,586 | $53,285 | $57,531 | $52,785 | $59,562 | $53,128 |
+| One funded account trading every day, a year | $20,932 | $20,932 | $21,419 | $21,419 | $19,773 | $19,773 |
 
 By year, 5 funded + 5 evals on real futures (add-on / 40%):
 
@@ -705,13 +723,13 @@ By year, 5 funded + 5 evals on real futures (add-on / 40%):
 | 2023 | $41,253 | $34,341 |
 | 2024 | $94,741 | $100,641 |
 | 2025 | $50,250 | $39,684 |
-| 2026 (to Nov 17) | $80,184 | $88,704 |
+| 2026 (to Nov 17) | $79,112 | $88,704 |
 
 Every full year is positive. On the CFD, 2023 was $24,765 / $13,565.
 
 **What changes**
 - **The strategy holds up on real futures.** The last 5 years make about $61k a year with either rule.
-- **The add-on.** On real futures its income gain is about +$0.6k a year over the last 5 years (+$2.0k over the full window), inside the noise; on the CFD it was +$11.9k, inflated partly by the CFD's 2023 defect and partly by path noise. Year by year the gap swings from -$8.5k to +$10.6k with small data changes. It still passes more evals (46.2% vs 42.5%), pays the first payout about 10 days sooner (median 54 vs 64 days), and improves the worst 12 months (+$33.1k vs +$23.2k). It is worth buying for those, but not for a promised income gain.
+- **The add-on.** On real futures its income gain is about +$0.3k a year over the last 5 years (+$1.9k over the full window), inside the noise; on the CFD it was +$11.9k, inflated partly by the CFD's 2023 defect and partly by path noise. Year by year the gap swings from -$9.6k to +$10.6k with small data changes. It still passes more evals (46.1% vs 42.5%), pays the first payout about 10 days sooner (median 54 vs 64 days), and improves the worst 12 months (+$33.1k vs +$23.2k). It is worth buying for those, but not for a promised income gain.
 - **Data sources by period:** Sep 2019 - Aug 9 2024 real NQ futures (2019-22 with the CFD-filled hour); Aug 12 2024 - Sep 9 2026 the CFD; Sep 10 - Nov 17 2026 real MNQ.
 
 Reproduce (the CSV is not committed: it is the user's file):
@@ -741,20 +759,20 @@ Mean of the 12 start dates, last 5 years, 5 funded + 5 evals at $80.50:
 
 | | 40% rule | 50% add-on (before its price) |
 |---|---|---|
-| Net a year | $62,231 | $62,701 |
+| Net a year | $62,231 | $62,482 |
 | Worst full year | $34,341 (2023) | $40,889 |
 | Worst 12 months | +$23,173 | +$33,148 |
-| Eval pass rate | 42.5% | 46.2% |
+| Eval pass rate | 42.5% | 46.1% |
 | First payout after the first eval, median | 64 days | 54 days |
 
-The add-on's +$470 a year is far inside the noise band of the 8 placebo runs ($4,981), and its worst-year gain (+$6,548) is inside that band too ($8,864). So round 5's rule does not adopt it for income at any price. On the earlier futures years, Aug 30 2019 - Nov 14 2021, the gain was +$5,255 a year. The case for buying it is the pass rate, the sooner first payout and the better worst 12 months.
+The add-on's +$251 a year is far inside the noise band of the 8 placebo runs ($4,981), and its worst-year gain (+$6,548) is inside that band too ($8,864). So round 5's rule does not adopt it for income at any price. On the earlier futures years, Aug 30 2019 - Nov 14 2021, the gain was +$5,255 a year. The case for buying it is the pass rate, the sooner first payout and the better worst 12 months.
 
 **The indicator follows.** Its live alarm bands now come from `results_nqfut_5y_fee8050/alarm_bands.csv`: one 50K funded account on real futures, last 5 years, 20,000 block-bootstrap paths.
 
 | Day | Median | Yellow below | Red below |
 |---|---|---|---|
-| 20 | $1,504 | -$3,165 | -$4,924 |
-| 250 | $20,110 | +$2,689 | -$4,078 |
+| 20 | $1,514 | -$3,171 | -$4,924 |
+| 250 | $20,316 | +$2,803 | -$4,018 |
 
 Its panel quotes the futures backtest.
 
@@ -797,10 +815,10 @@ Last 5 years on real futures, mean of 12 start dates, evals at $80.50:
 
 | 5 funded + 5 evals | 40% rule: net a year | worst full year | worst 12 months | 50% add-on: net a year | worst full year | worst 12 months |
 |---|---|---|---|---|---|---|
-| Accounts cycle for ever (earlier model; not Lucid's rules) | $62,231 | $34,341 | +$23,173 | $62,701 | $40,889 | +$33,148 |
-| **Lucid's rules: moved live at the first 5th payout** (live split 80%) | **$50,096** | $32,857 | +$23,173 | **$48,924** | $38,508 | +$20,014 |
-| Same, live split 90% (reported since March 2026) | $50,304 | $33,014 | +$23,173 | $49,197 | $38,652 | +$20,014 |
-| Each account closed right after its 4th payout (never moved live) | $60,318 | $34,341 | +$23,173 | $60,675 | $39,506 | +$32,730 |
+| Accounts cycle for ever (earlier model; not Lucid's rules) | $62,231 | $34,341 | +$23,173 | $62,482 | $40,889 | +$33,148 |
+| **Lucid's rules: moved live at the first 5th payout** (live split 80%) | **$48,975** | $32,857 | +$23,173 | **$48,068** | $38,508 | +$20,014 |
+| Same, live split 90% (reported since March 2026) | $49,182 | $33,014 | +$23,173 | $48,342 | $38,652 | +$20,014 |
+| Each account closed right after its 4th payout (never moved live) | $59,550 | $34,341 | +$23,173 | $60,237 | $39,506 | +$32,730 |
 
 **What happens under the rule:**
 - **When:** the first 5th payout comes after a median 265 days (add-on: 122). Over 5 years you are moved live 5 times.
@@ -818,16 +836,16 @@ By year (median of the 12 start dates):
 | 2023 | $34,341 | $34,341 | $34,341 | 0 |
 | 2024 | $75,951 | $95,077 | $100,641 | 2 |
 | 2025 | $32,857 | $48,530 | $39,684 | 1 |
-| 2026 (to Nov 17) | $59,509 | $76,305 | $88,704 | 1 |
+| 2026 (to Nov 17) | $54,017 | $72,544 | $88,704 | 1 |
 
-Under Lucid's rules, 1 to 5 funded accounts with as many evals make $12,789, $23,516, $31,946, $40,883 and $50,096 a year (`lucid_5y.csv`). Since Aug 2019 (`live_summary.csv`, window "all"), the rule takes 5 funded + 5 evals from $59,133 to $48,326, and closing at the 4th payout gives $55,729.
+Under Lucid's rules, 1 to 5 funded accounts with as many evals make $12,570, $23,297, $30,993, $39,761 and $48,975 a year (`lucid_5y.csv`). Since Aug 2019 (`live_summary.csv`, window "all"), the rule takes 5 funded + 5 evals from $59,133 to $47,553, and closing at the 4th payout gives $55,200.
 
 **What it means:**
-- The maximum setup makes about $50k a year under Lucid's stated rules, not $62k.
-- Closing each funded account right after its 4th payout keeps the 10 accounts cycling and recovers most of the difference ($60k).
+- The maximum setup makes about $49k a year under Lucid's stated rules, not $62k.
+- Closing each funded account right after its 4th payout keeps the 10 accounts cycling and recovers most of the difference ($59.6k).
   - Lucid's risk team decides who goes live, and can move a trader for other reasons, such as lifetime payouts or sim performance. So this is not guaranteed.
   - It gives up the live accounts and the one-time bonus.
-- The add-on still changes income by less than the noise. Under the rule it brings the first move live forward (122 vs 265 days) and makes $1.2k a year less.
+- The add-on still changes income by less than the noise. Under the rule it brings the first move live forward (122 vs 265 days) and makes $0.9k a year less.
 - The indicator's trades are unchanged; only how the accounts are run differs.
 
 **The indicator follows this from v2.3 (both editions).** The trades, sizes, stops and targets are unchanged.
@@ -846,7 +864,7 @@ Under Lucid's rules, 1 to 5 funded accounts with as many evals make $12,789, $23
 
 | 5 funded + 5 evals, each account closed after its 4th payout | 50% add-on ($90.50 an eval) | 40% rule ($80.50) |
 |---|---|---|
-| Net a year | $59,716 | $60,318 |
+| Net a year | $59,272 | $59,550 |
 | Worst full year | $38,345 | $34,341 |
 | Worst 12 months | +$31,535 | +$23,173 |
 
@@ -878,8 +896,8 @@ The only exception is the Tests page. Its research rounds ran earlier, with the 
   - the 60 real-MNQ sessions for both plans.
 
 **Checks that passed before anything was published:**
-- 5 funded + 5 evals here equals `live50k.py`'s B5-addon-stop4: $59,716 a year, worst full year $38,345. The 40% comparison equals its B5-stop4: $60,318.
-- `export_charts.py`'s 5-year study equals `report50k.py`'s run of the same plan, in book by year and in the first pool path ($290,766).
+- 5 funded + 5 evals here equals `live50k.py`'s B5-addon-stop4: $59,272 a year, worst full year $38,345. The 40% comparison equals its B5-stop4: $59,550.
+- `export_charts.py`'s 5-year study equals `report50k.py`'s run of the same plan, in book by year and in the first pool path ($288,591).
 - Both plans' 60 real-MNQ sessions equal `mnq_real50k.py`'s counts. In those 50 sessions no account reached a 4th payout, so the payout plan changes nothing there.
 - On the page, every one of the 79 drawings runs and every single figure equals its data cell. No link is broken, and nothing overflows at phone width.
 
@@ -887,15 +905,15 @@ The only exception is the Tests page. Its research rounds ran earlier, with the 
 
 | Accounts | Net a year | Worst full year | Months with a payout |
 |---|---|---|---|
-| 5 funded + 5 evals | $59,716 | $38,345 | 66.8% |
-| 5 accounts in all, one new eval a day | $39,695 | $26,101 | 61.8% |
+| 5 funded + 5 evals | $59,272 | $38,345 | 66.8% |
+| 5 accounts in all, one new eval a day | $39,272 | $26,101 | 60.1% |
 | 5 accounts bought the same day, copy-traded in lockstep | $38,154 | $27,064 | 49.7% |
 
 - **Accounts bought the same day.** They make about the same a year as accounts bought one a day, but they pay out together. They paid in fewer months, and over every year since 2011 on the CFD their longest wait for a payout was 17.5 months against 8.6.
-- **The add-on at $10.** It costs $602 a year against the 40% rule and pays for itself up to $3.72 an eval. Both are inside the $5,739 noise band. It raises the worst full year by $4,004 and the worst 12 months from $23,173 to $31,535.
+- **The add-on at $10.** It costs $278 a year against the 40% rule and pays for itself up to $7.11 an eval. Both are inside the $4,954 noise band. It raises the worst full year by $4,004 and the worst 12 months from $23,173 to $31,535.
 - **Every year since 2011 on the CFD.** 5 funded + 5 evals made $39,413 a year with no losing full year; the worst was 2016's $1,993.
-- **The last 60 days on real MNQ.** The add-on did worse in this one path: +$5,229 for 5 funded + 5 evals against +$18,705 with the 40% rule. Its evals passed sooner (70.2% vs 65.2%), and its funded accounts met a worse run of days.
-- **Double commission plus a tick of slippage** (the 5-year study, median of 10 start dates): $51,422 a year against $58,902.
+- **The last 60 days on real MNQ.** The add-on did worse in this one path: +$89 for 5 funded + 5 evals against +$9,222 with the 40% rule. Its evals passed a little more often (68.1% vs 66.7%), and its funded accounts met a worse run of days.
+- **Double commission plus a tick of slippage** (the 5-year study, median of 10 start dates): $50,926 a year against $58,463.
 
 ```bash
 ONR_MAX_PAY=4 ONR_EVAL_FEE_50K=90.50 ONR_EVAL_CONS=0.5 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py ../../data_fut results_v23_nqfut_5y_addon 2021-11-15
@@ -934,21 +952,21 @@ At every size: a $500 minimum payout, a 90% split, and a 5-payout limit.
 
 | Size, rule | Eval | Last 5 years (futures): net a year | worst full year | worst 12 months | deepest drop | most cash out | 2011-2026 (CFD): net a year | worst full year |
 |---|---|---|---|---|---|---|---|---|
-| 25K, add-on | $51.15 | $29,812 | $17,238 | +$11,962 | -$3,887 | -$1,641 | $20,753 | $2,147 |
-| **50K, add-on (the plan)** | $90.50 | **$59,716** | $38,345 | +$31,535 | -$6,878 | -$2,926 | **$39,413** | **$1,993** |
-| 100K, 40% rule | $150.50 | $64,720 | $31,168 | +$22,234 | -$12,190 | -$6,572 | $37,046 | -$3,815 |
-| 100K, add-on | $169.20 | $70,510 | $19,918 | +$7,640 | -$12,690 | -$6,970 | $38,805 | -$11,582 |
+| 25K, add-on | $51.15 | $29,833 | $17,238 | +$11,962 | -$3,887 | -$1,641 | $20,753 | $2,147 |
+| **50K, add-on (the plan)** | $90.50 | **$59,272** | $38,345 | +$31,535 | -$6,878 | -$2,926 | **$39,413** | **$1,993** |
+| 100K, 40% rule | $150.50 | $65,639 | $31,168 | +$22,234 | -$12,190 | -$6,572 | $37,046 | -$3,815 |
+| 100K, add-on | $169.20 | $72,669 | $19,918 | +$7,640 | -$12,690 | -$6,970 | $38,805 | -$11,582 |
 | **150K, 40% rule** | $226.10 | **$92,775** | $36,770 | +$20,359 | -$17,636 | -$9,986 | **$49,902** | **-$16,858** |
-| 150K, add-on | $254.19 | $90,240 | $26,009 | +$6,912 | -$17,793 | -$8,984 | $54,349 | -$24,608 |
+| 150K, add-on | $254.19 | $91,239 | $26,009 | +$6,912 | -$17,793 | -$8,984 | $54,349 | -$24,608 |
 
-From Aug 30 2019 on futures, 150K with the 40% rule made $79,881 a year, against $56,695 for the plan.
+From Aug 30 2019 on futures, 150K with the 40% rule made $79,881 a year, against $56,390 for the plan.
 
 **What it means:**
-- **150K is the only size that clearly makes more**, about +$33k a year over the last 5 years. It is not better every year: in 2023 it made $36,770 against $40,233.
+- **150K is the only size that clearly makes more**, about +$33.5k a year over the last 5 years. It is not better every year: in 2023 it made $36,770 against $40,233.
 - **Its swings are about 2.5 times deeper.** It needs about $10k of eval fees before payouts catch up. Over 2011-2026 it had a losing year (2013: -$16,858); the plan's worst year was +$1,993 (2016).
 - **At 150K the 40% rule is steadier than the add-on**, and cheaper.
 - **100K adds little** to 50K over the long history, with twice the drop. **25K makes half.**
-- 50K with the add-on reproduces the website's $59,716 exactly (checked in the script).
+- 50K with the add-on reproduces the website's $59,272 exactly (checked in the script).
 
 The tables carry the Topstep tables' window ids, configs and year labels, so the website can set the two side by side.
 
@@ -993,10 +1011,10 @@ Last 5 years on real futures, mean of 12 start dates:
 | 50K, Standard payouts, Standard fees | $77,107 | $37,288 | +$28,898 | -$6,555 | -$1,783 |
 | 50K, Standard payouts, No Activation Fee | $78,409 | $38,028 | +$30,466 | -$7,220 | -$3,091 |
 | 100K, Standard payouts, Standard fees | $103,326 | $28,749 | +$12,024 | -$10,949 | -$3,573 |
-| 150K, Standard payouts, Standard fees | $168,547 | $36,570 | +$25,475 | -$18,552 | -$7,039 |
-| 150K, Standard payouts, No Activation Fee | $170,264 | $37,109 | +$26,072 | -$18,091 | -$8,006 |
+| 150K, Standard payouts, Standard fees | $169,466 | $36,570 | +$25,475 | -$18,552 | -$7,039 |
+| 150K, Standard payouts, No Activation Fee | $171,183 | $37,109 | +$26,072 | -$18,091 | -$8,006 |
 | 50K / 100K / 150K, Consistency payouts | $54,534 / $55,314 / $95,334 | | +$22,796 / $0 / $0 | | |
-| Lucid 50K add-on, closed after the 4th payout (the plan) | $59,716 | $38,345 | +$31,535 | -$6,878 | -$2,926 |
+| Lucid 50K add-on, closed after the 4th payout (the plan) | $59,272 | $38,345 | +$31,535 | -$6,878 | -$2,926 |
 | Lucid 150K, 40% rule | $92,775 | $36,770 | +$20,359 | -$17,636 | -$9,986 |
 
 Every year since 2011 (CFD), Standard payouts, Standard fees:
@@ -1004,7 +1022,7 @@ Every year since 2011 (CFD), Standard payouts, Standard fees:
 - 150K made $77,859 a year, with a worst year of -$17,535 and a -$34,832 drop.
 
 **What it means:**
-- **Standard payouts made more at every size, in every window.** On the Consistency path the 40% rule traps money in the accounts. Of XFAs started every 10 sessions over the last 5 years and traded alone (`topstep_accounts.csv`), the longest wait for a payout reached 311 sessions at 50K, and 8.7% were still open at the end holding $40,704 each that had not been paid out. At 100K and 150K the pool's worst 12 months netted $0.
+- **Standard payouts made more at every size, in every window.** On the Consistency path the 40% rule traps money in the accounts. Of XFAs started every 10 sessions over the last 5 years and traded alone (`topstep_accounts.csv`), the longest wait for a payout reached 311 sessions at 50K, and 8.7% were still open at the end holding $42,398 each that had not been paid out. At 100K and 150K the pool's worst 12 months netted $0.
 - **Topstep beats Lucid on paper.** The rules differ in its favour for this plan. XFAs keep paying until they fail, while Lucid's plan closes each account after its 4th payout to avoid going live. Winning days need only $150 at every size, the caps are higher at 100K and 150K, and Combines cost less.
 - **The figures are a best case.** Topstep's discretionary call-up to Live would close all 5 XFAs, and the backtest cannot model it.
 - **Size:** **50K** gives the most per dollar of drop. **150K** makes the most, with Lucid-150K-sized swings. **100K** has the weakest worst 12 months.
@@ -1047,16 +1065,16 @@ python3 topstep_months.py ../../data_fut ../../data results_topstep
 
 | Step | Net a year | Payouts a year (average) | Fees a year | Evals bought a year |
 |---|---|---|---|---|
-| A. Lucid plan: add-on, closed after the 4th payout, $90.50 evals | $59,716 | 52.4 ($1,449) | $8,679 | 95.9 |
+| A. Lucid plan: add-on, closed after the 4th payout, $90.50 evals | $59,272 | 52.0 ($1,452) | $8,735 | 96.5 |
 | B. A without the payout limit | $72,537 | 57.0 ($1,559) | $7,380 | 81.5 |
 | C. B with Topstep's fees ($49 a month per Combine, $149 per XFA) | $70,502 | 57.0 ($1,559) | $9,415 | 81.5 |
 | D. C with Topstep's account rules = the Topstep plan | $77,107 | 60.0 ($1,589) | $8,746 | 75.5 |
 
-Each change alone from A: Topstep's fees $56,984 (−$2,732); Topstep's account rules $64,079 (+$4,363).
+Each change alone from A: Topstep's fees $56,504 (−$2,768); Topstep's account rules $64,129 (+$4,857).
 
 **What it means:**
-- **The payout limit** is most of the gap (+$12.8k). Lucid's plan closes a working account after its 4th payout, because a 5th moves you live. That account's later payouts are lost, and an eval must be bought to replace it. That edge is exactly what Topstep's discretionary call-up to live could take away.
-- **Topstep's account rules** add $4-7k a year. The max loss locks at $0 instead of +$100, and the Combine passes with a 55% best day instead of 50%.
+- **The payout limit** is most of the gap (+$13.3k). Lucid's plan closes a working account after its 4th payout, because a 5th moves you live. That account's later payouts are lost, and an eval must be bought to replace it. That edge is exactly what Topstep's discretionary call-up to live could take away.
+- **Topstep's account rules** add $5-7k a year. The max loss locks at $0 instead of +$100, and the Combine passes with a 55% best day instead of 50%.
 - **Topstep's fees** cost $2-3k a year more than your $90.50 Lucid evals, mostly the $149 activation of each XFA.
 
 **Starting cash** (`startcash.py` → `results_startcash/`). The plan is started on many dates: every 5 sessions on futures prices (271 starts, Aug 30 2019 to Dec 6 2024) and every 10 sessions on the CFD (357 starts, Feb 2011 to Nov 2024). Each start runs 2 years. "Cash out of pocket" is the lowest the running total of payouts minus every fee went.
@@ -1112,11 +1130,11 @@ Last 5 years, 5 funded + 5 evals, mean of 12 start dates:
 
 | 25K | Net a year | Worst full year | Worst 12 months | Deepest drop | Most cash out |
 |---|---|---|---|---|---|
-| Topstep, Standard payouts ($75 Combines, 5 a month) | $31,736 | $4,747 (2023) | $1,018 | -$2,288 | -$1,981 |
+| Topstep, Standard payouts ($75 Combines, 5 a month) | $31,661 | $4,747 (2023) | $1,018 | -$2,288 | -$1,981 |
 | Topstep, Consistency payouts | $35,527 | $14,309 | $10,589 | -$2,194 | -$2,131 |
-| Topstep, Standard, without the 5-a-month limit | $38,026 | $20,654 | $16,117 | -$4,362 | -$3,131 |
-| Lucid, add-on ($51.15 evals, assumed price) | $29,812 | $17,238 | $11,962 | -$3,887 | -$1,641 |
-| Lucid, 40% rule ($45.50, assumed) | $31,251 | $16,672 | $13,278 | -$3,504 | -$1,638 |
+| Topstep, Standard, without the 5-a-month limit | $40,362 | $20,654 | $16,117 | -$4,362 | -$3,131 |
+| Lucid, add-on ($51.15 evals, assumed price) | $29,833 | $17,238 | $11,962 | -$3,887 | -$1,641 |
+| Lucid, 40% rule ($45.50, assumed) | $31,269 | $16,672 | $13,278 | -$3,504 | -$1,638 |
 
 Since 2011 (CFD):
 - Topstep: Standard $20,477 (worst year +$243); Consistency $21,495 (worst year -$2,113, 2018).
@@ -1212,15 +1230,15 @@ Last 5 years (`topstep_report.py`'s definitions; Lucid from `results_v23_nqfut_5
 
 | | Topstep, your plan | Lucid, add-on |
 |---|---|---|
-| Combine / eval pass rate (one bought every session) | 46.6% | 46.2% |
+| Combine / eval pass rate (one bought every session) | 46.6% | 46.1% |
 | Sessions to pass, median | 8 | 8 |
 | First payout after the first Combine / eval, median | 54 days | 54 days |
 | Funded accounts that reach a payout | 59.0% | 58.8% |
 | Payouts per funded account, average | 1.59 | 1.18 |
 | Paid to you per funded account | $2,304 | $1,625 |
 | Fees per funded account | $212 | $196 |
-| 5 + 5, net a year (median of 10 start dates) | $77,368 | $58,902 |
-| The same with 2x commission and 1 tick of slippage | $70,948 | $51,422 |
+| 5 + 5, net a year (median of 10 start dates) | $77,368 | $58,463 |
+| The same with 2x commission and 1 tick of slippage | $70,948 | $50,926 |
 
 1 to 5 XFAs, each with a Combine behind it (mean of 12 start dates), against Lucid's N funded + N evals:
 
@@ -1228,7 +1246,7 @@ Last 5 years (`topstep_report.py`'s definitions; Lucid from `results_v23_nqfut_5
 |---|---|---|---|---|---|
 | Topstep, net a year | $15,305 | $30,529 | $47,814 | $61,990 | $78,409 |
 | Topstep, most cash out of pocket | -$1,077 | -$1,773 | -$2,272 | -$2,747 | -$3,091 |
-| Lucid, net a year | $12,045 | $24,303 | $38,087 | $48,386 | $59,716 |
+| Lucid, net a year | $12,045 | $24,320 | $38,104 | $48,182 | $59,272 |
 
 Every year since Feb 15 2011 (CFD), with the 6-micro cap:
 - **One XFA trading every session** made $186,388, against $232,257 for a Lucid funded account, whose cap is 20.
@@ -1236,7 +1254,7 @@ Every year since Feb 15 2011 (CFD), with the 6-micro cap:
 - **5 XFAs + 5 Combines** netted $680,733 ($43,241 a year, every year positive), against $615,533 for Lucid's 5 + 5.
 - **One account slot** netted $124,226, against $102,462 at Lucid.
 
-The 60 sessions of real MNQ: the two plans took the same trades, passed as many Combines as evals and requested the same payouts. They differ only in fees: $5,117 against $5,229 for 5 + 5.
+The 60 sessions of real MNQ: the funded accounts took the same trades and requested the same payouts (5, $2,814 gross), and 33 Combines passed against 32 evals. Net for 5 + 5: −$32 at Topstep against +$89 at Lucid; the difference is the fees.
 
 The page's main script is now its own document (`files/app.js`, 90 KB), loaded with `<script src>`. The page document is 207 KB of its 256 KB limit, and the v18 page was 256 KB with the script inside it.
 
@@ -1400,7 +1418,7 @@ From Feb 2011 on the CFD, the mix made $38,537 against $43,241 (Topstep) and $33
 - Real MNQ, Sep 9 – Nov 17 2026:
   - one funded account +$16,977 (71 trades) → +$18,671 (73);
   - Lucid evals passed 30 of 46 → 32 of 48, add-on 33 of 47 → 32 of 47, Topstep 33 of 47 unchanged.
-- The other results built on the file (the website, the indicator's texts, `plan_search.py`) have not yet been rerun with the repair.
+- Every other published ONR Book result has since been rerun on data repaired at the source (*Two bad prints repaired*, below).
 
 **Version 2** (pasted later the same day; `results_wz_v2/`) changes one rule: no Williams trade on the session after a weekday holiday, an early close or any other gap. That is about 12 sessions a year: on the CFD, 94 after gaps and 95 after half days since 2011. Its early closes come from a hand-typed list (Nov 2026 – 2027 only); here `holidays.half_day` stands in for every year. Zarattini is unchanged.
 - **Williams:** a little better: 2019–23 t 1.10 (futures 0.97), 2024–26 t 2.33 (2.31).
@@ -1423,6 +1441,67 @@ The 4 + 1 row shows differences from 5 ONR, averaged over the 12 start dates.
 python3 -I wz_check.py CFD_DIR FUT_DIR results_wz      # version 1: trades, years, sensitivity, pools
 python3 -I wz_check.py CFD_DIR FUT_DIR results_wz_v2 v2
 ```
+
+### Two bad prints repaired (Nov 22 2026; `clean_prints.py`)
+
+Every price file was searched for single bad prints: one price that jumps out and straight back, more than 0.5% from
+the bars around it. Each candidate was checked against the Nasdaq-100 CFD. It counts as a bad print only when the CFD
+moved less than 40% as far in the same direction over that bar and the next (`clean_prints.py`'s docstring has the exact
+rule). Two bars qualified, and only their outlying prices were replaced, by the CFD's at the futures' price level:
+
+| Bar | File | Bad price | Repaired | Around it |
+|---|---|---|---|---|
+| 2021-01-26 00:00 ET | the user's NQ export | high 14,959.50 | 14,807.57 | bars of 14,794 – 14,827; the CFD moved 7% as far |
+| 2026-10-30 15:00 ET | Yahoo's MNQ=F and NQ=F | open = high = 29,562.00 | open 28,319.99, high 28,333.12 | previous close 28,234.50; the CFD moved 4% as far |
+
+Every other candidate was kept. The CFD or the S&P made the same move (March 2020, the April 2025 tariff days, CPI and
+jobs releases), or the CFD had no bars then and the move fell on news (the COVID Sunday open, Amazon and Nvidia
+earnings, the March 2023 jobs report). The Nov 5 2026 10:50 drop is real: the CFD made 85% of it.
+
+**What the Oct 30 bar did.** It raised that day's day-session range from 627.25 to 1,329.00 points, so the 14-session
+ADR was 50 points too high from Nov 2 to the end of the data (Nov 17). The ADR sets sizes and stops, so on Nov 2, 4
+and 5 a 50K funded account traded 1 MNQ instead of 2 and the eval 2 instead of 3. The 2021 bar was overnight, outside
+the day session, and changed no trade.
+
+**Where the repair runs.** `prep_nqfut.py` now calls `clean_prints.repair` on the series it builds and records the
+repairs in `NQFUT.npz.json` (`bad_prints_repaired`). The 60-day Yahoo file is repaired right after its download
+(*Reproduce*): `clean_prints.py` writes the repaired file and a `.json` record of each repair next to it. The CFD files
+needed no repair.
+
+**Every published ONR Book result was rerun** on the repaired files. The runs are deterministic: the results that read
+only the CFD came out byte-identical. (The W+Z study above was dropped and not rerun; it had already used its own repair
+of the Oct 30 bar, which gives the same day range.) What changed:
+
+| Figure (last 5 years on real futures unless noted) | Before | After |
+|---|---|---|
+| Topstep 50K plan, 5 XFAs + 5 Combines | $78,409 | $78,409 (unchanged) |
+| Topstep 150K, Standard payouts: Standard fees / No Activation Fee | $168,547 / $170,264 | $169,466 / $171,183 |
+| Lucid 50K plan: add-on at $90.50, each account closed after its 4th payout | $59,716 | $59,272 |
+| Lucid 50K, 40% rule, closed after the 4th payout | $60,318 | $59,550 |
+| Lucid's move-to-live rule: 40% rule / add-on | $50,096 / $48,924 | $48,975 / $48,068 |
+| Eval pass rate: add-on / 40% rule | 46.2% / 42.5% | 46.1% / 42.5% |
+| One funded account trading every day, a year | $21,081 | $21,419 |
+| Live alarm bands, median at day 20 / day 250 | $1,504 / $20,110 | $1,514 / $20,316 |
+| Real MNQ Sep 9 – Nov 17 2026: one funded account | +$16,955 (71 trades) | +$18,649 (73 trades) |
+| Real MNQ: evals passed (40% rule) | 30 of 46 | 32 of 48 |
+| Real MNQ: 5 funded + 5 evals ($115 evals) | +$18,360 | +$8,670 |
+
+Unchanged: the plan (`plan_search.py`: about $296k in 3 years for a typical start, $169k for the worst), every worst
+full year, worst 12 months and longest wait for a payout, and the first-payout medians (54 and 64 days).
+
+**The other errors the audit found, all fixed:**
+- `scale_sizes.py` reused its `runs.json` even when the price files had changed, so a rerun would have kept the old
+  figures. It now keeps each data folder's sha256 in `runs_data.json` and makes a run again when the files differ. Its
+  fresh run on the repaired data, and a second run reusing it, give identical tables.
+- `topstep_why.py`, `scale_sizes.py` and `export_charts.py` (`REAL_BY_PLAN`) check themselves against published figures.
+  They now pin the repaired values, and every check passes.
+- `results_50k/real_mnq_50k.txt` is `mnq_real50k.py`'s output and is regenerated; `results_50k_fee8050/distributions.csv`
+  is written by the `make_kpis.py` command in *Reproduce* and is now committed.
+- `results_car_timeline/` was left behind when its script was removed (a9e3309) and is deleted.
+
+**Indicator v2.6.2** (both editions): only texts and the live alarm bands change. The header and tooltips quote the
+repaired figures, and the bands are `results_nqfut_5y_fee8050/alarm_bands.csv`. No trade, size or rule changes. Both
+editions parse with `pynescript`, with no undeclared or twice-declared names.
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)
 
@@ -1490,7 +1569,8 @@ session's value (62 of 1,303 overnight trades, average +0.07 ADR, not harmful); 
 python3 backtest/onr/fetch_histdata.py data/raw SPXUSD NSXUSD
 python3 backtest/onr/prep_data.py histdata data/raw data SPXUSD NSXUSD
 curl -s -A "Mozilla/5.0 (X11; Linux x86_64)" -o data/MNQ_5m.json "https://query2.finance.yahoo.com/v8/finance/chart/MNQ=F?interval=5m&range=60d"
-python3 backtest/onr/prep_data.py yahoo data/MNQ_5m.json data/MNQ_5m_60d.npz
+python3 backtest/onr/prep_data.py yahoo data/MNQ_5m.json data/MNQ_5m_60d_raw.npz
+python3 -I backtest/onr/clean_prints.py data/MNQ_5m_60d_raw.npz data/NSXUSD.npz data/MNQ_5m_60d.npz   # bad prints (Nov 22)
 cd backtest/onr && python3 report.py ../../data && python3 overfit.py ../../data && python3 portfolio.py ../../data
 python3 research.py ../../data legs && python3 research.py ../../data accounts && python3 research.py ../../data final
 python3 research.py ../../data recent

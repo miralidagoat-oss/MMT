@@ -26,13 +26,19 @@ The series is additively back-adjusted (a constant per contract period is added 
 move and range in points, so the strategy is unaffected. It ends with the session of Aug 9 2024; the sessions after
 it come from the HistData NSXUSD CFD (1-minute bars made into 5-minute bars) until the day before the real MNQ file
 (Yahoo, 5-minute) begins, then from that file. Every join is at a session start (18:00 ET), so no trade spans one.
+Last, clean_prints.repair rebuilds isolated bad prints the CFD does not show (2021-01-26 00:00 ET in the CSV; the
+2026-10-30 15:00 ET bar of Yahoo's file is repaired in MNQ_NPZ beforehand by clean_prints.py).
 """
 import csv
 import datetime as dt
 import json
+import os
 import sys
 
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # -I leaves the script's own folder off the path
+import clean_prints  # noqa: E402
 
 EP = dt.datetime(1970, 1, 1)
 
@@ -179,6 +185,10 @@ def main(src, cfd_path, mnq_path, out):
     parts = [(t, o, h, l, c), (ct, co, ch, cl, cc), (mt[ms], zm["o"][ms], zm["h"][ms], zm["l"][ms], zm["c"][ms])]
     T, O, H, L, C = (np.concatenate([p[i] for p in parts]) for i in range(5))
     assert np.all(np.diff(T) > 0)
+    # isolated bad prints the CFD does not show, rebuilt from it (clean_prints.py); run MNQ_NPZ through clean_prints.py
+    # first too, as its file is also read on its own
+    O, H, L, C, fixes = clean_prints.repair(T, O, H, L, C, (nt, no, nh, nl, nc))
+    info["bad_prints_repaired"] = fixes
     info["segments"] = [dict(name=n, bars=int(len(p[0])), first=str(EP + dt.timedelta(minutes=int(p[0][0]))),
                              last=str(EP + dt.timedelta(minutes=int(p[0][-1])))) for n, p in
                         zip(("NQ futures (this CSV)", "HistData NSXUSD CFD, 5-minute", "Yahoo MNQ=F futures, 5-minute"), parts)]

@@ -39,13 +39,13 @@ slot,slot_within_90,First payout within 90 days of buying the first Combine,74.8
 slot,slot_within_180,First payout within 180 days of buying the first Combine,98.1,pct,
 slot,slot_within_365,First payout within 365 days of buying the first Combine,100.0,pct,
 slot,slot_evals_before,"Combines bought before the first payout, average",4.37,count,
-book,book_net_year,"One funded account trading every day, net per year",21081.0,usd,"no resets, full $1,200 day budget"
-book,book_days_positive,Traded days that end positive,44.9,pct,
+book,book_net_year,"One funded account trading every day, net per year",21419.0,usd,"no resets, full $1,200 day budget"
+book,book_days_positive,Traded days that end positive,45.0,pct,
 book,book_days_qualifying,Traded days of $150 or more (Topstep winning day),38.7,pct,
-book,book_avg_day,Average traded day,87.8,usd,
+book,book_avg_day,Average traded day,89.2,usd,
 book,book_median_day,Median traded day,-66.4,usd,
 book,book_best_day,Best day,7078.0,usd,
 book,book_worst_day,Worst day,-1198.0,usd,
-book,book_sharpe,"Daily Sharpe ratio, annualised",1.96,ratio,
+book,book_sharpe,"Daily Sharpe ratio, annualised",1.97,ratio,
 stress,stress_net_year,"2x commission + 1 tick slippage: net per year, 5 XFAs + 5 Combines",70948.0,usd,
 stress,stress_worst_12m,2x commission + 1 tick slippage: worst 12 months,30740.0,usd,

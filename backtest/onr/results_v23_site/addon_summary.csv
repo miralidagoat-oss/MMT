@@ -2,20 +2,20 @@ metric,label,value,unit
 eval_price,Eval price without the add-on,80.5,usd
 addon_price,The add-on's price per eval,10.0,usd
 pass_default_5y,"Eval pass rate, 40% rule, last 5 years",42.5,pct
-pass_addon_5y,"Eval pass rate, 50% add-on, last 5 years",46.2,pct
+pass_addon_5y,"Eval pass rate, 50% add-on, last 5 years",46.1,pct
 slot_first_default_5y,"First payout after the first eval, median, 40% rule",64.0,days
 slot_first_addon_5y,"First payout after the first eval, median, 50% add-on",54.0,days
-net_current_5y,"Net a year, 40% rule, last 5 years",60318,usd
-net_addon_5y,"Net a year with the add-on at $10, last 5 years",59716,usd
-net_gain_5y,"Net a year gained with the add-on at $10, last 5 years",-602,usd
-net_gain_free_5y,"Net a year gained if the add-on were free, last 5 years",357,usd
-breakeven_price,"Add-on price per eval at which it pays for itself, last 5 years",3.72,usd
+net_current_5y,"Net a year, 40% rule, last 5 years",59550,usd
+net_addon_5y,"Net a year with the add-on at $10, last 5 years",59272,usd
+net_gain_5y,"Net a year gained with the add-on at $10, last 5 years",-278,usd
+net_gain_free_5y,"Net a year gained if the add-on were free, last 5 years",687,usd
+breakeven_price,"Add-on price per eval at which it pays for itself, last 5 years",7.11,usd
 worst_current_5y,"Worst full year, 40% rule, last 5 years",34341,usd
 worst_addon_5y,"Worst full year with the add-on at $10, last 5 years",38345,usd
 worst12_current_5y,"Worst 12 months, 40% rule, last 5 years",23173,usd
 worst12_addon_5y,"Worst 12 months with the add-on at $10, last 5 years",31535,usd
 net_gain_early,"Net a year gained with the add-on at $10, Aug 30 2019 - Nov 14 2021",4664,usd
-band_net_5y,"Noise band for net a year, last 5 years (8 placebo runs)",5739,usd
+band_net_5y,"Noise band for net a year, last 5 years (8 placebo runs)",4954,usd
 band_worst_5y,"Noise band for the worst full year, last 5 years (8 placebo runs)",8864,usd
 rule5y_at_10,Rule 5Y at the add-on's $10,0,count
-evals_year_addon_5y,"Evals bought a year with the add-on, last 5 years",95.9,count
+evals_year_addon_5y,"Evals bought a year with the add-on, last 5 years",96.5,count

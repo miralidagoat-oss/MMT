@@ -1,10 +1,10 @@
 metric,label,current,addon,unit
-evals_finished,Evals finished (one started every session),46,47,count
-evals_passed,Evals passed,30,33,count
-eval_pass,Eval pass rate,65.2,70.2,pct
-slot_payouts,One account bought on the first day: payouts,3,1,count
-slot_evals,One account bought on the first day: evals bought,1,5,count
-slot_net,One account bought on the first day: net to you,3893.99,104.09,usd
-pool_payouts,5 funded + 5 evals: payouts,15,10,count
-pool_evals,5 funded + 5 evals: evals bought,10,25,count
-pool_net,5 funded + 5 evals: net to you,18704.6,5479.43,usd
+evals_finished,Evals finished (one started every session),48,47,count
+evals_passed,Evals passed,32,32,count
+eval_pass,Eval pass rate,66.7,68.1,pct
+slot_payouts,One account bought on the first day: payouts,2,1,count
+slot_evals,One account bought on the first day: evals bought,3,5,count
+slot_net,One account bought on the first day: net to you,1932.99,104.09,usd
+pool_payouts,5 funded + 5 evals: payouts,10,5,count
+pool_evals,5 funded + 5 evals: evals bought,16,27,count
+pool_net,5 funded + 5 evals: net to you,9221.6,359.45,usd

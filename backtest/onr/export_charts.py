@@ -44,12 +44,13 @@ F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, com
 LEG = {"on": "Overnight", "pyr": "Pyramid", "ib": "IB breakout"}
 WHY = {"stop": "stop", "target": "target", "time": "time exit", "stop-fillbar": "stop (fill bar)", "none": "time exit"}
 # the real-MNQ totals mnq_real50k.py prints for the same data, by plan (eval consistency, payouts per account), checked
-# before anything is written; read from mnq_real50k.py's output with ONR_EVAL_CONS / ONR_MAX_PAY set (Nov 19 2026). In
-# these 50 sessions no account reached a 4th payout, so the payout plan changes nothing here.
-REAL_BY_PLAN = {(0.4, 5): dict(trades=71, net=16955, slot_payouts=[1136, 1280, 2000], slot_evals=1, pool=(15, 21677, 10)),
-                (0.4, 4): dict(trades=71, net=16955, slot_payouts=[1136, 1280, 2000], slot_evals=1, pool=(15, 21677, 10)),
-                (0.5, 5): dict(trades=71, net=16955, slot_payouts=[563], slot_evals=5, pool=(10, 8324, 25)),
-                (0.5, 4): dict(trades=71, net=16955, slot_payouts=[563], slot_evals=5, pool=(10, 8324, 25))}
+# before anything is written; read from mnq_real50k.py's output with ONR_EVAL_CONS / ONR_MAX_PAY set (Nov 22 2026, after
+# clean_prints.py repaired the 2026-10-30 15:00 bad print in Yahoo's file). In these 50 sessions no account reached a 4th
+# payout, so the payout plan changes nothing here.
+REAL_BY_PLAN = {(0.4, 5): dict(trades=73, net=18649, slot_payouts=[1136, 1280], slot_evals=3, pool=(10, 11677, 16)),
+                (0.4, 4): dict(trades=73, net=18649, slot_payouts=[1136, 1280], slot_evals=3, pool=(10, 11677, 16)),
+                (0.5, 5): dict(trades=73, net=18649, slot_payouts=[563], slot_evals=5, pool=(5, 2814, 27)),
+                (0.5, 4): dict(trades=73, net=18649, slot_payouts=[563], slot_evals=5, pool=(5, 2814, 27))}
 REAL = REAL_BY_PLAN[(CONS, MAXPAY)]
 ORD = {1: "1st", 2: "2nd", 3: "3rd"}
 

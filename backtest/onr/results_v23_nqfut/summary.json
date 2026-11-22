@@ -11,20 +11,20 @@
  "nq_file": "NQFUT.npz",
  "nq_bar_minutes": 5,
  "book": {
-  "trades": 2496,
-  "net_per_year": 20697.0,
+  "trades": 2498,
+  "net_per_year": 20932.0,
   "days_traded": 1739,
   "pct_days_positive": 44.0,
   "pct_days_qualifying": 38.0,
-  "avg_day": 85.8,
+  "avg_day": 86.7,
   "median_day": -107.7,
   "best_day": 7078.0,
   "worst_day": -1276.0,
-  "daily_sharpe": 1.87
+  "daily_sharpe": 1.88
  },
  "eval": {
-  "started": 1848,
-  "pass_pct": 41.0,
+  "started": 1850,
+  "pass_pct": 41.1,
   "sessions_to_pass": {
    "p25": 6.0,
    "median": 10.0,
@@ -32,7 +32,7 @@
    "p90": 21.0
   },
   "sessions_to_fail_median": 7.0,
-  "evals_per_funded_account": 2.44,
+  "evals_per_funded_account": 2.43,
   "eval_cost_per_funded_account": 196.0
  },
  "funded": {
@@ -66,13 +66,13 @@
  },
  "pool": {
   "paths": 10,
-  "net_per_year_median": 55859.0,
+  "net_per_year_median": 55334.0,
   "net_per_year_range": [
-   55165.0,
-   56225.0
+   54635.0,
+   55699.0
   ],
-  "payouts_per_year": 46.9,
-  "evals_per_year": 103.1,
+  "payouts_per_year": 46.6,
+  "evals_per_year": 103.6,
   "pct_months_net_positive": 57.3,
   "pct_months_with_a_payout": 61.0,
   "monthly_net_percentiles": {
@@ -89,43 +89,43 @@
   },
   "worst_12_months": 23173.0,
   "first_path_max_drawdown": 7245.0,
-  "first_path_total": 399834.0
+  "first_path_total": 396073.0
  },
  "stress_2x_costs_1_tick": {
-  "net_per_year_median": 49589.0,
+  "net_per_year_median": 49395.0,
   "longest_gap_max": 6.8,
   "worst_12_months": 14328.0
  },
  "alarm_bands": [
   [
    20,
-   1479.0,
+   1484.0,
    -3033.0,
    -4717.0
   ],
   [
    40,
-   3052.0,
+   3077.0,
    -3440.0,
-   -6049.0
+   -6050.0
   ],
   [
    60,
-   4637.0,
+   4663.0,
    -3458.0,
    -6700.0
   ],
   [
    120,
-   9397.0,
-   -2201.0,
+   9459.0,
+   -2165.0,
    -6801.0
   ],
   [
    250,
-   19854.0,
-   2578.0,
-   -4505.0
+   20012.0,
+   2697.0,
+   -4355.0
   ]
  ]
 }

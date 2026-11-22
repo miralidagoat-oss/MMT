@@ -11,7 +11,7 @@ Last 5 years on futures prices (Nov 15 2021 - Nov 17 2026), 5 funded + 5 evals, 
   D  C with Topstep's account rules (max loss locks at $0, Combine pass at 55%, position limits, funded legs <= 6 MNQ):
      the Topstep plan
 and each change alone from A: E = A with Topstep's fees, F = A with Topstep's account rules.
-Checks: A equals the website's Lucid plan ($59,716) and D equals results_topstep (5y-50-standard-standard, $77,107).
+Checks: A equals the website's Lucid plan ($59,272) and D equals results_topstep (5y-50-standard-standard, $77,107).
 Writes why.csv: per step, the mean over the 12 start dates of net a year and of payouts, fees and accounts a year.
 """
 import csv
@@ -73,7 +73,7 @@ def main(fd, out):
                          worst_full_year_usd=round(float(np.mean([r["worst"] for r in R]))),
                          worst_12_months_usd=round(float(np.mean([r["worst12"] for r in R])))))
     net = {r["step"]: r["net_per_year_usd"] for r in rows}
-    assert abs(net["A"] - 59716) <= 1, net["A"]   # the website's Lucid plan (lucid_5y B5-addon-stop4)
+    assert abs(net["A"] - 59272) <= 1, net["A"]   # the website's Lucid plan (lucid_5y B5-addon-stop4)
     assert abs(net["D"] - 77107) <= 1, net["D"]   # results_topstep 5y-50-standard-standard
     print(f"checks passed: A = ${net['A']:,} (the website's Lucid plan), D = ${net['D']:,} (results_topstep)", flush=True)
     T.write_csv(out, "why.csv", rows)

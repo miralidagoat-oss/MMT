@@ -8,6 +8,7 @@ date,current_phase,current_event,current_account_pnl_usd,current_your_cash_usd,a
 2026-10-27,,,,,eval 3,"eval 2 ends (cushion below $100, too small to trade); eval 3 bought",1495.98,235.09
 2026-10-30,funded 1,"payout 2 requested ($1,280)",1280.48,2093.99,,,,
 2026-11-02,,,,,eval 4,"eval 3 ends (cushion below $100, too small to trade); eval 4 bought",453.48,144.59
-2026-11-10,,,,,eval 5,"eval 4 ends (cushion below $100, too small to trade); eval 5 bought",0.0,54.09
-2026-11-16,,,,,eval 5,eval passed,3033.3,54.09
-2026-11-17,funded 1,"payout 3 requested ($2,000)",3624.4,3893.99,,,,
+2026-11-04,funded 1,funded account abandoned (cushion below $400),482.55,2093.99,,,,
+2026-11-05,eval 2,eval 2 bought,1195.98,2013.49,,,,
+2026-11-10,eval 3,"eval 2 ends (cushion below $100, too small to trade); eval 3 bought",0.0,1932.99,eval 5,"eval 4 ends (cushion below $100, too small to trade); eval 5 bought",0.0,54.09
+2026-11-16,eval 3,eval passed,3027.32,1932.99,eval 5,eval passed,3033.3,54.09
