@@ -41,7 +41,11 @@ from holidays import half_day  # noqa: E402
 
 PV, TK = 2.0, 0.25
 N50 = 2  # MNQ per strategy at 50K
-BASE = dict(k=0.3, wcap=490.0, zstop=0.10, ztgt=1.0, slip=1, comm=1.34, dll=600.0, zdelay=0, W=True, Z=True)
+BASE = dict(k=0.3, wcap=490.0, zstop=0.10, ztgt=1.0, slip=1, comm=1.34, dll=600.0, zdelay=0, W=True, Z=True, wskip=False)
+# Version 2 (pasted Nov 22 2026) adds one rule: no Williams trade on the session after a weekday holiday, an early close
+# or any other gap: at the 09:30 bar, the days since the last session that had a 09:30 bar must be <= 1 (<= 3 on a
+# Monday), and that session must not be a listed early close (here: holidays.half_day, every year). Nothing else changed.
+V2 = dict(BASE, wskip=True)
 PERIODS = [("design 2011-18", "2011-01-01", "2018-12-31"), ("look 2019-23", "2019-01-01", "2023-12-31"),
            ("sealed 2024-26", "2024-01-01", "2026-12-31")]
 REAL_FUT = (("2019-08-11", "2024-08-09"), ("2026-09-09", "2026-12-31"))
@@ -190,8 +194,16 @@ def sim_day(O, H, L, C, MI, dO, R1, A, P, tf):
 def run(days, P, tf):
     """Every tradable day: previous RTH day's range and the 14-day ADR as the indicator reads them."""
     rng = [max(H) - min(L) for _, _, H, L, _, _ in days]
-    out, skipped = [], dict(half_day=0, no_0930_bar=0, warmup=0)
+    out, skipped = [], dict(half_day=0, no_0930_bar=0, warmup=0, williams_after_gap=0, williams_after_half_day=0)
+    last_open = None  # the last session with a 09:30 bar (the indicator's lastT / lastYmd, updated on half days too)
     for i, (date, O, H, L, C, MI) in enumerate(days):
+        prev_open, gap_skip, half_skip = last_open, False, False
+        if MI[0] == 0:
+            last_open = date
+        if prev_open is not None:
+            gap = (date - prev_open).days
+            gap_skip = gap > 3 if date.weekday() == 0 else gap > 1
+            half_skip = half_day(prev_open)
         if i < 14:
             skipped["warmup"] += 1
             continue
@@ -202,7 +214,11 @@ def run(days, P, tf):
             skipped["no_0930_bar"] += 1
             continue
         R1, A = rng[i - 1], float(np.mean(rng[i - 14:i]))
-        r = sim_day(O, H, L, C, MI, O[0], R1, A, P, tf)
+        Pd = P
+        if P.get("wskip") and P["W"] and (gap_skip or half_skip):
+            Pd = dict(P, W=False)
+            skipped["williams_after_gap" if gap_skip else "williams_after_half_day"] += 1
+        r = sim_day(O, H, L, C, MI, O[0], R1, A, Pd, tf)
         r.update(date=date.isoformat(), r1=R1, adr=A)
         out.append(r)
     return out, skipped
@@ -276,14 +292,14 @@ def repair(t, o, h, l, c, verbose=True):
     return t, o, h, l, c
 
 
-def main(cfd_dir, fut_dir, out):
+def main(cfd_dir, fut_dir, out, P=BASE):
     os.makedirs(out, exist_ok=True)
     cfd = load(os.path.join(cfd_dir, "NSXUSD.npz"))
     fut = repair(*load(os.path.join(fut_dir, "NQFUT.npz")))
     data = {"cfd1": (rth_days(*cfd), 1), "cfd5": (rth_days(*to5(*cfd)), 5), "fut5": (rth_days(*fut), 5)}
     res, summ = {}, {}
     for name, (days, tf) in data.items():
-        rows, skipped = run(days, BASE, tf)
+        rows, skipped = run(days, P, tf)
         res[name] = rows
         write(os.path.join(out, f"trades_{name}.csv"), rows)
         summ[name] = dict(skipped=skipped, first=rows[0]["date"], last=rows[-1]["date"],
@@ -309,8 +325,6 @@ def main(cfd_dir, fut_dir, out):
         json.dump(summ, f, indent=1, default=float)
 
 
-if __name__ == "__main__":
-    main(*sys.argv[1:4])
 
 
 VARIANTS = [("as written", {}), ("Zarattini 1 min late", dict(zdelay=1)), ("Zarattini 2 min late", dict(zdelay=2)),
@@ -318,12 +332,12 @@ VARIANTS = [("as written", {}), ("Zarattini 1 min late", dict(zdelay=1)), ("Zara
             ("Williams k 0.2", dict(k=0.2)), ("Williams k 0.4", dict(k=0.4)), ("no day limit", dict(dll=1e9))]
 
 
-def extra(cfd_dir, fut_dir, out):
+def extra(cfd_dir, fut_dir, out, P0=BASE):
     """Year by year, and the rules' sensitivity (each change alone; nothing here is fitted or chosen)."""
     cfd = load(os.path.join(cfd_dir, "NSXUSD.npz"))
     fut = repair(*load(os.path.join(fut_dir, "NQFUT.npz")), verbose=False)
     feeds = {"cfd1": (rth_days(*cfd), 1), "fut5": (rth_days(*fut), 5)}
-    base = {name: run(days, BASE, tf)[0] for name, (days, tf) in feeds.items()}
+    base = {name: run(days, P0, tf)[0] for name, (days, tf) in feeds.items()}
     yrows = []
     print("\n== by calendar year, 50K (2 MNQ per strategy), $ after commission and 1 tick per fill")
     print(f"{'year':6s} | {'CFD 1-min: Williams':>22s} {'Zarattini':>18s} {'W+Z':>9s} | {'NQ futures 5-min: W':>20s} {'Z':>9s} {'W+Z':>9s}")
@@ -343,7 +357,7 @@ def extra(cfd_dir, fut_dir, out):
     vrows = []
     print("\n== sensitivity, 50K, $ per year of W+Z (both strategies, day limit on) | Zarattini t | Williams t")
     for lab, ch in VARIANTS:
-        P = dict(BASE, **ch)
+        P = dict(P0, **ch)
         row = dict(variant=lab)
         txt = f"{lab:22s}"
         for name, (days, tf) in feeds.items():
@@ -464,7 +478,7 @@ def sim_pool_mix(S, N, max_total, k0, k1, ek, fk, wz_slots, wz, WZF):
 _W = {}
 
 
-def _init_pool(fut_dir, cfd_dir):
+def _init_pool(fut_dir, cfd_dir, P=BASE):
     import functools
     import account
     import engine
@@ -476,8 +490,8 @@ def _init_pool(fut_dir, cfd_dir):
     fut = repair(*load(os.path.join(fut_dir, "NQFUT.npz")), verbose=False)
     # topstep_sim.load('fut') with the bad print repaired (the same S&P file: FUT_DIR/SPXUSD.npz)
     _W["S"] = {"fut": Sessions(fut, load_npz(os.path.join(fut_dir, "SPXUSD.npz")), tf=5), "cfd": T.load("cfd", cfd_dir)}
-    _W["wz"] = {"fut": wz_by_session(run(rth_days(*fut), BASE, 5)[0]),
-                "cfd": wz_by_session(run(rth_days(*load(os.path.join(cfd_dir, "NSXUSD.npz"))), BASE, 1)[0])}
+    _W["wz"] = {"fut": wz_by_session(run(rth_days(*fut), P, 5)[0]),
+                "cfd": wz_by_session(run(rth_days(*load(os.path.join(cfd_dir, "NSXUSD.npz"))), P, 1)[0])}
     # the same days with the max loss checked at the close only (what a test without intraday checks would do)
     _W["wz_eod"] = {kind: {d: (v[0], v[0]) for d, v in m.items()} for kind, m in _W["wz"].items()}
     _W["WZF"] = make_wz_funded()
@@ -525,12 +539,12 @@ def _pool_job(args):
                       total=summ["total"], start=cal[0], by_type=by_type)
 
 
-def pools(cfd_dir, fut_dir, out, procs=4):
+def pools(cfd_dir, fut_dir, out, procs=4, P=BASE):
     from multiprocessing import Pool as MP
     CASES = ((0, False), (2, False), (5, False), (2, True), (5, True))
     jobs = [("fut", "5y", off, firm, wzs, eod) for firm in ("topstep", "lucid") for wzs, eod in CASES for off in range(0, 60, 5)]
     jobs += [("cfd", "all", 0, firm, wzs, eod) for firm in ("topstep", "lucid") for wzs, eod in CASES]
-    with MP(procs, initializer=_init_pool, initargs=(fut_dir, cfd_dir)) as mp:
+    with MP(procs, initializer=_init_pool, initargs=(fut_dir, cfd_dir, P)) as mp:
         res = dict(mp.map(_pool_job, jobs, chunksize=1))
     rows = []
     print("\n== pools of 5 funded + 5 evals (evals trade ONR), 50K. Topstep: No Activation Fee Combines, Standard payouts;"
@@ -576,3 +590,12 @@ def pool_check(cfd_dir, fut_dir):
         b = R4.sim_pool(S, 5, 10, k0, len(S.days), ek, fk)
         assert a == b, firm
     print("check passed: the mixed pool with no W+Z slot equals research4.sim_pool (Topstep and Lucid)", flush=True)
+
+
+if __name__ == "__main__":
+    # usage: wz_check.py CFD_DIR FUT_DIR OUT_DIR [v1|v2]   (v1: the first version pasted; v2: with the Williams skip)
+    rules = V2 if (sys.argv[4:5] or ["v1"])[0] == "v2" else BASE
+    main(*sys.argv[1:4], P=rules)
+    extra(*sys.argv[1:4], P0=rules)
+    pool_check(sys.argv[1], sys.argv[2])
+    pools(*sys.argv[1:4], P=rules)

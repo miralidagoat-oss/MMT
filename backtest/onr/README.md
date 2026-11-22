@@ -1402,8 +1402,26 @@ From Feb 2011 on the CFD, the mix made $38,537 against $43,241 (Topstep) and $33
   - Lucid evals passed 30 of 46 → 32 of 48, add-on 33 of 47 → 32 of 47, Topstep 33 of 47 unchanged.
 - The other results built on the file (the website, the indicator's texts, `plan_search.py`) have not yet been rerun with the repair.
 
+**Version 2** (pasted later the same day; `results_wz_v2/`) changes one rule: no Williams trade on the session after a weekday holiday, an early close or any other gap. That is about 12 sessions a year: on the CFD, 94 after gaps and 95 after half days since 2011. Its early closes come from a hand-typed list (Nov 2026 – 2027 only); here `holidays.half_day` stands in for every year. Zarattini is unchanged.
+- **Williams:** a little better: 2019–23 t 1.10 (futures 0.97), 2024–26 t 2.33 (2.31).
+- **W+Z a year:** +$882 in 2011–18 (3 of 8 years lost money), +$8,172 in 2019–23, +$21,769 in 2024–26.
+
+| Funded, version 2 (futures file, 12 starts) | Topstep $/yr | Lucid $/yr | 3 years, Topstep / Lucid | Worst full year | Worst 12 months | Months paid |
+|---|---|---|---|---|---|---|
+| 5 ONR | $78,409 | $59,550 | $200,173 / $167,733 | $38,028 / $34,341 | $30,466 / $23,173 | 72% / 65% |
+| 4 ONR + 1 W+Z | −$575 | +$368 | −$3,123 / −$4,933 | | | +6.7 / +8.4 pts |
+| 3 ONR + 2 W+Z | $76,206 | $56,759 | $199,002 / $148,240 | $42,001 / $24,726 | $30,078 / $15,146 | 80% / 75% |
+| 5 W+Z | $62,123 | $40,702 | $138,141 / $104,632 | $20,912 / $10,157 | −$805 / −$254 | 57% / 54% |
+
+The 4 + 1 row shows differences from 5 ONR, averaged over the 12 start dates.
+- **Topstep 3 + 2:** less a year than 5 ONR in all 12 starts.
+- **Lucid 4 + 1:** more a year in all 12 starts, less over 3 years in all 12.
+- **From Feb 2011 on the CFD, 3 + 2:** $37,770 against $43,241 (Topstep) and $33,008 against $36,784 (Lucid).
+- **Noise:** version 1 → 2 changes about 12 Williams trades a year, yet moved Topstep's 3-year mix by +$11,037. Pool differences of a few thousand dollars are within the noise of which accounts happen to end when.
+
 ```bash
-python3 -I wz_check.py CFD_DIR FUT_DIR results_wz   # trades and periods; extra() and pools() in the same file
+python3 -I wz_check.py CFD_DIR FUT_DIR results_wz      # version 1: trades, years, sensitivity, pools
+python3 -I wz_check.py CFD_DIR FUT_DIR results_wz_v2 v2
 ```
 
 ### Edges by leg (1 MNQ, R = initial risk; `overfit.py`)

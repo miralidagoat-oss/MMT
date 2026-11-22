@@ -1,0 +1,101 @@
+  repaired bad print 2026-10-30T15:00 ET: o 29562.00 h 29562.00 l 28284.00 c 28307.25 (previous close 28234.50)
+
+== cfd1: 2010-12-03 -> 2026-11-13, 3903 sessions traded, skipped {'half_day': 130, 'no_0930_bar': 71, 'warmup': 14, 'williams_after_gap': 94, 'williams_after_half_day': 95}
+  design 2011-18  (1971 sessions; both-levels days 1, day-limit days 0)
+     Williams   1778 |     +4.0 | t +1.25 | win 45.3% | PF 1.09 | total     +7,038 | worst drop    -4,337
+     Zarattini  1937 |     -0.1 | t -0.05 | win 16.3% | PF 1.00 | total       -140 | worst drop    -2,732
+     W+Z days   1971 |     +3.5 | t +0.91 | win 36.9% | PF 1.07 | total     +6,898 | worst drop    -4,927
+  look 2019-23    (1198 sessions; both-levels days 0, day-limit days 0)
+     Williams   1073 |    +15.4 | t +1.10 | win 48.6% | PF 1.09 | total    +16,499 | worst drop   -12,816
+     Zarattini  1198 |    +18.7 | t +2.42 | win 17.7% | PF 1.27 | total    +22,353 | worst drop    -3,386
+     W+Z days   1198 |    +32.4 | t +1.89 | win 41.8% | PF 1.17 | total    +38,852 | worst drop    -8,468
+  sealed 2024-26  (714 sessions; both-levels days 0, day-limit days 2)
+     Williams    646 |    +67.3 | t +2.33 | win 50.9% | PF 1.29 | total    +43,476 | worst drop    -9,151
+     Zarattini   714 |    +25.5 | t +1.73 | win 17.6% | PF 1.24 | total    +18,203 | worst drop    -4,464
+     W+Z days    714 |    +86.4 | t +2.52 | win 43.0% | PF 1.31 | total    +61,679 | worst drop    -8,945
+
+== cfd5: 2010-12-03 -> 2026-11-13, 3905 sessions traded, skipped {'half_day': 130, 'no_0930_bar': 69, 'warmup': 14, 'williams_after_gap': 93, 'williams_after_half_day': 95}
+  design 2011-18  (1972 sessions; both-levels days 1, day-limit days 0)
+     Williams   1778 |     +3.9 | t +1.25 | win 45.2% | PF 1.09 | total     +7,005 | worst drop    -4,294
+     Zarattini  1939 |     -0.1 | t -0.05 | win 16.3% | PF 1.00 | total       -140 | worst drop    -2,736
+     W+Z days   1972 |     +3.5 | t +0.91 | win 36.9% | PF 1.07 | total     +6,865 | worst drop    -4,882
+  look 2019-23    (1198 sessions; both-levels days 2, day-limit days 0)
+     Williams   1072 |    +15.9 | t +1.14 | win 48.8% | PF 1.10 | total    +17,095 | worst drop   -12,634
+     Zarattini  1198 |    +18.7 | t +2.42 | win 17.7% | PF 1.27 | total    +22,359 | worst drop    -3,386
+     W+Z days   1198 |    +32.9 | t +1.92 | win 41.8% | PF 1.17 | total    +39,453 | worst drop    -8,468
+  sealed 2024-26  (715 sessions; both-levels days 1, day-limit days 1)
+     Williams    647 |    +66.2 | t +2.29 | win 50.7% | PF 1.29 | total    +42,810 | worst drop   -10,181
+     Zarattini   715 |    +25.6 | t +1.74 | win 17.6% | PF 1.24 | total    +18,285 | worst drop    -4,464
+     W+Z days    715 |    +85.4 | t +2.50 | win 42.9% | PF 1.31 | total    +61,095 | worst drop    -9,841
+
+== fut5: 2019-08-30 -> 2026-11-17, 1781 sessions traded, skipped {'half_day': 37, 'no_0930_bar': 0, 'warmup': 14, 'williams_after_gap': 43, 'williams_after_half_day': 28}
+  design 2011-18  (0 sessions; both-levels days 0, day-limit days 0)
+     Williams  no trades
+     Zarattini no trades
+     W+Z days  no trades
+  look 2019-23    (1064 sessions; both-levels days 1, day-limit days 0)
+     Williams    983 |    +14.9 | t +0.97 | win 48.5% | PF 1.08 | total    +14,632 | worst drop   -11,748
+     Zarattini  1059 |    +19.2 | t +2.23 | win 17.5% | PF 1.26 | total    +20,304 | worst drop    -3,515
+     W+Z days   1064 |    +32.8 | t +1.68 | win 43.1% | PF 1.16 | total    +34,936 | worst drop    -8,514
+  sealed 2024-26  (717 sessions; both-levels days 1, day-limit days 1)
+     Williams    651 |    +66.6 | t +2.31 | win 50.7% | PF 1.29 | total    +43,354 | worst drop   -10,101
+     Zarattini   717 |    +18.4 | t +1.27 | win 16.9% | PF 1.17 | total    +13,175 | worst drop    -5,052
+     W+Z days    717 |    +78.8 | t +2.32 | win 42.7% | PF 1.28 | total    +56,529 | worst drop    -9,803
+  real futures bars only (Aug 2019 - Aug 9 2024, Sep 9 - Nov 17 2026):
+  look 2019-23    (1064 sessions)  W   983 |    +14.9 | t +0.97 | win 48.5% | PF 1.08 | total    +14,632 | worst drop   -11,748
+                   Z  1059 |    +19.2 | t +2.23 | win 17.5% | PF 1.26 | total    +20,304 | worst drop    -3,515
+  sealed 2024-26  (202 sessions)  W   183 |    +83.1 | t +1.59 | win 45.9% | PF 1.41 | total    +15,203 | worst drop    -3,613
+                   Z   202 |     +9.6 | t +0.39 | win 13.9% | PF 1.11 | total     +1,934 | worst drop    -5,052
+
+== by calendar year, 50K (2 MNQ per strategy), $ after commission and 1 tick per fill
+year   |    CFD 1-min: Williams          Zarattini       W+Z |  NQ futures 5-min: W         Z       W+Z
+2011   |                   -181               -691      -872 | 
+2012   |                   +642               -268      +375 | 
+2013   |                   -436               -161      -597 | 
+2014   |                 +1,431               +563    +1,995 | 
+2015   |                   -983             -1,527    -2,510 | 
+2016   |                   -307             +1,407    +1,100 | 
+2017   |                    -75               +230      +155 | 
+2018   |                 +6,945               +306    +7,252 | 
+2019   |                   -441             +2,983    +2,543 |       +208      +936    +1,144 (real)
+2020   |                 -5,236             +5,688      +452 |     -3,649    +3,914      +265 (real)
+2021   |                 -1,476             +7,936    +6,460 |     -2,665    +8,523    +5,857 (real)
+2022   |                +18,863             +5,499   +24,362 |    +17,860    +6,983   +24,843 (real)
+2023   |                 +4,788               +247    +5,035 |     +2,879       -52    +2,827 (real)
+2024   |                 +8,226             +6,739   +14,965 |     +7,102    +4,798   +11,901 (mixed)
+2025   |                +17,972             +1,823   +19,795 |    +18,576    +1,823   +20,399 (CFD fill)
+2026   |                +17,277             +9,641   +26,918 |    +17,676    +6,554   +24,230 (mixed)
+
+== sensitivity, 50K, $ per year of W+Z (both strategies, day limit on) | Zarattini t | Williams t
+as written             | cfd1 2011-18:     +882/yr Zt -0.05 Wt +1.25 | cfd1 2019-23:   +8,172/yr Zt +2.42 Wt +1.10 | cfd1 2024-26:  +21,769/yr Zt +1.73 Wt +2.33 | fut5 2019-23:   +8,274/yr Zt +2.23 Wt +0.97 | fut5 2024-26:  +19,868/yr Zt +1.27 Wt +2.31
+Zarattini 1 min late   | cfd1 2011-18:     +315/yr Zt -1.63 Wt +1.25 | cfd1 2019-23:   +6,367/yr Zt +1.54 Wt +1.10 | cfd1 2024-26:  +23,470/yr Zt +2.11 Wt +2.33 | (5-minute bars cannot shift by minutes)
+Zarattini 2 min late   | cfd1 2011-18:     +219/yr Zt -1.86 Wt +1.25 | cfd1 2019-23:   +4,064/yr Zt +0.33 Wt +1.10 | cfd1 2024-26:  +19,531/yr Zt +1.17 Wt +2.34 | (5-minute bars cannot shift by minutes)
+Zarattini 3 min late   | cfd1 2011-18:     +347/yr Zt -1.47 Wt +1.25 | cfd1 2019-23:   +4,689/yr Zt +0.67 Wt +1.10 | cfd1 2024-26:  +17,360/yr Zt +0.57 Wt +2.34 | (5-minute bars cannot shift by minutes)
+2 ticks slippage       | cfd1 2011-18:      -52/yr Zt -1.28 Wt +0.62 | cfd1 2019-23:   +7,237/yr Zt +2.17 Wt +0.96 | cfd1 2024-26:  +20,839/yr Zt +1.60 Wt +2.26 | fut5 2019-23:   +7,325/yr Zt +2.00 Wt +0.84 | fut5 2024-26:  +18,935/yr Zt +1.14 Wt +2.24
+4 ticks slippage       | cfd1 2011-18:   -1,919/yr Zt -3.74 Wt -0.65 | cfd1 2019-23:   +5,366/yr Zt +1.66 Wt +0.68 | cfd1 2024-26:  +18,980/yr Zt +1.33 Wt +2.13 | fut5 2019-23:   +5,427/yr Zt +1.55 Wt +0.58 | fut5 2024-26:  +17,070/yr Zt +0.87 Wt +2.11
+Williams k 0.2         | cfd1 2011-18:     +445/yr Zt -0.05 Wt +0.64 | cfd1 2019-23:   +9,076/yr Zt +2.42 Wt +1.42 | cfd1 2024-26:  +13,781/yr Zt +1.73 Wt +1.19 | fut5 2019-23:   +8,890/yr Zt +2.23 Wt +1.18 | fut5 2024-26:  +13,413/yr Zt +1.27 Wt +1.41
+Williams k 0.4         | cfd1 2011-18:   +1,175/yr Zt -0.05 Wt +1.76 | cfd1 2019-23:  +10,165/yr Zt +2.42 Wt +1.87 | cfd1 2024-26:  +19,228/yr Zt +1.73 Wt +2.24 | fut5 2019-23:  +10,837/yr Zt +2.23 Wt +1.84 | fut5 2024-26:  +14,653/yr Zt +1.27 Wt +1.84
+no day limit           | cfd1 2011-18:     +882/yr Zt -0.05 Wt +1.25 | cfd1 2019-23:   +8,172/yr Zt +2.42 Wt +1.10 | cfd1 2024-26:  +21,741/yr Zt +1.73 Wt +2.32 | fut5 2019-23:   +8,274/yr Zt +2.23 Wt +0.97 | fut5 2024-26:  +19,840/yr Zt +1.27 Wt +2.31
+check passed: the mixed pool with no W+Z slot equals research4.sim_pool (Topstep and Lucid)
+
+== pools of 5 funded + 5 evals (evals trade ONR), 50K. Topstep: No Activation Fee Combines, Standard payouts; Lucid: $80.50 evals (40% rule), each funded account closed after its 4th payout. Mean of 12 start dates on the futures file (Nov 15 2021 -> Nov 17 2026); one run from Feb 2011 on the CFD
+  fut topstep  5 ONR                               : $   78,409/yr | 3 yrs $  200,173 (worst start $  174,858) | worst full yr $  38,028 | worst 12 mo $  30,466 | months paid 72% | onr: 161.2 accounts per start, 1.82 payouts and $2,607 to you each; ended: 0 blown, 1875 abandoned, 0 closed after 4th payout, 60 still open
+  fut topstep  3 ONR + 2 W+Z                       : $   76,206/yr | 3 yrs $  199,002 (worst start $  174,567) | worst full yr $  42,001 | worst 12 mo $  30,078 | months paid 80% | onr: 94.2 accounts per start, 1.94 payouts and $2,818 to you each; ended: 0 blown, 1095 abandoned, 0 closed after 4th payout, 36 still open | wz: 69.0 accounts per start, 1.29 payouts and $2,082 to you each; ended: 804 blown, 0 abandoned, 0 closed after 4th payout, 24 still open
+  fut topstep  5 W+Z                               : $   62,123/yr | 3 yrs $  138,141 (worst start $  114,649) | worst full yr $  20,912 | worst 12 mo $    -805 | months paid 57% | wz: 159.9 accounts per start, 1.29 payouts and $2,108 to you each; ended: 1859 blown, 0 abandoned, 0 closed after 4th payout, 60 still open
+  fut topstep  3 ONR + 2 W+Z (close-only max loss) : $   79,004/yr | 3 yrs $  203,171 (worst start $  178,895) | worst full yr $  43,955 | worst 12 mo $  32,223 | months paid 84% | onr: 96.2 accounts per start, 1.92 payouts and $2,793 to you each; ended: 0 blown, 1119 abandoned, 0 closed after 4th payout, 36 still open | wz: 54.0 accounts per start, 1.80 payouts and $2,803 to you each; ended: 624 blown, 0 abandoned, 0 closed after 4th payout, 24 still open
+  fut topstep  5 W+Z (close-only max loss)         : $   67,491/yr | 3 yrs $  165,489 (worst start $  141,997) | worst full yr $  34,767 | worst 12 mo $  10,237 | months paid 64% | wz: 124.9 accounts per start, 1.87 payouts and $2,861 to you each; ended: 1439 blown, 0 abandoned, 0 closed after 4th payout, 60 still open
+  fut lucid    5 ONR                               : $   59,550/yr | 3 yrs $  167,733 (worst start $  146,906) | worst full yr $  34,341 | worst 12 mo $  23,173 | months paid 65% | onr: 200.0 accounts per start, 1.24 payouts and $1,650 to you each; ended: 0 blown, 2088 abandoned, 252 closed after 4th payout, 60 still open
+  fut lucid    3 ONR + 2 W+Z                       : $   56,759/yr | 3 yrs $  148,240 (worst start $  128,218) | worst full yr $  24,726 | worst 12 mo $  15,146 | months paid 75% | onr: 120.0 accounts per start, 1.24 payouts and $1,632 to you each; ended: 0 blown, 1248 abandoned, 156 closed after 4th payout, 36 still open | wz: 101.0 accounts per start, 0.79 payouts and $1,221 to you each; ended: 1092 blown, 0 abandoned, 96 closed after 4th payout, 24 still open
+  fut lucid    5 W+Z                               : $   40,702/yr | 3 yrs $  104,632 (worst start $   86,367) | worst full yr $  10,157 | worst 12 mo $    -254 | months paid 54% | wz: 235.0 accounts per start, 0.68 payouts and $1,036 to you each; ended: 2520 blown, 0 abandoned, 240 closed after 4th payout, 60 still open
+  fut lucid    3 ONR + 2 W+Z (close-only max loss) : $   59,287/yr | 3 yrs $  154,639 (worst start $  135,477) | worst full yr $  26,153 | worst 12 mo $  16,733 | months paid 74% | onr: 120.0 accounts per start, 1.28 payouts and $1,695 to you each; ended: 0 blown, 1236 abandoned, 168 closed after 4th payout, 36 still open | wz: 82.0 accounts per start, 1.06 payouts and $1,524 to you each; ended: 840 blown, 0 abandoned, 120 closed after 4th payout, 24 still open
+  fut lucid    5 W+Z (close-only max loss)         : $   53,285/yr | 3 yrs $  126,991 (worst start $  107,915) | worst full yr $  14,516 | worst 12 mo $   6,595 | months paid 60% | wz: 201.0 accounts per start, 1.01 payouts and $1,485 to you each; ended: 2076 blown, 0 abandoned, 276 closed after 4th payout, 60 still open
+  cfd topstep  5 ONR                               : $   43,241/yr | 3 yrs $   24,684 (worst start $   24,684) | worst full yr $   5,555 | worst 12 mo $  -3,832 | months paid 59% | onr: 461.0 accounts per start, 1.38 payouts and $1,709 to you each; ended: 3 blown, 453 abandoned, 0 closed after 4th payout, 5 still open
+  cfd topstep  3 ONR + 2 W+Z                       : $   37,770/yr | 3 yrs $   16,532 (worst start $   16,532) | worst full yr $   3,495 | worst 12 mo $  -1,150 | months paid 66% | onr: 299.0 accounts per start, 1.37 payouts and $1,702 to you each; ended: 4 blown, 292 abandoned, 0 closed after 4th payout, 3 still open | wz: 123.0 accounts per start, 1.22 payouts and $1,467 to you each; ended: 121 blown, 0 abandoned, 0 closed after 4th payout, 2 still open
+  cfd topstep  5 W+Z                               : $   24,679/yr | 3 yrs $   -1,900 (worst start $   -1,900) | worst full yr $  -3,325 | worst 12 mo $  -3,325 | months paid 36% | wz: 302.0 accounts per start, 1.26 payouts and $1,509 to you each; ended: 297 blown, 0 abandoned, 0 closed after 4th payout, 5 still open
+  cfd topstep  3 ONR + 2 W+Z (close-only max loss) : $   38,592/yr | 3 yrs $   16,532 (worst start $   16,532) | worst full yr $   3,495 | worst 12 mo $    -862 | months paid 66% | onr: 305.0 accounts per start, 1.33 payouts and $1,657 to you each; ended: 4 blown, 298 abandoned, 0 closed after 4th payout, 3 still open | wz: 104.0 accounts per start, 1.59 payouts and $1,889 to you each; ended: 102 blown, 0 abandoned, 0 closed after 4th payout, 2 still open
+  cfd topstep  5 W+Z (close-only max loss)         : $   27,678/yr | 3 yrs $   -1,900 (worst start $   -1,900) | worst full yr $    -747 | worst 12 mo $  -2,280 | months paid 41% | wz: 261.0 accounts per start, 1.61 payouts and $1,899 to you each; ended: 256 blown, 0 abandoned, 0 closed after 4th payout, 5 still open
+  cfd lucid    5 ONR                               : $   36,784/yr | 3 yrs $   71,505 (worst start $   71,505) | worst full yr $    -982 | worst 12 mo $  -7,893 | months paid 53% | onr: 656.0 accounts per start, 0.83 payouts and $1,089 to you each; ended: 6 blown, 591 abandoned, 54 closed after 4th payout, 5 still open
+  cfd lucid    3 ONR + 2 W+Z                       : $   33,008/yr | 3 yrs $   46,524 (worst start $   46,524) | worst full yr $   5,486 | worst 12 mo $  -2,925 | months paid 63% | onr: 447.0 accounts per start, 0.80 payouts and $1,062 to you each; ended: 4 blown, 400 abandoned, 40 closed after 4th payout, 3 still open | wz: 145.0 accounts per start, 1.02 payouts and $1,141 to you each; ended: 135 blown, 0 abandoned, 8 closed after 4th payout, 2 still open
+  cfd lucid    5 W+Z                               : $   20,130/yr | 3 yrs $   -2,712 (worst start $   -2,712) | worst full yr $    -352 | worst 12 mo $  -6,747 | months paid 40% | wz: 393.0 accounts per start, 0.91 payouts and $994 to you each; ended: 371 blown, 0 abandoned, 17 closed after 4th payout, 5 still open
+  cfd lucid    3 ONR + 2 W+Z (close-only max loss) : $   33,606/yr | 3 yrs $   46,363 (worst start $   46,363) | worst full yr $   5,600 | worst 12 mo $  -3,311 | months paid 63% | onr: 445.0 accounts per start, 0.81 payouts and $1,079 to you each; ended: 5 blown, 397 abandoned, 40 closed after 4th payout, 3 still open | wz: 133.0 accounts per start, 1.17 payouts and $1,268 to you each; ended: 117 blown, 0 abandoned, 14 closed after 4th payout, 2 still open
+  cfd lucid    5 W+Z (close-only max loss)         : $   22,558/yr | 3 yrs $   -2,712 (worst start $   -2,712) | worst full yr $  -3,220 | worst 12 mo $  -3,864 | months paid 37% | wz: 339.0 accounts per start, 1.11 payouts and $1,247 to you each; ended: 299 blown, 0 abandoned, 35 closed after 4th payout, 5 still open
