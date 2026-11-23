@@ -13,7 +13,7 @@ Plan: ONR_EVAL_CONS (the eval's consistency rule, default 0.4; 0.5 = Lucid's pai
 a funded account takes before it is closed, default 5; 4 = indicator v2.3's default plan), as in report50k.py.
 
 Costs: $1.34 per MNQ round turn (inside every trade's net), Lucid keeps 10% of each payout, and the 50K eval price of
-account.RULES per eval ($115 list; ONR_EVAL_FEE_50K sets another, e.g. 80.50 with a discount code). The eval price
+account.RULES per eval ($115 list; ONR_EVAL_FEE_50K sets another, e.g. 88.20 with a discount code). The eval price
 changes no trade, only "net to you", so the checks below are on counts and gross amounts.
 Commission per trade = the same trade replayed with commission 0, minus the trade with $1.34 (commission never changes
 a fill or a decision of the day, so the two runs take the same trades). The script checks its totals against

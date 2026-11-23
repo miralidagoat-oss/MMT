@@ -49,7 +49,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import research4 as R4  # noqa: E402
 import research5 as R5  # noqa: E402
-from account import FundedAccount  # noqa: E402
+from account import USER_ADDON, USER_EVAL, FundedAccount  # noqa: E402
 from engine import Sessions, load_npz  # noqa: E402
 
 SIZES = (50, 100, 150)
@@ -189,9 +189,10 @@ def check(S):
     """summarise_run on a flat eval price equals research5.metrics for Lucid's plan (one start date)."""
     k0 = start_k(S, "5y", 0)
     ev = R4.sim_pool(S, 5, 10, k0, len(S.days), dict(R4.E_KW, cons=0.5), dict(R4.F_KW, max_pay=4))
-    mine = summarise_run(S, k0, cash_flows(S, k0, ev, "standard", 50, fee_per_buy=90.5), ev,
+    fee = USER_EVAL[50] + USER_ADDON  # the user's 50K eval with the add-on
+    mine = summarise_run(S, k0, cash_flows(S, k0, ev, "standard", 50, fee_per_buy=fee), ev,
                          R5.P_5Y, {"last 5y": R5.FULL5["last 5y"]})["periods"]["last 5y"]
-    ref = R5.metrics([("nq", S, k0, ev)], R5.FULL5, R5.P_5Y, 90.5)["periods"]["last 5y"]
+    ref = R5.metrics([("nq", S, k0, ev)], R5.FULL5, R5.P_5Y, fee)["periods"]["last 5y"]
     for key in ("M", "W", "L", "D", "worst12", "gap", "months_paid", "evals_yr"):
         assert abs(mine[key] - ref[key]) < 1e-6, (key, mine[key], ref[key])
     print(f"check passed: the summary equals research5.metrics on Lucid's plan (${ref['M']:,.0f} a year from {iso(S, k0)})", flush=True)

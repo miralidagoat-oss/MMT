@@ -1,0 +1,63 @@
+Part 1: the last 5 years (start dates 2021-11-15 + 0..55 sessions, to 2026-11-13), mean of 12 start dates
+  N accounts bought the  N=1: net/yr $  8,443 | worst full year $  1,091 | losing years 0.00 | deepest drop $ -1,411 | 5-year total $  41,250 | eval pass 40.2% | payouts 34.0
+  N accounts bought the  N=2: net/yr $ 16,885 | worst full year $  2,182 | losing years 0.00 | deepest drop $ -2,822 | 5-year total $  82,500 | eval pass 40.2% | payouts 68.0
+  N accounts bought the  N=3: net/yr $ 25,328 | worst full year $  3,273 | losing years 0.00 | deepest drop $ -4,234 | 5-year total $ 123,750 | eval pass 40.2% | payouts 102.0
+  N accounts bought the  N=4: net/yr $ 33,771 | worst full year $  4,363 | losing years 0.00 | deepest drop $ -5,645 | 5-year total $ 165,000 | eval pass 40.2% | payouts 136.0
+  N accounts bought the  N=5: net/yr $ 42,214 | worst full year $  5,454 | losing years 0.00 | deepest drop $ -7,056 | 5-year total $ 206,250 | eval pass 40.2% | payouts 170.0
+  N accounts, each an ev N=1: net/yr $  7,679 | worst full year $  1,091 | losing years 0.00 | deepest drop $ -1,411 | 5-year total $  37,517 | eval pass 41.2% | payouts 31.1
+  N accounts, each an ev N=2: net/yr $ 14,171 | worst full year $  1,982 | losing years 0.00 | deepest drop $ -2,381 | 5-year total $  69,236 | eval pass 40.5% | payouts 59.1
+  N accounts, each an ev N=3: net/yr $ 20,571 | worst full year $  3,077 | losing years 0.00 | deepest drop $ -3,175 | 5-year total $ 100,506 | eval pass 40.7% | payouts 87.1
+  N accounts, each an ev N=4: net/yr $ 26,922 | worst full year $  4,171 | losing years 0.00 | deepest drop $ -3,881 | 5-year total $ 131,538 | eval pass 41.5% | payouts 114.9
+  N accounts, each an ev N=5: net/yr $ 34,473 | worst full year $  5,265 | losing years 0.00 | deepest drop $ -4,498 | 5-year total $ 168,433 | eval pass 42.6% | payouts 146.9
+  N funded + N evals in  N=1: net/yr $ 11,092 | worst full year $    603 | losing years 0.00 | deepest drop $ -2,293 | 5-year total $  54,192 | eval pass 38.9% | payouts 50.1
+  N funded + N evals in  N=2: net/yr $ 20,767 | worst full year $  3,720 | losing years 0.00 | deepest drop $ -2,999 | 5-year total $ 101,462 | eval pass 41.8% | payouts 95.1
+  N funded + N evals in  N=3: net/yr $ 31,399 | worst full year $  7,342 | losing years 0.00 | deepest drop $ -4,234 | 5-year total $ 153,408 | eval pass 45.0% | payouts 141.1
+  N funded + N evals in  N=4: net/yr $ 42,418 | worst full year $  9,202 | losing years 0.00 | deepest drop $ -5,557 | 5-year total $ 207,251 | eval pass 45.3% | payouts 186.8
+  N funded + N evals in  N=5: net/yr $ 51,566 | worst full year $ 13,010 | losing years 0.00 | deepest drop $ -6,791 | 5-year total $ 251,942 | eval pass 46.2% | payouts 230.0
+
+check passed: BASE = round 4's B5 in 2011-18 and 2019-26
+Part 2: 5 funded + 5 evals in reserve; M net a year, W worst full year, L losing full years, D deepest drop, gap longest wait for a payout (months); mean of 12 start dates
+noise bands, 8 placebos (largest move): last 5y: M 11,525, W 9,937 | 2011-21: M 1,891, W 6,103 | 2011-18: M 4,376, W 6,103 | 2019-26: M 5,947, W 9,937
+  BASE                             last 5y: M  51,566 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  30,816 W  -1,906 L 1.00 D -12,949 gap  7.3
+  P thr 0.712                      last 5y: M  54,327 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  30,027 W  -1,906 L 1.00 D -12,773 gap  7.3
+  P thr 0.715                      last 5y: M  55,057 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  31,245 W  -1,906 L 1.00 D -12,773 gap  7.3
+  P thr 0.722                      last 5y: M  51,566 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  31,994 W  -1,906 L 1.00 D -12,949 gap  7.3
+  P thr 0.725                      last 5y: M  52,156 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  32,102 W    -799 L 1.00 D -12,018 gap  7.1
+  P size ref 340                   last 5y: M  57,029 W  13,451 L 0.00 D  -6,350 gap  6.4 || 2011-21: M  32,707 W    -462 L 1.00 D -12,898 gap  8.2
+  P size ref 345                   last 5y: M  56,523 W  13,451 L 0.00 D  -6,350 gap  6.4 || 2011-21: M  31,459 W   3,645 L 0.00 D  -9,584 gap  8.2
+  P size ref 355                   last 5y: M  58,828 W   7,791 L 0.00 D  -6,791 gap  6.8 || 2011-21: M  29,372 W   2,439 L 0.00 D -10,152 gap  7.1
+  P size ref 360                   last 5y: M  63,091 W  22,947 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  32,462 W   4,197 L 0.00 D  -8,422 gap  6.8
+  A f=0.4 (risk by cushion)        last 5y: M  23,031 W   9,644 L 0.00 D  -4,880 gap  7.2 || 2011-21: M  17,221 W   3,217 L 0.00 D  -6,350 gap  9.5
+  A f=0.6 (risk by cushion)        last 5y: M  38,497 W   8,995 L 0.00 D  -6,615 gap  6.6 || 2011-21: M  24,155 W   2,781 L 0.00 D  -9,397 gap  6.5
+  B day budget 800 x M             last 5y: M  44,970 W   5,717 L 0.00 D  -7,144 gap  6.8 || 2011-21: M  34,855 W  -1,978 L 1.00 D -14,414 gap  8.4
+  C eval risk x0.5                 last 5y: M  45,804 W  13,600 L 0.00 D  -4,234 gap  7.3 || 2011-21: M  18,049 W  -7,585 L 3.00 D -11,843 gap 16.8
+  C eval risk x0.75                last 5y: M  49,354 W  15,741 L 0.00 D  -6,615 gap  6.6 || 2011-21: M  24,134 W  -8,784 L 1.00 D -11,121 gap  7.7
+  D1 eval 09:35 drive only         last 5y: M  51,034 W  14,621 L 0.00 D  -5,998 gap  6.4 || 2011-21: M  29,252 W  -8,966 L 2.00 D -22,278 gap  7.4
+  D2 eval skips overnight sells    last 5y: M  57,059 W  15,309 L 0.00 D  -8,026 gap  6.4 || 2011-21: M  29,726 W  -2,171 L 1.00 D -14,008 gap  7.5
+  E second pyramid add +0.30       last 5y: M  58,521 W  26,947 L 0.00 D  -5,998 gap  6.4 || 2011-21: M  34,172 W  -8,334 L 1.00 D -20,859 gap 15.6
+  F overnight exit 04:00           last 5y: M  49,665 W  16,654 L 0.00 D  -5,645 gap  5.9 || 2011-21: M  31,746 W   2,366 L 0.00 D -14,240 gap  6.9
+  T 63 sessions                    last 5y: M  45,708 W   8,467 L 0.00 D  -4,586 gap  8.7 || 2011-21: M  23,432 W  -4,218 L 1.00 D  -8,820 gap 15.5
+  T 126 sessions                   last 5y: M  44,430 W   4,734 L 0.00 D  -6,068 gap 10.3 || 2011-21: M  24,994 W  -5,757 L 1.00 D -15,653 gap 13.3
+  R x0.5                           last 5y: M  26,075 W   5,318 L 0.00 D  -4,880 gap  7.4 || 2011-21: M  18,549 W   2,256 L 0.00 D  -7,989 gap  7.8
+  R x0.75                          last 5y: M  44,126 W  10,733 L 0.00 D  -7,585 gap  6.4 || 2011-21: M  26,693 W   7,565 L 0.00 D  -7,497 gap  6.5
+  R x1.25                          last 5y: M  65,212 W  16,048 L 0.00 D  -6,527 gap  7.0 || 2011-21: M  28,382 W   3,502 L 0.00 D  -9,831 gap  9.8
+  R x1.5                           last 5y: M  26,628 W       0 L 0.00 D  -4,880 gap 21.3 || 2011-21: M  10,069 W       0 L 0.00 D  -8,644 gap 45.9
+  V 7 accounts                     last 5y: M  40,304 W   8,708 L 0.00 D  -5,027 gap  6.8 || 2011-21: M  27,988 W    -425 L 1.00 D  -8,892 gap  7.3
+  V 8 accounts                     last 5y: M  44,422 W   9,720 L 0.00 D  -5,645 gap  6.8 || 2011-21: M  29,905 W    -736 L 1.00 D -10,104 gap  7.3
+  S funded skips overnight sells   last 5y: M  51,014 W   5,050 L 0.00 D  -7,144 gap  6.8 || 2011-21: M  36,414 W     758 L 0.00 D  -9,732 gap  7.1
+
+Rule 5Y (addendum): best variant of each family in the last 5 years; it must pass there (round 4's rule, 8-placebo band) and not be worse than the band in 2011-21
+  A        reject: no variant passes the last 5 years (closest on net/yr: A f=0.6 (risk by cushion), M -13,069, W -4,015)
+  B        reject: no variant passes the last 5 years (closest on net/yr: B day budget 800 x M, M -6,596, W -7,293)
+  C        reject: no variant passes the last 5 years (closest on net/yr: C eval risk x0.75, M -2,212, W +2,731)
+  D        reject: no variant passes the last 5 years (closest on net/yr: D2 eval skips overnight sells, M +5,493, W +2,298)
+  E        E second pyramid add +0.30: passes the last 5 years by consistency (+13,936); 2011-21 M +3,357, W -6,428 -> reject (worse in 2011-21)
+  F        reject: no variant passes the last 5 years (closest on net/yr: F overnight exit 04:00, M -1,901, W +3,644)
+  R        R x1.25: passes the last 5 years by money (+13,646); 2011-21 M -2,434, W +5,408 -> reject (worse in 2011-21)
+  S        reject: no variant passes the last 5 years (closest on net/yr: S funded skips overnight sells, M -552, W -7,961)
+  T        reject: no variant passes the last 5 years (closest on net/yr: T 63 sessions, M -5,858, W -4,544)
+  V        reject: no variant passes the last 5 years (closest on net/yr: V 8 accounts, M -7,144, W -3,291)
+Adopted under rule 5Y: none
+
+Original rule (PREREG_R4/R5) for round 5's own changes: variant chosen on 2011-18, must pass 2011-18 and 2019-26 against BASE with round 4's bands
+  S        S funded skips overnight sells: passes 2011-18 by money; 2019-26 fails -> reject

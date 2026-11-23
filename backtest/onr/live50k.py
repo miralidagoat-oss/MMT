@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lucid's maximum (5 funded + 5 evals) with Lucid's move-to-live rule, on real NQ futures.
 
-usage: ONR_EVAL_FEE_50K=80.50 [ONR_ADDON_FEE_50K=10] python3 live50k.py FUT_DATA_DIR OUT_DIR
+usage: ONR_EVAL_FEE_50K=88.20 [ONR_ADDON_FEE_50K=10] python3 live50k.py FUT_DATA_DIR OUT_DIR
   FUT_DATA_DIR: NQFUT.npz (prep_nqfut.py) and SPXUSD.npz.
   ONR_ADDON_FEE_50K: what the 50% consistency add-on adds to each eval's price (default 0: not counted). It is charged
   on the add-on runs' evals only; like the eval price it changes the bookkeeping, not a single trade.

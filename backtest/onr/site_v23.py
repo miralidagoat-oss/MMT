@@ -5,18 +5,19 @@ usage: ONR_MAX_PAY=4 site_v23.py FUT_DATA_DIR CFD_DATA_DIR LIVE_DATA_DIR OUT_DIR
   FUT_DATA_DIR: NQFUT.npz (prep_nqfut.py) and SPXUSD.npz. CFD_DATA_DIR: NSXUSD.npz and SPXUSD.npz (HistData minute bars).
   LIVE_DATA_DIR: MNQ_5m_60d.npz, NSXUSD.npz and the extended SPXUSD.npz (export_charts.py's real-MNQ inputs).
 
-The plan: the 50% consistency add-on on every eval at $90.50 ($80.50 with a discount code + $10 for the add-on), each
-funded account closed right after its 4th payout (so no 5th payout ever moves the trader live), up to 5 funded accounts
-and 10 in all. The comparison: the 40% rule at $80.50 with the same payout plan.
+The plan: the 50% consistency add-on on every eval at the user's price (account.USER_EVAL[50] + USER_ADDON: $88.20 with a
+discount code + $10 for the add-on = $98.20, Nov 23 2026), each funded account closed right after its 4th payout (so no 5th
+payout ever moves the trader live), up to 5 funded accounts and 10 in all. The comparison: the 40% rule at $88.20 with the
+same payout plan.
 Machinery: research round 5's, unchanged (research4.sim_pool / sim_slots, 12 start dates, research5.metrics), with the
 eval price passed per run; the futures runs swap research4._init for futures_site.fut_init as futures_site.py does.
 Writes into OUT_DIR:
   accounts_5y.csv, accounts_5y_years_wide.csv   real NQ futures, last 5 years: structures A, C, B x 1-5 accounts
   accounts_table.csv, accounts_years_wide.csv   Nasdaq-100 CFD, Feb 2011 - Nov 2026: the same structures
-  addon_kpis.csv, addon_years.csv, addon_prices.csv, addon_summary.csv   futures: 40% at $80.50 vs the add-on at $90.50
+  addon_kpis.csv, addon_years.csv, addon_prices.csv, addon_summary.csv   futures: 40% at $88.20 vs the add-on at $98.20
   addon_real.csv, addon_journey.csv             the 60 sessions of real MNQ, both plans (export_charts.py's functions)
   runs_fut.json, runs_cfd.json                  every run's metrics
-Checks before writing: B5 here = live50k.py's B5-addon-stop4 and B5-stop4 (results_live<FEE_TAG>_addon10, mean of the
+Checks before writing: B5 here = live50k.py's B5-addon-stop4 and B5-stop4 (results_live<USER_TAG>_addon10, mean of the
 same 12 start dates); report50k.py's runs of both plans (results_v23_nqfut_5y*) are the plans asked for; the real-MNQ
 counts = mnq_real50k.py's (export_charts.REAL_BY_PLAN).
 """
@@ -45,7 +46,7 @@ for _n, _f in ORIG.items():  # the bookkeeping wrappers pass results through unc
 FUT_INIT = R4._init
 HERE = os.path.dirname(os.path.abspath(__file__))
 OFF = R4.OFFSETS
-FEE40, ADDON_PRICE = 80.50, 10.0
+FEE40, ADDON_PRICE = account.USER_EVAL[50], account.USER_ADDON   # the user's 50K price without the add-on, and the add-on's
 FEE_PLAN = FEE40 + ADDON_PRICE
 ADD, FK4 = dict(cons=0.5), dict(max_pay=4)
 PRICES = (0.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 30.0, 40.0, 50.0)
@@ -68,7 +69,7 @@ def futures_runs(fd):
     jobs = [(n, parts, "5y", o, FEE_PLAN) for n, parts in structures() for o in OFF]
     plan = R5.nq(ek=ADD, fk=FK4)
     jobs += [("PLAN", [plan], "all", o, FEE_PLAN) for o in OFF]
-    jobs += [("PLAN80", [plan], w, o, FEE40) for w in ("5y", "all") for o in OFF]  # the add-on before its own price
+    jobs += [("PLAN0", [plan], w, o, FEE40) for w in ("5y", "all") for o in OFF]  # the add-on before its own price
     cfg = [("BASE40", [R5.nq(fk=FK4)])]
     cfg += [(f"P thr {x}", [R5.nq(dict(thr=x), dict(thr=x, **FK4))]) for x in (0.712, 0.715, 0.722, 0.725)]
     cfg += [(f"P size ref {x}", [R5.nq(fk=dict(adr_ref=x, **FK4))]) for x in (340, 345, 355, 360)]
@@ -88,7 +89,7 @@ def cfd_runs(dd):
 
 def check_live50k(res):
     """B5 here must be live50k.py's stop4 rows (sim_pool with max_pay=4, the same 12 start dates)."""
-    rows = {r["id"]: r for r in csv.DictReader(open(os.path.join(HERE, "results_live_fee8050_addon10", "lucid_5y.csv")))}
+    rows = {r["id"]: r for r in csv.DictReader(open(os.path.join(HERE, f"results_live{account.USER_TAG}_addon10", "lucid_5y.csv")))}
     a, b = rows["B5-addon-stop4"], rows["B5-stop4"]
     assert float(a["eval_price_usd"]) == FEE_PLAN and float(b["eval_price_usd"]) == FEE40, (a["eval_price_usd"], b["eval_price_usd"])
     for rid, name in (("B5-addon-stop4", "PLAN"), ("B5-stop4", "BASE40")):
@@ -146,7 +147,7 @@ def addon_tables(res, out):
     b5, a5 = [res[("BASE40", "5y", o)] for o in OFF], [res[("PLAN", "5y", o)] for o in OFF]
     ball, aall = [res[("BASE40", "all", o)] for o in OFF], [res[("PLAN", "all", o)] for o in OFF]
     k = A50.kpis(cur, add, b5, a5)
-    k.insert(0, ["eval_price", "Eval price (with the add-on: $80.50 + $10)", FEE40, FEE_PLAN, "usd", "setup"])
+    k.insert(0, ["eval_price", f"Eval price (with the add-on: ${FEE40:.2f} + ${ADDON_PRICE:.0f})", FEE40, FEE_PLAN, "usd", "setup"])
     FS.write(out, "addon_kpis.csv", ["metric", "label", "current", "addon", "unit", "source"], k)
     yrows = []
     for window, B, Ad, ys in (("last 5 years", b5, a5, range(2021, 2027)), ("all years", ball, aall, range(2019, 2027))):
@@ -171,7 +172,7 @@ def addon_tables(res, out):
     FS.write(out, "addon_years.csv", ["window", "year", "period", "current_net_usd", "addon_net_usd", "difference_usd",
                                       "current_payouts", "addon_payouts", "current_evals_bought", "addon_evals_bought",
                                       "current_eval_pass_pct", "addon_eval_pass_pct"], yrows)
-    # rule 5Y at add-on prices (futures_site.addon's method): the add-on before its price (PLAN80) minus price x evals,
+    # rule 5Y at add-on prices (futures_site.addon's method): the add-on before its price (PLAN0) minus price x evals,
     # against the 40% plan and the noise band of its 8 placebo runs
     per = {"last 5y": "5y", "2011-21": "all"}
 
@@ -186,15 +187,15 @@ def addon_tables(res, out):
     band = {lab: tuple(max(abs(mean(n, lab)[i] - base[lab][i]) for n in PLAC) for i in (0, 1)) for lab in per}
 
     def score(p):
-        A = {lab: mean("PLAN80", lab, p) for lab in per}
+        A = {lab: mean("PLAN0", lab, p) for lab in per}
         dM5, dW5 = A["last 5y"][0] - base["last 5y"][0], A["last 5y"][1] - base["last 5y"][1]
         bM, bW = band["last 5y"]
         route = "consistency" if (dW5 > bW and dM5 >= -bM) else ("money" if (dM5 > bM and dW5 >= -bW) else "")
         dMo, dWo = A["2011-21"][0] - base["2011-21"][0], A["2011-21"][1] - base["2011-21"][1]
         ok_old = dMo >= -band["2011-21"][0] and dWo >= -band["2011-21"][1]
         return A, dM5, dW5, dMo, dWo, route, ok_old
-    at10 = {lab: mean("PLAN", lab) for lab in per}  # the add-on's own run at $90.50 = PLAN80 - $10 an eval (checked)
-    assert all(abs(at10[lab][i] - mean("PLAN80", lab, ADDON_PRICE)[i]) < 0.01 for lab in per for i in (0, 1)), at10
+    at10 = {lab: mean("PLAN", lab) for lab in per}  # the add-on's own run at FEE_PLAN = PLAN0 - ADDON_PRICE an eval (checked)
+    assert all(abs(at10[lab][i] - mean("PLAN0", lab, ADDON_PRICE)[i]) < 0.01 for lab in per for i in (0, 1)), at10
     prows = []
     for p in PRICES:
         A, dM5, dW5, dMo, dWo, route, ok_old = score(p)
@@ -237,7 +238,7 @@ def addon_tables(res, out):
 
 
 def real_tables(dd, out):
-    """addon50k.real on the plan: the 60 real-MNQ sessions under the 40% rule at $80.50 and the add-on at $90.50, both
+    """addon50k.real on the plan: the 60 real-MNQ sessions under the 40% rule at FEE40 and the add-on at FEE_PLAN, both
     closed after the 4th payout. export_charts reads ONR_MAX_PAY at import, so its F_KW is the plan's."""
     assert X.MAXPAY == 4, "run with ONR_MAX_PAY=4"
     mnq = load_npz(os.path.join(dd, "MNQ_5m_60d.npz"))
@@ -304,7 +305,7 @@ def real_tables(dd, out):
 
 def fut_tables(out, fd):
     """futures_site.fut_tables on the plan's report50k.py runs: real futures vs the CFD from Sep 3 2019, the 40% rule at
-    $80.50 and the add-on at $90.50, both closed after the 4th payout (results_v23_*). fut_check.csv and fut_data.csv
+    FEE40 and the add-on at FEE_PLAN, both closed after the 4th payout (results_v23_*). fut_check.csv and fut_data.csv
     describe the data, not a plan, and are made by futures_site.fut_tables' own code."""
     R = {"fut_current": "results_v23_nqfut", "fut_addon": "results_v23_nqfut_addon", "cfd_current": "results_v23_cfd19",
          "cfd_addon": "results_v23_cfd19_addon"}

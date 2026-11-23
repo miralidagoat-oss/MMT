@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """The indicator's default plan (ONR Book v2.3, 50% add-on edition), trade by trade: one full simulated history.
 
-usage: ONR_EVAL_FEE_50K=80.50 python3 export_v23.py FUT_DATA_DIR OUT_DIR
+usage: ONR_EVAL_FEE_50K=88.20 python3 export_v23.py FUT_DATA_DIR OUT_DIR
   FUT_DATA_DIR: NQFUT.npz (prep_nqfut.py) and SPXUSD.npz.
 
 The plan: Lucid Flex 50K, evals with the 50% consistency add-on, 5 funded + 5 evals (Lucid's maximum: 10 accounts,
 at most 5 funded), one new eval a session, each funded account closed right after its 4th payout (so no 5th payout
 moves the trader live), maximum-allowed payouts, $1.34 commission per MNQ round turn, 90% payout split, evals at
-the 50K price of account.RULES ($80.50 with ONR_EVAL_FEE_50K=80.50). Real NQ futures 5-minute bars (prep_nqfut.py:
+the 50K price of account.RULES ($88.20 with ONR_EVAL_FEE_50K=88.20). Real NQ futures 5-minute bars (prep_nqfut.py:
 to Aug 9 2024, then the Nasdaq-100 CFD and real MNQ to Nov 17 2026). One path: the first start date of the last-5-years
 window, Nov 15 2021 (the website's figures are the mean of 12 start dates; live50k.py).
 

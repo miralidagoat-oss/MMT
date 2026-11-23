@@ -29,11 +29,18 @@ RULES = {25: dict(target=1250.0, mll=1000.0, qday=100.0, paycap=1000.0, evalmax=
          50: dict(target=3000.0, mll=2000.0, qday=150.0, paycap=2000.0, evalmax=40, fundmax=20, price=115.0),
          100: dict(target=6000.0, mll=3000.0, qday=200.0, paycap=2500.0, evalmax=60, fundmax=30, price=215.0),
          150: dict(target=9000.0, mll=4500.0, qday=250.0, paycap=3000.0, evalmax=100, fundmax=40, price=323.0)}
-# The 50K eval price: $115 is Lucid's list price. ONR_EVAL_FEE_50K sets another one, e.g. 80.50 with a discount code.
-# Only the bookkeeping uses it (net = 90% of payouts - fee x evals bought); no trading decision does, so a run at another
-# price takes exactly the same trades. Results at another price go to folders tagged FEE_TAG (e.g. "_fee8050").
+# The 50K eval price: $115 was Lucid's list price when the research ran. ONR_EVAL_FEE_50K sets another one, e.g. 88.20
+# with a discount code. Only the bookkeeping uses it (net = 90% of payouts - fee x evals bought); no trading decision does,
+# so a run at another price takes exactly the same trades. Results at another price go to folders tagged FEE_TAG
+# (e.g. "_fee8820").
 RULES[50]["price"] = float(os.environ.get("ONR_EVAL_FEE_50K", RULES[50]["price"]))
 FEE_TAG = "" if RULES[50]["price"] == 115.0 else "_fee" + f"{RULES[50]['price']:.2f}".replace(".", "")
+# The user's own prices (Nov 23 2026, with Lucid's 30% discount code): a Flex eval costs $50.30 at 25K and $88.20 at 50K,
+# and the 50% consistency add-on $10 more at either size. 100K and 150K are not confirmed: 30% off the list prices
+# above is assumed, with the same $10 add-on. Every script that prices the user's plan reads these.
+USER_EVAL = {25: 50.30, 50: 88.20, 100: 150.50, 150: 226.10}
+USER_ADDON = 10.0
+USER_TAG = "_fee" + f"{USER_EVAL[50]:.2f}".replace(".", "")  # the folders of runs at the user's 50K price
 
 
 def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0, size=25, k=1.0, R=None, dll=None):

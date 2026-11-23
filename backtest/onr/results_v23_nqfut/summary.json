@@ -5,7 +5,7 @@
  ],
  "size": "Lucid Flex 50K",
  "commission": 1.34,
- "eval_price": 80.5,
+ "eval_price": 88.2,
  "payout_policy": "maximum allowed (50% of profit, cap $2,000)",
  "max_payouts_per_account": 4,
  "nq_file": "NQFUT.npz",
@@ -33,7 +33,7 @@
   },
   "sessions_to_fail_median": 7.0,
   "evals_per_funded_account": 2.43,
-  "eval_cost_per_funded_account": 196.0
+  "eval_cost_per_funded_account": 215.0
  },
  "funded": {
   "accounts": 684,
@@ -66,35 +66,35 @@
  },
  "pool": {
   "paths": 10,
-  "net_per_year_median": 55334.0,
+  "net_per_year_median": 54541.0,
   "net_per_year_range": [
-   54635.0,
-   55699.0
+   53826.0,
+   54906.0
   ],
   "payouts_per_year": 46.6,
   "evals_per_year": 103.6,
   "pct_months_net_positive": 57.3,
   "pct_months_with_a_payout": 61.0,
   "monthly_net_percentiles": {
-   "10": -1288.0,
-   "25": -966.0,
-   "50": 3370.0,
-   "75": 8678.0,
-   "90": 13751.0
+   "10": -1411.0,
+   "25": -1058.0,
+   "50": 3306.0,
+   "75": 8647.0,
+   "90": 13743.0
   },
   "pct_full_years_positive": 100.0,
   "longest_gap_months": {
    "median": 6.8,
    "max": 6.8
   },
-  "worst_12_months": 23173.0,
-  "first_path_max_drawdown": 7245.0,
-  "first_path_total": 396073.0
+  "worst_12_months": 22242.0,
+  "first_path_max_drawdown": 7938.0,
+  "first_path_total": 390313.0
  },
  "stress_2x_costs_1_tick": {
-  "net_per_year_median": 49395.0,
+  "net_per_year_median": 48585.0,
   "longest_gap_max": 6.8,
-  "worst_12_months": 14328.0
+  "worst_12_months": 13366.0
  },
  "alarm_bands": [
   [

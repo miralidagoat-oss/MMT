@@ -1,0 +1,25 @@
+check passed: the current rules, the 8 placebos and N3 (= round 3's D1) equal round 5's runs exactly
+noise bands (round 5's, recomputed): last 5y: M 11,525, W 9,937 | 2011-21: M 1,891, W 6,103
+5 funded + 5 evals, mean of 12 start dates; M net a year, W worst full year, L losing full years, D deepest drop
+  BASE                                                       last 5y: M  51,566 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  30,816 W  -1,906 L 1.00 D -12,949 gap  7.3 || 2011-18: M  23,889 W  -1,906 L 1.00 D -12,949 gap  7.3 || 2019-26: M  49,887 W  13,010 L 0.00 D  -6,791 gap  6.4
+  P thr 0.712                                                last 5y: M  54,327 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  30,027 W  -1,906 L 1.00 D -12,773 gap  7.3 || 2011-18: M  24,415 W  -1,906 L 1.00 D -12,773 gap  7.3 || 2019-26: M  50,017 W  13,010 L 0.00 D  -6,791 gap  6.4
+  P thr 0.715                                                last 5y: M  55,057 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  31,245 W  -1,906 L 1.00 D -12,773 gap  7.3 || 2011-18: M  24,477 W  -1,906 L 1.00 D -12,773 gap  7.3 || 2019-26: M  52,055 W  13,010 L 0.00 D  -6,791 gap  6.4
+  P thr 0.722                                                last 5y: M  51,566 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  31,994 W  -1,906 L 1.00 D -12,949 gap  7.3 || 2011-18: M  24,273 W  -1,906 L 1.00 D -12,949 gap  7.3 || 2019-26: M  51,495 W  13,010 L 0.00 D  -6,791 gap  6.4
+  P thr 0.725                                                last 5y: M  52,156 W  13,010 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  32,102 W    -799 L 1.00 D -12,018 gap  7.1 || 2011-18: M  24,407 W    -799 L 1.00 D -12,018 gap  7.1 || 2019-26: M  51,876 W  13,010 L 0.00 D  -6,791 gap  6.4
+  P size ref 340                                             last 5y: M  57,029 W  13,451 L 0.00 D  -6,350 gap  6.4 || 2011-21: M  32,707 W    -462 L 1.00 D -12,898 gap  8.2 || 2011-18: M  28,058 W    -462 L 1.00 D -12,898 gap  8.2 || 2019-26: M  51,709 W  13,451 L 0.00 D  -6,350 gap  6.4
+  P size ref 345                                             last 5y: M  56,523 W  13,451 L 0.00 D  -6,350 gap  6.4 || 2011-21: M  31,459 W   3,645 L 0.00 D  -9,584 gap  8.2 || 2011-18: M  28,266 W   3,645 L 0.00 D  -9,584 gap  8.2 || 2019-26: M  49,575 W  13,451 L 0.00 D  -6,350 gap  6.4
+  P size ref 355                                             last 5y: M  58,828 W   7,791 L 0.00 D  -6,791 gap  6.8 || 2011-21: M  29,372 W   2,439 L 0.00 D -10,152 gap  7.1 || 2011-18: M  22,822 W   2,439 L 0.00 D -10,152 gap  7.1 || 2019-26: M  53,490 W   7,791 L 0.00 D  -6,791 gap  6.8
+  P size ref 360                                             last 5y: M  63,091 W  22,947 L 0.00 D  -6,791 gap  6.4 || 2011-21: M  32,462 W   4,197 L 0.00 D  -8,422 gap  6.8 || 2011-18: M  27,360 W   4,197 L 0.00 D  -8,422 gap  6.8 || 2019-26: M  55,834 W  22,947 L 0.00 D  -6,791 gap  6.4
+  N1 no overnight trade                                      last 5y: M  48,338 W  11,908 L 0.00 D  -4,763 gap  6.4 || 2011-21: M  30,197 W  -4,576 L 1.00 D -18,335 gap  8.0 || 2011-18: M  23,467 W  -4,576 L 1.00 D -18,335 gap  8.0 || 2019-26: M  48,649 W  11,908 L 0.00 D  -6,174 gap  6.4
+  N2 funded without the overnight trade                      last 5y: M  52,759 W   8,109 L 0.00 D  -5,468 gap  6.8 || 2011-21: M  29,575 W     449 L 0.00 D -11,546 gap  8.4 || 2011-18: M  24,014 W     449 L 0.00 D -11,546 gap  8.4 || 2019-26: M  50,840 W   8,109 L 0.00 D  -5,468 gap  6.8
+  N3 eval without the overnight trade                        last 5y: M  51,034 W  14,621 L 0.00 D  -5,998 gap  6.4 || 2011-21: M  29,252 W  -8,966 L 2.00 D -22,278 gap  7.4 || 2011-18: M  19,933 W  -8,966 L 2.00 D -22,278 gap  7.4 || 2019-26: M  51,396 W  14,621 L 0.00 D  -5,998 gap  6.4
+  U1 no overnight, eval takes the 10:30 IB on no-drive days  last 5y: M  54,451 W  21,797 L 0.00 D  -3,690 gap  2.9 || 2011-21: M  28,777 W  -3,926 L 2.00 D -26,470 gap  8.8 || 2011-18: M  25,219 W  -3,926 L 2.00 D -26,470 gap  8.8 || 2019-26: M  49,298 W  21,797 L 0.00 D -13,577 gap  3.3
+
+Rule 5Y: best variant of each family over the last 5 years; it must pass there and not be worse than the band in 2011-21
+  N: reject, no variant passes the last 5 years (N1 no overnight trade: M -3,228, W -1,102; N2 funded without the overnight trade: M +1,193, W -4,901; N3 eval without the overnight trade: M -532, W +1,611)
+  U: reject, no variant passes the last 5 years (U1 no overnight, eval takes the 10:30 IB on no-drive days: M +2,885, W +8,787)
+Adopted under rule 5Y: none
+
+Original rule (variant chosen on 2011-18; must pass 2011-18 and 2019-26 with round 4's bands)
+  N: reject, no variant passes 2011-18
+  U: reject, no variant passes 2011-18

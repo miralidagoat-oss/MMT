@@ -3,7 +3,8 @@
 
 usage: startcash.py FUT_DATA_DIR CFD_DATA_DIR OUT_DIR
 The Topstep 50K plan (topstep_sim.py's rules: 5 XFAs + 5 Combines, one new Combine a session, Standard payouts) and the
-Lucid 50K plan (the 50% add-on at $90.50 an eval, each funded account closed after its 4th payout), started on many dates:
+Lucid 50K plan (the 50% add-on at the user's price: $98.20 an eval, account.USER_EVAL[50] + USER_ADDON; each funded
+account closed after its 4th payout), started on many dates:
 every 5 sessions on futures prices from Aug 30 2019 and every 10 sessions on the Nasdaq-100 CFD from Feb 15 2011, each run
 for 2 years (starts at least 2 years before the data ends). For each start: the most cash out of pocket (the lowest the
 running total of payouts to you minus every fee went), when it was reached, and when the running total was back above $0.
@@ -20,10 +21,13 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import research4 as R4  # noqa: E402
 import topstep_sim as T  # noqa: E402
+from account import USER_ADDON, USER_EVAL  # noqa: E402
+
+LUCID_FEE = USER_EVAL[50] + USER_ADDON  # the user's 50K eval with the add-on
 
 YEARS2 = 504  # sessions in 2 years
 PLANS = {"topstep-standard": "Topstep 50K, $49 a month + $149 activation", "topstep-noact": "Topstep 50K, $95 a month, no activation",
-         "lucid-addon": "Lucid 50K, add-on ($90.50 evals), closed after the 4th payout"}
+         "lucid-addon": f"Lucid 50K, add-on (${LUCID_FEE:.2f} evals), closed after the 4th payout"}
 
 
 def _job(k0):
@@ -33,7 +37,7 @@ def _job(k0):
     ev_t = R4.sim_pool(S, 5, 10, k0, k1, T.ek(50), T.fk(50, "standard"))
     ev_l = R4.sim_pool(S, 5, 10, k0, k1, dict(R4.E_KW, cons=0.5), dict(R4.F_KW, max_pay=4))
     for plan, ev, kw in (("topstep-standard", ev_t, dict(fee_path="standard")), ("topstep-noact", ev_t, dict(fee_path="noact")),
-                         ("lucid-addon", ev_l, dict(fee_path="standard", fee_per_buy=90.5))):
+                         ("lucid-addon", ev_l, dict(fee_path="standard", fee_per_buy=LUCID_FEE))):
         cash = T.cash_flows(S, k0, ev, kw["fee_path"], 50, fee_per_buy=kw.get("fee_per_buy"))[: k1 - k0]
         run = np.cumsum(cash)
         i_low = int(np.argmin(run))

@@ -1,0 +1,15 @@
+metric,label,value,unit
+eval_price,Eval price used,88.2,usd
+pass_default_5y,"Eval pass rate, 40% rule, last 5 years",41.3,pct
+pass_addon_5y,"Eval pass rate, 50% add-on, last 5 years",44.2,pct
+pass_default_2011_20,"Eval pass rate, 40% rule, 2011-20",34.8,pct
+pass_addon_2011_20,"Eval pass rate, 50% add-on, 2011-20",34.4,pct
+net_current_5y,"Net a year, current rules, last 5 years",51566,usd
+net_addon_5y,"Net a year with the add-on (before its price), last 5 years",63486,usd
+net_gain_5y,"Net a year gained (before its price), last 5 years",11920,usd
+worst_current_5y,"Worst full year, current rules, last 5 years",13010,usd
+worst_addon_5y,"Worst full year with the add-on (before its price), last 5 years",24179,usd
+net_gain_2011_21,"Net a year gained (before its price), 2011-21",4262,usd
+worst_gain_2011_21,"Worst full year gained (before its price), 2011-21",4189,usd
+max_price_rule5y,Highest add-on price per eval at which rule 5Y still passes,16.21,usd
+evals_year_addon_5y,"Evals bought a year with the add-on, last 5 years",94.1,count

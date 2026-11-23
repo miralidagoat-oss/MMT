@@ -5,7 +5,7 @@ Primary window: the last 4 years (Nov 14 2022 -> Nov 13 2026). 2011-2026 and rea
 usage: report50k.py DATA_DIR OUT_DIR [WINDOW_START]   (writes CSV tables + summary.json into OUT_DIR and prints the
        summary; WINDOW_START defaults to 2022-11-14, e.g. 2021-11-15 for the last 5 years)
 Environment: ONR_EVAL_FEE_50K sets the eval price (account.py); ONR_EVAL_CONS=0.5 runs every eval with Lucid's paid
-50% consistency add-on (results_50k_5y_addon_fee8050). ONR_NQ_FILE / ONR_NQ_TF read another NQ file from DATA_DIR
+50% consistency add-on (results_50k_5y_addon_fee8820). ONR_NQ_FILE / ONR_NQ_TF read another NQ file from DATA_DIR
 and its bar size in minutes (default NSXUSD.npz, 1), e.g. NQFUT.npz, 5 for real NQ futures (prep_nqfut.py).
 ONR_MAX_PAY=4 closes each funded account right after its 4th payout (indicator v2.3's default plan).
 """

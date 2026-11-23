@@ -1,0 +1,139 @@
+{
+ "window": [
+  "2019-09-03",
+  "2026-11-13"
+ ],
+ "size": "Lucid Flex 50K",
+ "commission": 1.34,
+ "eval_price": 88.2,
+ "payout_policy": "maximum allowed (50% of profit, cap $2,000)",
+ "book": {
+  "trades": 2497,
+  "net_per_year": 20727.0,
+  "days_traded": 1739,
+  "pct_days_positive": 44.8,
+  "pct_days_qualifying": 38.9,
+  "avg_day": 85.8,
+  "median_day": -83.0,
+  "best_day": 6845.0,
+  "worst_day": -2308.0,
+  "daily_sharpe": 1.89
+ },
+ "eval": {
+  "started": 1861,
+  "pass_pct": 40.4,
+  "sessions_to_pass": {
+   "p25": 6.0,
+   "median": 10.0,
+   "p75": 15.0,
+   "p90": 21.0
+  },
+  "sessions_to_fail_median": 7.0,
+  "evals_per_funded_account": 2.47,
+  "eval_cost_per_funded_account": 218.0
+ },
+ "funded": {
+  "accounts": 679,
+  "pct_with_a_payout": 61.4,
+  "avg_payouts": 1.39,
+  "avg_withdrawn_net": 2002.0,
+  "days_to_first_payout": {
+   "median": 15.0,
+   "p75": 20.0,
+   "p90": 23.400000000000034
+  },
+  "outcome_pct": {
+   "blown": 0.3,
+   "abandon": 90.3,
+   "done": 9.4,
+   "open": 0.0
+  },
+  "median_life_days": 21.0
+ },
+ "first_payout": {
+  "starts": 1734,
+  "pct_paid_by_end": 100.0,
+  "pct_within_30_days": 15.6,
+  "pct_within_60_days": 51.4,
+  "pct_within_90_days": 67.3,
+  "pct_within_180_days": 91.0,
+  "pct_within_365_days": 100.0,
+  "median_days": 59.0,
+  "avg_evals_before": 4.41
+ },
+ "pool": {
+  "paths": 10,
+  "net_per_year_median": 51207.0,
+  "net_per_year_range": [
+   50643.0,
+   51464.0
+  ],
+  "payouts_per_year": 45.8,
+  "evals_per_year": 95.2,
+  "pct_months_net_positive": 57.6,
+  "pct_months_with_a_payout": 64.9,
+  "monthly_net_percentiles": {
+   "10": -1323.0,
+   "25": -706.0,
+   "50": 2630.0,
+   "75": 7703.0,
+   "90": 13959.0
+  },
+  "pct_full_years_positive": 100.0,
+  "longest_gap_months": {
+   "median": 6.4,
+   "max": 6.4
+  },
+  "worst_12_months": 494.0,
+  "first_path_max_drawdown": 6212.0,
+  "first_path_total": 364382.0
+ },
+ "stress_2x_costs_1_tick": {
+  "net_per_year_median": 51754.0,
+  "longest_gap_max": 6.7,
+  "worst_12_months": -338.0
+ },
+ "alarm_bands": [
+  [
+   20,
+   1508.0,
+   -3085.0,
+   -5071.0
+  ],
+  [
+   40,
+   3125.0,
+   -3630.0,
+   -6220.0
+  ],
+  [
+   60,
+   4700.0,
+   -3585.0,
+   -6957.0
+  ],
+  [
+   120,
+   9455.0,
+   -2417.0,
+   -7267.0
+  ],
+  [
+   250,
+   19683.0,
+   2381.0,
+   -4352.0
+  ]
+ ],
+ "real_mnq": {
+  "window": [
+   "2026-09-09",
+   "2026-11-17"
+  ],
+  "evals_started": 48,
+  "evals_passed": 32,
+  "book_trades": 73,
+  "book_net": 19211.0,
+  "book_win_pct": 49.3
+ }
+}

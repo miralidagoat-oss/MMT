@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The backtest with Lucid's paid 50% consistency add-on, side by side with the current rules (dashboard datasets).
 
-usage (ONR_EVAL_FEE_50K=80.50): addon50k.py DATA_LIVE_DIR OUT_DIR
+usage (ONR_EVAL_FEE_50K=88.20): addon50k.py DATA_LIVE_DIR OUT_DIR
 Reads, never recomputes, the runs it compares (all at the same eval price, before the add-on's own price):
   results_50k_5y<FEE_TAG>/summary.json         current rules, report50k.py, last 5 years
   results_50k_5y_addon<FEE_TAG>/summary.json   the same with ONR_EVAL_CONS=0.5

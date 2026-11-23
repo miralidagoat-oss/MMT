@@ -5,13 +5,13 @@ funded_paid,Funded accounts that reach a payout,56.1,58.9,61.4,63.9,pct
 funded_avg_net,"Paid to you per funded account, average",1556.0,1630.0,1836.0,1908.0,usd
 slot_first_median,"One account slot: first payout, median",64.0,55.0,59.0,56.0,days
 slot_within_90,One account slot: first payout within 90 days,63.6,71.6,67.3,71.3,pct
-pool_net_year,5 funded + 5 evals: net a year (median of 10 start dates),55334.0,56622.0,50727.0,55512.0,usd
-pool_worst_12m,5 funded + 5 evals: worst 12 months,23173.0,29221.0,1287.0,6996.0,usd
+pool_net_year,5 funded + 5 evals: net a year (median of 10 start dates),54541.0,55812.0,49952.0,54700.0,usd
+pool_worst_12m,5 funded + 5 evals: worst 12 months,22242.0,28081.0,494.0,6219.0,usd
 pool_gap,5 funded + 5 evals: longest wait for a payout,6.8,8.4,6.4,6.1,months
 pool_months_paid,5 funded + 5 evals: months with a payout,61.0,63.4,63.7,68.3,pct
 pool_years_positive,5 funded + 5 evals: full years positive (2020-2025),100.0,100.0,100.0,100.0,pct
-pool_total,5 funded + 5 evals: total over the period (first start date),396073.0,407164.0,361029.0,394219.0,usd
-pool_max_dd,5 funded + 5 evals: deepest drop (first start date),-7245.0,-9231.0,-5620.0,-5340.0,usd
-stress_net_year,2x commission + 1 tick slippage: net a year,49395.0,50372.0,49580.0,51650.0,usd
+pool_total,5 funded + 5 evals: total over the period (first start date),390313.0,401320.0,355416.0,388321.0,usd
+pool_max_dd,5 funded + 5 evals: deepest drop (first start date),-7938.0,-10016.0,-6212.0,-5794.0,usd
+stress_net_year,2x commission + 1 tick slippage: net a year,48585.0,49551.0,48802.0,50832.0,usd
 book_net_year,One funded account trading every day: net a year,20932.0,20932.0,20727.0,20727.0,usd
 book_worst_day,One funded account trading every day: worst day,-1276.0,-1276.0,-2308.0,-2308.0,usd

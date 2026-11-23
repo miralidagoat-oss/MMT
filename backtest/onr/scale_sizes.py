@@ -7,12 +7,14 @@ size), one new eval a day, each funded account closed right after its 4th payout
 limit scaled by the size's max loss / $1,000 (account.RULES: Lucid's targets, max losses, qualifying days, payout caps
 and position limits, re-read on Lucid's help centre on Nov 20 2026). Machinery: site_v23.py's (research round 5's
 pool, 12 start dates, eval price passed per run).
-Prices (Lucid's list prices in account.RULES, $65 / $115 / $215 / $323): the user's discount code takes 30% off the 50K
-eval ($115 -> $80.50); the same 30% is assumed at every size. The 50% consistency add-on costs the user $10 at 50K
-(12.4% of $80.50); the same share is assumed at the other sizes. Prices are only bookkeeping: no trade depends on one.
+Prices (account.USER_EVAL / USER_ADDON, the user's own with Lucid's 30% discount code, Nov 23 2026): an eval costs $50.30
+at 25K and $88.20 at 50K, and the 50% consistency add-on $10 more at either size. 100K and 150K are not confirmed: 30% off
+the earlier list prices ($215 / $323: $150.50 / $226.10) with the same $10 add-on is assumed. Prices are only
+bookkeeping: no trade depends on one.
 Runs: real NQ futures over the last 5 years (from Nov 15 2021) and from Aug 30 2019, and the Nasdaq-100 CFD from Feb
 2011 (every year), each with the add-on and with the 40% rule. Runs already in OUT_DIR/runs.json are reused when they
-were made on the same price files (OUT_DIR/runs_data.json keeps each data folder's sha256); any other run is made again.
+were made on the same price files and at the same eval prices (OUT_DIR/runs_data.json keeps each data folder's sha256 and
+the prices); any other run is made again.
 Writes sizes.csv (one row per window, size and rule), sizes_years.csv (net by calendar year, median / lowest / highest of
 the 12 start dates) and runs.json; window ids, configs and year labels follow topstep_sim.py's tables.
 """
@@ -28,12 +30,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import site_v23 as V  # noqa: E402  (futures loader swap; account functions without export_charts' wrappers)
 import research4 as R4  # noqa: E402
 import research5 as R5  # noqa: E402
-from account import RULES  # noqa: E402
+from account import USER_ADDON, USER_EVAL, USER_TAG  # noqa: E402
 
 SIZES = (25, 50, 100, 150)
-DISCOUNT = 80.50 / 115.0  # the user's 50K price over Lucid's list price
-PRICE = {s: (80.50 if s == 50 else round(RULES[s]["price"] * DISCOUNT, 2)) for s in SIZES}
-ADDON = {s: (10.0 if s == 50 else round(10.0 / 80.50 * PRICE[s], 2)) for s in SIZES}
+PRICE = {s: USER_EVAL[s] for s in SIZES}  # the user's eval prices (25K and 50K confirmed; 100K and 150K assumed)
+ADDON = {s: USER_ADDON for s in SIZES}    # the add-on: $10 at 25K and 50K (confirmed), assumed the same above
 OFF = R4.OFFSETS
 RULE = {"addon": 0.5, "40": 0.4}
 
@@ -80,12 +81,14 @@ def data_id(d, names):
 
 def main(fd, dd, out):
     os.makedirs(out, exist_ok=True)
-    print("eval prices:", PRICE, "add-on (assumed except at 50K):", ADDON, flush=True)
+    print("eval prices:", PRICE, "add-on:", ADDON, flush=True)
     rp, dp = os.path.join(out, "runs.json"), os.path.join(out, "runs_data.json")  # runs made on the same data are reused
-    ids = {"F": data_id(fd, ("NQFUT.npz", "SPXUSD.npz")), "C": data_id(dd, ("NSXUSD.npz", "SPXUSD.npz"))}
+    ids = {"F": data_id(fd, ("NQFUT.npz", "SPXUSD.npz")), "C": data_id(dd, ("NSXUSD.npz", "SPXUSD.npz")),
+           "prices": json.dumps({"eval": PRICE, "addon": ADDON}, sort_keys=True)}
     seen = json.load(open(dp)) if os.path.exists(dp) else {}
     res = {tuple(k.rsplit("|", 2)[:2]) + (int(k.rsplit("|", 1)[1]),): v for k, v in json.load(open(rp)).items()} if os.path.exists(rp) else {}
-    res = {k: v for k, v in res.items() if seen.get(k[0][0]) == ids[k[0][0]]}  # a run on other price files is made again
+    # a run on other price files, or at other eval prices (its net includes the fees), is made again
+    res = {k: v for k, v in res.items() if seen.get(k[0][0]) == ids[k[0][0]] and seen.get("prices") == ids["prices"]}
     for prefix, data, windows in (("F", fd, ("5y", "all")), ("C", dd, ("all",))):
         todo = [j for j in jobs(prefix, windows, ("addon", "40")) if (j[0], j[2], j[3]) not in res]
         if todo:
@@ -95,10 +98,12 @@ def main(fd, dd, out):
     R4._init = V.FUT_INIT
     json.dump({f"{n}|{w}|{o}": v for (n, w, o), v in res.items()}, open(rp, "w"))
     json.dump(ids, open(dp, "w"), indent=1)
-    # 50K with the add-on is the website's plan: live50k.py / site_v23.py's $59,272 a year over the last 5 years
+    # 50K with the add-on is the website's plan: live50k.py's B5-addon-stop4 at the user's price (results_live<USER_TAG>_addon10)
     m50 = float(np.mean([res[("F50-addon", "5y", o)]["periods"]["last 5y"]["M"] for o in OFF]))
-    assert abs(m50 - 59272) < 1.0, m50
-    print(f"check passed: 50K with the add-on = the website's plan (${m50:,.0f} a year)", flush=True)
+    lv = {r["id"]: r for r in csv.DictReader(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                               f"results_live{USER_TAG}_addon10", "lucid_5y.csv")))}["B5-addon-stop4"]
+    assert float(lv["eval_price_usd"]) == PRICE[50] + ADDON[50] and abs(m50 - float(lv["net_per_year_usd"])) < 1.0, (m50, lv)
+    print(f"check passed: 50K with the add-on = the website's plan (live50k.py, ${m50:,.0f} a year)", flush=True)
     # window ids, configs and year labels as in topstep_sim.py's tables, so the website can set the two side by side
     spec = [("futures, last 5 years", "5y", "F", "5y", "last 5y", [str(y) for y in range(2022, 2026)], "from Nov 15", "to Nov 17"),
             ("futures, from Aug 30 2019", "2019", "F", "all", "2019-26", [str(y) for y in range(2020, 2026)], "from Aug 30", "to Nov 17"),

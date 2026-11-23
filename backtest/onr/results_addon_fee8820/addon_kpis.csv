@@ -1,0 +1,26 @@
+metric,label,current,addon,unit,source
+eval_price,Eval price used (the add-on's own price not included),88.2,88.2,usd,setup
+eval_pass,Eval pass rate (an eval started on every session),41.3,44.2,pct,report
+eval_days_median,"Sessions to pass, median",9.0,8.0,sessions,report
+eval_days_p90,"Sessions to pass, 90th percentile",20.0,17.0,sessions,report
+eval_fail_median,"Sessions to fail, median",7.5,6.0,sessions,report
+evals_per_funded,Evals bought per funded account,2.4,2.3,count,report
+fees_per_funded,Eval fees per funded account,213.0,199.0,usd,report
+funded_paid,Funded accounts that reach a payout,61.8,63.1,pct,report
+funded_avg_payouts,"Payouts per funded account, average",1.4,1.5,count,report
+funded_avg_net,"Paid to you per funded account, average (after Lucid's 10%)",1946.0,2112.0,usd,report
+slot_first_median,"One account slot: days from the first eval to the first payout, median",58.0,54.0,days,report
+slot_within_30,One account slot: first payout within 30 days,17.9,23.0,pct,report
+slot_within_90,One account slot: first payout within 90 days,67.5,71.9,pct,report
+slot_evals_before,"One account slot: evals bought before the first payout, average",4.3,4.1,count,report
+pool_net_year,5 funded + 5 evals: net a year,51566.0,63486.0,usd,pool
+pool_worst_year,5 funded + 5 evals: worst full year (2022-2025),13010.0,24179.0,usd,pool
+pool_worst_12m,5 funded + 5 evals: worst 12 months,494.0,7229.0,usd,pool
+pool_gap,5 funded + 5 evals: longest wait for a payout,6.37,6.14,months,pool
+pool_months_paid,5 funded + 5 evals: months with a payout,66.96,68.49,pct,pool
+pool_deepest_drop,5 funded + 5 evals: deepest drop in cumulative net,-6791.0,-6262.0,usd,pool
+pool_total,"5 funded + 5 evals: total net, 5 years",251942.0,310193.0,usd,pool
+pool_cash_low,5 funded + 5 evals: most cash out of pocket,-3285.0,-2852.0,usd,pool
+pool_payouts,5 funded + 5 evals: payouts in 5 years,230.0,263.8,count,pool
+pool_evals_year,5 funded + 5 evals: evals bought a year,91.9,94.1,count,pool
+pool_pass_pct,5 funded + 5 evals: share of the evals it bought that passed,46.21,44.08,pct,pool

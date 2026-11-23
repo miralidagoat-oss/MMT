@@ -2,8 +2,8 @@
 """Workbook of the indicator's backtest (ONR Book v2.3, 50% add-on edition, default plan) and the add-on check.
 
 usage: python3 export_v23_xlsx.py OUT_XLSX
-Reads results_v23_trades_fee8050/ (export_v23.py: trades, ledger, accounts of one full path), results_live_fee8050/
-(live50k.py: the mean of 12 start dates and by-year medians for each plan) and results_nqfut_5y*_fee8050/summary.json
+Reads results_v23_trades<USER_TAG>/ (export_v23.py: trades, ledger, accounts of one full path), results_live<USER_TAG>/
+(live50k.py: the mean of 12 start dates and by-year medians for each plan) and results_nqfut_5y*<USER_TAG>/summary.json
 (report50k.py: eval pass rates and first-payout timing). Every total in the workbook is a formula over the Trades and
 Ledger sheets; the 12-start figures, which come from other runs, are values with their source next to them.
 """
@@ -19,8 +19,11 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-T = os.path.join(HERE, "results_v23_trades_fee8050")
-LV = os.path.join(HERE, "results_live_fee8050")
+sys.path.insert(0, HERE)
+from account import USER_ADDON, USER_EVAL, USER_TAG  # noqa: E402  (the user's prices; runs at them go to <name><USER_TAG>)
+
+T = os.path.join(HERE, f"results_v23_trades{USER_TAG}")
+LV = os.path.join(HERE, f"results_live{USER_TAG}")
 FONT = "Arial"
 F = Font(name=FONT, size=10)
 FB = Font(name=FONT, size=10, bold=True)
@@ -73,8 +76,9 @@ def main(out):
     trades, ledger, accts = rd(os.path.join(T, "trades.csv")), rd(os.path.join(T, "ledger.csv")), rd(os.path.join(T, "accounts.csv"))
     l5 = {r["id"]: r for r in rd(os.path.join(LV, "lucid_5y.csv"))}
     l5y = rd(os.path.join(LV, "lucid_5y_years.csv"))
-    sa = json.load(open(os.path.join(HERE, "results_nqfut_5y_addon_fee8050", "summary.json")))
-    s4 = json.load(open(os.path.join(HERE, "results_nqfut_5y_fee8050", "summary.json")))
+    sa = json.load(open(os.path.join(HERE, f"results_nqfut_5y_addon{USER_TAG}", "summary.json")))
+    s4 = json.load(open(os.path.join(HERE, f"results_nqfut_5y{USER_TAG}", "summary.json")))
+    assert sa["eval_price"] == s4["eval_price"] == USER_EVAL[50], (sa["eval_price"], s4["eval_price"])
     assert sa.get("eval_consistency") == 0.5 and sa["nq_file"] == s4["nq_file"] == "NQFUT.npz"
     wb = Workbook()
 
@@ -91,7 +95,7 @@ def main(out):
         ("5 funded + 5 evals in reserve (Lucid's maximum: 10 accounts per household, at most 5 funded); one new eval bought a session while below 10 accounts.", F),
         ("Payouts: the maximum allowed (50% of profit, up to $2,000) once 5 days of $150+ and $1,000 of profit; each funded account is closed right after its 4th payout,", F),
         ("because a 5th payout moves you to a live account and Lucid then closes every sim account. A funded account is also stopped below a $400 cushion.", F),
-        ("Costs: $80.50 per eval (your discount-code price; the add-on's own price is NOT included), $1.34 commission per MNQ round turn, Lucid keeps 10% of each payout.", F),
+        (f"Costs: ${USER_EVAL[50]:.2f} per eval (your discount-code price; the add-on's own price is NOT included), $1.34 commission per MNQ round turn, Lucid keeps 10% of each payout.", F),
         ("", F),
         ("The sheets", FB),
         ("Summary: this history's totals (formulas over Trades and Ledger) next to the average over 12 start dates. The yellow cells are inputs you can change.", F),
@@ -125,7 +129,7 @@ def main(out):
     put(sm, "A1", "Summary: the indicator's default plan, 50K, 50% add-on, 5 funded + 5 evals, closed after the 4th payout", FT)
     put(sm, "A3", "Inputs", FB)
     put(sm, "A4", "Eval price ($)")
-    put(sm, "B4", 80.50, USD2, FBLUE, INPUT, "Your discount-code price for a 50K Flex eval (list $115). Used for every eval bought in the Ledger.")
+    put(sm, "B4", USER_EVAL[50], USD2, FBLUE, INPUT, "Your discount-code price for a 50K Flex eval (30% off Lucid's list price, Nov 23 2026). Used for every eval bought in the Ledger.")
     put(sm, "A5", "Your share of each payout")
     put(sm, "B5", 0.90, PCT, FBLUE, INPUT, "Lucid's LucidFlex split: 90% to the trader (help centre, LucidFlex Payouts, Jul 28 2026).")
     put(sm, "A6", "Commission per MNQ round turn ($)")
@@ -187,7 +191,7 @@ def main(out):
         put(sm, f"A{i}", lab)
         for c, rid in cols:
             put(sm, f"{c}{i}", float(l5[rid][key]) / div, fmt, FBLUE)
-        put(sm, f"F{i}", "backtest/onr/results_live_fee8050/lucid_5y.csv (live50k.py)", font=FNOTE)
+        put(sm, f"F{i}", f"backtest/onr/results_live{USER_TAG}/lucid_5y.csv (live50k.py)", font=FNOTE)
 
     # ------------------------------------------------------------------ Ledger
     lg = wb.create_sheet("Ledger")
@@ -252,7 +256,7 @@ def main(out):
     yr["A8"].font = FB
     for c in "DEFGHI":
         put(yr, f"{c}8", f"=SUM({c}2:{c}7)", USD0 if c in "DF" else "0", FB)
-    put(yr, "A10", "Columns K-N: median of 12 start dates by year (backtest/onr/results_live_fee8050/lucid_5y_years.csv, live50k.py). "
+    put(yr, "A10", f"Columns K-N: median of 12 start dates by year (backtest/onr/results_live{USER_TAG}/lucid_5y_years.csv, live50k.py). "
                    "Columns D-J: this history (start Nov 15 2021), formulas over the Ledger.", font=FNOTE)
 
     # ------------------------------------------------------------------ Accounts
@@ -306,7 +310,7 @@ def main(out):
     for col, w in zip("ABCDE", (52, 16, 16, 16, 64)):
         ad.column_dimensions[col].width = w
     put(ad, "A1", "Is the 50% consistency add-on worth it?", FT)
-    put(ad, "A2", "Same plan both ways (5 funded + 5 evals, each account closed after its 4th payout, evals at $80.50), last 5 years on real NQ "
+    put(ad, "A2", f"Same plan both ways (5 funded + 5 evals, each account closed after its 4th payout, evals at ${USER_EVAL[50]:.2f}), last 5 years on real NQ "
                   "futures, average of 12 start dates. The add-on's own price is not included: enter it below.", font=FNOTE)
     header(ad, 4, ["Figure", "50% add-on", "40% rule", "Add-on minus 40%", "Source"])
     comp = [("Net to you a year (before the add-on's price)", float(l5["B5-addon-stop4"]["net_per_year_usd"]), float(l5["B5-stop4"]["net_per_year_usd"]), USD0, "lucid_5y.csv (live50k.py)"),
@@ -315,7 +319,7 @@ def main(out):
             ("Deepest drop in the running total", float(l5["B5-addon-stop4"]["deepest_drop_usd"]), float(l5["B5-stop4"]["deepest_drop_usd"]), USD0, "lucid_5y.csv"),
             ("Months with a payout", float(l5["B5-addon-stop4"]["months_with_payout_pct"]) / 100, float(l5["B5-stop4"]["months_with_payout_pct"]) / 100, PCT, "lucid_5y.csv"),
             ("Evals bought a year", float(l5["B5-addon-stop4"]["evals_per_year"]), float(l5["B5-stop4"]["evals_per_year"]), "0.0", "lucid_5y.csv"),
-            ("Eval pass rate (an eval started on every session)", sa["eval"]["pass_pct"] / 100, s4["eval"]["pass_pct"] / 100, PCT, "results_nqfut_5y*_fee8050/summary.json (report50k.py)"),
+            ("Eval pass rate (an eval started on every session)", sa["eval"]["pass_pct"] / 100, s4["eval"]["pass_pct"] / 100, PCT, f"results_nqfut_5y*{USER_TAG}/summary.json (report50k.py)"),
             ("Sessions to pass, median", float(sa["eval"]["sessions_to_pass"]["median"]), float(s4["eval"]["sessions_to_pass"]["median"]), "0", "summary.json"),
             ("First payout after the first eval, median (days)", float(sa["first_payout"]["median_days"]), float(s4["first_payout"]["median_days"]), "0", "summary.json"),
             ("Net a year if you take 5th payouts and go live instead", float(l5["B5-addon"]["net_per_year_usd"]), float(l5["B5"]["net_per_year_usd"]), USD0, "lucid_5y.csv")]
@@ -327,8 +331,8 @@ def main(out):
         put(ad, f"E{i}", src, font=FNOTE)
     put(ad, "A17", "Your add-on price", FB)
     put(ad, "A18", "Extra cost of the add-on per eval ($)")
-    put(ad, "B18", 0.0, USD2, FBLUE, INPUT, "Enter what the 50% add-on adds to each eval at checkout, after your discount. Lucid's help centre does not "
-                                            "publish it; third-party sites report about $25 at list price.")
+    put(ad, "B18", USER_ADDON, USD2, FBLUE, INPUT, f"What the 50% add-on adds to each eval at checkout, after your discount: ${USER_ADDON:.0f} "
+                                                   "(your price, Nov 23 2026). Change it if your price changes.")
     put(ad, "A19", "Add-on cost a year ($)")
     put(ad, "B19", "=B18*B10", USD0)
     put(ad, "E19", "Extra cost per eval x evals bought a year with the add-on", font=FNOTE)

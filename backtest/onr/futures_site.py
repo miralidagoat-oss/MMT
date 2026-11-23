@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The dashboard's datasets on real NQ futures (prep_nqfut.py's series), in the same formats as the CFD ones.
 
-usage (ONR_EVAL_FEE_50K=80.50): futures_site.py FUT_DATA_DIR OUT_DIR
+usage (ONR_EVAL_FEE_50K=88.20): futures_site.py FUT_DATA_DIR OUT_DIR
   FUT_DATA_DIR: NQFUT.npz (5-minute bars) and SPXUSD.npz.
 Research round 5's machinery runs unchanged, with its NQ sessions replaced by the futures series (research4._init is
 swapped for one that loads NQFUT.npz at 5-minute bars; nothing else changes):

@@ -10,8 +10,9 @@ Accounts (one pool per firm: up to N funded, `total` accounts in all, at most on
 evaluation waits for a free funded slot and becomes a funded account of its own size; research4.sim_pool's order):
   Topstep 50K / 100K / 150K with Standard payouts (topstep_sim.ek / fk), on the No Activation Fee path ($95 / $149 / $229
   a Combine when bought and every 30 days it stays open) or the Standard fee path ($49 / $99 / $199 a month, $149 when an
-  XFA starts). Lucid 50K with the add-on ($90.50 an eval) or the 40% rule ($80.50), Lucid 150K with the 40% rule
-  ($226.10, the user's 30% discount assumed); Lucid funded accounts are closed after their 4th payout.
+  XFA starts). Lucid at the user's prices (account.USER_EVAL / USER_ADDON, Nov 23 2026): 25K or 50K with the add-on
+  ($60.30 / $98.20 an eval) or the 40% rule ($50.30 / $88.20), and 150K with the 40% rule ($226.10, assumed: not
+  confirmed); Lucid funded accounts are closed after their 4th payout.
   The range rule ("RANGE:big:small[:points]"): a new Topstep Combine is 150K only while NQ's 14-day range is at least 151
   points, the range above which a 150K XFA's 10-micro leg cap no longer binds; otherwise 50K.
 Plans: a start setup, then steps taken the first session the spare cash reaches each step's threshold. The thresholds
@@ -23,19 +24,24 @@ the worst of 12 start dates, computed here), rounded up to $1,000.
   car      7 ways to fit a $15,000 car (bought when the spare cash reaches the threshold; scaling may wait for it), and
            your first ladder: 1 XFA + 1 Combine, 2 + 2 at the first payout, 5 + 5 at $11k, Lucid at $22k, both firms to
            150K at $46k, the car at $61k
+  final    the plan ("FINAL"): Topstep 50K 5+5, Lucid 50K with the add-on at Lucid 50K's reserve, Topstep 150K by the
+           range rule at Topstep 150K's reserve, the car at both reserves plus its price (at the Nov 23 2026 prices:
+           $12k, $24k, $51k). Its steps follow the reserves, so a price change moves them.
   budget   the final plan started with only $500 or $1,000 and never more: a Combine is bought only while the spare
            cash covers its price, one more month of every open Combine and, on the Standard fee path, the $149
            activation; a passed Combine on that path starts its XFA once the $149 is there. On the No Activation Fee
            path and on the Standard fee path, from the first session of every month and, for the odds of running out,
            from every 5th session (24 months each). Ways in: Topstep 5+5 at once on either fee path, one Topstep Combine
-           at a time until the first payout, or one Lucid 50K eval at a time (a one-off price) until the first payout.
+           at a time until the first payout, or one Lucid 25K or 50K eval at a time (a one-off price; the 40% rule or
+           the add-on) until the first payout.
            A start "runs out" when nothing is trading and the spare cash pays for neither a new evaluation nor the
            activation of a passed one.
 Start dates: the first session of every month, Sep 2019 - Nov 2023 (real NQ futures) and Mar 2011 - Nov 2023 (Nasdaq-100
 CFD): every run has at least 36 months.
 Checks: the pool code equals research4.sim_pool with topstep_sim.cash_flows (both fee paths) or a flat eval price,
-session by session, for every account type and two reserve sizes; the reserves of Topstep 50K / 150K and Lucid 50K / 150K
-equal the deepest falls of topstep_sim.py's and scale_sizes.py's runs.
+session by session, for every account type and two reserve sizes; the deepest falls of Topstep 50K / 150K and Lucid
+25K / 50K / 150K equal those of topstep_sim.py's and scale_sizes.py's runs (results_topstep/topstep.csv,
+results_scale_sizes/sizes.csv).
 Writes reserves.json, runs.csv (every monthly-start run), round1.csv, round2.csv, car.csv, final_steps.csv, budget.csv,
 budget_monthly_runs.csv and budget_runs.csv (--budget-only rewrites only the last three).
 """
@@ -54,7 +60,7 @@ import account  # noqa: E402
 import engine  # noqa: E402
 import research4 as R4  # noqa: E402
 import topstep_sim as T  # noqa: E402
-from account import EvalAccount, FundedAccount  # noqa: E402
+from account import USER_ADDON, USER_EVAL, EvalAccount, FundedAccount  # noqa: E402
 
 account.funded_on = functools.lru_cache(maxsize=None)(engine.funded_on)
 account.pyramid = functools.lru_cache(maxsize=None)(engine.pyramid)
@@ -66,9 +72,11 @@ CFG = {}
 for _s in (50, 100, 150):
     CFG[f"T{_s}n"] = dict(ek=T.ek(_s), fk=T.fk(_s, "standard"), monthly=T.PRICE["noact"][_s], flat=0.0, act=T.ACTIVATION["noact"])
     CFG[f"T{_s}s"] = dict(ek=T.ek(_s), fk=T.fk(_s, "standard"), monthly=T.PRICE["standard"][_s], flat=0.0, act=T.ACTIVATION["standard"])
-CFG["L50a"] = dict(ek=dict(R4.E_KW, cons=0.5), fk=dict(R4.F_KW, max_pay=4), monthly=0.0, flat=90.5, act=0.0)
-CFG["L50f"] = dict(ek=dict(R4.E_KW), fk=dict(R4.F_KW, max_pay=4), monthly=0.0, flat=80.5, act=0.0)
-CFG["L150f"] = dict(ek=dict(R4.E_KW, size=150), fk=dict(R4.F_KW, size=150, max_pay=4), monthly=0.0, flat=226.10, act=0.0)
+for _s in (25, 50):  # Lucid at the user's prices: the add-on ("a") or the 40% rule ("f")
+    CFG[f"L{_s}a"] = dict(ek=dict(R4.E_KW, size=_s, cons=0.5), fk=dict(R4.F_KW, size=_s, max_pay=4), monthly=0.0,
+                          flat=USER_EVAL[_s] + USER_ADDON, act=0.0)
+    CFG[f"L{_s}f"] = dict(ek=dict(R4.E_KW, size=_s), fk=dict(R4.F_KW, size=_s, max_pay=4), monthly=0.0, flat=USER_EVAL[_s], act=0.0)
+CFG["L150f"] = dict(ek=dict(R4.E_KW, size=150), fk=dict(R4.F_KW, size=150, max_pay=4), monthly=0.0, flat=USER_EVAL[150], act=0.0)
 _S = {}
 
 
@@ -214,8 +222,8 @@ def round1(R):
 def round2(R):
     tr = lambda thr=None: {"ts": (5, 10, "RANGE:T150n:T50n" + (f":{thr}" if thr else ""))}  # noqa: E731
     base, up = R["T50n"] + R["L50a"], R["T150n"] + R["L50a"]
-    P = [("A T50+L50", "Topstep 50K, Lucid 50K at $22k (round 1)", [(None, T5), (base, LU50)]),
-         ("B base", "Topstep 50K, Lucid at $22k, Topstep 150K by range at $35k (round 1's best)", [(None, T5), (base, LU50), (up, tr())])]
+    P = [("A T50+L50", f"Topstep 50K, Lucid 50K at {kusd(base)} (round 1)", [(None, T5), (base, LU50)]),
+         ("B base", f"Topstep 50K, Lucid at {kusd(base)}, Topstep 150K by range at {kusd(up)} (round 1's best)", [(None, T5), (base, LU50), (up, tr())])]
     for lu_at, up_at in ((11000.0, 23000.0), (11000.0, 35000.0), (22000.0, 22000.0), (16500.0, 17500.0), (0.0, 0.0)):
         P.append((f"C L{int(lu_at / 1000)}k T{int(up_at / 1000)}k", f"Lucid at ${lu_at:,.0f}, Topstep 150K by range at ${up_at:,.0f}",
                   [(None, T5), (lu_at, LU50), (up_at, tr())]))
@@ -226,23 +234,32 @@ def round2(R):
                                                                      (R["T150n"] + R["L150f"], {"lu": (5, 10, "RANGE:L150f:L50a")})])]
     for thr in (125, 175, 200):
         P.append((f"G range {thr}", f"Plan B with the range rule at {thr} points", [(None, T5), (base, LU50), (up, tr(thr))]))
-    P.append(("H range from day 1", "Topstep by range from the start (150K when the range is 151+), Lucid at $22k",
+    P.append(("H range from day 1", f"Topstep by range from the start (150K when the range is 151+), Lucid at {kusd(base)}",
               [(None, T150R), (base, LU50)]))
     return P
 
 
-def car_plans():
+def kusd(x):
+    return f"${x / 1000:g}k"
+
+
+def final_at(R):
+    """The final plan's thresholds: Lucid 50K (add-on) at its reserve, Topstep 150K by range at its reserve, and the car
+    once the spare cash covers both reserves plus the car."""
+    return R["L50a"], R["T150n"], R["L50a"] + R["T150n"] + CAR
+
+
+def car_plans(R):
     car = {"car": CAR}
+    lu, up, at = final_at(R)
+    L, U = kusd(lu), kusd(up)
     return [("PREV start5_50 car@26k", "Topstep 5+5, car at $26k, then Lucid at $22k", [(None, T5), (26000.0, car), (22000.0, LU50)]),
-            ("FINAL car last @50k", "Lucid $11k, 150K by range $24k, car at $50k", [(None, T5), (11000.0, LU50), (24000.0, T150R), (50000.0, car)]),
-            ("car last @45k", "Lucid $11k, 150K by range $24k, car at $45k", [(None, T5), (11000.0, LU50), (24000.0, T150R), (45000.0, car)]),
-            ("car last @40k", "Lucid $11k, 150K by range $24k, car at $40k", [(None, T5), (11000.0, LU50), (24000.0, T150R), (40000.0, car)]),
-            ("car mid @37k", "Lucid $11k, car at $37k, then 150K by range at $24k", [(None, T5), (11000.0, LU50), (37000.0, car), (24000.0, T150R)]),
-            ("car first @37k", "car at $37k, then Lucid $11k, 150K by range $24k", [(None, T5), (37000.0, car), (11000.0, LU50), (24000.0, T150R)]),
-            ("car first @30k", "car at $30k, then Lucid $11k, 150K by range $24k", [(None, T5), (30000.0, car), (11000.0, LU50), (24000.0, T150R)])]
-
-
-FINAL = car_plans()[1][2]
+            ("FINAL", f"Lucid {L}, 150K by range {U}, car at {kusd(at)}", [(None, T5), (lu, LU50), (up, T150R), (at, car)]),
+            ("car last @45k", f"Lucid {L}, 150K by range {U}, car at $45k", [(None, T5), (lu, LU50), (up, T150R), (45000.0, car)]),
+            ("car last @40k", f"Lucid {L}, 150K by range {U}, car at $40k", [(None, T5), (lu, LU50), (up, T150R), (40000.0, car)]),
+            ("car mid @37k", f"Lucid {L}, car at $37k, then 150K by range at {U}", [(None, T5), (lu, LU50), (37000.0, car), (up, T150R)]),
+            ("car first @37k", f"car at $37k, then Lucid {L}, 150K by range {U}", [(None, T5), (37000.0, car), (lu, LU50), (up, T150R)]),
+            ("car first @30k", f"car at $30k, then Lucid {L}, 150K by range {U}", [(None, T5), (30000.0, car), (lu, LU50), (up, T150R)])]
 
 
 def ladder_plans():
@@ -253,13 +270,14 @@ def ladder_plans():
               (46000.0, {"ts": (5, 10, "T150n"), "lu": (5, 10, "L150f")}), (61000.0, {"car": CAR})])]
 
 
-def budget_plans():
+def budget_plans(R):
     """The final plan started with only $500 or $1,000: Topstep 5+5 at once on either fee path, Topstep one Combine at a
-    time until the first payout, or Lucid 50K one eval at a time (a one-off price, no monthly renewal) until the first
-    payout; from there the final plan's steps, as the budget rule allows."""
+    time until the first payout, or Lucid 25K or 50K one eval at a time (a one-off price, no monthly renewal; the 40% rule
+    or the add-on) until the first payout; from there the final plan's steps, as the budget rule allows."""
     car = {"car": CAR}
-    late = [(11000.0, LU50), (24000.0, T150R), (50000.0, car)]
-    late_s = [(11000.0, LU50), (24000.0, {"ts": (5, 10, "RANGE:T150n:T50s")}), (50000.0, car)]
+    lu, up, at = final_at(R)
+    late = [(lu, LU50), (up, T150R), (at, car)]
+    late_s = [(lu, LU50), (up, {"ts": (5, 10, "RANGE:T150n:T50s")}), (at, car)]
     out = []
     for b in (500, 1000):
         out += [(f"budget {b} noact", f"${b}: Topstep 50K 5+5 at once, No Activation Fee path", [(None, T5)] + late, float(b)),
@@ -268,10 +286,14 @@ def budget_plans():
                  [(None, {"ts": (1, 1, "T50n")}), ("payout", T5)] + late, float(b)),
                 (f"budget {b} standard 1x", f"${b}: one Topstep Combine at a time until the first payout, Standard fee path",
                  [(None, {"ts": (1, 1, "T50s")}), ("payout", {"ts": (5, 10, "T50s")})] + late_s, float(b)),
-                (f"budget {b} lucid40 1x", f"${b}: one Lucid 50K eval at a time ($80.50, 40% rule) until the first payout, then Topstep",
+                (f"budget {b} lucid40 1x", f"${b}: one Lucid 50K eval at a time (${CFG['L50f']['flat']:.2f}, 40% rule) until the first payout, then Topstep",
                  [(None, {"lu": (1, 1, "L50f")}), ("payout", T5)] + late, float(b)),
-                (f"budget {b} lucid50 1x", f"${b}: one Lucid 50K eval at a time ($90.50, add-on) until the first payout, then Topstep",
-                 [(None, {"lu": (1, 1, "L50a")}), ("payout", T5)] + late, float(b))]
+                (f"budget {b} lucid50 1x", f"${b}: one Lucid 50K eval at a time (${CFG['L50a']['flat']:.2f}, add-on) until the first payout, then Topstep",
+                 [(None, {"lu": (1, 1, "L50a")}), ("payout", T5)] + late, float(b)),
+                (f"budget {b} lucid25k40 1x", f"${b}: one Lucid 25K eval at a time (${CFG['L25f']['flat']:.2f}, 40% rule) until the first payout, then Topstep",
+                 [(None, {"lu": (1, 1, "L25f")}), ("payout", T5)] + late, float(b)),
+                (f"budget {b} lucid25k50 1x", f"${b}: one Lucid 25K eval at a time (${CFG['L25a']['flat']:.2f}, add-on) until the first payout, then Topstep",
+                 [(None, {"lu": (1, 1, "L25a")}), ("payout", T5)] + late, float(b))]
     return out
 
 
@@ -412,21 +434,27 @@ def main(fd, dd, out, only=None):
     with get_context("fork").Pool(4, initializer=_init, initargs=("fut", fd)) as p:
         res = p.map(drop_job, [(c, o) for c in CFG for o in R4.OFFSETS], chunksize=3)
     worst = {c: min(d for cc, _, d in res if cc == c) for c in CFG}
-    for c, v in {"T50n": -10640, "T150n": -23703, "L50a": -10408, "L150f": -21896}.items():  # topstep_sim / scale_sizes runs
+    here = os.path.dirname(os.path.abspath(__file__))
+    ts = {r["id"]: float(r["deepest_drop_usd"]) for r in csv.DictReader(open(os.path.join(here, "results_topstep", "topstep.csv")))}
+    lu = {r["id"]: float(r["deepest_drop_usd"]) for r in csv.DictReader(open(os.path.join(here, "results_scale_sizes", "sizes.csv")))}
+    ref = {"T50n": ts["2019-50-standard-noact"], "T150n": ts["2019-150-standard-noact"], "L25a": lu["2019-25-addon"],
+           "L25f": lu["2019-25-40"], "L50a": lu["2019-50-addon"], "L50f": lu["2019-50-40"], "L150f": lu["2019-150-40"]}
+    for c, v in ref.items():  # the same deepest falls as topstep_sim.py's and scale_sizes.py's runs (same prices)
         assert round(worst[c]) == v, (c, worst[c], v)
     R = {c: 1000.0 * math.ceil(-v / 1000.0) for c, v in worst.items()}
     json.dump({"deepest_fall_since_aug_2019": worst, "reserve": R}, open(os.path.join(out, "reserves.json"), "w"), indent=1)
     print("reserves:", {c: int(v) for c, v in R.items()}, flush=True)
-    groups = {} if only == "--budget-only" else {"round1": round1(R), "round2": round2(R), "car": car_plans() + ladder_plans()}
+    groups = {} if only == "--budget-only" else {"round1": round1(R), "round2": round2(R), "car": car_plans(R) + ladder_plans()}
+    B = budget_plans(R)
     rows, brows = [], []
     for kind, data, first, last in (("futures", fd, "2019-09", "2023-11"), ("CFD", dd, "2011-03", "2023-11")):
         S = Sf if kind == "futures" else T.load("cfd", data)
         ks = starts(S, first, last)
         assert all((S.days[-1] - S.days[k]) / 30.44 >= 36 for k in ks)
         jobs = [(n, st, k, None, None) for P in groups.values() for n, _, st in P for k in ks]
-        jobs += [(n, st, k, b, None) for n, _, st, b in budget_plans() for k in ks]
+        jobs += [(n, st, k, b, None) for n, _, st, b in B for k in ks]
         wk = starts(S, first, last, every=5)
-        jobs_b = [(n, st, k, b, 24) for n, _, st, b in budget_plans() for k in wk]
+        jobs_b = [(n, st, k, b, 24) for n, _, st, b in B for k in wk]
         with get_context("fork").Pool(4, initializer=_init, initargs=("fut" if kind == "futures" else "cfd", data)) as p:
             for r in p.map(run, jobs, chunksize=4):
                 rows.append(dict(data=kind, **r))
@@ -437,7 +465,6 @@ def main(fd, dd, out, only=None):
         write(out, "runs.csv", [r for r in rows if not r["plan"].startswith("budget")])
     for g, P in groups.items():
         write(out, f"{g}.csv", summary(rows, P))
-    B = budget_plans()
     bsum = summary(rows, B)
     for row, (n, _, _, b) in zip(bsum, B):
         for kind in ("futures", "CFD"):
@@ -456,11 +483,12 @@ def main(fd, dd, out, only=None):
     write(out, "budget_monthly_runs.csv", [r for r in rows if r["plan"].startswith("budget")])
     if not groups:
         return
-    fin = [r for r in rows if r["plan"] == "FINAL car last @50k"]
+    fin = [r for r in rows if r["plan"] == "FINAL"]
+    lu, up, at = final_at(R)
     steps = []
     for kind in ("futures", "CFD"):
-        for key, lab in (("step1_month", "Add Lucid 50K (spare cash $11,000)"), ("step2_month", "Topstep 150K by the range rule ($24,000)"),
-                         ("car_month", "The $15,000 car ($50,000)")):
+        for key, lab in (("step1_month", f"Add Lucid 50K (spare cash ${lu:,.0f})"), ("step2_month", f"Topstep 150K by the range rule (${up:,.0f})"),
+                         ("car_month", f"The ${CAR:,.0f} car (${at:,.0f})")):
             v = [float(r[key]) for r in fin if r["data"] == kind and r[key] != ""]
             steps.append(dict(data=kind, step=lab, starts=len([r for r in fin if r["data"] == kind]), reached=len(v),
                               p10_month=round(float(np.percentile(v, 10)), 1), median_month=round(float(np.median(v)), 1),
