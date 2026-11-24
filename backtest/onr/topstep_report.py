@@ -2,7 +2,7 @@
 """report50k.py's figures for your plan at Topstep: 50K, Standard payouts, No Activation Fee path, the last 5 years.
 
 usage: topstep_report.py FUT_DATA_DIR LUCID_REPORT_DIR OUT_DIR
-  FUT_DATA_DIR: NQFUT.npz (prep_nqfut.py) and SPXUSD.npz. LUCID_REPORT_DIR: report50k.py's run of the Lucid plan on the
+  FUT_DATA_DIR: NQFUT.npz (prep_mnq.py; prep_nqfut.py before Nov 23 2026) and SPXUSD.npz. LUCID_REPORT_DIR: report50k.py's run of the Lucid plan on the
   same series and window (results_v23_nqfut_5y_addon), for the checks below.
 Rules and costs are topstep_sim.py's (ek(50), fk(50, "standard")):
   Combine: $3,000 target, best day at most 55% of the profit, end-of-day trailing $2,000 max loss that stops at the start

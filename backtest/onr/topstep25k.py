@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The indicator's plan on Topstep's 25K account (Topstep Labs "$25K Static Trading Combine"), next to Lucid's 25K.
 
-usage: topstep25k.py FUT_DATA_DIR CFD_DATA_DIR OUT_DIR
+usage: topstep25k.py FUT_DATA_DIR CFD_DATA_DIR OUT_DIR      (CFD_DATA_DIR "-": futures only)
 Topstep's rules (help.topstep.com, Topstep Labs article and the XFA / payout / DLL articles, read Nov 20 2026):
   Combine: $75 one time (no monthly fee, no resets: a new one is bought), expires 90 days after purchase; profit target
   $2,000; maximum loss $1,000 STATIC (the floor never moves); mandatory daily loss limit $500 (hit: flattened, no new
@@ -17,7 +17,8 @@ target, payouts asked for once an account is $1,000 up. The daily loss limit is 
 inside $500: the Combine's stop (commission included) and the funded book's day budget are capped at $500 (at 25K they
 would otherwise be $600). Funded legs at most 6 micros (three legs inside 20).
 Not modelled: Topstep's discretionary call-up to a live account (it closes every XFA).
-Runs: 12 start dates in each window (futures, last 5 years and from Aug 30 2019; Nasdaq-100 CFD from Feb 15 2011).
+Runs: 12 start dates in each window (the MNQ file, last 5 years and from Dec 20 2019; with a CFD_DATA_DIR, as before
+Nov 23 2026, the Nasdaq-100 CFD from Feb 15 2011).
 Checks: the worst day of any Combine or XFA (accounts started every 5 sessions over the last 5 years, traded alone)
 against the $500 limit.
 Writes labs25k.csv (one row per window and payout path, topstep.csv's columns), labs25k_years.csv, runs.json.
@@ -112,9 +113,9 @@ def main(fd, dd, out):
     S = T.load("fut", fd)
     k5 = int(np.searchsorted(S.days, np.datetime64(T.START5).astype(int)))
     w, b, n = worst_days(S, k5)
-    print(f"daily loss limit check: worst day ${w:,.0f} over {n:,} account-days; days below -${DLL:,.0f}: {b}", flush=True)
+    print(f"daily loss limit check: worst day ${w:,.2f} over {n:,} account-days; days below -${DLL:,.0f}: {b}", flush=True)
     res = {}
-    for kind, data, windows in (("fut", fd, ("5y", "all")), ("cfd", dd, ("all",))):
+    for kind, data, windows in (("fut", fd, ("5y", "all")),) + ((("cfd", dd, ("all",)),) if dd != "-" else ()):
         jobs = [(win, o, p, PER_MONTH) for win in windows for p in ("standard", "consistency") for o in T.OFF]
         if kind == "fut":  # the purchase limit's effect: the same runs without it, last 5 years
             jobs += [("5y", o, p, 0) for p in ("standard", "consistency") for o in T.OFF]
@@ -124,6 +125,8 @@ def main(fd, dd, out):
     json.dump({"|".join(map(str, k)): v for k, v in res.items()}, open(os.path.join(out, "runs.json"), "w"))
     rows, yrows = [], []
     for (kind, window), (lab, _, _, _) in T.WINDOWS.items():
+        if kind == "cfd" and dd == "-":
+            continue  # futures only (the user's MNQ file)
         for per_month in ((PER_MONTH, 0) if (kind, window) == ("fut", "5y") else (PER_MONTH,)):
             for path in ("standard", "consistency"):
                 R = [res[(kind, window, o, path, per_month)] for o in T.OFF]

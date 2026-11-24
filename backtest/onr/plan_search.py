@@ -16,7 +16,7 @@ evaluation waits for a free funded slot and becomes a funded account of its own 
   The range rule ("RANGE:big:small[:points]"): a new Topstep Combine is 150K only while NQ's 14-day range is at least 151
   points, the range above which a 150K XFA's 10-micro leg cap no longer binds; otherwise 50K.
 Plans: a start setup, then steps taken the first session the spare cash reaches each step's threshold. The thresholds
-of rounds 1 and 2 are reserves: each setup's deepest fall since Aug 30 2019 on real futures (5 funded + 5 evaluations,
+of rounds 1 and 2 are reserves: each setup's deepest fall since Dec 20 2019 on the MNQ file (5 funded + 5 evaluations,
 the worst of 12 start dates, computed here), rounded up to $1,000.
   round 1  17 plans: sizes, firms, fee paths, reserve sizes, the range rule, the order of the steps
   round 2  14 plans around round 1's best: when to add Lucid and switch to 150K, Lucid's rule, 7 Combines in reserve,
@@ -36,8 +36,8 @@ the worst of 12 start dates, computed here), rounded up to $1,000.
            the add-on) until the first payout.
            A start "runs out" when nothing is trading and the spare cash pays for neither a new evaluation nor the
            activation of a passed one.
-Start dates: the first session of every month, Sep 2019 - Nov 2023 (real NQ futures) and Mar 2011 - Nov 2023 (Nasdaq-100
-CFD): every run has at least 36 months.
+Start dates: the first session of every month, Dec 2019 - Nov 2023 on the user's MNQ file (and, with a CFD_DATA_DIR, as
+before Nov 23 2026, Mar 2011 - Nov 2023 on the Nasdaq-100 CFD): every run has at least 36 months.
 Checks: the pool code equals research4.sim_pool with topstep_sim.cash_flows (both fee paths) or a flat eval price,
 session by session, for every account type and two reserve sizes; the deepest falls of Topstep 50K / 150K and Lucid
 25K / 50K / 150K equal those of topstep_sim.py's and scale_sizes.py's runs (results_topstep/topstep.csv,
@@ -61,12 +61,14 @@ import engine  # noqa: E402
 import research4 as R4  # noqa: E402
 import topstep_sim as T  # noqa: E402
 from account import USER_ADDON, USER_EVAL, EvalAccount, FundedAccount  # noqa: E402
+import windows as W  # noqa: E402
 
 account.funded_on = functools.lru_cache(maxsize=None)(engine.funded_on)
 account.pyramid = functools.lru_cache(maxsize=None)(engine.pyramid)
 account.ib_breakout = functools.lru_cache(maxsize=None)(engine.ib_breakout)
 
 SPLIT, TAX, CAR = 0.9, 0.30, 15000.0
+FUT_FIRST = W.FIRST[:7]  # the first month of futures starts: the MNQ file's first tradable session (Dec 2019)
 RANGE_150 = 151.0
 CFG = {}
 for _s in (50, 100, 150):
@@ -401,11 +403,14 @@ def write(out, name, rows):
     print(f"wrote {name}: {len(rows)} rows", flush=True)
 
 
+KINDS = ["futures", "CFD"]  # main() keeps only "futures" when CFD_DATA_DIR is "-"
+
+
 def summary(rows, P):
     out = []
     for n, lab, *_ in P:
         row = dict(plan=n, label=lab)
-        for kind in ("futures", "CFD"):
+        for kind in KINDS:
             Rr = [r for r in rows if r["data"] == kind and r["plan"] == n]
             a = lambda key: np.array([r[key] for r in Rr], float)  # noqa: E731
             pre = "fut_" if kind == "futures" else "cfd_"
@@ -430,7 +435,10 @@ def main(fd, dd, out, only=None):
     os.makedirs(out, exist_ok=True)
     Sf = T.load("fut", fd)
     _S["S"] = Sf
-    check(Sf, starts(Sf, "2019-09", "2019-09")[0])
+    if dd == "-":
+        KINDS[:] = ["futures"]  # the user's MNQ file alone
+        W.check(Sf)
+    check(Sf, starts(Sf, FUT_FIRST, FUT_FIRST)[0])
     with get_context("fork").Pool(4, initializer=_init, initargs=("fut", fd)) as p:
         res = p.map(drop_job, [(c, o) for c in CFG for o in R4.OFFSETS], chunksize=3)
     worst = {c: min(d for cc, _, d in res if cc == c) for c in CFG}
@@ -442,12 +450,12 @@ def main(fd, dd, out, only=None):
     for c, v in ref.items():  # the same deepest falls as topstep_sim.py's and scale_sizes.py's runs (same prices)
         assert round(worst[c]) == v, (c, worst[c], v)
     R = {c: 1000.0 * math.ceil(-v / 1000.0) for c, v in worst.items()}
-    json.dump({"deepest_fall_since_aug_2019": worst, "reserve": R}, open(os.path.join(out, "reserves.json"), "w"), indent=1)
+    json.dump({"deepest_fall_since_first_start": worst, "reserve": R}, open(os.path.join(out, "reserves.json"), "w"), indent=1)
     print("reserves:", {c: int(v) for c, v in R.items()}, flush=True)
     groups = {} if only == "--budget-only" else {"round1": round1(R), "round2": round2(R), "car": car_plans(R) + ladder_plans()}
     B = budget_plans(R)
     rows, brows = [], []
-    for kind, data, first, last in (("futures", fd, "2019-09", "2023-11"), ("CFD", dd, "2011-03", "2023-11")):
+    for kind, data, first, last in (("futures", fd, FUT_FIRST, "2023-11"), ("CFD", dd, "2011-03", "2023-11"))[:len(KINDS)]:
         S = Sf if kind == "futures" else T.load("cfd", data)
         ks = starts(S, first, last)
         assert all((S.days[-1] - S.days[k]) / 30.44 >= 36 for k in ks)
@@ -467,7 +475,7 @@ def main(fd, dd, out, only=None):
         write(out, f"{g}.csv", summary(rows, P))
     bsum = summary(rows, B)
     for row, (n, _, _, b) in zip(bsum, B):
-        for kind in ("futures", "CFD"):
+        for kind in KINDS:
             Rb = [r for r in brows if r["data"] == kind and r["plan"] == n]
             pre = "fut_" if kind == "futures" else "cfd_"
             busts = [float(r["bust_month"]) for r in Rb if r["bust_month"] != ""]
@@ -486,7 +494,7 @@ def main(fd, dd, out, only=None):
     fin = [r for r in rows if r["plan"] == "FINAL"]
     lu, up, at = final_at(R)
     steps = []
-    for kind in ("futures", "CFD"):
+    for kind in KINDS:
         for key, lab in (("step1_month", f"Add Lucid 50K (spare cash ${lu:,.0f})"), ("step2_month", f"Topstep 150K by the range rule (${up:,.0f})"),
                          ("car_month", f"The ${CAR:,.0f} car (${at:,.0f})")):
             v = [float(r[key]) for r in fin if r["data"] == kind and r[key] != ""]

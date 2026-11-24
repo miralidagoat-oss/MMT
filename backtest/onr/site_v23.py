@@ -2,8 +2,10 @@
 """The website's account and add-on datasets for indicator v2.3's default plan, the user's setup.
 
 usage: ONR_MAX_PAY=4 site_v23.py FUT_DATA_DIR CFD_DATA_DIR LIVE_DATA_DIR OUT_DIR
-  FUT_DATA_DIR: NQFUT.npz (prep_nqfut.py) and SPXUSD.npz. CFD_DATA_DIR: NSXUSD.npz and SPXUSD.npz (HistData minute bars).
-  LIVE_DATA_DIR: MNQ_5m_60d.npz, NSXUSD.npz and the extended SPXUSD.npz (export_charts.py's real-MNQ inputs).
+  FUT_DATA_DIR: NQFUT.npz and SPXUSD.npz: since Nov 23 2026 the user's MNQ file (prep_mnq.py) and the S&P input
+  (spx_clock.py). CFD_DATA_DIR: "-" since then (every backtest on the MNQ file alone); before, NSXUSD.npz and SPXUSD.npz
+  (HistData minute bars). LIVE_DATA_DIR: MNQ_5m_60d.npz (the file's recent window, prep_mnq.py --cut), NQFUT.npz and
+  SPXUSD.npz (export_charts.py's real-MNQ inputs).
 
 The plan: the 50% consistency add-on on every eval at the user's price (account.USER_EVAL[50] + USER_ADDON: $88.20 with a
 discount code + $10 for the add-on = $98.20, Nov 23 2026), each funded account closed right after its 4th payout (so no 5th
@@ -12,11 +14,12 @@ same payout plan.
 Machinery: research round 5's, unchanged (research4.sim_pool / sim_slots, 12 start dates, research5.metrics), with the
 eval price passed per run; the futures runs swap research4._init for futures_site.fut_init as futures_site.py does.
 Writes into OUT_DIR:
-  accounts_5y.csv, accounts_5y_years_wide.csv   real NQ futures, last 5 years: structures A, C, B x 1-5 accounts
-  accounts_table.csv, accounts_years_wide.csv   Nasdaq-100 CFD, Feb 2011 - Nov 2026: the same structures
+  accounts_5y.csv, accounts_5y_years_wide.csv   real futures, last 5 years: structures A, C, B x 1-5 accounts
+  accounts_table.csv, accounts_years_wide.csv   the same structures on every year: the MNQ file from its first
+                                                tradable session (Dec 20 2019); before Nov 23 2026 the CFD's 2011-2026
   addon_kpis.csv, addon_years.csv, addon_prices.csv, addon_summary.csv   futures: 40% at $88.20 vs the add-on at $98.20
   addon_real.csv, addon_journey.csv             the 60 sessions of real MNQ, both plans (export_charts.py's functions)
-  runs_fut.json, runs_cfd.json                  every run's metrics
+  runs_fut.json (and runs_cfd.json with a CFD)  every run's metrics
 Checks before writing: B5 here = live50k.py's B5-addon-stop4 and B5-stop4 (results_live<USER_TAG>_addon10, mean of the
 same 12 start dates); report50k.py's runs of both plans (results_v23_nqfut_5y*) are the plans asked for; the real-MNQ
 counts = mnq_real50k.py's (export_charts.REAL_BY_PLAN).
@@ -34,12 +37,13 @@ import research4 as R4  # noqa: E402
 
 CFD_INIT = R4._init
 ORIG = {n: getattr(account, n) for n in ("funded_on", "pyramid", "ib_breakout", "eval_bracket")}
-import futures_site as FS  # noqa: E402  (swaps research4._init for the futures loader)
+import futures_site as FS  # noqa: E402  (swaps research4._init for the futures loader; MNQ full years: windows.py)
 import addon50k as A50  # noqa: E402
 import export_charts as X  # noqa: E402  (wraps the four account functions above to count commission)
 import research5 as R5  # noqa: E402
 from account import RULES, run_eval  # noqa: E402
-from engine import Sessions, load_npz, rth_sessions  # noqa: E402
+from engine import Sessions, adr_seed, load_npz, rth_sessions  # noqa: E402
+import windows as W  # noqa: E402
 
 for _n, _f in ORIG.items():  # the bookkeeping wrappers pass results through unchanged but replay every trade: not needed here
     setattr(account, _n, _f)
@@ -64,11 +68,16 @@ def structures():
     return c
 
 
-def futures_runs(fd):
+def futures_runs(fd, every_year=False):
+    """every_year: the structures also from the first tradable session (accounts_table.csv on the MNQ file alone); B5 is
+    then the plan's own "all" run, as it is over the last 5 years."""
     R4._init = FUT_INIT
-    jobs = [(n, parts, "5y", o, FEE_PLAN) for n, parts in structures() for o in OFF]
+    jobs = [(n, parts, w, o, FEE_PLAN) for n, parts in structures() for w in (("5y", "all") if every_year else ("5y",))
+            for o in OFF]
     plan = R5.nq(ek=ADD, fk=FK4)
-    jobs += [("PLAN", [plan], "all", o, FEE_PLAN) for o in OFF]
+    assert plan == structures()[-1][1][0]  # B5
+    if not every_year:
+        jobs += [("PLAN", [plan], "all", o, FEE_PLAN) for o in OFF]
     jobs += [("PLAN0", [plan], w, o, FEE40) for w in ("5y", "all") for o in OFF]  # the add-on before its own price
     cfg = [("BASE40", [R5.nq(fk=FK4)])]
     cfg += [(f"P thr {x}", [R5.nq(dict(thr=x), dict(thr=x, **FK4))]) for x in (0.712, 0.715, 0.722, 0.725)]
@@ -77,6 +86,8 @@ def futures_runs(fd):
     res = R5.run_jobs(fd, fd, jobs, {"nq"})
     for o in OFF:
         res[("PLAN", "5y", o)] = res[("B5", "5y", o)]
+        if every_year:
+            res[("PLAN", "all", o)] = res[("B5", "all", o)]
     return res
 
 
@@ -101,8 +112,9 @@ def check_live50k(res):
           f"comparison = its B5-stop4 (${float(b['net_per_year_usd']):,.0f})", flush=True)
 
 
-def cfd_tables(res, out):
-    """accounts_table.csv and accounts_years_wide.csv on the CFD's every year (research4/report4's formats, all years)."""
+def all_tables(res, out):
+    """accounts_table.csv and accounts_years_wide.csv on every year (research4/report4's formats): the structures' "all"
+    runs, from the first tradable session (the MNQ file's Dec 20 2019; the CFD's Feb 2011 before Nov 23 2026)."""
     rows, wide = [], []
     for st in ("C", "B", "A"):
         for N in range(1, 6):
@@ -121,7 +133,7 @@ def cfd_tables(res, out):
                                          "evals_per_year", "eval_pass_pct", "eval_median_sessions", "funded_accounts",
                                          "funded_with_payout_pct", "payouts", "average_payout_usd", "most_cash_out_usd",
                                          "total_net_usd"], rows)
-    years = sorted({y for k, v in res.items() for y in v["years"]})
+    years = sorted({y for (n, w, o), v in res.items() if w == "all" and n[0] in "ABC" and n[1:].isdigit() for y in v["years"]})
     for y in years:
         row = [y]
         for st in ("C", "B"):
@@ -163,10 +175,10 @@ def addon_tables(res, out):
             per = "full year"
             if window == "last 5 years" and y == "2021":
                 per = "Nov 15 - Dec 31"
-            elif window == "all years" and y == "2019":
-                per = "from Aug 30"
-            if y == "2026":
-                per = "Jan 1 - Nov 17"
+            elif window == "all years" and y == W.FIRST[:4]:
+                per = f"from {W.FIRST_MD}"
+            if y == W.LAST[:4]:
+                per = f"Jan 1 - {W.LAST_MD}"
             yrows.append([window, y, per, round(med(B, "net")), round(med(Ad, "net")), round(med(Ad, "net") - med(B, "net")),
                           med(B, "payouts"), med(Ad, "payouts"), med(B, "evals_bought"), med(Ad, "evals_bought"), pas(B), pas(Ad)])
     FS.write(out, "addon_years.csv", ["window", "year", "period", "current_net_usd", "addon_net_usd", "difference_usd",
@@ -225,7 +237,7 @@ def addon_tables(res, out):
               round(float(np.mean([r["periods"]["last 5y"]["worst12"] for r in b5]))), "usd"],
              ["worst12_addon_5y", "Worst 12 months with the add-on at $10, last 5 years",
               round(float(np.mean([r["periods"]["last 5y"]["worst12"] for r in a5]))), "usd"],
-             ["net_gain_early", "Net a year gained with the add-on at $10, Aug 30 2019 - Nov 14 2021", round(z10[3]), "usd"],
+             ["net_gain_early", f"Net a year gained with the add-on at $10, {W.FIRST_MD} {W.FIRST[:4]} - Nov 14 2021", round(z10[3]), "usd"],
              ["band_net_5y", "Noise band for net a year, last 5 years (8 placebo runs)", round(band["last 5y"][0]), "usd"],
              ["band_worst_5y", "Noise band for the worst full year, last 5 years (8 placebo runs)", round(band["last 5y"][1]), "usd"],
              ["rule5y_at_10", "Rule 5Y at the add-on's $10", 1 if (z10[5] and z10[6]) else 0, "count"],
@@ -243,8 +255,7 @@ def real_tables(dd, out):
     assert X.MAXPAY == 4, "run with ONR_MAX_PAY=4"
     mnq = load_npz(os.path.join(dd, "MNQ_5m_60d.npz"))
     own = rth_sessions(*mnq)
-    src = {d: v for d, v in rth_sessions(*load_npz(os.path.join(dd, "NSXUSD.npz"))).items() if d < min(own)}
-    src.update(own)
+    src = adr_seed(dd, own)
     R = Sessions(mnq, load_npz(os.path.join(dd, "SPXUSD.npz")), tf=5, adr_src=src)
     m0 = int(np.argmax([not np.isnan(R.S[d]["adr"]) and not np.isnan(R.S[d]["score"]) for d in R.days]))
     kr = range(m0, len(R.days))
@@ -303,15 +314,18 @@ def real_tables(dd, out):
                                         "addon_phase", "addon_event", "addon_account_pnl_usd", "addon_your_cash_usd"], jrows)
 
 
-def fut_tables(out, fd):
-    """futures_site.fut_tables on the plan's report50k.py runs: real futures vs the CFD from Sep 3 2019, the 40% rule at
-    FEE40 and the add-on at FEE_PLAN, both closed after the 4th payout (results_v23_*). fut_check.csv and fut_data.csv
-    describe the data, not a plan, and are made by futures_site.fut_tables' own code."""
-    R = {"fut_current": "results_v23_nqfut", "fut_addon": "results_v23_nqfut_addon", "cfd_current": "results_v23_cfd19",
-         "cfd_addon": "results_v23_cfd19_addon"}
+def fut_tables(out, fd, cfd=False):
+    """futures_site.fut_tables on the plan's report50k.py runs from the futures' first tradable session (results_v23_*):
+    the 40% rule at FEE40 and the add-on at FEE_PLAN, both closed after the 4th payout. fut_data.csv describes the data,
+    not a plan, and is made by futures_site.fut_tables' own code. cfd=True: as before Nov 23 2026, the CFD's runs from
+    Sep 3 2019 beside them, and fut_check.csv."""
+    R = {"fut_current": "results_v23_nqfut", "fut_addon": "results_v23_nqfut_addon"}
+    if cfd:
+        R.update(cfd_current="results_v23_cfd19", cfd_addon="results_v23_cfd19_addon")
     S = {k: json.load(open(os.path.join(HERE, v, "summary.json"))) for k, v in R.items()}
     for k, s in S.items():
-        assert s["max_payouts_per_account"] == 4 and s["window"][0] == "2019-09-03", (k, s["window"])
+        assert s["max_payouts_per_account"] == 4 and s["window"][0] == ("2019-09-03" if cfd else W.FIRST), (k, s["window"])
+        assert cfd or s["window"][1] == W.LAST, (k, s["window"])
         assert s["eval_price"] == (FEE_PLAN if k.endswith("addon") else FEE40), (k, s["eval_price"])
         assert s.get("eval_consistency", 0.4) == (0.5 if k.endswith("addon") else 0.4), k
         assert (s.get("nq_file") == "NQFUT.npz") == k.startswith("fut"), (k, s.get("nq_file"))
@@ -324,13 +338,14 @@ def fut_tables(out, fd):
         if os.path.lexists(link):
             os.remove(link)
         os.symlink(os.path.join(HERE, v), link)
-    chk = os.path.join(tmp, "results_nqfut_check")
-    if os.path.lexists(chk):
-        os.remove(chk)
-    os.symlink(os.path.join(HERE, "results_nqfut_check"), chk)
+    if cfd:
+        chk = os.path.join(tmp, "results_nqfut_check")
+        if os.path.lexists(chk):
+            os.remove(chk)
+        os.symlink(os.path.join(HERE, "results_nqfut_check"), chk)
     FS.HERE, FS.FEE_TAG = tmp, ""
     try:
-        FS.fut_tables(out, fd)
+        FS.fut_tables(out, fd, cfd)
     finally:
         for n, v in saved.items():
             setattr(FS, n, v)
@@ -339,16 +354,19 @@ def fut_tables(out, fd):
 def main(fd, dd, ld, out):
     os.makedirs(out, exist_ok=True)
     real_tables(ld, out)
-    rf = futures_runs(fd)
+    rf = futures_runs(fd, every_year=dd == "-")
     json.dump({f"{n}|{w}|{o}": v for (n, w, o), v in rf.items()}, open(os.path.join(out, "runs_fut.json"), "w"))
     check_live50k(rf)
     summ = FS.accounts(rf, out)
     print(f"  plan on futures, last 5 years: net ${summ['B5'][2]:,} a year, worst full year ${summ['B5'][3]:,}, "
           f"worst 12 months ${summ['B5'][6]:,}", flush=True)
     addon_tables(rf, out)
-    rc = cfd_runs(dd)
-    json.dump({f"{n}|{w}|{o}": v for (n, w, o), v in rc.items()}, open(os.path.join(out, "runs_cfd.json"), "w"))
-    cfd_tables(rc, out)
+    if dd == "-":  # every year on the MNQ file alone
+        all_tables(rf, out)
+    else:
+        rc = cfd_runs(dd)
+        json.dump({f"{n}|{w}|{o}": v for (n, w, o), v in rc.items()}, open(os.path.join(out, "runs_cfd.json"), "w"))
+        all_tables(rc, out)
     print("done", flush=True)
 
 

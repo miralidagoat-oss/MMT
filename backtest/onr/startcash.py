@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """How much cash the plan needs before payouts cover the fees, starting on any date.
 
-usage: startcash.py FUT_DATA_DIR CFD_DATA_DIR OUT_DIR
+usage: startcash.py FUT_DATA_DIR CFD_DATA_DIR OUT_DIR      (CFD_DATA_DIR "-": futures only)
 The Topstep 50K plan (topstep_sim.py's rules: 5 XFAs + 5 Combines, one new Combine a session, Standard payouts) and the
 Lucid 50K plan (the 50% add-on at the user's price: $98.20 an eval, account.USER_EVAL[50] + USER_ADDON; each funded
 account closed after its 4th payout), started on many dates:
-every 5 sessions on futures prices from Aug 30 2019 and every 10 sessions on the Nasdaq-100 CFD from Feb 15 2011, each run
+every 5 sessions on the user's MNQ file from Dec 20 2019 (and, with a CFD_DATA_DIR, as before Nov 23 2026, every 10
+sessions on the Nasdaq-100 CFD from Feb 15 2011), each run
 for 2 years (starts at least 2 years before the data ends). For each start: the most cash out of pocket (the lowest the
 running total of payouts to you minus every fee went), when it was reached, and when the running total was back above $0.
 Topstep fees on both fee paths: Standard ($49 a month per Combine + $149 per XFA) and No Activation Fee ($95 a month).
@@ -54,7 +55,7 @@ def _job(k0):
 def main(fd, dd, out):
     os.makedirs(out, exist_ok=True)
     rows = []
-    for kind, data, step in (("fut", fd, 5), ("cfd", dd, 10)):
+    for kind, data, step in (("fut", fd, 5),) + ((("cfd", dd, 10),) if dd != "-" else ()):
         S = T.load(kind, data)
         k0 = T.first_tradable(S)
         starts = list(range(k0, len(S.days) - YEARS2 + 1, step))
@@ -66,7 +67,7 @@ def main(fd, dd, out):
         print(f"{kind}: {len(starts)} start dates", flush=True)
     T.write_csv(out, "starts.csv", rows)
     summ = []
-    for data in ("futures", "CFD"):
+    for data in ("futures",) + (("CFD",) if dd != "-" else ()):
         for plan, label in PLANS.items():
             R = [r for r in rows if r["data"] == data and r["plan"] == plan]
             lows = np.array([r["cash_low_usd"] for r in R])

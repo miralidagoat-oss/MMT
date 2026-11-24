@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""The final ONR Book v2.2 at Lucid Flex 50K on REAL MNQ futures (Yahoo MNQ=F 5-minute bars, the last 60 days).
+"""The final ONR Book v2.2 at Lucid Flex 50K on REAL MNQ futures: the recent window of the user's MNQ file (since Nov 23
+2026: Sep 9 - Nov 20 2026, prep_mnq.py --cut; before, Yahoo's MNQ=F 5-minute bars of the last 60 days).
 
-The S&P stretch score still comes from an S&P 500 CFD (as in the indicator); DATA_DIR's SPXUSD.npz may be HistData's
-series extended past its end with another S&P source (prep_spx_ext.py), and the run says which sessions, if any, had
-to reuse an older score. The ADR's first 14 sessions are seeded from the Nasdaq CFD because the Yahoo window starts
-mid-stream. Everything traded is real MNQ.
+The S&P stretch score still comes from the S&P 500 (as in the indicator); DATA_DIR's SPXUSD.npz is HistData's CFD
+extended past its end with another S&P source (Dukascopy, spx_clock.py), and the run says which sessions, if any, had
+to reuse an older score. The average range of the window's first 14 sessions is seeded from the sessions before it in
+NQFUT.npz, the MNQ file the window is cut from (engine.adr_seed; the Nasdaq CFD before Nov 23 2026). Everything traded
+is real MNQ.
 usage: [ONR_EVAL_CONS=0.5] [ONR_MAX_PAY=4] mnq_real50k.py DATA_DIR
-  (needs MNQ_5m_60d.npz, NSXUSD.npz, SPXUSD.npz from prep_data.py)
+  (needs MNQ_5m_60d.npz, NQFUT.npz and SPXUSD.npz)
 ONR_EVAL_CONS: the eval's consistency rule (default 0.4; 0.5 = Lucid's paid add-on). ONR_MAX_PAY: payouts a funded
 account takes before it is closed (default 5; 4 = indicator v2.3's default plan, which never takes the 5th payout that
 moves a trader live). report50k.py and export_charts.py read the same two variables.
@@ -18,7 +20,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from account import RULES, EvalAccount, FundedAccount, funded_size, run_eval  # noqa: E402
-from engine import Sessions, load_npz, rth_sessions  # noqa: E402
+from engine import Sessions, adr_seed, load_npz, rth_sessions  # noqa: E402
 from portfolio import pool  # noqa: E402
 
 CONS = float(os.environ.get("ONR_EVAL_CONS", "0.4"))
@@ -37,8 +39,7 @@ def day(d):
 def main(dd):
     mnq = load_npz(os.path.join(dd, "MNQ_5m_60d.npz"))
     own = rth_sessions(*mnq)
-    src = {d: v for d, v in rth_sessions(*load_npz(os.path.join(dd, "NSXUSD.npz"))).items() if d < min(own)}
-    src.update(own)
+    src = adr_seed(dd, own)
     S = Sessions(mnq, load_npz(os.path.join(dd, "SPXUSD.npz")), tf=5, adr_src=src)
     days = S.days
     m0 = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in days]))

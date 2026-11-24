@@ -2,7 +2,7 @@
 """Why Topstep made more than Lucid at 50K: the Lucid plan turned into the Topstep plan one rule at a time.
 
 usage: topstep_why.py FUT_DATA_DIR OUT_DIR
-Last 5 years on futures prices (Nov 15 2021 - Nov 17 2026), 5 funded + 5 evals, one new eval a session, 12 start dates
+Last 5 years on the user's MNQ file (Nov 15 2021 - Nov 20 2026), 5 funded + 5 evals, one new eval a session, 12 start dates
 (research4.OFFSETS), the same trades; topstep_sim.py's machinery and costs. Steps:
   A  Lucid plan: Lucid's rules, the 50% add-on, each funded account closed after its 4th payout, the user's price
      ($98.20 an eval: account.USER_EVAL[50] + USER_ADDON)
@@ -12,7 +12,8 @@ Last 5 years on futures prices (Nov 15 2021 - Nov 17 2026), 5 funded + 5 evals, 
   D  C with Topstep's account rules (max loss locks at $0, Combine pass at 55%, position limits, funded legs <= 6 MNQ):
      the Topstep plan
 and each change alone from A: E = A with Topstep's fees, F = A with Topstep's account rules.
-Checks: A equals the website's Lucid plan ($59,272) and D equals results_topstep (5y-50-standard-standard, $77,107).
+Checks: A equals the website's Lucid plan (live50k.py's B5-addon-stop4 at the user's price) and D equals results_topstep
+(5y-50-standard-standard), both read from their result files.
 Writes why.csv: per step, the mean over the 12 start dates of net a year and of payouts, fees and accounts a year.
 """
 import csv
@@ -80,7 +81,8 @@ def main(fd, out):
     lv = {r["id"]: r for r in csv.DictReader(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                                f"results_live{USER_TAG}_addon10", "lucid_5y.csv")))}["B5-addon-stop4"]
     assert float(lv["eval_price_usd"]) == LUCID_FEE and abs(net["A"] - float(lv["net_per_year_usd"])) <= 1, (net["A"], lv)  # the website's Lucid plan
-    assert abs(net["D"] - 77107) <= 1, net["D"]   # results_topstep 5y-50-standard-standard
+    ts = {r["id"]: r for r in csv.DictReader(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "results_topstep", "topstep.csv")))}
+    assert abs(net["D"] - float(ts["5y-50-standard-standard"]["net_per_year_usd"])) <= 1, (net["D"], ts["5y-50-standard-standard"])  # = the Topstep plan
     print(f"checks passed: A = ${net['A']:,} (the website's Lucid plan), D = ${net['D']:,} (results_topstep)", flush=True)
     T.write_csv(out, "why.csv", rows)
     for r in rows:

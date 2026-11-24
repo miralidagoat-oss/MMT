@@ -1,9 +1,7 @@
 id,window_id,window,payout_path,purchase_limit,net_per_year_usd,worst_full_year_usd,losing_full_years,deepest_drop_usd,worst_12_months_usd,longest_gap_months,months_with_payout_pct,evals_per_year,most_cash_out_usd,eval_pass_pct,funded_with_payout_pct,payouts,average_payout_usd,months_at_purchase_limit_pct
-5y-25-standard,5y,"futures, last 5 years",Standard payouts (5 days of $150),5 a month,31661,4747,0.0,-2288,1018,6.1,63.6,46.2,-1981,43.7,68.1,184.0,1039,67.9
-5y-25-consistency,5y,"futures, last 5 years",Consistency payouts (40%),5 a month,35527,14309,0.0,-2194,10589,6.9,46.9,20.1,-2131,41.7,66.7,96.0,2099,26.1
-5y-25-standard-nolimit,5y,"futures, last 5 years",Standard payouts (5 days of $150),none,40362,20654,0.0,-4362,16117,6.2,67.0,59.0,-3131,39.1,70.4,236.0,1033,46.2
-5y-25-consistency-nolimit,5y,"futures, last 5 years",Consistency payouts (40%),none,37588,19981,0.0,-3938,16761,6.9,41.9,26.5,-3131,38.5,51.1,97.1,2218,14.3
-2019-25-standard,2019,"futures, from Aug 30 2019",Standard payouts (5 days of $150),5 a month,30917,4747,0.0,-2745,1018,7.3,60.1,46.7,-1269,42.4,67.0,255.7,1064,70.3
-2019-25-consistency,2019,"futures, from Aug 30 2019",Consistency payouts (40%),5 a month,36042,14277,0.0,-2044,8055,9.9,40.7,18.4,-1406,41.2,71.6,135.0,2191,24.8
-2011-25-standard,2011,"CFD, from Feb 2011",Standard payouts (5 days of $150),5 a month,20477,243,0.0,-4050,-109,10.1,46.2,46.9,-3192,40.9,59.0,452.1,922,71.8
-2011-25-consistency,2011,"CFD, from Feb 2011",Consistency payouts (40%),5 a month,21495,-2113,1.0,-3831,-2113,11.9,26.0,22.8,-3329,46.5,52.2,205.1,1966,29.9
+5y-25-standard,5y,"futures, last 5 years",Standard payouts (5 days of $150),5 a month,30284,3512,0.0,-2412,1836,6.4,56.9,49.6,-1981,43.5,73.3,179.0,1035,72.9
+5y-25-consistency,5y,"futures, last 5 years",Consistency payouts (40%),5 a month,32690,6710,0.0,-2150,6497,7.6,45.2,18.2,-2131,43.6,73.5,87.0,2134,22.7
+5y-25-standard-nolimit,5y,"futures, last 5 years",Standard payouts (5 days of $150),none,35516,16549,0.0,-3931,9333,6.4,58.6,62.6,-3131,42.4,76.8,222.0,987,47.8
+5y-25-consistency-nolimit,5y,"futures, last 5 years",Consistency payouts (40%),none,36077,15614,0.0,-3512,13425,7.3,46.9,22.3,-3131,35.6,53.1,96.0,2143,11.0
+2019-25-standard,2019,"futures, from Dec 20 2019",Standard payouts (5 days of $150),5 a month,29687,3512,0.0,-2850,1836,7.2,58.2,51.3,-1094,41.9,71.7,244.8,1036,77.9
+2019-25-consistency,2019,"futures, from Dec 20 2019",Consistency payouts (40%),5 a month,33977,6679,0.0,-1875,6679,9.6,40.8,17.5,-1144,45.0,73.2,123.2,2166,23.1

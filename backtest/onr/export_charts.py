@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Every number behind the dashboard's charts, with the costs itemised, at Lucid Flex 50K with the indicator's rules:
-the 60 days of real MNQ futures (Yahoo 5-minute bars; the window is printed when it runs), the study window and every
-year since 2011 (Nasdaq-100 CFD minute bars). For the real-MNQ part, DATA_DIR's SPXUSD.npz may be the CFD series
-extended with ES futures bars (prep_spx_ext.py), so the sessions after the CFD's end have their own S&P score.
+the recent window of real MNQ (MNQ_5m_60d.npz; the window is printed when it runs), the study window and every year.
 
-usage: export_charts.py DATA_DIR OUT_DIR [FUT_DATA_DIR REPORT_DIR]
-  Without FUT_DATA_DIR the study window is the last 4 years on the CFD (Nov 14 2022 - Nov 13 2026), checked against
-  results_50k<FEE_TAG> (the default plan only). With FUT_DATA_DIR (NQFUT.npz from prep_nqfut.py, SPXUSD.npz) it is the
-  last 5 years on real NQ futures, 5-minute bars, from Nov 15 2021, checked against REPORT_DIR: report50k.py's run of
-  the same plan on the same series and window (its book by year and its first pool path).
+usage: export_charts.py DATA_DIR OUT_DIR [FUT_DATA_DIR REPORT_DIR [REPORT_DIR_ALL]]
+  Since Nov 23 2026 every part is the user's MNQ file (prep_mnq.py): DATA_DIR holds its recent window MNQ_5m_60d.npz
+  (prep_mnq.py --cut, Sep 9 - Nov 20 2026), NQFUT.npz (the whole file, for the window's first average ranges) and the
+  S&P input SPXUSD.npz (spx_clock.py); FUT_DATA_DIR holds NQFUT.npz and SPXUSD.npz. The study window is the last 5
+  years from Nov 15 2021, checked against REPORT_DIR (report50k.py's run of the same plan on the same file and window:
+  its book by year and its first pool path); every year is one run from the file's first tradable session (Dec 20 2019),
+  checked the same way against REPORT_DIR_ALL (report50k.py's run of the plan from that session).
+  As before Nov 23 2026: without FUT_DATA_DIR the study window is the last 4 years on the Nasdaq-100 CFD (Nov 14 2022 -
+  Nov 13 2026, checked against results_50k<FEE_TAG>, the default plan only) and every year is the CFD's since 2011; with
+  FUT_DATA_DIR and no REPORT_DIR_ALL, every year is still the CFD's.
 Plan: ONR_EVAL_CONS (the eval's consistency rule, default 0.4; 0.5 = Lucid's paid add-on) and ONR_MAX_PAY (payouts
 a funded account takes before it is closed, default 5; 4 = indicator v2.3's default plan), as in report50k.py.
 
@@ -30,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import account  # noqa: E402
 from account import FEE_TAG, RULES, EvalAccount, FundedAccount, funded_size, run_eval, run_funded  # noqa: E402
 from account import is_half  # noqa: E402
-from engine import PV, Sessions, bracket_exit, load_npz, news_night, rth_sessions  # noqa: E402
+from engine import PV, Sessions, adr_seed, bracket_exit, load_npz, news_night, rth_sessions  # noqa: E402
 from portfolio import pool  # noqa: E402
 
 COMM = 1.34
@@ -44,13 +47,13 @@ F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, com
 LEG = {"on": "Overnight", "pyr": "Pyramid", "ib": "IB breakout"}
 WHY = {"stop": "stop", "target": "target", "time": "time exit", "stop-fillbar": "stop (fill bar)", "none": "time exit"}
 # the real-MNQ totals mnq_real50k.py prints for the same data, by plan (eval consistency, payouts per account), checked
-# before anything is written; read from mnq_real50k.py's output with ONR_EVAL_CONS / ONR_MAX_PAY set (Nov 22 2026, after
-# clean_prints.py repaired the 2026-10-30 15:00 bad print in Yahoo's file). In these 50 sessions no account reached a 4th
-# payout, so the payout plan changes nothing here.
-REAL_BY_PLAN = {(0.4, 5): dict(trades=73, net=18649, slot_payouts=[1136, 1280], slot_evals=3, pool=(10, 11677, 16)),
-                (0.4, 4): dict(trades=73, net=18649, slot_payouts=[1136, 1280], slot_evals=3, pool=(10, 11677, 16)),
-                (0.5, 5): dict(trades=73, net=18649, slot_payouts=[563], slot_evals=5, pool=(5, 2814, 27)),
-                (0.5, 4): dict(trades=73, net=18649, slot_payouts=[563], slot_evals=5, pool=(5, 2814, 27))}
+# before anything is written; read from mnq_real50k.py's output with ONR_EVAL_CONS / ONR_MAX_PAY set (Nov 23 2026: the
+# user's MNQ file, Sep 9 - Nov 20 2026, 53 sessions). No account reached a 4th payout in them, so the payout plan
+# changes nothing here.
+REAL_BY_PLAN = {(0.4, 5): dict(trades=78, net=16880, slot_payouts=[1041, 1231], slot_evals=3, pool=(10, 11361, 16)),
+                (0.4, 4): dict(trades=78, net=16880, slot_payouts=[1041, 1231], slot_evals=3, pool=(10, 11361, 16)),
+                (0.5, 5): dict(trades=78, net=16880, slot_payouts=[559], slot_evals=5, pool=(10, 5406, 25)),
+                (0.5, 4): dict(trades=78, net=16880, slot_payouts=[559], slot_evals=5, pool=(10, 5406, 25))}
 REAL = REAL_BY_PLAN[(CONS, MAXPAY)]
 ORD = {1: "1st", 2: "2nd", 3: "3rd"}
 
@@ -298,6 +301,7 @@ def every_year(S, out, at, ad, ap, ja, ev, fu):
           [[k, m["sessions"], m["trades"], r2(m["net"]), r2(m["run"]), m.get("pp", 0), round(m.get("pu", 0.0)),
             m.get("pe", 0), round(m.get("pn", 0.0)), round(m.get("pr", 0.0)), round(m.get("cash", 0.0))] for k, m in sorted(mo.items())])
     yr = rows[:-1]
+    full = yr[1:-1]  # the run's first and last calendar years are partial (it starts and ends mid-year)
     span = (pd_(ad[-1][0]) - pd_(ad[0][0])).days / 365.25
     tot = rows[-1]
     return [["all", "all_years_n", "Calendar years in the backtest", len(yr), "count", ""],
@@ -306,8 +310,8 @@ def every_year(S, out, at, ad, ap, ja, ev, fu):
             ["all", "all_book_year", "One funded account, per year", tot[7] / span, "usd", ""],
             ["all", "all_book_comm", "Commission paid, one funded account, all years", -tot[6], "usd", ""],
             ["all", "all_book_trades", "Trades, one funded account, all years", tot[3], "count", ""],
-            ["all", "all_best_year", "Best year, one funded account", max(r[7] for r in yr), "usd", ""],
-            ["all", "all_worst_year", "Worst year, one funded account", min(r[7] for r in yr), "usd", ""],
+            ["all", "all_best_year", f"Best full year ({full[0][0]}-{full[-1][0]}), one funded account", max(r[7] for r in full), "usd", ""],
+            ["all", "all_worst_year", f"Worst full year ({full[0][0]}-{full[-1][0]}), one funded account", min(r[7] for r in full), "usd", ""],
             ["all", "all_pool_net", "5 funded + evals, all years, net to you", tot[31], "usd", ""],
             ["all", "all_pool_year", "5 funded + evals, per year", tot[31] / span, "usd", ""],
             ["all", "all_pool_years_pos", "Years the 5 funded accounts ended positive", sum(r[31] > 0 for r in yr), "count", ""],
@@ -321,7 +325,7 @@ def pd_(s):
     return datetime.date.fromisoformat(s)
 
 
-def main(dd, out, fd=None, report_dir=None):
+def main(dd, out, fd=None, report_dir=None, report_all=None):
     os.makedirs(out, exist_ok=True)
     TC = ["trade", "date", "trade_type", "side", "mnq_traded", "exit", "gross_usd", "commission_usd", "net_usd",
           "running_net_usd"]
@@ -332,8 +336,7 @@ def main(dd, out, fd=None, report_dir=None):
     # ================= 60 days of real MNQ futures
     mnq = load_npz(os.path.join(dd, "MNQ_5m_60d.npz"))
     own = rth_sessions(*mnq)
-    src = {d: v for d, v in rth_sessions(*load_npz(os.path.join(dd, "NSXUSD.npz"))).items() if d < min(own)}
-    src.update(own)
+    src = adr_seed(dd, own)
     R = Sessions(mnq, load_npz(os.path.join(dd, "SPXUSD.npz")), tf=5, adr_src=src)
     m0 = int(np.argmax([not np.isnan(R.S[d]["adr"]) and not np.isnan(R.S[d]["score"]) for d in R.days]))
     kr = range(m0, len(R.days))
@@ -360,7 +363,8 @@ def main(dd, out, fd=None, report_dir=None):
     write(out, "real_pool", PC, rp)
 
     # ================= the study window: the last 4 years on the CFD, or the last 5 years on real NQ futures
-    S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
+    if report_all is None:  # every year on the CFD (before Nov 23 2026)
+        S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
     if fd is None:
         assert (CONS, MAXPAY) == (0.4, 5), "the CFD 4-year study is checked against results_50k: the default plan only"
         ST, NY, SS = "4y", 4, S
@@ -369,6 +373,8 @@ def main(dd, out, fd=None, report_dir=None):
         ST, NY = "5y", 5
         SS = Sessions(load_npz(os.path.join(fd, "NQFUT.npz")), load_npz(os.path.join(fd, "SPXUSD.npz")), tf=5)
         k4 = int(np.searchsorted(SS.days, np.datetime64("2021-11-15").astype(int)))
+        if report_all is not None:
+            S = SS  # every year: the same MNQ file, from its first tradable session
     k4s = range(k4, len(SS.days))
     print(f"study window ({ST}): {day(SS.days[k4])} -> {day(SS.days[-1])}, {len(k4s)} sessions")
     bt, bd = book(SS, k4s)
@@ -395,7 +401,8 @@ def main(dd, out, fd=None, report_dir=None):
     s_paid = PAID[0]
     write(out, f"slot_{ST}", JC, js)
 
-    # ================= every year, 2011 - 2026 (CFD minute bars): one continuous run from the first full session
+    # ================= every year: one continuous run from the first tradable session (the MNQ file's Dec 20 2019; on the
+    # CFD, before Nov 23 2026, its first full session of 2011)
     k0 = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in S.days]))
     ka = range(k0, len(S.days))
     print(f"every year: {day(S.days[k0])} -> {day(S.days[-1])}, {len(ka)} sessions")
@@ -403,12 +410,22 @@ def main(dd, out, fd=None, report_dir=None):
     yr_net = {}
     for t in at:
         yr_net[t[1][:4]] = yr_net.get(t[1][:4], 0.0) + t[8]
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "results_50k", "book_years_full_history.csv")) as f:
-        for r in csv.DictReader(f):  # report50k.py's yearly totals of the same account
-            assert abs(yr_net[r["year"]] - float(r["net_usd"])) < 1.0, (r, yr_net[r["year"]])
+    if report_all is None:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "results_50k", "book_years_full_history.csv")) as f:
+            for r in csv.DictReader(f):  # report50k.py's yearly totals of the same account
+                assert abs(yr_net[r["year"]] - float(r["net_usd"])) < 1.0, (r, yr_net[r["year"]])
+    else:  # report50k.py's run of this plan on the same file from the same first session
+        fa = json.load(open(os.path.join(report_all, "summary.json")))
+        assert fa["nq_file"] == "NQFUT.npz" and fa["nq_bar_minutes"] == 5 and fa["window"] == [day(S.days[k0]), day(S.days[-1])], fa["window"]
+        assert fa["eval_price"] == FEE and fa.get("eval_consistency", 0.4) == CONS, (fa["eval_price"], fa.get("eval_consistency"))
+        assert fa.get("max_payouts_per_account", 5) == MAXPAY, fa
+        want_all = {r["year"]: float(r["net_usd"]) for r in csv.DictReader(open(os.path.join(report_all, "book_years.csv")))}
+        assert sorted(want_all) == sorted(yr_net) and all(abs(yr_net[y] - v) < 1.0 for y, v in want_all.items()), (want_all, yr_net)
     write(out, "all_trades", TC, at)
     write(out, "all_days", DC, ad)
     ap, aps = pool_rows(S, k0, len(S.days))
+    if report_all is not None:
+        assert abs(aps["net"] - fa["pool"]["first_path_total"]) < 2.0, (aps, fa["pool"]["first_path_total"])
     PAID[0] = 0.0
     ja_all = journey(S, k0, len(S.days))
     a_paid = PAID[0]
@@ -460,7 +477,7 @@ def main(dd, out, fd=None, report_dir=None):
     for t in rt:
         legs.setdefault(t[2], []).append(t[8])
     d0, d1 = (pd_(day(R.days[kr[i]])) for i in (0, -1))
-    span = f"{d0:%b} {d0.day} - {d1:%b} {d1.day} {d1.year}"  # as before: "Sep 9 - Nov 17 2026"
+    span = f"{d0:%b} {d0.day} - {d1:%b} {d1.day} {d1.year}"  # e.g. "Sep 9 - Nov 20 2026"
     K = [["real", "real_sessions", "Sessions in the window", len(kr), "count", span],
          ["real", "real_trades", "Trades, one funded account", len(rt), "count", ""],
          ["real", "real_win", "Winning trades", 100 * np.mean(rn > 0), "pct", ""],
@@ -473,8 +490,8 @@ def main(dd, out, fd=None, report_dir=None):
          ["real", "real_evals_done", "Evals finished", len(done), "count", "one started every session"],
          ["real", "real_evals_pass", "Evals passed", npass, "count", ""],
          ["real", "real_eval_rate", "Eval pass rate", 100 * npass / len(done), "pct", ""],
-         ["real", "real_slot_net", "Net to you, one account bought Sep 9", SPLIT * rpay - FEE * rev, "usd", ""],
-         ["real", "real_slot_payouts", "Payouts, one account bought Sep 9", len([x for x in ja if x[3] > 0]), "count", ""],
+         ["real", "real_slot_net", f"Net to you, one account bought {d0:%b} {d0.day}", SPLIT * rpay - FEE * rev, "usd", ""],
+         ["real", "real_slot_payouts", f"Payouts, one account bought {d0:%b} {d0.day}", len([x for x in ja if x[3] > 0]), "count", ""],
          ["real", "real_pool_net", "Net to you, 5 funded accounts + evals", rs["net"], "usd", ""],
          ["real", "real_pool_payouts", "Payouts, 5 funded accounts + evals", rs["payouts"], "count", ""],
          ["real", "real_pool_evals", "Evals bought, 5 funded accounts + evals", rs["evals"], "count", ""],
@@ -509,8 +526,9 @@ def main(dd, out, fd=None, report_dir=None):
     print(f"checks passed at ${FEE:.2f} an eval (eval consistency {CONS:.0%}, {MAXPAY} payouts an account): real "
           f"{REAL['trades']} trades {REAL['net']:+,.0f}; account payouts {REAL['slot_payouts']}, net {slot_cash:,.2f}; pool "
           f"(payouts, gross, evals) {REAL['pool']}; {NY}-year book by year = report50k's; {NY}-year pool net = report50k's "
-          f"{first['pool']['first_path_total']:,.0f}")
+          f"{first['pool']['first_path_total']:,.0f}"
+          + (f"; every year's book by year and pool net = report50k's from {day(S.days[k0])}" if report_all else ""))
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:5])
+    main(*sys.argv[1:6])

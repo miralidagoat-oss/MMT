@@ -2,21 +2,24 @@
 """export_charts.py's datasets for your plan at Topstep (50K, Standard payouts, No Activation Fee path), and 1 to 5 XFAs.
 
 usage: topstep_charts.py LIVE_DATA_DIR FUT_DATA_DIR LUCID_CHARTS_DIR TS_REPORT_DIR OUT_DIR
-  LIVE_DATA_DIR: export_charts.py's (MNQ_5m_60d.npz, NSXUSD.npz and the extended SPXUSD.npz; its CFD is the every-year
-  data). FUT_DATA_DIR: NQFUT.npz and SPXUSD.npz. LUCID_CHARTS_DIR: export_charts.py's output for the Lucid plan
-  (results_v23_charts). TS_REPORT_DIR: topstep_report.py's output.
+  LIVE_DATA_DIR: export_charts.py's (MNQ_5m_60d.npz, the recent window of the user's MNQ file; NQFUT.npz; the S&P
+  input SPXUSD.npz). FUT_DATA_DIR: NQFUT.npz and SPXUSD.npz (the MNQ file, prep_mnq.py; the S&P input, spx_clock.py).
+  Every year is the MNQ file from its first tradable session (Dec 20 2019); only when LIVE_DATA_DIR holds the CFD
+  (NSXUSD.npz, as before Nov 23 2026) is it the CFD's from Feb 2011. LUCID_CHARTS_DIR: export_charts.py's output for the
+  Lucid plan (results_v23_charts). TS_REPORT_DIR: topstep_report.py's output.
 Rules and costs are topstep_sim.py's (ek(50), fk(50, "standard")): $1.34 per MNQ round turn, Topstep keeps 10% of each
 payout, $95 per Combine when it is bought and again every 30 days while it is open, no activation fee. Each funded leg
-is at most 6 micros (the cap topstep_sim.py assumes for Topstep's scaling plan): it binds when NQ's daily range is
-below about 117 points, so on most CFD sessions before 2020 and on none since 2021.
+is at most 6 micros (the cap topstep_sim.py assumes for Topstep's scaling plan): it binds when the 14-session average
+range is below about 108 points (the size rule's round(700 / range) is 7 or more), as on most CFD sessions before 2020;
+the run prints on how many sessions of its data.
 The same three runs as export_charts.py, with Topstep's accounts:
-  real MNQ, 60 sessions   one funded account's trades (the same as the Lucid plan's: checked), a Combine bought on every
+  real MNQ, recent window one funded account's trades (the same as the Lucid plan's: checked), a Combine bought on every
                           session, one account slot from the first session, 5 XFAs + 5 Combines from the first session
-  last 5 years, futures   one account slot and 5 XFAs + 5 Combines from Nov 15 2021 (the pool = topstep_report.py's
+  last 5 years            one account slot and 5 XFAs + 5 Combines from Nov 15 2021 (the pool = topstep_report.py's
                           first path: checked)
-  every year, CFD         one funded account's trades with the 6-micro cap, a Combine and an XFA started on every session,
-                          one account slot and 5 XFAs + 5 Combines from Feb 15 2011 (the pool = topstep_sim.py's CFD run
-                          from the same date: checked)
+  every year              one funded account's trades with the 6-micro cap, a Combine and an XFA started on every session,
+                          one account slot and 5 XFAs + 5 Combines from the first tradable session (the pool =
+                          topstep_sim.py's run of the same data from the same session: checked)
 and 1 to 5 XFAs with as many Combines behind them over the last 5 years (topstep_sim.py's machinery, 12 start dates; the
 5 + 5 row = topstep_sim.py's 5y-50-standard-noact: checked).
 Writes into OUT_DIR, with Topstep's names (a Combine is an "eval", an XFA a "funded" account, in the column names):
@@ -36,7 +39,7 @@ import export_charts as X  # noqa: E402  (its wrappers count commission and pass
 import research4 as R4  # noqa: E402
 import topstep_sim as T  # noqa: E402
 from account import EvalAccount, FundedAccount, funded_size, run_eval, run_funded  # noqa: E402
-from engine import Sessions, load_npz, rth_sessions  # noqa: E402
+from engine import Sessions, adr_seed, load_npz, rth_sessions  # noqa: E402
 from export_charts import COMM, LEG, WHY, day, pd_, r2  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -263,6 +266,7 @@ def every_year(S, out, at, ad, ap, ja, ev, fu):
           [[k, m["sessions"], m["trades"], r2(m["net"]), r2(m["run"]), m.get("pp", 0), round(m.get("pu", 0.0)),
             m.get("pe", 0), round(m.get("pn", 0.0)), round(m.get("pr", 0.0)), round(m.get("cash", 0.0))] for k, m in sorted(mo.items())])
     yr = rows[:-1]
+    full = yr[1:-1]  # the run's first and last calendar years are partial (it starts and ends mid-year)
     span = (pd_(ad[-1][0]) - pd_(ad[0][0])).days / 365.25
     tot = rows[-1]
     return rows, [["all", "all_years_n", "Calendar years in the backtest", len(yr), "count", ""],
@@ -271,8 +275,8 @@ def every_year(S, out, at, ad, ap, ja, ev, fu):
                   ["all", "all_book_year", "One funded account, per year", tot[7] / span, "usd", ""],
                   ["all", "all_book_comm", "Commission paid, one funded account, all years", -tot[6], "usd", ""],
                   ["all", "all_book_trades", "Trades, one funded account, all years", tot[3], "count", ""],
-                  ["all", "all_best_year", "Best year, one funded account", max(r[7] for r in yr), "usd", ""],
-                  ["all", "all_worst_year", "Worst year, one funded account", min(r[7] for r in yr), "usd", ""],
+                  ["all", "all_best_year", f"Best full year ({full[0][0]}-{full[-1][0]}), one funded account", max(r[7] for r in full), "usd", ""],
+                  ["all", "all_worst_year", f"Worst full year ({full[0][0]}-{full[-1][0]}), one funded account", min(r[7] for r in full), "usd", ""],
                   ["all", "all_pool_net", "5 XFAs + 5 Combines, all years, net to you", tot[31], "usd", ""],
                   ["all", "all_pool_year", "5 XFAs + 5 Combines, per year", tot[31] / span, "usd", ""],
                   ["all", "all_pool_years_pos", "Years the 5 XFAs ended positive", sum(r[31] > 0 for r in yr), "count", ""],
@@ -343,8 +347,7 @@ def main(dd, fd, lucid_dir, rep_dir, out):
     # ================= 60 days of real MNQ futures (export_charts.py's series)
     mnq = load_npz(os.path.join(dd, "MNQ_5m_60d.npz"))
     own = rth_sessions(*mnq)
-    src = {d: v for d, v in rth_sessions(*load_npz(os.path.join(dd, "NSXUSD.npz"))).items() if d < min(own)}
-    src.update(own)
+    src = adr_seed(dd, own)
     R = Sessions(mnq, load_npz(os.path.join(dd, "SPXUSD.npz")), tf=5, adr_src=src)
     m0 = int(np.argmax([not np.isnan(R.S[d]["adr"]) and not np.isnan(R.S[d]["score"]) for d in R.days]))
     kr = range(m0, len(R.days))
@@ -376,14 +379,20 @@ def main(dd, fd, lucid_dir, rep_dir, out):
     journey_check(SS, k4, len(SS.days), js, sev_)
     write(out, "ts_slot_5y", JC, [x[:7] for x in js])
 
-    # ================= every year, 2011 - 2026 (CFD minute bars): one continuous run from the first full session
-    S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
+    # ================= every year: one continuous run from the first tradable session (the MNQ file's; the CFD's 2011
+    # when LIVE_DATA_DIR holds it, as before Nov 23 2026)
+    kind = "cfd" if os.path.exists(os.path.join(dd, "NSXUSD.npz")) else "fut"
+    S = T.load("cfd", dd) if kind == "cfd" else SS
     k0 = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in S.days]))
     assert k0 == T.first_tradable(S)
     ka = range(k0, len(S.days))
-    print(f"every year: {day(S.days[k0])} -> {day(S.days[-1])}, {len(ka)} sessions", flush=True)
+    print(f"every year ({'the CFD' if kind == 'cfd' else 'the MNQ file'}): {day(S.days[k0])} -> {day(S.days[-1])}, "
+          f"{len(ka)} sessions", flush=True)
     at, ad = book(S, ka)
     assert max(x[2] for x in ad) <= FUNDMAX
+    capped = [x[0] for x in ad if x[1] != "" and funded_size(float(x[1]), 350.0 * 2) > FUNDMAX]
+    print(f"  the {FUNDMAX}-micro cap binds on {len(capped)} of {len(ad)} sessions"
+          + (f" ({capped[0]} to {capped[-1]}; {sum(d >= '2021' for d in capped)} since 2021)" if capped else ""), flush=True)
     lt = lucid("all_trades")
     i21 = next(i for i, t in enumerate(at) if t[1] >= "2021-01-01")
     j21 = next(i for i, t in enumerate(lt) if t[1] >= "2021-01-01")
@@ -398,8 +407,8 @@ def main(dd, fd, lucid_dir, rep_dir, out):
     write(out, "ts_history", ["year", "book_net_usd", "lucid_book_net_usd"], [[y, round(v), round(lh[y])] for y, v in sorted(hist.items())])
     ap, aps = pool_rows(S, k0, len(S.days))
     runs = json.load(open(os.path.join(HERE, "results_topstep", "runs.json")))
-    ref = runs[f"cfd|all|0|{SIZE}|{PATH}"][FEE_PATH]
-    assert abs(aps["net"] - ref["total"]) < 0.01, (aps["net"], ref["total"])  # topstep_sim.py's CFD run, offset 0
+    ref = runs[f"{kind}|all|0|{SIZE}|{PATH}"][FEE_PATH]
+    assert abs(aps["net"] - ref["total"]) < 0.01, (aps["net"], ref["total"])  # topstep_sim.py's run of the same data, offset 0
     X.PAID[0] = 0.0
     ja_all, aev_ = journey(S, k0, len(S.days))
     a_paid = X.PAID[0]
@@ -446,12 +455,13 @@ def main(dd, fd, lucid_dir, rep_dir, out):
     # ================= single figures
     done = [r for _, r in ev if r["result"] != "open"]
     npass = sum(r["result"] == "pass" for r in done)
+    d0 = pd_(day(R.days[m0]))
     K = [["real", "real_evals_done", "Combines finished", len(done), "count", "one bought every session"],
          ["real", "real_evals_pass", "Combines passed", npass, "count", ""],
          ["real", "real_eval_rate", "Combine pass rate", 100 * npass / len(done), "pct", ""],
-         ["real", "real_slot_net", "Net to you, one account bought Sep 9", SPLIT * rpay - rfee, "usd", ""],
-         ["real", "real_slot_payouts", "Payouts, one account bought Sep 9", len([x for x in ja if x[3] > 0]), "count", ""],
-         ["real", "real_slot_evals", "Combines bought, one account bought Sep 9", rev, "count", ""],
+         ["real", "real_slot_net", f"Net to you, one account bought {d0:%b} {d0.day}", SPLIT * rpay - rfee, "usd", ""],
+         ["real", "real_slot_payouts", f"Payouts, one account bought {d0:%b} {d0.day}", len([x for x in ja if x[3] > 0]), "count", ""],
+         ["real", "real_slot_evals", f"Combines bought, one account bought {d0:%b} {d0.day}", rev, "count", ""],
          ["real", "real_pool_net", "Net to you, 5 XFAs + 5 Combines", rs["net"], "usd", ""],
          ["real", "real_pool_payouts", "Payouts, 5 XFAs + 5 Combines", rs["payouts"], "count", ""],
          ["real", "real_pool_evals", "Combines bought, 5 XFAs + 5 Combines", rs["evals"], "count", ""],
@@ -464,7 +474,7 @@ def main(dd, fd, lucid_dir, rep_dir, out):
     # ================= 1 to 5 XFAs
     sizes(fd, out)
     print(f"checks passed: the 60-day and 5-year books = the Lucid plan's, the every-year book from 2021 = the Lucid plan's; "
-          f"the 5-year pool = topstep_report.py's first path (${bs['net']:,.0f}); the CFD pool = topstep_sim.py's (${aps['net']:,.0f}); "
+          f"the 5-year pool = topstep_report.py's first path (${bs['net']:,.0f}); the every-year pool = topstep_sim.py's (${aps['net']:,.0f}); "
           f"each slot's cash = topstep_sim.cash_flows; 5 + 5 = topstep_sim.py's 5y-50-standard-noact", flush=True)
 
 

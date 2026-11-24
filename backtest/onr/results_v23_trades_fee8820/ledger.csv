@@ -101,7 +101,7 @@ session,account,event,gross_usd,to_you_usd
 2022-02-08,E54,Eval bought,-88.2,-88.2
 2022-02-09,E55,Eval bought,-88.2,-88.2
 2022-02-10,E56,Eval bought,-88.2,-88.2
-2022-02-10,F47,Payout,610.0,549.0
+2022-02-10,F47,Payout,603.98,543.58
 2022-02-11,E48,Eval failed,0.0,0.0
 2022-02-11,E49,Eval failed,0.0,0.0
 2022-02-11,E50,Eval failed,0.0,0.0
@@ -112,7 +112,6 @@ session,account,event,gross_usd,to_you_usd
 2022-02-16,E59,Eval bought,-88.2,-88.2
 2022-02-17,E60,Eval bought,-88.2,-88.2
 2022-02-18,E61,Eval bought,-88.2,-88.2
-2022-02-21,F47,Payout,1944.02,1749.62
 2022-02-21,E53,Eval passed,0.0,0.0
 2022-02-21,E54,Eval passed,0.0,0.0
 2022-02-21,E55,Eval passed,0.0,0.0
@@ -123,14 +122,15 @@ session,account,event,gross_usd,to_you_usd
 2022-02-22,F63,Funded account started,0.0,0.0
 2022-02-22,F64,Funded account started,0.0,0.0
 2022-02-22,F65,Funded account started,0.0,0.0
+2022-02-22,F47,Payout,2000.0,1800.0
 2022-02-22,E59,Eval passed,0.0,0.0
 2022-02-22,E60,Eval passed,0.0,0.0
 2022-02-22,E61,Eval passed,0.0,0.0
-2022-03-07,F47,Payout,1657.64,1491.87
-2022-03-07,F62,Payout,685.63,617.06
-2022-03-07,F63,Payout,685.63,617.06
-2022-03-07,F64,Payout,685.63,617.06
-2022-03-07,F65,Payout,685.63,617.06
+2022-03-07,F62,Payout,676.4,608.76
+2022-03-07,F63,Payout,676.4,608.76
+2022-03-07,F64,Payout,676.4,608.76
+2022-03-07,F65,Payout,676.4,608.76
+2022-03-09,F47,Payout,2000.0,1800.0
 2022-03-09,F62,Stopped: cushion below $400,0.0,0.0
 2022-03-09,F63,Stopped: cushion below $400,0.0,0.0
 2022-03-09,F64,Stopped: cushion below $400,0.0,0.0
@@ -143,14 +143,14 @@ session,account,event,gross_usd,to_you_usd
 2022-03-11,E71,Eval bought,-88.2,-88.2
 2022-03-14,E72,Eval bought,-88.2,-88.2
 2022-03-15,E73,Eval bought,-88.2,-88.2
-2022-03-18,F47,Payout,2000.0,1800.0
-2022-03-18,F47,Closed after its 4th payout,0.0,0.0
-2022-03-21,F74,Funded account started,0.0,0.0
-2022-03-21,E75,Eval bought,-88.2,-88.2
-2022-03-21,F66,Payout,874.65,787.19
-2022-03-21,F67,Payout,874.65,787.19
-2022-03-21,F68,Payout,874.65,787.19
-2022-03-21,F69,Payout,874.65,787.19
+2022-03-21,F47,Payout,1961.16,1765.04
+2022-03-21,F47,Closed after its 4th payout,0.0,0.0
+2022-03-21,F66,Payout,871.5,784.35
+2022-03-21,F67,Payout,871.5,784.35
+2022-03-21,F68,Payout,871.5,784.35
+2022-03-21,F69,Payout,871.5,784.35
+2022-03-22,F74,Funded account started,0.0,0.0
+2022-03-22,E75,Eval bought,-88.2,-88.2
 2022-03-30,F66,Stopped: cushion below $400,0.0,0.0
 2022-03-30,F67,Stopped: cushion below $400,0.0,0.0
 2022-03-30,F68,Stopped: cushion below $400,0.0,0.0
@@ -169,17 +169,17 @@ session,account,event,gross_usd,to_you_usd
 2022-04-04,E82,Eval bought,-88.2,-88.2
 2022-04-05,E83,Eval bought,-88.2,-88.2
 2022-04-06,E84,Eval bought,-88.2,-88.2
-2022-04-07,E75,Eval passed,0.0,0.0
-2022-04-08,F85,Funded account started,0.0,0.0
+2022-04-11,E75,Eval passed,0.0,0.0
+2022-04-12,F85,Funded account started,0.0,0.0
 2022-04-12,E76,Eval passed,0.0,0.0
 2022-04-13,E81,Eval passed,0.0,0.0
 2022-04-13,E82,Eval passed,0.0,0.0
 2022-04-13,E83,Eval passed,0.0,0.0
 2022-04-13,E84,Eval passed,0.0,0.0
-2022-04-14,F77,Payout,762.31,686.08
-2022-04-14,F78,Payout,762.31,686.08
-2022-04-14,F79,Payout,762.31,686.08
-2022-04-14,F80,Payout,762.31,686.08
+2022-04-14,F77,Payout,765.9,689.31
+2022-04-14,F78,Payout,765.9,689.31
+2022-04-14,F79,Payout,765.9,689.31
+2022-04-14,F80,Payout,765.9,689.31
 2022-04-19,F77,Stopped: cushion below $400,0.0,0.0
 2022-04-19,F78,Stopped: cushion below $400,0.0,0.0
 2022-04-19,F79,Stopped: cushion below $400,0.0,0.0
@@ -191,1483 +191,1448 @@ session,account,event,gross_usd,to_you_usd
 2022-04-20,E90,Eval bought,-88.2,-88.2
 2022-04-21,E91,Eval bought,-88.2,-88.2
 2022-04-22,E92,Eval bought,-88.2,-88.2
-2022-04-22,F85,Payout,685.08,616.57
 2022-04-25,E93,Eval bought,-88.2,-88.2
-2022-04-26,F85,Stopped: cushion below $400,0.0,0.0
+2022-04-26,F85,Payout,1200.16,1080.14
 2022-04-26,E90,Eval failed,0.0,0.0
 2022-04-26,E91,Eval failed,0.0,0.0
-2022-04-27,F94,Funded account started,0.0,0.0
-2022-04-27,E95,Eval bought,-88.2,-88.2
-2022-04-28,E96,Eval bought,-88.2,-88.2
-2022-04-29,E97,Eval bought,-88.2,-88.2
+2022-04-27,E94,Eval bought,-88.2,-88.2
+2022-04-28,E95,Eval bought,-88.2,-88.2
 2022-05-02,E92,Eval failed,0.0,0.0
 2022-05-02,E93,Eval failed,0.0,0.0
-2022-05-03,E98,Eval bought,-88.2,-88.2
+2022-05-03,E96,Eval bought,-88.2,-88.2
+2022-05-03,E94,Eval failed,0.0,0.0
 2022-05-03,E95,Eval failed,0.0,0.0
-2022-05-03,E96,Eval failed,0.0,0.0
-2022-05-03,E97,Eval failed,0.0,0.0
-2022-05-04,E99,Eval bought,-88.2,-88.2
-2022-05-05,E100,Eval bought,-88.2,-88.2
-2022-05-05,F86,Payout,676.81,609.13
-2022-05-05,F87,Payout,676.81,609.13
-2022-05-05,F88,Payout,676.81,609.13
-2022-05-05,F89,Payout,676.81,609.13
-2022-05-06,E101,Eval bought,-88.2,-88.2
-2022-05-08,E102,Eval bought,-88.2,-88.2
-2022-05-10,F94,Payout,974.92,877.43
+2022-05-04,E97,Eval bought,-88.2,-88.2
+2022-05-05,E98,Eval bought,-88.2,-88.2
+2022-05-05,F85,Stopped: cushion below $400,0.0,0.0
+2022-05-05,F86,Payout,1459.1,1313.19
+2022-05-05,F87,Payout,1459.1,1313.19
+2022-05-05,F88,Payout,1459.1,1313.19
+2022-05-05,F89,Payout,1459.1,1313.19
+2022-05-06,F99,Funded account started,0.0,0.0
+2022-05-06,E100,Eval bought,-88.2,-88.2
+2022-05-09,E101,Eval bought,-88.2,-88.2
+2022-05-11,E97,Eval passed,0.0,0.0
 2022-05-11,E98,Eval passed,0.0,0.0
-2022-05-11,E99,Eval passed,0.0,0.0
-2022-05-11,E100,Eval passed,0.0,0.0
+2022-05-13,F99,Stopped: cushion below $400,0.0,0.0
+2022-05-13,E100,Eval failed,0.0,0.0
 2022-05-13,E101,Eval failed,0.0,0.0
-2022-05-13,E102,Eval failed,0.0,0.0
+2022-05-16,F102,Funded account started,0.0,0.0
 2022-05-16,E103,Eval bought,-88.2,-88.2
-2022-05-16,F86,Stopped: cushion below $400,0.0,0.0
-2022-05-16,F87,Stopped: cushion below $400,0.0,0.0
-2022-05-16,F88,Stopped: cushion below $400,0.0,0.0
-2022-05-16,F89,Stopped: cushion below $400,0.0,0.0
-2022-05-16,F94,Stopped: cushion below $400,0.0,0.0
-2022-05-17,F104,Funded account started,0.0,0.0
-2022-05-17,F105,Funded account started,0.0,0.0
-2022-05-17,F106,Funded account started,0.0,0.0
-2022-05-17,E107,Eval bought,-88.2,-88.2
-2022-05-18,E108,Eval bought,-88.2,-88.2
-2022-05-19,E109,Eval bought,-88.2,-88.2
-2022-05-20,E110,Eval bought,-88.2,-88.2
-2022-05-23,E111,Eval bought,-88.2,-88.2
-2022-05-24,E112,Eval bought,-88.2,-88.2
+2022-05-17,E104,Eval bought,-88.2,-88.2
+2022-05-18,E105,Eval bought,-88.2,-88.2
+2022-05-18,F86,Payout,1176.34,1058.71
+2022-05-18,F87,Payout,1176.34,1058.71
+2022-05-18,F88,Payout,1176.34,1058.71
+2022-05-18,F89,Payout,1176.34,1058.71
+2022-05-26,E96,Eval passed,0.0,0.0
 2022-05-26,E103,Eval passed,0.0,0.0
-2022-05-26,E107,Eval passed,0.0,0.0
-2022-05-26,E108,Eval passed,0.0,0.0
-2022-05-26,E109,Eval passed,0.0,0.0
-2022-05-26,E110,Eval passed,0.0,0.0
-2022-05-27,F113,Funded account started,0.0,0.0
-2022-05-27,F114,Funded account started,0.0,0.0
-2022-05-27,E111,Eval passed,0.0,0.0
-2022-05-27,E112,Eval passed,0.0,0.0
-2022-05-31,F104,Payout,1964.64,1768.18
-2022-05-31,F105,Payout,1964.64,1768.18
-2022-05-31,F106,Payout,1964.64,1768.18
-2022-06-06,F113,Payout,1367.0,1230.3
-2022-06-06,F114,Payout,1367.0,1230.3
-2022-06-13,F113,Stopped: cushion below $400,0.0,0.0
-2022-06-13,F114,Stopped: cushion below $400,0.0,0.0
-2022-06-14,F115,Funded account started,0.0,0.0
-2022-06-14,F116,Funded account started,0.0,0.0
-2022-06-14,E117,Eval bought,-88.2,-88.2
-2022-06-15,E118,Eval bought,-88.2,-88.2
-2022-06-17,E117,Eval passed,0.0,0.0
-2022-06-17,E118,Eval passed,0.0,0.0
-2022-06-23,F104,Stopped: cushion below $400,0.0,0.0
-2022-06-23,F105,Stopped: cushion below $400,0.0,0.0
-2022-06-23,F106,Stopped: cushion below $400,0.0,0.0
-2022-06-24,F119,Funded account started,0.0,0.0
-2022-06-24,F120,Funded account started,0.0,0.0
-2022-06-24,F121,Funded account started,0.0,0.0
-2022-06-24,E122,Eval bought,-88.2,-88.2
-2022-06-24,F115,Payout,782.1,703.89
-2022-06-24,F116,Payout,782.1,703.89
-2022-06-27,E123,Eval bought,-88.2,-88.2
-2022-06-28,E124,Eval bought,-88.2,-88.2
-2022-06-30,F115,Stopped: cushion below $400,0.0,0.0
-2022-06-30,F116,Stopped: cushion below $400,0.0,0.0
-2022-06-30,E122,Eval failed,0.0,0.0
-2022-06-30,E123,Eval failed,0.0,0.0
-2022-06-30,E124,Eval failed,0.0,0.0
-2022-07-01,F125,Funded account started,0.0,0.0
-2022-07-01,F126,Funded account started,0.0,0.0
-2022-07-01,E127,Eval bought,-88.2,-88.2
-2022-07-04,E128,Eval bought,-88.2,-88.2
-2022-07-05,E129,Eval bought,-88.2,-88.2
-2022-07-06,E130,Eval bought,-88.2,-88.2
-2022-07-07,E131,Eval bought,-88.2,-88.2
-2022-07-13,E130,Eval passed,0.0,0.0
-2022-07-13,E131,Eval passed,0.0,0.0
-2022-07-14,E127,Eval passed,0.0,0.0
-2022-07-14,E128,Eval passed,0.0,0.0
-2022-07-14,E129,Eval passed,0.0,0.0
-2022-07-19,F119,Payout,819.04,737.13
-2022-07-19,F120,Payout,819.04,737.13
-2022-07-19,F121,Payout,819.04,737.13
-2022-07-20,F125,Payout,873.67,786.3
-2022-07-20,F126,Payout,873.67,786.3
-2022-08-05,F119,Stopped: cushion below $400,0.0,0.0
-2022-08-05,F120,Stopped: cushion below $400,0.0,0.0
-2022-08-05,F121,Stopped: cushion below $400,0.0,0.0
-2022-08-05,F125,Payout,1612.11,1450.89
-2022-08-05,F126,Payout,1612.11,1450.89
-2022-08-08,F132,Funded account started,0.0,0.0
-2022-08-08,F133,Funded account started,0.0,0.0
-2022-08-08,F134,Funded account started,0.0,0.0
-2022-08-08,E135,Eval bought,-88.2,-88.2
-2022-08-09,E136,Eval bought,-88.2,-88.2
-2022-08-10,E137,Eval bought,-88.2,-88.2
-2022-08-12,E135,Eval failed,0.0,0.0
-2022-08-12,E136,Eval failed,0.0,0.0
-2022-08-12,E137,Eval failed,0.0,0.0
-2022-08-15,E138,Eval bought,-88.2,-88.2
-2022-08-16,E139,Eval bought,-88.2,-88.2
-2022-08-17,E140,Eval bought,-88.2,-88.2
-2022-08-17,F125,Payout,1374.35,1236.92
-2022-08-17,F126,Payout,1374.35,1236.92
-2022-08-17,F132,Payout,568.3,511.47
-2022-08-17,F133,Payout,568.3,511.47
-2022-08-17,F134,Payout,568.3,511.47
-2022-08-24,F132,Stopped: cushion below $400,0.0,0.0
-2022-08-24,F133,Stopped: cushion below $400,0.0,0.0
-2022-08-24,F134,Stopped: cushion below $400,0.0,0.0
-2022-08-25,F141,Funded account started,0.0,0.0
-2022-08-25,F142,Funded account started,0.0,0.0
-2022-08-25,E143,Eval bought,-88.2,-88.2
-2022-08-25,E140,Eval failed,0.0,0.0
-2022-08-26,E144,Eval bought,-88.2,-88.2
-2022-08-26,F125,Stopped: cushion below $400,0.0,0.0
-2022-08-26,F126,Stopped: cushion below $400,0.0,0.0
-2022-08-29,E145,Eval bought,-88.2,-88.2
-2022-08-30,E146,Eval bought,-88.2,-88.2
-2022-08-30,E138,Eval failed,0.0,0.0
-2022-08-30,E139,Eval failed,0.0,0.0
-2022-08-31,E147,Eval bought,-88.2,-88.2
-2022-08-31,E144,Eval passed,0.0,0.0
-2022-08-31,E145,Eval passed,0.0,0.0
-2022-09-01,F148,Funded account started,0.0,0.0
-2022-09-01,F149,Funded account started,0.0,0.0
-2022-09-01,E150,Eval bought,-88.2,-88.2
-2022-09-02,E151,Eval bought,-88.2,-88.2
-2022-09-02,E146,Eval passed,0.0,0.0
-2022-09-05,F152,Funded account started,0.0,0.0
-2022-09-05,E153,Eval bought,-88.2,-88.2
-2022-09-07,F141,Payout,1345.43,1210.89
-2022-09-07,F142,Payout,1345.43,1210.89
-2022-09-09,E143,Eval failed,0.0,0.0
-2022-09-09,E147,Eval failed,0.0,0.0
-2022-09-09,E150,Eval failed,0.0,0.0
-2022-09-09,E151,Eval failed,0.0,0.0
-2022-09-12,E154,Eval bought,-88.2,-88.2
-2022-09-13,E155,Eval bought,-88.2,-88.2
-2022-09-14,E156,Eval bought,-88.2,-88.2
-2022-09-14,F148,Payout,687.39,618.65
-2022-09-14,F149,Payout,687.39,618.65
-2022-09-15,E157,Eval bought,-88.2,-88.2
-2022-09-15,F152,Payout,1340.56,1206.5
-2022-09-21,F141,Stopped: cushion below $400,0.0,0.0
-2022-09-21,F142,Stopped: cushion below $400,0.0,0.0
-2022-09-21,F148,Stopped: cushion below $400,0.0,0.0
-2022-09-21,F149,Stopped: cushion below $400,0.0,0.0
-2022-09-21,F152,Stopped: cushion below $400,0.0,0.0
-2022-09-21,E153,Eval failed,0.0,0.0
-2022-09-21,E154,Eval failed,0.0,0.0
-2022-09-21,E155,Eval failed,0.0,0.0
-2022-09-21,E156,Eval failed,0.0,0.0
-2022-09-21,E157,Eval failed,0.0,0.0
-2022-09-22,E158,Eval bought,-88.2,-88.2
-2022-09-23,E159,Eval bought,-88.2,-88.2
-2022-09-26,E160,Eval bought,-88.2,-88.2
-2022-09-27,E161,Eval bought,-88.2,-88.2
-2022-09-27,E158,Eval failed,0.0,0.0
-2022-09-27,E159,Eval failed,0.0,0.0
-2022-09-28,E162,Eval bought,-88.2,-88.2
-2022-09-29,E163,Eval bought,-88.2,-88.2
-2022-09-30,E164,Eval bought,-88.2,-88.2
-2022-10-03,E165,Eval bought,-88.2,-88.2
-2022-10-04,E166,Eval bought,-88.2,-88.2
-2022-10-04,E160,Eval failed,0.0,0.0
-2022-10-04,E161,Eval failed,0.0,0.0
-2022-10-04,E162,Eval failed,0.0,0.0
-2022-10-05,E167,Eval bought,-88.2,-88.2
-2022-10-05,E165,Eval passed,0.0,0.0
-2022-10-06,F168,Funded account started,0.0,0.0
-2022-10-06,E169,Eval bought,-88.2,-88.2
-2022-10-07,E170,Eval bought,-88.2,-88.2
-2022-10-07,E163,Eval failed,0.0,0.0
-2022-10-07,E164,Eval failed,0.0,0.0
-2022-10-07,E166,Eval failed,0.0,0.0
-2022-10-07,E167,Eval failed,0.0,0.0
-2022-10-10,E171,Eval bought,-88.2,-88.2
-2022-10-11,E172,Eval bought,-88.2,-88.2
-2022-10-12,E173,Eval bought,-88.2,-88.2
-2022-10-12,E169,Eval failed,0.0,0.0
-2022-10-13,E174,Eval bought,-88.2,-88.2
-2022-10-14,E175,Eval bought,-88.2,-88.2
-2022-10-17,E176,Eval bought,-88.2,-88.2
-2022-10-17,F168,Stopped: cushion below $400,0.0,0.0
-2022-10-18,E177,Eval bought,-88.2,-88.2
-2022-10-19,E178,Eval bought,-88.2,-88.2
-2022-10-20,E179,Eval bought,-88.2,-88.2
-2022-10-20,E173,Eval passed,0.0,0.0
-2022-10-20,E174,Eval passed,0.0,0.0
-2022-10-20,E175,Eval passed,0.0,0.0
-2022-10-21,F180,Funded account started,0.0,0.0
-2022-10-21,F181,Funded account started,0.0,0.0
-2022-10-21,F182,Funded account started,0.0,0.0
-2022-10-24,E170,Eval passed,0.0,0.0
-2022-10-24,E171,Eval passed,0.0,0.0
-2022-10-24,E176,Eval passed,0.0,0.0
-2022-10-25,F183,Funded account started,0.0,0.0
-2022-10-25,F184,Funded account started,0.0,0.0
-2022-11-25,E172,Eval passed,0.0,0.0
-2022-11-30,E177,Eval passed,0.0,0.0
-2022-11-30,E178,Eval passed,0.0,0.0
-2022-11-30,E179,Eval passed,0.0,0.0
-2022-12-12,F180,Stopped: cushion below $400,0.0,0.0
-2022-12-12,F181,Stopped: cushion below $400,0.0,0.0
-2022-12-12,F182,Stopped: cushion below $400,0.0,0.0
-2022-12-12,F183,Stopped: cushion below $400,0.0,0.0
-2022-12-12,F184,Stopped: cushion below $400,0.0,0.0
-2022-12-13,F185,Funded account started,0.0,0.0
-2022-12-13,F186,Funded account started,0.0,0.0
-2022-12-13,F187,Funded account started,0.0,0.0
-2022-12-13,F188,Funded account started,0.0,0.0
-2022-12-13,F189,Funded account started,0.0,0.0
-2022-12-13,E190,Eval bought,-88.2,-88.2
-2022-12-14,E191,Eval bought,-88.2,-88.2
-2022-12-15,E192,Eval bought,-88.2,-88.2
-2022-12-16,E193,Eval bought,-88.2,-88.2
-2022-12-19,E194,Eval bought,-88.2,-88.2
-2022-12-21,E190,Eval failed,0.0,0.0
-2022-12-21,E191,Eval failed,0.0,0.0
-2022-12-21,E192,Eval failed,0.0,0.0
-2022-12-21,E193,Eval failed,0.0,0.0
-2022-12-22,E195,Eval bought,-88.2,-88.2
-2022-12-23,E196,Eval bought,-88.2,-88.2
-2022-12-27,E197,Eval bought,-88.2,-88.2
-2022-12-27,F185,Payout,1463.29,1316.96
-2022-12-27,F186,Payout,1463.29,1316.96
-2022-12-27,F187,Payout,1463.29,1316.96
-2022-12-27,F188,Payout,1463.29,1316.96
-2022-12-27,F189,Payout,1463.29,1316.96
-2022-12-28,E198,Eval bought,-88.2,-88.2
-2023-01-03,E194,Eval failed,0.0,0.0
-2023-01-03,E195,Eval failed,0.0,0.0
-2023-01-03,E196,Eval failed,0.0,0.0
-2023-01-03,E197,Eval failed,0.0,0.0
-2023-01-03,E198,Eval failed,0.0,0.0
-2023-01-04,E199,Eval bought,-88.2,-88.2
-2023-01-05,E200,Eval bought,-88.2,-88.2
-2023-01-06,E201,Eval bought,-88.2,-88.2
-2023-01-06,F185,Stopped: cushion below $400,0.0,0.0
-2023-01-06,F186,Stopped: cushion below $400,0.0,0.0
-2023-01-06,F187,Stopped: cushion below $400,0.0,0.0
-2023-01-06,F188,Stopped: cushion below $400,0.0,0.0
-2023-01-06,F189,Stopped: cushion below $400,0.0,0.0
-2023-01-09,E202,Eval bought,-88.2,-88.2
-2023-01-10,E203,Eval bought,-88.2,-88.2
-2023-01-11,E204,Eval bought,-88.2,-88.2
-2023-01-11,E199,Eval failed,0.0,0.0
-2023-01-11,E200,Eval failed,0.0,0.0
-2023-01-11,E201,Eval failed,0.0,0.0
-2023-01-12,E205,Eval bought,-88.2,-88.2
-2023-01-13,E206,Eval bought,-88.2,-88.2
-2023-01-13,E202,Eval failed,0.0,0.0
-2023-01-13,E203,Eval failed,0.0,0.0
-2023-01-16,E207,Eval bought,-88.2,-88.2
-2023-01-16,E204,Eval passed,0.0,0.0
-2023-01-16,E205,Eval passed,0.0,0.0
-2023-01-17,F208,Funded account started,0.0,0.0
-2023-01-17,F209,Funded account started,0.0,0.0
-2023-01-17,E210,Eval bought,-88.2,-88.2
-2023-01-18,E211,Eval bought,-88.2,-88.2
-2023-01-19,E212,Eval bought,-88.2,-88.2
-2023-01-20,E213,Eval bought,-88.2,-88.2
-2023-01-23,E214,Eval bought,-88.2,-88.2
-2023-01-24,E215,Eval bought,-88.2,-88.2
-2023-01-26,E206,Eval failed,0.0,0.0
-2023-01-26,E207,Eval failed,0.0,0.0
-2023-01-26,E210,Eval failed,0.0,0.0
-2023-01-26,E211,Eval failed,0.0,0.0
-2023-01-26,E212,Eval failed,0.0,0.0
-2023-01-27,E216,Eval bought,-88.2,-88.2
-2023-01-30,E217,Eval bought,-88.2,-88.2
-2023-01-31,E218,Eval bought,-88.2,-88.2
-2023-01-31,F208,Payout,1125.75,1013.17
-2023-01-31,F209,Payout,1125.75,1013.17
-2023-01-31,E216,Eval passed,0.0,0.0
-2023-02-01,F219,Funded account started,0.0,0.0
-2023-02-01,E220,Eval bought,-88.2,-88.2
-2023-02-01,E217,Eval passed,0.0,0.0
-2023-02-02,F221,Funded account started,0.0,0.0
-2023-02-02,E222,Eval bought,-88.2,-88.2
-2023-02-03,E213,Eval passed,0.0,0.0
-2023-02-03,E214,Eval passed,0.0,0.0
-2023-02-03,E215,Eval passed,0.0,0.0
-2023-02-03,E218,Eval passed,0.0,0.0
-2023-02-06,F223,Funded account started,0.0,0.0
-2023-02-06,E222,Eval passed,0.0,0.0
-2023-02-09,F208,Payout,1595.7,1436.13
-2023-02-09,F209,Payout,1595.7,1436.13
-2023-02-09,F219,Payout,957.19,861.48
-2023-02-09,F221,Payout,1261.51,1135.36
-2023-02-10,E220,Eval passed,0.0,0.0
-2023-02-14,F219,Stopped: cushion below $400,0.0,0.0
-2023-02-15,F224,Funded account started,0.0,0.0
-2023-02-15,E225,Eval bought,-88.2,-88.2
-2023-02-15,F221,Stopped: cushion below $400,0.0,0.0
-2023-02-16,F226,Funded account started,0.0,0.0
-2023-02-16,E227,Eval bought,-88.2,-88.2
-2023-02-17,F208,Stopped: cushion below $400,0.0,0.0
-2023-02-17,F209,Stopped: cushion below $400,0.0,0.0
-2023-02-20,F228,Funded account started,0.0,0.0
-2023-02-20,F229,Funded account started,0.0,0.0
-2023-02-20,E230,Eval bought,-88.2,-88.2
-2023-02-21,E231,Eval bought,-88.2,-88.2
-2023-02-23,F223,Payout,538.95,485.05
-2023-02-27,F223,Stopped: cushion below $400,0.0,0.0
-2023-02-28,F232,Funded account started,0.0,0.0
-2023-02-28,E233,Eval bought,-88.2,-88.2
-2023-03-02,E225,Eval passed,0.0,0.0
-2023-03-06,F224,Stopped: cushion below $400,0.0,0.0
-2023-03-06,F226,Stopped: cushion below $400,0.0,0.0
-2023-03-06,F228,Stopped: cushion below $400,0.0,0.0
-2023-03-06,F229,Stopped: cushion below $400,0.0,0.0
-2023-03-07,F234,Funded account started,0.0,0.0
-2023-03-07,E235,Eval bought,-88.2,-88.2
-2023-03-08,E236,Eval bought,-88.2,-88.2
-2023-03-09,E237,Eval bought,-88.2,-88.2
-2023-03-09,E227,Eval passed,0.0,0.0
-2023-03-09,E230,Eval passed,0.0,0.0
-2023-03-09,E231,Eval passed,0.0,0.0
-2023-03-09,E233,Eval passed,0.0,0.0
-2023-03-10,F238,Funded account started,0.0,0.0
-2023-03-10,F239,Funded account started,0.0,0.0
-2023-03-10,F240,Funded account started,0.0,0.0
-2023-03-10,E241,Eval bought,-88.2,-88.2
-2023-03-12,E235,Eval failed,0.0,0.0
-2023-03-12,E236,Eval failed,0.0,0.0
-2023-03-12,E237,Eval failed,0.0,0.0
-2023-03-13,E242,Eval bought,-88.2,-88.2
-2023-03-14,E243,Eval bought,-88.2,-88.2
-2023-03-14,E241,Eval failed,0.0,0.0
-2023-03-15,E244,Eval bought,-88.2,-88.2
-2023-03-15,F232,Stopped: cushion below $400,0.0,0.0
-2023-03-16,F245,Funded account started,0.0,0.0
-2023-03-16,E246,Eval bought,-88.2,-88.2
-2023-03-17,E247,Eval bought,-88.2,-88.2
-2023-03-22,F234,Stopped: cushion below $400,0.0,0.0
-2023-03-22,F238,Stopped: cushion below $400,0.0,0.0
-2023-03-22,F239,Stopped: cushion below $400,0.0,0.0
-2023-03-22,F240,Stopped: cushion below $400,0.0,0.0
-2023-03-23,E248,Eval bought,-88.2,-88.2
-2023-03-24,E249,Eval bought,-88.2,-88.2
-2023-03-27,E250,Eval bought,-88.2,-88.2
-2023-03-28,E251,Eval bought,-88.2,-88.2
-2023-03-31,F245,Stopped: cushion below $400,0.0,0.0
-2023-04-03,E252,Eval bought,-88.2,-88.2
-2023-04-19,E242,Eval passed,0.0,0.0
-2023-04-19,E246,Eval passed,0.0,0.0
-2023-04-19,E247,Eval passed,0.0,0.0
-2023-04-19,E248,Eval passed,0.0,0.0
-2023-04-19,E249,Eval passed,0.0,0.0
-2023-04-19,E250,Eval passed,0.0,0.0
-2023-04-19,E251,Eval passed,0.0,0.0
-2023-04-20,F253,Funded account started,0.0,0.0
-2023-04-20,F254,Funded account started,0.0,0.0
-2023-04-20,F255,Funded account started,0.0,0.0
-2023-04-20,F256,Funded account started,0.0,0.0
-2023-04-20,F257,Funded account started,0.0,0.0
-2023-04-20,E243,Eval passed,0.0,0.0
-2023-04-20,E244,Eval passed,0.0,0.0
-2023-04-20,E252,Eval passed,0.0,0.0
-2023-05-05,F253,Payout,852.57,767.31
-2023-05-05,F254,Payout,852.57,767.31
-2023-05-05,F255,Payout,852.57,767.31
-2023-05-05,F256,Payout,852.57,767.31
-2023-05-05,F257,Payout,852.57,767.31
-2023-05-09,F253,Stopped: cushion below $400,0.0,0.0
-2023-05-09,F254,Stopped: cushion below $400,0.0,0.0
-2023-05-09,F255,Stopped: cushion below $400,0.0,0.0
-2023-05-09,F256,Stopped: cushion below $400,0.0,0.0
-2023-05-09,F257,Stopped: cushion below $400,0.0,0.0
-2023-05-10,F258,Funded account started,0.0,0.0
-2023-05-10,F259,Funded account started,0.0,0.0
-2023-05-10,F260,Funded account started,0.0,0.0
-2023-05-10,F261,Funded account started,0.0,0.0
-2023-05-10,F262,Funded account started,0.0,0.0
-2023-05-10,E263,Eval bought,-88.2,-88.2
-2023-05-11,E264,Eval bought,-88.2,-88.2
-2023-05-12,E265,Eval bought,-88.2,-88.2
-2023-05-12,E263,Eval failed,0.0,0.0
-2023-05-15,E266,Eval bought,-88.2,-88.2
-2023-05-16,E267,Eval bought,-88.2,-88.2
-2023-05-17,E268,Eval bought,-88.2,-88.2
-2023-05-22,E265,Eval passed,0.0,0.0
-2023-05-22,E266,Eval passed,0.0,0.0
-2023-05-22,E267,Eval passed,0.0,0.0
-2023-05-25,E264,Eval failed,0.0,0.0
-2023-05-25,E268,Eval failed,0.0,0.0
-2023-05-26,E269,Eval bought,-88.2,-88.2
-2023-05-26,F258,Payout,1953.19,1757.87
-2023-05-26,F259,Payout,1953.19,1757.87
-2023-05-26,F260,Payout,1953.19,1757.87
-2023-05-26,F261,Payout,1953.19,1757.87
-2023-05-26,F262,Payout,1953.19,1757.87
-2023-05-29,E270,Eval bought,-88.2,-88.2
-2023-06-02,E269,Eval failed,0.0,0.0
-2023-06-02,E270,Eval failed,0.0,0.0
-2023-06-05,E271,Eval bought,-88.2,-88.2
-2023-06-06,E272,Eval bought,-88.2,-88.2
-2023-06-08,E271,Eval failed,0.0,0.0
-2023-06-08,E272,Eval failed,0.0,0.0
-2023-06-09,E273,Eval bought,-88.2,-88.2
-2023-06-12,E274,Eval bought,-88.2,-88.2
-2023-06-22,F258,Payout,1346.99,1212.29
-2023-06-22,F259,Payout,1346.99,1212.29
-2023-06-22,F260,Payout,1346.99,1212.29
-2023-06-22,F261,Payout,1346.99,1212.29
-2023-06-22,F262,Payout,1346.99,1212.29
-2023-07-10,F258,Stopped: cushion below $400,0.0,0.0
-2023-07-10,F259,Stopped: cushion below $400,0.0,0.0
-2023-07-10,F260,Stopped: cushion below $400,0.0,0.0
-2023-07-10,F261,Stopped: cushion below $400,0.0,0.0
-2023-07-10,F262,Stopped: cushion below $400,0.0,0.0
-2023-07-11,F275,Funded account started,0.0,0.0
-2023-07-11,F276,Funded account started,0.0,0.0
-2023-07-11,F277,Funded account started,0.0,0.0
-2023-07-11,E278,Eval bought,-88.2,-88.2
-2023-07-12,E279,Eval bought,-88.2,-88.2
-2023-07-13,E280,Eval bought,-88.2,-88.2
-2023-07-14,E281,Eval bought,-88.2,-88.2
-2023-07-17,E282,Eval bought,-88.2,-88.2
-2023-07-17,E273,Eval failed,0.0,0.0
-2023-07-17,E274,Eval failed,0.0,0.0
-2023-07-18,E283,Eval bought,-88.2,-88.2
-2023-07-19,E284,Eval bought,-88.2,-88.2
-2023-07-20,E278,Eval failed,0.0,0.0
-2023-07-20,E279,Eval failed,0.0,0.0
-2023-07-20,E280,Eval failed,0.0,0.0
-2023-07-20,E281,Eval failed,0.0,0.0
-2023-07-20,E282,Eval failed,0.0,0.0
-2023-07-20,E283,Eval failed,0.0,0.0
-2023-07-21,E285,Eval bought,-88.2,-88.2
-2023-07-21,E284,Eval failed,0.0,0.0
-2023-07-24,E286,Eval bought,-88.2,-88.2
-2023-07-25,E287,Eval bought,-88.2,-88.2
-2023-07-25,E285,Eval failed,0.0,0.0
-2023-07-26,E288,Eval bought,-88.2,-88.2
-2023-07-27,E289,Eval bought,-88.2,-88.2
-2023-07-27,F275,Stopped: cushion below $400,0.0,0.0
-2023-07-27,F276,Stopped: cushion below $400,0.0,0.0
-2023-07-27,F277,Stopped: cushion below $400,0.0,0.0
-2023-07-28,E290,Eval bought,-88.2,-88.2
-2023-07-28,E286,Eval failed,0.0,0.0
-2023-07-28,E287,Eval failed,0.0,0.0
-2023-07-28,E288,Eval failed,0.0,0.0
-2023-07-31,E291,Eval bought,-88.2,-88.2
-2023-08-01,E292,Eval bought,-88.2,-88.2
-2023-08-02,E293,Eval bought,-88.2,-88.2
-2023-08-03,E294,Eval bought,-88.2,-88.2
-2023-08-04,E295,Eval bought,-88.2,-88.2
-2023-08-04,E290,Eval passed,0.0,0.0
-2023-08-04,E291,Eval passed,0.0,0.0
-2023-08-04,E292,Eval passed,0.0,0.0
-2023-08-07,F296,Funded account started,0.0,0.0
-2023-08-07,F297,Funded account started,0.0,0.0
-2023-08-07,F298,Funded account started,0.0,0.0
-2023-08-07,E299,Eval bought,-88.2,-88.2
-2023-08-08,E300,Eval bought,-88.2,-88.2
-2023-08-09,E301,Eval bought,-88.2,-88.2
-2023-08-24,F296,Payout,1998.72,1798.85
-2023-08-24,F297,Payout,1998.72,1798.85
-2023-08-24,F298,Payout,1998.72,1798.85
-2023-08-25,E289,Eval passed,0.0,0.0
-2023-08-25,E293,Eval passed,0.0,0.0
-2023-08-25,E299,Eval passed,0.0,0.0
-2023-08-25,E300,Eval passed,0.0,0.0
-2023-08-25,E301,Eval passed,0.0,0.0
-2023-08-28,F302,Funded account started,0.0,0.0
-2023-08-28,F303,Funded account started,0.0,0.0
-2023-08-29,E294,Eval passed,0.0,0.0
-2023-08-29,E295,Eval passed,0.0,0.0
-2023-09-15,F296,Payout,2000.0,1800.0
-2023-09-15,F297,Payout,2000.0,1800.0
-2023-09-15,F298,Payout,2000.0,1800.0
-2023-09-15,F302,Payout,2000.0,1800.0
-2023-09-15,F303,Payout,2000.0,1800.0
-2023-09-29,F296,Payout,2000.0,1800.0
-2023-09-29,F297,Payout,2000.0,1800.0
-2023-09-29,F298,Payout,2000.0,1800.0
-2023-09-29,F302,Payout,2000.0,1800.0
-2023-09-29,F303,Payout,2000.0,1800.0
-2023-10-20,F302,Stopped: cushion below $400,0.0,0.0
-2023-10-20,F303,Stopped: cushion below $400,0.0,0.0
-2023-10-23,F304,Funded account started,0.0,0.0
-2023-10-23,F305,Funded account started,0.0,0.0
-2023-10-23,E306,Eval bought,-88.2,-88.2
-2023-10-24,E307,Eval bought,-88.2,-88.2
-2023-11-09,F304,Stopped: cushion below $400,0.0,0.0
-2023-11-09,F305,Stopped: cushion below $400,0.0,0.0
-2023-11-10,F308,Funded account started,0.0,0.0
-2023-11-10,F309,Funded account started,0.0,0.0
-2023-11-10,E310,Eval bought,-88.2,-88.2
-2023-11-13,E311,Eval bought,-88.2,-88.2
-2023-11-16,F296,Stopped: cushion below $400,0.0,0.0
-2023-11-16,F297,Stopped: cushion below $400,0.0,0.0
-2023-11-16,F298,Stopped: cushion below $400,0.0,0.0
-2023-11-16,E306,Eval failed,0.0,0.0
-2023-11-16,E307,Eval failed,0.0,0.0
-2023-11-17,F312,Funded account started,0.0,0.0
-2023-11-17,E313,Eval bought,-88.2,-88.2
-2023-11-17,F308,Stopped: cushion below $400,0.0,0.0
-2023-11-17,F309,Stopped: cushion below $400,0.0,0.0
-2023-11-20,E314,Eval bought,-88.2,-88.2
-2023-11-21,E315,Eval bought,-88.2,-88.2
-2023-11-22,E316,Eval bought,-88.2,-88.2
-2023-11-23,E317,Eval bought,-88.2,-88.2
-2023-11-24,E318,Eval bought,-88.2,-88.2
-2023-11-27,E319,Eval bought,-88.2,-88.2
-2023-11-29,F312,Stopped: cushion below $400,0.0,0.0
-2023-11-30,E320,Eval bought,-88.2,-88.2
-2023-12-04,E310,Eval failed,0.0,0.0
-2023-12-04,E311,Eval failed,0.0,0.0
-2023-12-04,E313,Eval failed,0.0,0.0
-2023-12-04,E314,Eval failed,0.0,0.0
-2023-12-04,E315,Eval failed,0.0,0.0
-2023-12-04,E316,Eval failed,0.0,0.0
-2023-12-04,E317,Eval failed,0.0,0.0
-2023-12-04,E318,Eval failed,0.0,0.0
-2023-12-04,E319,Eval failed,0.0,0.0
-2023-12-05,E321,Eval bought,-88.2,-88.2
-2023-12-06,E322,Eval bought,-88.2,-88.2
-2023-12-07,E323,Eval bought,-88.2,-88.2
-2023-12-08,E324,Eval bought,-88.2,-88.2
-2023-12-11,E325,Eval bought,-88.2,-88.2
-2023-12-12,E326,Eval bought,-88.2,-88.2
-2023-12-13,E327,Eval bought,-88.2,-88.2
-2023-12-14,E328,Eval bought,-88.2,-88.2
-2023-12-15,E329,Eval bought,-88.2,-88.2
-2023-12-15,E320,Eval failed,0.0,0.0
-2023-12-15,E321,Eval failed,0.0,0.0
-2023-12-15,E322,Eval failed,0.0,0.0
-2023-12-15,E323,Eval failed,0.0,0.0
-2023-12-15,E324,Eval failed,0.0,0.0
-2023-12-15,E325,Eval failed,0.0,0.0
-2023-12-15,E326,Eval failed,0.0,0.0
-2023-12-18,E330,Eval bought,-88.2,-88.2
-2023-12-18,E327,Eval failed,0.0,0.0
-2023-12-18,E328,Eval failed,0.0,0.0
-2023-12-19,E331,Eval bought,-88.2,-88.2
-2023-12-20,E332,Eval bought,-88.2,-88.2
-2023-12-20,E329,Eval failed,0.0,0.0
-2023-12-21,E333,Eval bought,-88.2,-88.2
-2023-12-22,E334,Eval bought,-88.2,-88.2
-2023-12-26,E335,Eval bought,-88.2,-88.2
-2023-12-27,E336,Eval bought,-88.2,-88.2
-2023-12-28,E337,Eval bought,-88.2,-88.2
-2023-12-29,E338,Eval bought,-88.2,-88.2
-2024-01-02,E339,Eval bought,-88.2,-88.2
-2024-01-02,E331,Eval passed,0.0,0.0
-2024-01-02,E332,Eval passed,0.0,0.0
-2024-01-02,E333,Eval passed,0.0,0.0
-2024-01-02,E334,Eval passed,0.0,0.0
-2024-01-02,E335,Eval passed,0.0,0.0
-2024-01-03,F340,Funded account started,0.0,0.0
-2024-01-03,F341,Funded account started,0.0,0.0
-2024-01-03,F342,Funded account started,0.0,0.0
-2024-01-03,F343,Funded account started,0.0,0.0
-2024-01-03,F344,Funded account started,0.0,0.0
-2024-01-04,E330,Eval passed,0.0,0.0
-2024-01-04,E336,Eval passed,0.0,0.0
-2024-01-04,E337,Eval passed,0.0,0.0
-2024-01-04,E338,Eval passed,0.0,0.0
-2024-01-05,E339,Eval passed,0.0,0.0
-2024-01-08,F340,Stopped: cushion below $400,0.0,0.0
-2024-01-08,F341,Stopped: cushion below $400,0.0,0.0
-2024-01-08,F342,Stopped: cushion below $400,0.0,0.0
-2024-01-08,F343,Stopped: cushion below $400,0.0,0.0
-2024-01-08,F344,Stopped: cushion below $400,0.0,0.0
-2024-01-09,F345,Funded account started,0.0,0.0
-2024-01-09,F346,Funded account started,0.0,0.0
-2024-01-09,F347,Funded account started,0.0,0.0
-2024-01-09,F348,Funded account started,0.0,0.0
-2024-01-09,F349,Funded account started,0.0,0.0
-2024-01-09,E350,Eval bought,-88.2,-88.2
-2024-01-10,E351,Eval bought,-88.2,-88.2
-2024-01-11,E352,Eval bought,-88.2,-88.2
-2024-01-11,E350,Eval failed,0.0,0.0
-2024-01-12,E353,Eval bought,-88.2,-88.2
-2024-01-15,E354,Eval bought,-88.2,-88.2
-2024-01-16,E355,Eval bought,-88.2,-88.2
-2024-01-17,F345,Stopped: cushion below $400,0.0,0.0
-2024-01-17,F346,Stopped: cushion below $400,0.0,0.0
-2024-01-17,F347,Stopped: cushion below $400,0.0,0.0
-2024-01-17,F348,Stopped: cushion below $400,0.0,0.0
-2024-01-17,F349,Stopped: cushion below $400,0.0,0.0
-2024-01-18,E356,Eval bought,-88.2,-88.2
-2024-01-18,E351,Eval failed,0.0,0.0
-2024-01-18,E352,Eval failed,0.0,0.0
-2024-01-19,E357,Eval bought,-88.2,-88.2
-2024-01-19,E353,Eval failed,0.0,0.0
-2024-01-19,E354,Eval failed,0.0,0.0
-2024-01-19,E355,Eval failed,0.0,0.0
-2024-01-22,E358,Eval bought,-88.2,-88.2
-2024-01-23,E359,Eval bought,-88.2,-88.2
-2024-01-23,E356,Eval failed,0.0,0.0
-2024-01-24,E360,Eval bought,-88.2,-88.2
-2024-01-25,E361,Eval bought,-88.2,-88.2
-2024-01-25,E357,Eval failed,0.0,0.0
-2024-01-25,E358,Eval failed,0.0,0.0
-2024-01-26,E362,Eval bought,-88.2,-88.2
-2024-01-29,E363,Eval bought,-88.2,-88.2
-2024-01-29,E359,Eval failed,0.0,0.0
-2024-01-30,E364,Eval bought,-88.2,-88.2
-2024-01-31,E365,Eval bought,-88.2,-88.2
-2024-02-01,E366,Eval bought,-88.2,-88.2
-2024-02-02,E367,Eval bought,-88.2,-88.2
-2024-02-05,E368,Eval bought,-88.2,-88.2
-2024-02-06,E369,Eval bought,-88.2,-88.2
-2024-02-12,E360,Eval failed,0.0,0.0
-2024-02-12,E361,Eval failed,0.0,0.0
-2024-02-12,E362,Eval failed,0.0,0.0
-2024-02-12,E363,Eval failed,0.0,0.0
-2024-02-12,E364,Eval failed,0.0,0.0
-2024-02-12,E365,Eval failed,0.0,0.0
-2024-02-12,E366,Eval failed,0.0,0.0
-2024-02-12,E367,Eval failed,0.0,0.0
-2024-02-12,E368,Eval failed,0.0,0.0
-2024-02-12,E369,Eval failed,0.0,0.0
-2024-02-13,E370,Eval bought,-88.2,-88.2
-2024-02-14,E371,Eval bought,-88.2,-88.2
-2024-02-15,E372,Eval bought,-88.2,-88.2
-2024-02-16,E373,Eval bought,-88.2,-88.2
-2024-02-19,E374,Eval bought,-88.2,-88.2
-2024-02-20,E375,Eval bought,-88.2,-88.2
-2024-02-21,E376,Eval bought,-88.2,-88.2
-2024-02-22,E377,Eval bought,-88.2,-88.2
-2024-02-23,E378,Eval bought,-88.2,-88.2
-2024-02-23,E370,Eval failed,0.0,0.0
-2024-02-23,E371,Eval failed,0.0,0.0
-2024-02-23,E372,Eval failed,0.0,0.0
-2024-02-23,E373,Eval failed,0.0,0.0
-2024-02-23,E374,Eval failed,0.0,0.0
-2024-02-23,E375,Eval failed,0.0,0.0
-2024-02-26,E379,Eval bought,-88.2,-88.2
-2024-02-26,E376,Eval failed,0.0,0.0
-2024-02-26,E377,Eval failed,0.0,0.0
-2024-02-27,E380,Eval bought,-88.2,-88.2
-2024-02-28,E381,Eval bought,-88.2,-88.2
-2024-02-29,E382,Eval bought,-88.2,-88.2
-2024-03-01,E383,Eval bought,-88.2,-88.2
-2024-03-01,E378,Eval failed,0.0,0.0
-2024-03-04,E384,Eval bought,-88.2,-88.2
-2024-03-04,E379,Eval failed,0.0,0.0
-2024-03-05,E385,Eval bought,-88.2,-88.2
-2024-03-05,E383,Eval passed,0.0,0.0
-2024-03-06,F386,Funded account started,0.0,0.0
-2024-03-06,E387,Eval bought,-88.2,-88.2
-2024-03-07,E388,Eval bought,-88.2,-88.2
-2024-03-08,E389,Eval bought,-88.2,-88.2
-2024-03-08,E380,Eval passed,0.0,0.0
-2024-03-08,E381,Eval passed,0.0,0.0
-2024-03-08,E382,Eval passed,0.0,0.0
-2024-03-10,F390,Funded account started,0.0,0.0
-2024-03-10,F391,Funded account started,0.0,0.0
-2024-03-10,F392,Funded account started,0.0,0.0
-2024-03-10,E393,Eval bought,-88.2,-88.2
-2024-03-13,E384,Eval failed,0.0,0.0
-2024-03-13,E385,Eval failed,0.0,0.0
-2024-03-13,E387,Eval failed,0.0,0.0
-2024-03-13,E388,Eval failed,0.0,0.0
-2024-03-13,E389,Eval failed,0.0,0.0
-2024-03-14,E394,Eval bought,-88.2,-88.2
-2024-03-15,E395,Eval bought,-88.2,-88.2
-2024-03-17,E396,Eval bought,-88.2,-88.2
-2024-03-18,E397,Eval bought,-88.2,-88.2
-2024-03-19,E398,Eval bought,-88.2,-88.2
-2024-03-27,F386,Payout,677.83,610.05
-2024-03-27,F390,Payout,868.89,782.0
-2024-03-27,F391,Payout,868.89,782.0
-2024-03-27,F392,Payout,868.89,782.0
-2024-03-27,E394,Eval passed,0.0,0.0
-2024-03-27,E395,Eval passed,0.0,0.0
-2024-03-27,E396,Eval passed,0.0,0.0
-2024-03-27,E397,Eval passed,0.0,0.0
-2024-03-27,E398,Eval passed,0.0,0.0
-2024-03-28,F399,Funded account started,0.0,0.0
-2024-04-01,F386,Stopped: cushion below $400,0.0,0.0
-2024-04-01,E393,Eval passed,0.0,0.0
-2024-04-02,F400,Funded account started,0.0,0.0
-2024-04-02,E401,Eval bought,-88.2,-88.2
-2024-04-04,F390,Stopped: cushion below $400,0.0,0.0
-2024-04-04,F391,Stopped: cushion below $400,0.0,0.0
-2024-04-04,F392,Stopped: cushion below $400,0.0,0.0
-2024-04-05,F402,Funded account started,0.0,0.0
-2024-04-05,F403,Funded account started,0.0,0.0
-2024-04-05,F404,Funded account started,0.0,0.0
-2024-04-05,E405,Eval bought,-88.2,-88.2
-2024-04-08,E406,Eval bought,-88.2,-88.2
-2024-04-09,E407,Eval bought,-88.2,-88.2
-2024-04-12,F399,Payout,1896.97,1707.27
-2024-04-12,F400,Payout,2000.0,1800.0
-2024-04-15,F402,Payout,1793.53,1614.18
-2024-04-15,F403,Payout,1793.53,1614.18
-2024-04-15,F404,Payout,1793.53,1614.18
-2024-04-15,E401,Eval passed,0.0,0.0
-2024-04-16,E405,Eval passed,0.0,0.0
-2024-04-16,E406,Eval passed,0.0,0.0
-2024-04-16,E407,Eval passed,0.0,0.0
-2024-04-22,F402,Stopped: cushion below $400,0.0,0.0
-2024-04-22,F403,Stopped: cushion below $400,0.0,0.0
-2024-04-22,F404,Stopped: cushion below $400,0.0,0.0
-2024-04-23,F408,Funded account started,0.0,0.0
-2024-04-23,F409,Funded account started,0.0,0.0
-2024-04-23,F410,Funded account started,0.0,0.0
-2024-04-23,E411,Eval bought,-88.2,-88.2
-2024-04-24,E412,Eval bought,-88.2,-88.2
-2024-04-25,E413,Eval bought,-88.2,-88.2
-2024-04-26,F399,Payout,1676.78,1509.1
-2024-04-26,F400,Payout,1790.71,1611.64
-2024-05-02,F408,Payout,1205.1,1084.59
-2024-05-02,F409,Payout,1205.1,1084.59
-2024-05-02,F410,Payout,1205.1,1084.59
-2024-05-14,F408,Stopped: cushion below $400,0.0,0.0
-2024-05-14,F409,Stopped: cushion below $400,0.0,0.0
-2024-05-14,F410,Stopped: cushion below $400,0.0,0.0
-2024-05-15,F414,Funded account started,0.0,0.0
-2024-05-15,F415,Funded account started,0.0,0.0
-2024-05-15,E416,Eval bought,-88.2,-88.2
-2024-05-15,F399,Payout,1446.62,1301.96
-2024-05-15,F400,Payout,1503.59,1353.23
-2024-05-16,E417,Eval bought,-88.2,-88.2
-2024-05-17,E418,Eval bought,-88.2,-88.2
-2024-05-20,E412,Eval failed,0.0,0.0
-2024-05-20,E413,Eval failed,0.0,0.0
-2024-05-21,E419,Eval bought,-88.2,-88.2
-2024-05-21,E411,Eval passed,0.0,0.0
-2024-05-22,F420,Funded account started,0.0,0.0
-2024-05-22,E421,Eval bought,-88.2,-88.2
-2024-05-23,E416,Eval passed,0.0,0.0
-2024-05-23,E417,Eval passed,0.0,0.0
-2024-05-23,E418,Eval passed,0.0,0.0
-2024-05-24,F414,Payout,1516.36,1364.73
-2024-05-24,F415,Payout,1516.36,1364.73
-2024-05-29,E419,Eval passed,0.0,0.0
-2024-05-30,E421,Eval passed,0.0,0.0
-2024-06-03,F399,Payout,2000.0,1800.0
-2024-06-03,F399,Closed after its 4th payout,0.0,0.0
-2024-06-03,F400,Payout,2000.0,1800.0
-2024-06-03,F400,Closed after its 4th payout,0.0,0.0
-2024-06-03,F414,Stopped: cushion below $400,0.0,0.0
-2024-06-03,F415,Stopped: cushion below $400,0.0,0.0
-2024-06-04,F422,Funded account started,0.0,0.0
-2024-06-04,F423,Funded account started,0.0,0.0
-2024-06-04,F424,Funded account started,0.0,0.0
-2024-06-04,F425,Funded account started,0.0,0.0
-2024-06-04,E426,Eval bought,-88.2,-88.2
-2024-06-05,E427,Eval bought,-88.2,-88.2
-2024-06-06,E428,Eval bought,-88.2,-88.2
-2024-06-07,E429,Eval bought,-88.2,-88.2
-2024-06-10,F420,Payout,974.57,877.11
-2024-06-10,E426,Eval failed,0.0,0.0
-2024-06-11,E430,Eval bought,-88.2,-88.2
-2024-06-20,E427,Eval passed,0.0,0.0
-2024-06-20,E428,Eval passed,0.0,0.0
-2024-06-20,E429,Eval passed,0.0,0.0
-2024-06-20,E430,Eval passed,0.0,0.0
-2024-06-24,F420,Stopped: cushion below $400,0.0,0.0
-2024-06-24,F422,Stopped: cushion below $400,0.0,0.0
-2024-06-24,F423,Stopped: cushion below $400,0.0,0.0
-2024-06-24,F424,Stopped: cushion below $400,0.0,0.0
-2024-06-24,F425,Stopped: cushion below $400,0.0,0.0
-2024-06-25,F431,Funded account started,0.0,0.0
-2024-06-25,F432,Funded account started,0.0,0.0
-2024-06-25,F433,Funded account started,0.0,0.0
-2024-06-25,F434,Funded account started,0.0,0.0
-2024-06-25,F435,Funded account started,0.0,0.0
-2024-06-25,E436,Eval bought,-88.2,-88.2
-2024-06-26,E437,Eval bought,-88.2,-88.2
-2024-06-27,E438,Eval bought,-88.2,-88.2
-2024-06-28,E439,Eval bought,-88.2,-88.2
-2024-07-01,E440,Eval bought,-88.2,-88.2
-2024-07-01,E436,Eval failed,0.0,0.0
-2024-07-01,E437,Eval failed,0.0,0.0
-2024-07-01,E438,Eval failed,0.0,0.0
-2024-07-02,E441,Eval bought,-88.2,-88.2
-2024-07-02,E439,Eval failed,0.0,0.0
-2024-07-03,E442,Eval bought,-88.2,-88.2
-2024-07-04,E443,Eval bought,-88.2,-88.2
-2024-07-05,E444,Eval bought,-88.2,-88.2
-2024-07-11,F431,Stopped: cushion below $400,0.0,0.0
-2024-07-11,F432,Stopped: cushion below $400,0.0,0.0
-2024-07-11,F433,Stopped: cushion below $400,0.0,0.0
-2024-07-11,F434,Stopped: cushion below $400,0.0,0.0
-2024-07-11,F435,Stopped: cushion below $400,0.0,0.0
-2024-07-12,E445,Eval bought,-88.2,-88.2
-2024-07-15,E446,Eval bought,-88.2,-88.2
-2024-07-16,E447,Eval bought,-88.2,-88.2
-2024-07-17,E448,Eval bought,-88.2,-88.2
-2024-07-18,E449,Eval bought,-88.2,-88.2
-2024-07-22,E440,Eval passed,0.0,0.0
-2024-07-22,E441,Eval passed,0.0,0.0
-2024-07-22,E445,Eval passed,0.0,0.0
-2024-07-22,E446,Eval passed,0.0,0.0
-2024-07-22,E447,Eval passed,0.0,0.0
-2024-07-22,E448,Eval passed,0.0,0.0
-2024-07-23,F450,Funded account started,0.0,0.0
-2024-07-23,F451,Funded account started,0.0,0.0
-2024-07-23,F452,Funded account started,0.0,0.0
-2024-07-23,F453,Funded account started,0.0,0.0
-2024-07-23,F454,Funded account started,0.0,0.0
-2024-07-24,E442,Eval passed,0.0,0.0
-2024-07-24,E443,Eval passed,0.0,0.0
-2024-07-24,E444,Eval passed,0.0,0.0
-2024-07-24,E449,Eval passed,0.0,0.0
-2024-08-07,F450,Payout,1758.18,1582.36
-2024-08-07,F451,Payout,1758.18,1582.36
-2024-08-07,F452,Payout,1758.18,1582.36
-2024-08-07,F453,Payout,1758.18,1582.36
-2024-08-07,F454,Payout,1758.18,1582.36
-2024-08-16,F450,Payout,1842.88,1658.59
-2024-08-16,F451,Payout,1842.88,1658.59
-2024-08-16,F452,Payout,1842.88,1658.59
-2024-08-16,F453,Payout,1842.88,1658.59
-2024-08-16,F454,Payout,1842.88,1658.59
-2024-09-03,F450,Payout,1836.39,1652.75
-2024-09-03,F451,Payout,1836.39,1652.75
-2024-09-03,F452,Payout,1836.39,1652.75
-2024-09-03,F453,Payout,1836.39,1652.75
-2024-09-03,F454,Payout,1836.39,1652.75
-2024-09-20,F450,Stopped: cushion below $400,0.0,0.0
-2024-09-20,F451,Stopped: cushion below $400,0.0,0.0
-2024-09-20,F452,Stopped: cushion below $400,0.0,0.0
-2024-09-20,F453,Stopped: cushion below $400,0.0,0.0
-2024-09-20,F454,Stopped: cushion below $400,0.0,0.0
-2024-09-23,F455,Funded account started,0.0,0.0
-2024-09-23,F456,Funded account started,0.0,0.0
-2024-09-23,F457,Funded account started,0.0,0.0
-2024-09-23,F458,Funded account started,0.0,0.0
-2024-09-23,F459,Funded account started,0.0,0.0
-2024-09-23,E460,Eval bought,-88.2,-88.2
-2024-09-24,E461,Eval bought,-88.2,-88.2
-2024-09-25,E462,Eval bought,-88.2,-88.2
-2024-09-26,E463,Eval bought,-88.2,-88.2
-2024-09-27,E464,Eval bought,-88.2,-88.2
-2024-10-03,E460,Eval passed,0.0,0.0
-2024-10-03,E461,Eval passed,0.0,0.0
-2024-10-03,E462,Eval passed,0.0,0.0
-2024-10-03,E463,Eval passed,0.0,0.0
-2024-10-09,F455,Payout,1460.52,1314.46
-2024-10-09,F456,Payout,1460.52,1314.46
-2024-10-09,F457,Payout,1460.52,1314.46
-2024-10-09,F458,Payout,1460.52,1314.46
-2024-10-09,F459,Payout,1460.52,1314.46
-2024-10-28,F455,Payout,1995.7,1796.13
-2024-10-28,F456,Payout,1995.7,1796.13
-2024-10-28,F457,Payout,1995.7,1796.13
-2024-10-28,F458,Payout,1995.7,1796.13
-2024-10-28,F459,Payout,1995.7,1796.13
-2024-10-28,E464,Eval passed,0.0,0.0
-2024-11-07,F455,Payout,2000.0,1800.0
-2024-11-07,F456,Payout,2000.0,1800.0
-2024-11-07,F457,Payout,2000.0,1800.0
-2024-11-07,F458,Payout,2000.0,1800.0
-2024-11-07,F459,Payout,2000.0,1800.0
-2024-11-20,F455,Payout,2000.0,1800.0
-2024-11-20,F455,Closed after its 4th payout,0.0,0.0
-2024-11-20,F456,Payout,2000.0,1800.0
-2024-11-20,F456,Closed after its 4th payout,0.0,0.0
-2024-11-20,F457,Payout,2000.0,1800.0
-2024-11-20,F457,Closed after its 4th payout,0.0,0.0
-2024-11-20,F458,Payout,2000.0,1800.0
-2024-11-20,F458,Closed after its 4th payout,0.0,0.0
-2024-11-20,F459,Payout,2000.0,1800.0
-2024-11-20,F459,Closed after its 4th payout,0.0,0.0
-2024-11-21,F465,Funded account started,0.0,0.0
-2024-11-21,F466,Funded account started,0.0,0.0
-2024-11-21,F467,Funded account started,0.0,0.0
-2024-11-21,F468,Funded account started,0.0,0.0
-2024-11-21,F469,Funded account started,0.0,0.0
-2024-11-21,E470,Eval bought,-88.2,-88.2
-2024-11-22,E471,Eval bought,-88.2,-88.2
-2024-11-25,E472,Eval bought,-88.2,-88.2
-2024-11-26,E473,Eval bought,-88.2,-88.2
-2024-11-26,E470,Eval passed,0.0,0.0
-2024-11-27,E474,Eval bought,-88.2,-88.2
-2024-11-27,E471,Eval passed,0.0,0.0
-2024-12-02,E472,Eval passed,0.0,0.0
-2024-12-02,E473,Eval passed,0.0,0.0
-2024-12-03,E474,Eval passed,0.0,0.0
-2024-12-04,F465,Payout,1219.36,1097.43
-2024-12-04,F466,Payout,1219.36,1097.43
-2024-12-04,F467,Payout,1219.36,1097.43
-2024-12-04,F468,Payout,1219.36,1097.43
-2024-12-04,F469,Payout,1219.36,1097.43
-2024-12-16,F465,Payout,1731.57,1558.41
-2024-12-16,F466,Payout,1731.57,1558.41
-2024-12-16,F467,Payout,1731.57,1558.41
-2024-12-16,F468,Payout,1731.57,1558.41
-2024-12-16,F469,Payout,1731.57,1558.41
-2025-01-07,F465,Payout,1729.56,1556.6
-2025-01-07,F466,Payout,1729.56,1556.6
-2025-01-07,F467,Payout,1729.56,1556.6
-2025-01-07,F468,Payout,1729.56,1556.6
-2025-01-07,F469,Payout,1729.56,1556.6
-2025-01-14,F465,Stopped: cushion below $400,0.0,0.0
-2025-01-14,F466,Stopped: cushion below $400,0.0,0.0
-2025-01-14,F467,Stopped: cushion below $400,0.0,0.0
-2025-01-14,F468,Stopped: cushion below $400,0.0,0.0
-2025-01-14,F469,Stopped: cushion below $400,0.0,0.0
-2025-01-15,F475,Funded account started,0.0,0.0
-2025-01-15,F476,Funded account started,0.0,0.0
-2025-01-15,F477,Funded account started,0.0,0.0
-2025-01-15,F478,Funded account started,0.0,0.0
-2025-01-15,F479,Funded account started,0.0,0.0
-2025-01-15,E480,Eval bought,-88.2,-88.2
-2025-01-16,E481,Eval bought,-88.2,-88.2
-2025-01-17,E482,Eval bought,-88.2,-88.2
-2025-01-20,E483,Eval bought,-88.2,-88.2
-2025-01-21,E484,Eval bought,-88.2,-88.2
-2025-01-28,E480,Eval passed,0.0,0.0
-2025-01-28,E481,Eval passed,0.0,0.0
-2025-01-31,E482,Eval failed,0.0,0.0
-2025-01-31,E483,Eval failed,0.0,0.0
-2025-01-31,E484,Eval failed,0.0,0.0
-2025-02-03,E485,Eval bought,-88.2,-88.2
-2025-02-04,E486,Eval bought,-88.2,-88.2
-2025-02-05,E487,Eval bought,-88.2,-88.2
-2025-02-19,F475,Stopped: cushion below $400,0.0,0.0
-2025-02-19,F476,Stopped: cushion below $400,0.0,0.0
-2025-02-19,F477,Stopped: cushion below $400,0.0,0.0
-2025-02-19,F478,Stopped: cushion below $400,0.0,0.0
-2025-02-19,F479,Stopped: cushion below $400,0.0,0.0
-2025-02-20,F488,Funded account started,0.0,0.0
-2025-02-20,F489,Funded account started,0.0,0.0
-2025-02-20,E490,Eval bought,-88.2,-88.2
-2025-02-20,E485,Eval passed,0.0,0.0
-2025-02-20,E486,Eval passed,0.0,0.0
-2025-02-20,E487,Eval passed,0.0,0.0
-2025-02-21,F491,Funded account started,0.0,0.0
-2025-02-21,F492,Funded account started,0.0,0.0
-2025-02-21,F493,Funded account started,0.0,0.0
-2025-02-21,E494,Eval bought,-88.2,-88.2
-2025-02-24,E495,Eval bought,-88.2,-88.2
-2025-02-25,E496,Eval bought,-88.2,-88.2
-2025-02-25,E490,Eval passed,0.0,0.0
-2025-02-26,E497,Eval bought,-88.2,-88.2
-2025-03-03,E494,Eval failed,0.0,0.0
-2025-03-03,E495,Eval failed,0.0,0.0
-2025-03-03,E496,Eval failed,0.0,0.0
-2025-03-04,E498,Eval bought,-88.2,-88.2
-2025-03-04,E497,Eval failed,0.0,0.0
-2025-03-05,E499,Eval bought,-88.2,-88.2
-2025-03-06,E500,Eval bought,-88.2,-88.2
-2025-03-06,F488,Stopped: cushion below $400,0.0,0.0
-2025-03-06,F489,Stopped: cushion below $400,0.0,0.0
-2025-03-06,F491,Stopped: cushion below $400,0.0,0.0
-2025-03-06,F492,Stopped: cushion below $400,0.0,0.0
-2025-03-06,F493,Stopped: cushion below $400,0.0,0.0
-2025-03-06,E498,Eval failed,0.0,0.0
-2025-03-07,F501,Funded account started,0.0,0.0
-2025-03-07,E502,Eval bought,-88.2,-88.2
-2025-03-10,E503,Eval bought,-88.2,-88.2
-2025-03-10,E499,Eval failed,0.0,0.0
-2025-03-11,E504,Eval bought,-88.2,-88.2
-2025-03-12,E505,Eval bought,-88.2,-88.2
-2025-03-13,E506,Eval bought,-88.2,-88.2
-2025-03-14,E507,Eval bought,-88.2,-88.2
-2025-03-16,E508,Eval bought,-88.2,-88.2
-2025-03-17,E509,Eval bought,-88.2,-88.2
-2025-04-02,E505,Eval passed,0.0,0.0
-2025-04-03,F510,Funded account started,0.0,0.0
-2025-04-08,E500,Eval failed,0.0,0.0
-2025-04-08,E502,Eval failed,0.0,0.0
-2025-04-08,E503,Eval failed,0.0,0.0
-2025-04-08,E504,Eval failed,0.0,0.0
-2025-04-08,E506,Eval failed,0.0,0.0
-2025-04-08,E507,Eval failed,0.0,0.0
-2025-04-08,E508,Eval failed,0.0,0.0
-2025-04-08,E509,Eval failed,0.0,0.0
-2025-04-09,E511,Eval bought,-88.2,-88.2
-2025-04-10,E512,Eval bought,-88.2,-88.2
-2025-04-10,F501,Stopped: cushion below $400,0.0,0.0
-2025-04-10,F510,Stopped: cushion below $400,0.0,0.0
-2025-04-11,E513,Eval bought,-88.2,-88.2
-2025-04-14,E514,Eval bought,-88.2,-88.2
-2025-04-15,E515,Eval bought,-88.2,-88.2
-2025-04-16,E516,Eval bought,-88.2,-88.2
-2025-04-17,E517,Eval bought,-88.2,-88.2
-2025-04-21,E518,Eval bought,-88.2,-88.2
-2025-04-22,E519,Eval bought,-88.2,-88.2
-2025-04-23,E520,Eval bought,-88.2,-88.2
-2025-05-08,E512,Eval passed,0.0,0.0
-2025-05-08,E513,Eval passed,0.0,0.0
-2025-05-08,E514,Eval passed,0.0,0.0
-2025-05-08,E515,Eval passed,0.0,0.0
-2025-05-08,E516,Eval passed,0.0,0.0
-2025-05-08,E517,Eval passed,0.0,0.0
-2025-05-08,E518,Eval passed,0.0,0.0
-2025-05-08,E519,Eval passed,0.0,0.0
-2025-05-09,F521,Funded account started,0.0,0.0
-2025-05-09,F522,Funded account started,0.0,0.0
-2025-05-09,F523,Funded account started,0.0,0.0
-2025-05-09,F524,Funded account started,0.0,0.0
-2025-05-09,F525,Funded account started,0.0,0.0
-2025-05-13,E511,Eval failed,0.0,0.0
-2025-05-13,E520,Eval failed,0.0,0.0
-2025-05-14,E526,Eval bought,-88.2,-88.2
-2025-05-15,E527,Eval bought,-88.2,-88.2
-2025-05-26,E526,Eval passed,0.0,0.0
-2025-05-26,E527,Eval passed,0.0,0.0
-2025-05-27,F521,Payout,1349.32,1214.39
-2025-05-27,F522,Payout,1349.32,1214.39
-2025-05-27,F523,Payout,1349.32,1214.39
-2025-05-27,F524,Payout,1349.32,1214.39
-2025-05-27,F525,Payout,1349.32,1214.39
-2025-06-16,F521,Stopped: cushion below $400,0.0,0.0
-2025-06-16,F522,Stopped: cushion below $400,0.0,0.0
-2025-06-16,F523,Stopped: cushion below $400,0.0,0.0
-2025-06-16,F524,Stopped: cushion below $400,0.0,0.0
-2025-06-16,F525,Stopped: cushion below $400,0.0,0.0
-2025-06-17,F528,Funded account started,0.0,0.0
-2025-06-17,F529,Funded account started,0.0,0.0
-2025-06-17,F530,Funded account started,0.0,0.0
-2025-06-17,F531,Funded account started,0.0,0.0
-2025-06-17,F532,Funded account started,0.0,0.0
-2025-06-17,E533,Eval bought,-88.2,-88.2
-2025-06-18,E534,Eval bought,-88.2,-88.2
-2025-06-19,E535,Eval bought,-88.2,-88.2
-2025-06-20,E536,Eval bought,-88.2,-88.2
-2025-06-23,E537,Eval bought,-88.2,-88.2
-2025-07-02,F528,Payout,737.97,664.17
-2025-07-02,F529,Payout,737.97,664.17
-2025-07-02,F530,Payout,737.97,664.17
-2025-07-02,F531,Payout,737.97,664.17
-2025-07-02,F532,Payout,737.97,664.17
-2025-07-08,F528,Stopped: cushion below $400,0.0,0.0
-2025-07-08,F529,Stopped: cushion below $400,0.0,0.0
-2025-07-08,F530,Stopped: cushion below $400,0.0,0.0
-2025-07-08,F531,Stopped: cushion below $400,0.0,0.0
-2025-07-08,F532,Stopped: cushion below $400,0.0,0.0
-2025-07-09,E538,Eval bought,-88.2,-88.2
-2025-07-10,E539,Eval bought,-88.2,-88.2
-2025-07-10,E533,Eval failed,0.0,0.0
-2025-07-10,E534,Eval failed,0.0,0.0
-2025-07-10,E535,Eval failed,0.0,0.0
-2025-07-10,E536,Eval failed,0.0,0.0
-2025-07-10,E537,Eval failed,0.0,0.0
-2025-07-11,E540,Eval bought,-88.2,-88.2
-2025-07-14,E541,Eval bought,-88.2,-88.2
-2025-07-15,E542,Eval bought,-88.2,-88.2
-2025-07-15,E539,Eval passed,0.0,0.0
-2025-07-16,F543,Funded account started,0.0,0.0
-2025-07-16,E544,Eval bought,-88.2,-88.2
-2025-07-16,E538,Eval passed,0.0,0.0
-2025-07-16,E540,Eval passed,0.0,0.0
-2025-07-17,F545,Funded account started,0.0,0.0
-2025-07-17,F546,Funded account started,0.0,0.0
-2025-07-17,E547,Eval bought,-88.2,-88.2
-2025-07-18,E548,Eval bought,-88.2,-88.2
-2025-07-21,E549,Eval bought,-88.2,-88.2
-2025-07-21,E541,Eval passed,0.0,0.0
-2025-07-21,E542,Eval passed,0.0,0.0
-2025-07-22,F550,Funded account started,0.0,0.0
-2025-07-22,F551,Funded account started,0.0,0.0
-2025-07-22,E552,Eval bought,-88.2,-88.2
-2025-07-22,E544,Eval passed,0.0,0.0
-2025-07-23,E547,Eval passed,0.0,0.0
-2025-07-23,E548,Eval passed,0.0,0.0
-2025-07-23,E549,Eval passed,0.0,0.0
-2025-07-28,F543,Payout,1673.52,1506.17
-2025-07-28,F545,Payout,1759.6,1583.64
-2025-07-28,F546,Payout,1759.6,1583.64
-2025-08-01,F550,Payout,2000.0,1800.0
-2025-08-01,F551,Payout,2000.0,1800.0
-2025-08-01,E552,Eval failed,0.0,0.0
-2025-08-04,E553,Eval bought,-88.2,-88.2
-2025-08-06,F543,Payout,2000.0,1800.0
-2025-08-06,F545,Payout,2000.0,1800.0
-2025-08-06,F546,Payout,2000.0,1800.0
-2025-08-06,E553,Eval passed,0.0,0.0
-2025-08-19,F550,Payout,1922.65,1730.39
-2025-08-19,F551,Payout,1922.65,1730.39
-2025-09-10,F550,Stopped: cushion below $400,0.0,0.0
-2025-09-10,F551,Stopped: cushion below $400,0.0,0.0
-2025-09-11,F554,Funded account started,0.0,0.0
-2025-09-11,F555,Funded account started,0.0,0.0
-2025-09-11,E556,Eval bought,-88.2,-88.2
-2025-09-12,E557,Eval bought,-88.2,-88.2
-2025-09-22,F543,Stopped: cushion below $400,0.0,0.0
-2025-09-22,F554,Stopped: cushion below $400,0.0,0.0
-2025-09-22,F555,Stopped: cushion below $400,0.0,0.0
-2025-09-23,F558,Funded account started,0.0,0.0
-2025-09-23,F559,Funded account started,0.0,0.0
-2025-09-23,F560,Funded account started,0.0,0.0
-2025-09-23,E561,Eval bought,-88.2,-88.2
-2025-09-24,E562,Eval bought,-88.2,-88.2
-2025-09-25,E563,Eval bought,-88.2,-88.2
-2025-09-29,E556,Eval failed,0.0,0.0
-2025-09-29,E557,Eval failed,0.0,0.0
-2025-09-29,E561,Eval failed,0.0,0.0
-2025-09-29,E562,Eval failed,0.0,0.0
-2025-09-29,E563,Eval failed,0.0,0.0
-2025-09-30,E564,Eval bought,-88.2,-88.2
-2025-10-01,E565,Eval bought,-88.2,-88.2
-2025-10-01,F558,Payout,1136.61,1022.95
-2025-10-01,F559,Payout,1136.61,1022.95
-2025-10-01,F560,Payout,1136.61,1022.95
-2025-10-02,E566,Eval bought,-88.2,-88.2
-2025-10-02,E564,Eval failed,0.0,0.0
-2025-10-03,E567,Eval bought,-88.2,-88.2
-2025-10-06,E568,Eval bought,-88.2,-88.2
-2025-10-07,E569,Eval bought,-88.2,-88.2
-2025-10-07,F558,Stopped: cushion below $400,0.0,0.0
-2025-10-07,F559,Stopped: cushion below $400,0.0,0.0
-2025-10-07,F560,Stopped: cushion below $400,0.0,0.0
-2025-10-07,E565,Eval failed,0.0,0.0
-2025-10-08,E570,Eval bought,-88.2,-88.2
-2025-10-08,F545,Payout,2000.0,1800.0
-2025-10-08,F546,Payout,2000.0,1800.0
-2025-10-09,E571,Eval bought,-88.2,-88.2
-2025-10-10,E572,Eval bought,-88.2,-88.2
-2025-10-13,E573,Eval bought,-88.2,-88.2
-2025-10-14,E566,Eval passed,0.0,0.0
-2025-10-14,E567,Eval passed,0.0,0.0
-2025-10-14,E568,Eval passed,0.0,0.0
-2025-10-14,E569,Eval passed,0.0,0.0
-2025-10-14,E570,Eval passed,0.0,0.0
-2025-10-15,F574,Funded account started,0.0,0.0
-2025-10-15,F575,Funded account started,0.0,0.0
-2025-10-15,F576,Funded account started,0.0,0.0
-2025-10-16,E571,Eval failed,0.0,0.0
-2025-10-16,E572,Eval failed,0.0,0.0
-2025-10-16,E573,Eval failed,0.0,0.0
-2025-10-17,E577,Eval bought,-88.2,-88.2
-2025-10-20,E578,Eval bought,-88.2,-88.2
-2025-10-21,E579,Eval bought,-88.2,-88.2
-2025-10-22,F545,Payout,1898.78,1708.9
-2025-10-22,F545,Closed after its 4th payout,0.0,0.0
-2025-10-22,F546,Payout,1898.78,1708.9
-2025-10-22,F546,Closed after its 4th payout,0.0,0.0
-2025-10-22,F574,Stopped: cushion below $400,0.0,0.0
-2025-10-22,F575,Stopped: cushion below $400,0.0,0.0
-2025-10-22,F576,Stopped: cushion below $400,0.0,0.0
-2025-10-22,E577,Eval passed,0.0,0.0
-2025-10-23,F580,Funded account started,0.0,0.0
-2025-10-23,F581,Funded account started,0.0,0.0
-2025-10-23,F582,Funded account started,0.0,0.0
-2025-10-23,E583,Eval bought,-88.2,-88.2
-2025-10-24,E584,Eval bought,-88.2,-88.2
-2025-10-27,E585,Eval bought,-88.2,-88.2
-2025-10-28,E586,Eval bought,-88.2,-88.2
-2025-10-29,E587,Eval bought,-88.2,-88.2
-2025-10-30,E578,Eval passed,0.0,0.0
-2025-10-31,F588,Funded account started,0.0,0.0
-2025-10-31,E579,Eval passed,0.0,0.0
-2025-11-03,F589,Funded account started,0.0,0.0
-2025-11-04,F580,Payout,1028.95,926.06
-2025-11-04,F581,Payout,1028.95,926.06
-2025-11-04,F582,Payout,1028.95,926.06
-2025-11-04,E583,Eval passed,0.0,0.0
-2025-11-04,E584,Eval passed,0.0,0.0
-2025-11-04,E585,Eval passed,0.0,0.0
-2025-11-04,E586,Eval passed,0.0,0.0
-2025-11-04,E587,Eval passed,0.0,0.0
-2025-11-17,F588,Payout,783.52,705.17
-2025-11-19,F580,Stopped: cushion below $400,0.0,0.0
-2025-11-19,F581,Stopped: cushion below $400,0.0,0.0
-2025-11-19,F582,Stopped: cushion below $400,0.0,0.0
-2025-11-19,F588,Stopped: cushion below $400,0.0,0.0
-2025-11-19,F589,Stopped: cushion below $400,0.0,0.0
-2025-11-20,F590,Funded account started,0.0,0.0
-2025-11-20,F591,Funded account started,0.0,0.0
-2025-11-20,F592,Funded account started,0.0,0.0
-2025-11-20,F593,Funded account started,0.0,0.0
-2025-11-20,F594,Funded account started,0.0,0.0
-2025-11-20,E595,Eval bought,-88.2,-88.2
-2025-11-21,E596,Eval bought,-88.2,-88.2
-2025-11-24,E597,Eval bought,-88.2,-88.2
-2025-11-25,E598,Eval bought,-88.2,-88.2
-2025-11-26,E599,Eval bought,-88.2,-88.2
-2025-12-12,F590,Payout,868.73,781.86
-2025-12-12,F591,Payout,868.73,781.86
-2025-12-12,F592,Payout,868.73,781.86
-2025-12-12,F593,Payout,868.73,781.86
-2025-12-12,F594,Payout,868.73,781.86
-2025-12-16,E595,Eval passed,0.0,0.0
-2025-12-16,E596,Eval passed,0.0,0.0
-2025-12-23,E597,Eval passed,0.0,0.0
-2025-12-29,F590,Payout,2000.0,1800.0
-2025-12-29,F591,Payout,2000.0,1800.0
-2025-12-29,F592,Payout,2000.0,1800.0
-2025-12-29,F593,Payout,2000.0,1800.0
-2025-12-29,F594,Payout,2000.0,1800.0
-2025-12-29,E598,Eval passed,0.0,0.0
-2025-12-29,E599,Eval passed,0.0,0.0
-2026-01-19,F590,Stopped: cushion below $400,0.0,0.0
-2026-01-19,F591,Stopped: cushion below $400,0.0,0.0
-2026-01-19,F592,Stopped: cushion below $400,0.0,0.0
-2026-01-19,F593,Stopped: cushion below $400,0.0,0.0
-2026-01-19,F594,Stopped: cushion below $400,0.0,0.0
-2026-01-20,F600,Funded account started,0.0,0.0
-2026-01-20,F601,Funded account started,0.0,0.0
-2026-01-20,F602,Funded account started,0.0,0.0
-2026-01-20,F603,Funded account started,0.0,0.0
-2026-01-20,F604,Funded account started,0.0,0.0
-2026-01-20,E605,Eval bought,-88.2,-88.2
-2026-01-21,E606,Eval bought,-88.2,-88.2
-2026-01-22,E607,Eval bought,-88.2,-88.2
-2026-01-22,E605,Eval failed,0.0,0.0
-2026-01-23,E608,Eval bought,-88.2,-88.2
-2026-01-26,E609,Eval bought,-88.2,-88.2
-2026-01-27,E610,Eval bought,-88.2,-88.2
-2026-02-02,F600,Payout,720.17,648.15
-2026-02-02,F601,Payout,720.17,648.15
-2026-02-02,F602,Payout,720.17,648.15
-2026-02-02,F603,Payout,720.17,648.15
-2026-02-02,F604,Payout,720.17,648.15
-2026-02-03,E607,Eval passed,0.0,0.0
-2026-02-03,E608,Eval passed,0.0,0.0
-2026-02-03,E609,Eval passed,0.0,0.0
-2026-02-03,E610,Eval passed,0.0,0.0
-2026-02-04,E606,Eval passed,0.0,0.0
-2026-02-20,F600,Payout,969.48,872.53
-2026-02-20,F601,Payout,969.48,872.53
-2026-02-20,F602,Payout,969.48,872.53
-2026-02-20,F603,Payout,969.48,872.53
-2026-02-20,F604,Payout,969.48,872.53
-2026-03-13,F600,Payout,807.32,726.59
-2026-03-13,F601,Payout,807.32,726.59
-2026-03-13,F602,Payout,807.32,726.59
-2026-03-13,F603,Payout,807.32,726.59
-2026-03-13,F604,Payout,807.32,726.59
-2026-03-17,F600,Stopped: cushion below $400,0.0,0.0
-2026-03-17,F601,Stopped: cushion below $400,0.0,0.0
-2026-03-17,F602,Stopped: cushion below $400,0.0,0.0
-2026-03-17,F603,Stopped: cushion below $400,0.0,0.0
-2026-03-17,F604,Stopped: cushion below $400,0.0,0.0
-2026-03-18,F611,Funded account started,0.0,0.0
-2026-03-18,F612,Funded account started,0.0,0.0
-2026-03-18,F613,Funded account started,0.0,0.0
-2026-03-18,F614,Funded account started,0.0,0.0
-2026-03-18,F615,Funded account started,0.0,0.0
-2026-03-18,E616,Eval bought,-88.2,-88.2
-2026-03-19,E617,Eval bought,-88.2,-88.2
-2026-03-20,E618,Eval bought,-88.2,-88.2
-2026-03-23,E619,Eval bought,-88.2,-88.2
-2026-03-23,F611,Stopped: cushion below $400,0.0,0.0
-2026-03-23,F612,Stopped: cushion below $400,0.0,0.0
-2026-03-23,F613,Stopped: cushion below $400,0.0,0.0
-2026-03-23,F614,Stopped: cushion below $400,0.0,0.0
-2026-03-23,F615,Stopped: cushion below $400,0.0,0.0
-2026-03-23,E616,Eval failed,0.0,0.0
-2026-03-23,E617,Eval failed,0.0,0.0
-2026-03-24,E620,Eval bought,-88.2,-88.2
-2026-03-24,E618,Eval failed,0.0,0.0
-2026-03-25,E621,Eval bought,-88.2,-88.2
-2026-03-25,E619,Eval failed,0.0,0.0
-2026-03-26,E622,Eval bought,-88.2,-88.2
-2026-03-27,E623,Eval bought,-88.2,-88.2
-2026-03-30,E624,Eval bought,-88.2,-88.2
-2026-03-30,E620,Eval failed,0.0,0.0
-2026-03-31,E625,Eval bought,-88.2,-88.2
-2026-04-01,E626,Eval bought,-88.2,-88.2
-2026-04-02,E627,Eval bought,-88.2,-88.2
-2026-04-06,E628,Eval bought,-88.2,-88.2
-2026-04-07,E629,Eval bought,-88.2,-88.2
-2026-04-08,E630,Eval bought,-88.2,-88.2
-2026-04-10,E621,Eval failed,0.0,0.0
-2026-04-10,E622,Eval failed,0.0,0.0
-2026-04-10,E623,Eval failed,0.0,0.0
-2026-04-10,E624,Eval failed,0.0,0.0
-2026-04-10,E625,Eval failed,0.0,0.0
-2026-04-13,E631,Eval bought,-88.2,-88.2
-2026-04-14,E632,Eval bought,-88.2,-88.2
-2026-04-14,E626,Eval failed,0.0,0.0
-2026-04-14,E627,Eval failed,0.0,0.0
-2026-04-14,E628,Eval failed,0.0,0.0
-2026-04-14,E629,Eval failed,0.0,0.0
-2026-04-14,E630,Eval failed,0.0,0.0
-2026-04-15,E633,Eval bought,-88.2,-88.2
-2026-04-15,E631,Eval failed,0.0,0.0
-2026-04-16,E634,Eval bought,-88.2,-88.2
-2026-04-17,E635,Eval bought,-88.2,-88.2
-2026-04-17,E632,Eval failed,0.0,0.0
-2026-04-20,E636,Eval bought,-88.2,-88.2
-2026-04-20,E633,Eval failed,0.0,0.0
-2026-04-20,E634,Eval failed,0.0,0.0
-2026-04-21,E637,Eval bought,-88.2,-88.2
-2026-04-21,E635,Eval failed,0.0,0.0
-2026-04-22,E638,Eval bought,-88.2,-88.2
-2026-04-23,E639,Eval bought,-88.2,-88.2
-2026-04-23,E636,Eval failed,0.0,0.0
-2026-04-24,E640,Eval bought,-88.2,-88.2
-2026-04-27,E641,Eval bought,-88.2,-88.2
-2026-04-28,E642,Eval bought,-88.2,-88.2
-2026-04-28,E637,Eval failed,0.0,0.0
-2026-04-28,E638,Eval failed,0.0,0.0
-2026-04-29,E643,Eval bought,-88.2,-88.2
-2026-04-30,E644,Eval bought,-88.2,-88.2
-2026-05-01,E645,Eval bought,-88.2,-88.2
-2026-05-01,E639,Eval failed,0.0,0.0
-2026-05-01,E640,Eval failed,0.0,0.0
-2026-05-01,E641,Eval failed,0.0,0.0
-2026-05-01,E642,Eval failed,0.0,0.0
-2026-05-01,E643,Eval failed,0.0,0.0
-2026-05-04,E646,Eval bought,-88.2,-88.2
-2026-05-05,E647,Eval bought,-88.2,-88.2
-2026-05-05,E644,Eval passed,0.0,0.0
-2026-05-06,F648,Funded account started,0.0,0.0
-2026-05-06,E649,Eval bought,-88.2,-88.2
-2026-05-06,E645,Eval passed,0.0,0.0
-2026-05-07,F650,Funded account started,0.0,0.0
-2026-05-07,E651,Eval bought,-88.2,-88.2
-2026-05-08,E652,Eval bought,-88.2,-88.2
-2026-05-08,E646,Eval passed,0.0,0.0
-2026-05-08,E647,Eval passed,0.0,0.0
-2026-05-11,F653,Funded account started,0.0,0.0
-2026-05-11,F654,Funded account started,0.0,0.0
-2026-05-11,E655,Eval bought,-88.2,-88.2
-2026-05-11,E649,Eval passed,0.0,0.0
-2026-05-12,F656,Funded account started,0.0,0.0
-2026-05-12,E657,Eval bought,-88.2,-88.2
-2026-05-13,E658,Eval bought,-88.2,-88.2
-2026-05-14,F648,Payout,1722.0,1549.8
-2026-05-14,E651,Eval passed,0.0,0.0
-2026-05-14,E652,Eval passed,0.0,0.0
-2026-05-15,F650,Payout,2000.0,1800.0
-2026-05-15,E655,Eval passed,0.0,0.0
-2026-05-15,E657,Eval passed,0.0,0.0
-2026-05-18,F653,Payout,2000.0,1800.0
-2026-05-18,F654,Payout,2000.0,1800.0
-2026-05-18,F656,Payout,2000.0,1800.0
-2026-05-18,E658,Eval passed,0.0,0.0
-2026-06-04,F648,Payout,1698.8,1528.92
-2026-06-05,F650,Payout,1730.95,1557.85
-2026-06-08,F653,Payout,2000.0,1800.0
-2026-06-08,F654,Payout,2000.0,1800.0
-2026-06-08,F656,Payout,2000.0,1800.0
-2026-06-16,F648,Payout,2000.0,1800.0
-2026-06-25,F650,Payout,2000.0,1800.0
-2026-06-30,F653,Payout,2000.0,1800.0
-2026-06-30,F654,Payout,2000.0,1800.0
-2026-06-30,F656,Payout,2000.0,1800.0
-2026-07-28,F648,Payout,2000.0,1800.0
-2026-07-28,F648,Closed after its 4th payout,0.0,0.0
-2026-07-29,F659,Funded account started,0.0,0.0
-2026-07-29,E660,Eval bought,-88.2,-88.2
-2026-07-30,F650,Payout,2000.0,1800.0
-2026-07-30,F650,Closed after its 4th payout,0.0,0.0
-2026-07-31,F661,Funded account started,0.0,0.0
-2026-07-31,E662,Eval bought,-88.2,-88.2
-2026-08-03,F653,Payout,2000.0,1800.0
-2026-08-03,F653,Closed after its 4th payout,0.0,0.0
-2026-08-03,F654,Payout,2000.0,1800.0
-2026-08-03,F654,Closed after its 4th payout,0.0,0.0
-2026-08-03,F656,Payout,2000.0,1800.0
-2026-08-03,F656,Closed after its 4th payout,0.0,0.0
-2026-08-03,E660,Eval failed,0.0,0.0
-2026-08-04,F663,Funded account started,0.0,0.0
-2026-08-04,F664,Funded account started,0.0,0.0
-2026-08-04,F665,Funded account started,0.0,0.0
-2026-08-04,E666,Eval bought,-88.2,-88.2
-2026-08-05,E667,Eval bought,-88.2,-88.2
-2026-08-05,E662,Eval failed,0.0,0.0
-2026-08-06,E668,Eval bought,-88.2,-88.2
-2026-08-06,F659,Payout,1940.72,1746.64
-2026-08-06,E666,Eval failed,0.0,0.0
-2026-08-07,E669,Eval bought,-88.2,-88.2
-2026-08-07,E667,Eval failed,0.0,0.0
-2026-08-10,E670,Eval bought,-88.2,-88.2
-2026-08-10,E668,Eval failed,0.0,0.0
-2026-08-11,E671,Eval bought,-88.2,-88.2
-2026-08-12,E672,Eval bought,-88.2,-88.2
-2026-08-13,E673,Eval bought,-88.2,-88.2
-2026-08-18,F659,Stopped: cushion below $400,0.0,0.0
-2026-08-19,E674,Eval bought,-88.2,-88.2
-2026-08-24,F661,Payout,527.61,474.85
-2026-08-24,E670,Eval passed,0.0,0.0
-2026-08-24,E671,Eval passed,0.0,0.0
-2026-08-24,E672,Eval passed,0.0,0.0
-2026-08-25,F675,Funded account started,0.0,0.0
-2026-08-25,F663,Payout,869.37,782.43
-2026-08-25,F664,Payout,869.37,782.43
-2026-08-25,F665,Payout,869.37,782.43
-2026-08-25,E673,Eval passed,0.0,0.0
-2026-08-25,E674,Eval passed,0.0,0.0
-2026-08-26,E669,Eval passed,0.0,0.0
-2026-08-27,F661,Stopped: cushion below $400,0.0,0.0
-2026-08-28,F676,Funded account started,0.0,0.0
-2026-08-28,E677,Eval bought,-88.2,-88.2
-2026-08-28,F663,Stopped: cushion below $400,0.0,0.0
-2026-08-28,F664,Stopped: cushion below $400,0.0,0.0
-2026-08-28,F665,Stopped: cushion below $400,0.0,0.0
-2026-08-31,F678,Funded account started,0.0,0.0
-2026-08-31,F679,Funded account started,0.0,0.0
-2026-08-31,F680,Funded account started,0.0,0.0
-2026-08-31,E681,Eval bought,-88.2,-88.2
-2026-09-01,E682,Eval bought,-88.2,-88.2
-2026-09-02,E683,Eval bought,-88.2,-88.2
-2026-09-07,E677,Eval failed,0.0,0.0
-2026-09-07,E681,Eval failed,0.0,0.0
-2026-09-07,E682,Eval failed,0.0,0.0
-2026-09-07,E683,Eval failed,0.0,0.0
-2026-09-08,E684,Eval bought,-88.2,-88.2
-2026-09-09,E685,Eval bought,-88.2,-88.2
-2026-09-10,E686,Eval bought,-88.2,-88.2
-2026-09-11,E687,Eval bought,-88.2,-88.2
-2026-09-11,F675,Payout,724.56,652.1
-2026-09-14,F676,Payout,1066.98,960.28
-2026-09-14,F678,Payout,1268.57,1141.71
-2026-09-14,F679,Payout,1268.57,1141.71
-2026-09-14,F680,Payout,1268.57,1141.71
-2026-09-15,E684,Eval passed,0.0,0.0
-2026-09-16,F676,Stopped: cushion below $400,0.0,0.0
-2026-09-16,F678,Stopped: cushion below $400,0.0,0.0
-2026-09-16,F679,Stopped: cushion below $400,0.0,0.0
-2026-09-16,F680,Stopped: cushion below $400,0.0,0.0
-2026-09-17,F688,Funded account started,0.0,0.0
-2026-09-17,F689,Funded account started,0.0,0.0
-2026-09-17,E690,Eval bought,-88.2,-88.2
-2026-09-18,E691,Eval bought,-88.2,-88.2
-2026-09-21,E692,Eval bought,-88.2,-88.2
-2026-09-22,E693,Eval bought,-88.2,-88.2
-2026-09-22,F675,Payout,2000.0,1800.0
-2026-09-28,E685,Eval passed,0.0,0.0
-2026-09-28,E686,Eval passed,0.0,0.0
-2026-09-28,E687,Eval passed,0.0,0.0
-2026-09-28,E691,Eval passed,0.0,0.0
-2026-09-28,E692,Eval passed,0.0,0.0
-2026-09-29,F694,Funded account started,0.0,0.0
-2026-09-29,F695,Funded account started,0.0,0.0
-2026-09-30,E690,Eval passed,0.0,0.0
-2026-10-05,F688,Payout,2000.0,1800.0
-2026-10-05,F689,Payout,2000.0,1800.0
-2026-10-05,E693,Eval passed,0.0,0.0
-2026-10-15,F675,Payout,2000.0,1800.0
-2026-10-16,F694,Payout,562.92,506.63
-2026-10-16,F695,Payout,562.92,506.63
-2026-10-19,F688,Payout,2000.0,1800.0
-2026-10-19,F689,Payout,2000.0,1800.0
-2026-10-20,F694,Stopped: cushion below $400,0.0,0.0
-2026-10-20,F695,Stopped: cushion below $400,0.0,0.0
-2026-10-21,F696,Funded account started,0.0,0.0
-2026-10-21,F697,Funded account started,0.0,0.0
-2026-10-21,E698,Eval bought,-88.2,-88.2
-2026-10-22,E699,Eval bought,-88.2,-88.2
-2026-10-27,F675,Payout,2000.0,1800.0
-2026-10-27,F675,Closed after its 4th payout,0.0,0.0
-2026-10-28,F700,Funded account started,0.0,0.0
-2026-10-28,E701,Eval bought,-88.2,-88.2
-2026-10-28,E698,Eval failed,0.0,0.0
-2026-10-28,E699,Eval failed,0.0,0.0
-2026-10-29,E702,Eval bought,-88.2,-88.2
-2026-10-30,E703,Eval bought,-88.2,-88.2
-2026-11-02,F688,Payout,2000.0,1800.0
-2026-11-02,F689,Payout,2000.0,1800.0
-2026-11-02,E701,Eval failed,0.0,0.0
-2026-11-02,E702,Eval failed,0.0,0.0
-2026-11-03,E704,Eval bought,-88.2,-88.2
-2026-11-04,E705,Eval bought,-88.2,-88.2
-2026-11-09,F696,Stopped: cushion below $400,0.0,0.0
-2026-11-09,F697,Stopped: cushion below $400,0.0,0.0
-2026-11-09,F700,Payout,2000.0,1800.0
-2026-11-10,F706,Funded account started,0.0,0.0
-2026-11-10,F707,Funded account started,0.0,0.0
-2026-11-10,E708,Eval bought,-88.2,-88.2
-2026-11-10,E703,Eval failed,0.0,0.0
-2026-11-10,E704,Eval failed,0.0,0.0
-2026-11-10,E705,Eval failed,0.0,0.0
-2026-11-11,E709,Eval bought,-88.2,-88.2
-2026-11-12,E710,Eval bought,-88.2,-88.2
-2026-11-13,E711,Eval bought,-88.2,-88.2
-2026-11-16,E712,Eval bought,-88.2,-88.2
-2026-11-16,E708,Eval passed,0.0,0.0
-2026-11-16,E709,Eval passed,0.0,0.0
-2026-11-16,E710,Eval passed,0.0,0.0
+2022-05-26,E104,Eval passed,0.0,0.0
+2022-05-26,E105,Eval passed,0.0,0.0
+2022-05-31,F102,Payout,1724.23,1551.8
+2022-06-02,F86,Payout,2000.0,1800.0
+2022-06-02,F87,Payout,2000.0,1800.0
+2022-06-02,F88,Payout,2000.0,1800.0
+2022-06-02,F89,Payout,2000.0,1800.0
+2022-06-17,F102,Stopped: cushion below $400,0.0,0.0
+2022-06-20,F106,Funded account started,0.0,0.0
+2022-06-20,E107,Eval bought,-88.2,-88.2
+2022-06-23,F86,Stopped: cushion below $400,0.0,0.0
+2022-06-23,F87,Stopped: cushion below $400,0.0,0.0
+2022-06-23,F88,Stopped: cushion below $400,0.0,0.0
+2022-06-23,F89,Stopped: cushion below $400,0.0,0.0
+2022-06-24,F108,Funded account started,0.0,0.0
+2022-06-24,F109,Funded account started,0.0,0.0
+2022-06-24,F110,Funded account started,0.0,0.0
+2022-06-24,F111,Funded account started,0.0,0.0
+2022-06-24,E112,Eval bought,-88.2,-88.2
+2022-06-24,E107,Eval failed,0.0,0.0
+2022-06-27,E113,Eval bought,-88.2,-88.2
+2022-06-28,E114,Eval bought,-88.2,-88.2
+2022-06-29,E115,Eval bought,-88.2,-88.2
+2022-06-30,E116,Eval bought,-88.2,-88.2
+2022-06-30,E112,Eval failed,0.0,0.0
+2022-06-30,E113,Eval failed,0.0,0.0
+2022-06-30,E114,Eval failed,0.0,0.0
+2022-07-01,E117,Eval bought,-88.2,-88.2
+2022-07-01,E115,Eval failed,0.0,0.0
+2022-07-04,E118,Eval bought,-88.2,-88.2
+2022-07-05,E119,Eval bought,-88.2,-88.2
+2022-07-06,E120,Eval bought,-88.2,-88.2
+2022-07-07,F106,Payout,1252.43,1127.19
+2022-07-13,E116,Eval passed,0.0,0.0
+2022-07-13,E120,Eval passed,0.0,0.0
+2022-07-14,E117,Eval passed,0.0,0.0
+2022-07-14,E118,Eval passed,0.0,0.0
+2022-07-14,E119,Eval passed,0.0,0.0
+2022-07-18,F106,Stopped: cushion below $400,0.0,0.0
+2022-07-19,F121,Funded account started,0.0,0.0
+2022-07-19,E122,Eval bought,-88.2,-88.2
+2022-07-19,F108,Payout,612.32,551.09
+2022-07-19,F109,Payout,612.32,551.09
+2022-07-19,F110,Payout,612.32,551.09
+2022-07-19,F111,Payout,612.32,551.09
+2022-08-03,F108,Payout,1762.96,1586.67
+2022-08-03,F109,Payout,1762.96,1586.67
+2022-08-03,F110,Payout,1762.96,1586.67
+2022-08-03,F111,Payout,1762.96,1586.67
+2022-08-03,F121,Payout,1140.32,1026.29
+2022-08-05,E122,Eval passed,0.0,0.0
+2022-08-15,F108,Payout,1391.86,1252.68
+2022-08-15,F109,Payout,1391.86,1252.68
+2022-08-15,F110,Payout,1391.86,1252.68
+2022-08-15,F111,Payout,1391.86,1252.68
+2022-08-15,F121,Payout,1264.47,1138.02
+2022-08-30,F121,Payout,1452.53,1307.28
+2022-08-31,F108,Payout,1647.46,1482.71
+2022-08-31,F108,Closed after its 4th payout,0.0,0.0
+2022-08-31,F109,Payout,1647.46,1482.71
+2022-08-31,F109,Closed after its 4th payout,0.0,0.0
+2022-08-31,F110,Payout,1647.46,1482.71
+2022-08-31,F110,Closed after its 4th payout,0.0,0.0
+2022-08-31,F111,Payout,1647.46,1482.71
+2022-08-31,F111,Closed after its 4th payout,0.0,0.0
+2022-09-01,F123,Funded account started,0.0,0.0
+2022-09-01,F124,Funded account started,0.0,0.0
+2022-09-01,F125,Funded account started,0.0,0.0
+2022-09-01,F126,Funded account started,0.0,0.0
+2022-09-01,E127,Eval bought,-88.2,-88.2
+2022-09-02,E128,Eval bought,-88.2,-88.2
+2022-09-05,E129,Eval bought,-88.2,-88.2
+2022-09-06,E130,Eval bought,-88.2,-88.2
+2022-09-09,F121,Payout,1229.23,1106.3
+2022-09-09,F121,Closed after its 4th payout,0.0,0.0
+2022-09-12,F131,Funded account started,0.0,0.0
+2022-09-12,E132,Eval bought,-88.2,-88.2
+2022-09-13,F123,Payout,588.28,529.45
+2022-09-13,F124,Payout,588.28,529.45
+2022-09-13,F125,Payout,588.28,529.45
+2022-09-13,F126,Payout,588.28,529.45
+2022-09-15,F123,Stopped: cushion below $400,0.0,0.0
+2022-09-15,F124,Stopped: cushion below $400,0.0,0.0
+2022-09-15,F125,Stopped: cushion below $400,0.0,0.0
+2022-09-15,F126,Stopped: cushion below $400,0.0,0.0
+2022-09-16,E133,Eval bought,-88.2,-88.2
+2022-09-19,E134,Eval bought,-88.2,-88.2
+2022-09-20,E135,Eval bought,-88.2,-88.2
+2022-09-21,E136,Eval bought,-88.2,-88.2
+2022-09-21,F131,Stopped: cushion below $400,0.0,0.0
+2022-09-21,E127,Eval failed,0.0,0.0
+2022-09-21,E128,Eval failed,0.0,0.0
+2022-09-21,E129,Eval failed,0.0,0.0
+2022-09-21,E130,Eval failed,0.0,0.0
+2022-09-21,E132,Eval failed,0.0,0.0
+2022-09-21,E133,Eval failed,0.0,0.0
+2022-09-21,E134,Eval failed,0.0,0.0
+2022-09-22,E137,Eval bought,-88.2,-88.2
+2022-09-23,E138,Eval bought,-88.2,-88.2
+2022-09-26,E139,Eval bought,-88.2,-88.2
+2022-09-26,E135,Eval failed,0.0,0.0
+2022-09-27,E140,Eval bought,-88.2,-88.2
+2022-09-28,E141,Eval bought,-88.2,-88.2
+2022-09-29,E142,Eval bought,-88.2,-88.2
+2022-09-30,E143,Eval bought,-88.2,-88.2
+2022-10-03,E144,Eval bought,-88.2,-88.2
+2022-10-04,E145,Eval bought,-88.2,-88.2
+2022-10-04,E136,Eval failed,0.0,0.0
+2022-10-04,E137,Eval failed,0.0,0.0
+2022-10-04,E138,Eval failed,0.0,0.0
+2022-10-04,E139,Eval failed,0.0,0.0
+2022-10-04,E140,Eval failed,0.0,0.0
+2022-10-04,E141,Eval failed,0.0,0.0
+2022-10-05,E146,Eval bought,-88.2,-88.2
+2022-10-05,E144,Eval passed,0.0,0.0
+2022-10-06,F147,Funded account started,0.0,0.0
+2022-10-06,E148,Eval bought,-88.2,-88.2
+2022-10-07,E149,Eval bought,-88.2,-88.2
+2022-10-07,E142,Eval failed,0.0,0.0
+2022-10-07,E143,Eval failed,0.0,0.0
+2022-10-07,E145,Eval failed,0.0,0.0
+2022-10-07,E146,Eval failed,0.0,0.0
+2022-10-10,E150,Eval bought,-88.2,-88.2
+2022-10-11,E151,Eval bought,-88.2,-88.2
+2022-10-12,E152,Eval bought,-88.2,-88.2
+2022-10-12,E148,Eval failed,0.0,0.0
+2022-10-13,E153,Eval bought,-88.2,-88.2
+2022-10-14,E154,Eval bought,-88.2,-88.2
+2022-10-17,E155,Eval bought,-88.2,-88.2
+2022-10-17,F147,Stopped: cushion below $400,0.0,0.0
+2022-10-18,E156,Eval bought,-88.2,-88.2
+2022-10-19,E157,Eval bought,-88.2,-88.2
+2022-10-20,E158,Eval bought,-88.2,-88.2
+2022-10-20,E152,Eval passed,0.0,0.0
+2022-10-20,E153,Eval passed,0.0,0.0
+2022-10-20,E154,Eval passed,0.0,0.0
+2022-10-21,F159,Funded account started,0.0,0.0
+2022-10-21,F160,Funded account started,0.0,0.0
+2022-10-21,F161,Funded account started,0.0,0.0
+2022-10-24,E149,Eval passed,0.0,0.0
+2022-10-24,E150,Eval passed,0.0,0.0
+2022-10-24,E155,Eval passed,0.0,0.0
+2022-10-25,F162,Funded account started,0.0,0.0
+2022-10-25,F163,Funded account started,0.0,0.0
+2022-11-02,E151,Eval passed,0.0,0.0
+2022-11-07,E156,Eval failed,0.0,0.0
+2022-11-07,E157,Eval failed,0.0,0.0
+2022-11-07,E158,Eval failed,0.0,0.0
+2022-11-08,E164,Eval bought,-88.2,-88.2
+2022-11-09,E165,Eval bought,-88.2,-88.2
+2022-11-10,E166,Eval bought,-88.2,-88.2
+2022-11-10,F159,Payout,651.44,586.3
+2022-11-10,F160,Payout,651.44,586.3
+2022-11-10,F161,Payout,651.44,586.3
+2022-11-14,F159,Stopped: cushion below $400,0.0,0.0
+2022-11-14,F160,Stopped: cushion below $400,0.0,0.0
+2022-11-14,F161,Stopped: cushion below $400,0.0,0.0
+2022-11-15,F167,Funded account started,0.0,0.0
+2022-11-15,F168,Funded account started,0.0,0.0
+2022-11-15,E169,Eval bought,-88.2,-88.2
+2022-11-16,E170,Eval bought,-88.2,-88.2
+2022-11-17,E171,Eval bought,-88.2,-88.2
+2022-11-18,E165,Eval passed,0.0,0.0
+2022-11-21,F172,Funded account started,0.0,0.0
+2022-11-25,E164,Eval passed,0.0,0.0
+2022-11-25,E166,Eval passed,0.0,0.0
+2022-11-25,E169,Eval passed,0.0,0.0
+2022-11-25,E170,Eval passed,0.0,0.0
+2022-11-25,E171,Eval passed,0.0,0.0
+2022-11-28,F162,Payout,572.65,515.39
+2022-11-28,F163,Payout,572.65,515.39
+2022-11-30,F162,Stopped: cushion below $400,0.0,0.0
+2022-11-30,F163,Stopped: cushion below $400,0.0,0.0
+2022-12-01,F173,Funded account started,0.0,0.0
+2022-12-01,F174,Funded account started,0.0,0.0
+2022-12-01,E175,Eval bought,-88.2,-88.2
+2022-12-02,E176,Eval bought,-88.2,-88.2
+2022-12-13,F167,Payout,606.63,545.97
+2022-12-13,F168,Payout,606.63,545.97
+2022-12-13,F172,Payout,891.83,802.64
+2022-12-14,E175,Eval passed,0.0,0.0
+2022-12-14,E176,Eval passed,0.0,0.0
+2022-12-15,F167,Stopped: cushion below $400,0.0,0.0
+2022-12-15,F168,Stopped: cushion below $400,0.0,0.0
+2022-12-16,F177,Funded account started,0.0,0.0
+2022-12-16,F178,Funded account started,0.0,0.0
+2022-12-16,E179,Eval bought,-88.2,-88.2
+2022-12-19,E180,Eval bought,-88.2,-88.2
+2022-12-21,F177,Stopped: cushion below $400,0.0,0.0
+2022-12-21,F178,Stopped: cushion below $400,0.0,0.0
+2022-12-21,E179,Eval failed,0.0,0.0
+2022-12-22,F181,Funded account started,0.0,0.0
+2022-12-22,F182,Funded account started,0.0,0.0
+2022-12-22,E183,Eval bought,-88.2,-88.2
+2022-12-22,F173,Payout,2000.0,1800.0
+2022-12-22,F174,Payout,2000.0,1800.0
+2022-12-23,E184,Eval bought,-88.2,-88.2
+2022-12-27,E185,Eval bought,-88.2,-88.2
+2022-12-29,F172,Payout,2000.0,1800.0
+2023-01-03,E180,Eval failed,0.0,0.0
+2023-01-03,E183,Eval failed,0.0,0.0
+2023-01-03,E184,Eval failed,0.0,0.0
+2023-01-03,E185,Eval failed,0.0,0.0
+2023-01-04,E186,Eval bought,-88.2,-88.2
+2023-01-05,E187,Eval bought,-88.2,-88.2
+2023-01-06,E188,Eval bought,-88.2,-88.2
+2023-01-09,E189,Eval bought,-88.2,-88.2
+2023-01-11,E186,Eval failed,0.0,0.0
+2023-01-11,E187,Eval failed,0.0,0.0
+2023-01-11,E188,Eval failed,0.0,0.0
+2023-01-12,E190,Eval bought,-88.2,-88.2
+2023-01-12,F172,Stopped: cushion below $400,0.0,0.0
+2023-01-12,F181,Payout,792.55,713.29
+2023-01-12,F182,Payout,792.55,713.29
+2023-01-13,F191,Funded account started,0.0,0.0
+2023-01-13,E192,Eval bought,-88.2,-88.2
+2023-01-13,E189,Eval failed,0.0,0.0
+2023-01-16,E193,Eval bought,-88.2,-88.2
+2023-01-16,E190,Eval passed,0.0,0.0
+2023-01-17,E194,Eval bought,-88.2,-88.2
+2023-01-18,E195,Eval bought,-88.2,-88.2
+2023-01-23,F173,Payout,1627.93,1465.14
+2023-01-23,F174,Payout,1627.93,1465.14
+2023-01-26,E192,Eval failed,0.0,0.0
+2023-01-26,E193,Eval failed,0.0,0.0
+2023-01-26,E194,Eval failed,0.0,0.0
+2023-01-26,E195,Eval failed,0.0,0.0
+2023-01-27,E196,Eval bought,-88.2,-88.2
+2023-01-30,E197,Eval bought,-88.2,-88.2
+2023-01-30,F191,Payout,1299.8,1169.82
+2023-01-31,E198,Eval bought,-88.2,-88.2
+2023-01-31,F181,Payout,1501.43,1351.29
+2023-01-31,F182,Payout,1501.43,1351.29
+2023-01-31,E196,Eval passed,0.0,0.0
+2023-02-01,E199,Eval bought,-88.2,-88.2
+2023-02-01,E197,Eval passed,0.0,0.0
+2023-02-03,E198,Eval passed,0.0,0.0
+2023-02-07,F173,Payout,1433.14,1289.83
+2023-02-07,F174,Payout,1433.14,1289.83
+2023-02-08,F191,Payout,1538.47,1384.63
+2023-02-10,E199,Eval passed,0.0,0.0
+2023-02-15,F181,Payout,1207.25,1086.52
+2023-02-15,F182,Payout,1207.25,1086.52
+2023-02-20,F181,Stopped: cushion below $400,0.0,0.0
+2023-02-20,F182,Stopped: cushion below $400,0.0,0.0
+2023-02-21,F200,Funded account started,0.0,0.0
+2023-02-21,F201,Funded account started,0.0,0.0
+2023-02-21,E202,Eval bought,-88.2,-88.2
+2023-02-22,E203,Eval bought,-88.2,-88.2
+2023-02-23,F173,Payout,1152.88,1037.59
+2023-02-23,F173,Closed after its 4th payout,0.0,0.0
+2023-02-23,F174,Payout,1152.88,1037.59
+2023-02-23,F174,Closed after its 4th payout,0.0,0.0
+2023-02-24,F204,Funded account started,0.0,0.0
+2023-02-24,F205,Funded account started,0.0,0.0
+2023-02-24,E206,Eval bought,-88.2,-88.2
+2023-02-27,E207,Eval bought,-88.2,-88.2
+2023-03-06,F200,Stopped: cushion below $400,0.0,0.0
+2023-03-06,F201,Stopped: cushion below $400,0.0,0.0
+2023-03-06,F204,Stopped: cushion below $400,0.0,0.0
+2023-03-06,F205,Stopped: cushion below $400,0.0,0.0
+2023-03-07,F208,Funded account started,0.0,0.0
+2023-03-07,E209,Eval bought,-88.2,-88.2
+2023-03-08,E210,Eval bought,-88.2,-88.2
+2023-03-09,E211,Eval bought,-88.2,-88.2
+2023-03-09,F191,Stopped: cushion below $400,0.0,0.0
+2023-03-09,E202,Eval passed,0.0,0.0
+2023-03-09,E203,Eval passed,0.0,0.0
+2023-03-09,E206,Eval passed,0.0,0.0
+2023-03-09,E207,Eval passed,0.0,0.0
+2023-03-10,F212,Funded account started,0.0,0.0
+2023-03-10,F213,Funded account started,0.0,0.0
+2023-03-10,F214,Funded account started,0.0,0.0
+2023-03-10,F215,Funded account started,0.0,0.0
+2023-03-10,E216,Eval bought,-88.2,-88.2
+2023-03-13,E217,Eval bought,-88.2,-88.2
+2023-03-13,E209,Eval failed,0.0,0.0
+2023-03-13,E210,Eval failed,0.0,0.0
+2023-03-13,E211,Eval failed,0.0,0.0
+2023-03-14,E218,Eval bought,-88.2,-88.2
+2023-03-15,E219,Eval bought,-88.2,-88.2
+2023-03-16,E220,Eval bought,-88.2,-88.2
+2023-03-16,E216,Eval failed,0.0,0.0
+2023-03-17,E221,Eval bought,-88.2,-88.2
+2023-03-21,E217,Eval failed,0.0,0.0
+2023-03-21,E218,Eval failed,0.0,0.0
+2023-03-21,E219,Eval failed,0.0,0.0
+2023-03-22,E222,Eval bought,-88.2,-88.2
+2023-03-22,E220,Eval failed,0.0,0.0
+2023-03-22,E221,Eval failed,0.0,0.0
+2023-03-23,E223,Eval bought,-88.2,-88.2
+2023-03-24,E224,Eval bought,-88.2,-88.2
+2023-03-24,F208,Stopped: cushion below $400,0.0,0.0
+2023-03-24,F212,Stopped: cushion below $400,0.0,0.0
+2023-03-24,F213,Stopped: cushion below $400,0.0,0.0
+2023-03-24,F214,Stopped: cushion below $400,0.0,0.0
+2023-03-24,F215,Stopped: cushion below $400,0.0,0.0
+2023-03-27,E225,Eval bought,-88.2,-88.2
+2023-03-28,E226,Eval bought,-88.2,-88.2
+2023-03-29,E227,Eval bought,-88.2,-88.2
+2023-03-30,E228,Eval bought,-88.2,-88.2
+2023-03-31,E229,Eval bought,-88.2,-88.2
+2023-04-03,E230,Eval bought,-88.2,-88.2
+2023-04-04,E231,Eval bought,-88.2,-88.2
+2023-04-19,E222,Eval passed,0.0,0.0
+2023-04-19,E223,Eval passed,0.0,0.0
+2023-04-19,E224,Eval passed,0.0,0.0
+2023-04-19,E225,Eval passed,0.0,0.0
+2023-04-19,E226,Eval passed,0.0,0.0
+2023-04-19,E227,Eval passed,0.0,0.0
+2023-04-19,E228,Eval passed,0.0,0.0
+2023-04-19,E229,Eval passed,0.0,0.0
+2023-04-20,F232,Funded account started,0.0,0.0
+2023-04-20,F233,Funded account started,0.0,0.0
+2023-04-20,F234,Funded account started,0.0,0.0
+2023-04-20,F235,Funded account started,0.0,0.0
+2023-04-20,F236,Funded account started,0.0,0.0
+2023-04-20,E230,Eval passed,0.0,0.0
+2023-04-20,E231,Eval passed,0.0,0.0
+2023-05-15,F232,Payout,650.27,585.24
+2023-05-15,F233,Payout,650.27,585.24
+2023-05-15,F234,Payout,650.27,585.24
+2023-05-15,F235,Payout,650.27,585.24
+2023-05-15,F236,Payout,650.27,585.24
+2023-06-09,F232,Payout,2000.0,1800.0
+2023-06-09,F233,Payout,2000.0,1800.0
+2023-06-09,F234,Payout,2000.0,1800.0
+2023-06-09,F235,Payout,2000.0,1800.0
+2023-06-09,F236,Payout,2000.0,1800.0
+2023-06-27,F232,Payout,1589.32,1430.39
+2023-06-27,F233,Payout,1589.32,1430.39
+2023-06-27,F234,Payout,1589.32,1430.39
+2023-06-27,F235,Payout,1589.32,1430.39
+2023-06-27,F236,Payout,1589.32,1430.39
+2023-07-10,F232,Stopped: cushion below $400,0.0,0.0
+2023-07-10,F233,Stopped: cushion below $400,0.0,0.0
+2023-07-10,F234,Stopped: cushion below $400,0.0,0.0
+2023-07-10,F235,Stopped: cushion below $400,0.0,0.0
+2023-07-10,F236,Stopped: cushion below $400,0.0,0.0
+2023-07-11,F237,Funded account started,0.0,0.0
+2023-07-11,F238,Funded account started,0.0,0.0
+2023-07-11,F239,Funded account started,0.0,0.0
+2023-07-11,F240,Funded account started,0.0,0.0
+2023-07-11,F241,Funded account started,0.0,0.0
+2023-07-11,E242,Eval bought,-88.2,-88.2
+2023-07-12,E243,Eval bought,-88.2,-88.2
+2023-07-13,E244,Eval bought,-88.2,-88.2
+2023-07-14,E245,Eval bought,-88.2,-88.2
+2023-07-17,E246,Eval bought,-88.2,-88.2
+2023-07-20,E242,Eval failed,0.0,0.0
+2023-07-20,E243,Eval failed,0.0,0.0
+2023-07-20,E244,Eval failed,0.0,0.0
+2023-07-20,E245,Eval failed,0.0,0.0
+2023-07-20,E246,Eval failed,0.0,0.0
+2023-07-21,E247,Eval bought,-88.2,-88.2
+2023-07-24,E248,Eval bought,-88.2,-88.2
+2023-07-25,E249,Eval bought,-88.2,-88.2
+2023-07-25,E247,Eval failed,0.0,0.0
+2023-07-26,E250,Eval bought,-88.2,-88.2
+2023-07-27,E251,Eval bought,-88.2,-88.2
+2023-07-27,F237,Stopped: cushion below $400,0.0,0.0
+2023-07-27,F238,Stopped: cushion below $400,0.0,0.0
+2023-07-27,F239,Stopped: cushion below $400,0.0,0.0
+2023-07-27,F240,Stopped: cushion below $400,0.0,0.0
+2023-07-27,F241,Stopped: cushion below $400,0.0,0.0
+2023-07-28,E252,Eval bought,-88.2,-88.2
+2023-07-28,E248,Eval failed,0.0,0.0
+2023-07-28,E249,Eval failed,0.0,0.0
+2023-07-28,E250,Eval failed,0.0,0.0
+2023-07-31,E253,Eval bought,-88.2,-88.2
+2023-08-01,E254,Eval bought,-88.2,-88.2
+2023-08-02,E255,Eval bought,-88.2,-88.2
+2023-08-03,E256,Eval bought,-88.2,-88.2
+2023-08-04,E257,Eval bought,-88.2,-88.2
+2023-08-04,E252,Eval passed,0.0,0.0
+2023-08-04,E253,Eval passed,0.0,0.0
+2023-08-04,E254,Eval passed,0.0,0.0
+2023-08-07,F258,Funded account started,0.0,0.0
+2023-08-07,F259,Funded account started,0.0,0.0
+2023-08-07,F260,Funded account started,0.0,0.0
+2023-08-07,E261,Eval bought,-88.2,-88.2
+2023-08-08,E262,Eval bought,-88.2,-88.2
+2023-08-09,E263,Eval bought,-88.2,-88.2
+2023-08-24,F258,Payout,2000.0,1800.0
+2023-08-24,F259,Payout,2000.0,1800.0
+2023-08-24,F260,Payout,2000.0,1800.0
+2023-08-25,E251,Eval passed,0.0,0.0
+2023-08-25,E255,Eval passed,0.0,0.0
+2023-08-25,E261,Eval passed,0.0,0.0
+2023-08-25,E262,Eval passed,0.0,0.0
+2023-08-25,E263,Eval passed,0.0,0.0
+2023-08-28,F264,Funded account started,0.0,0.0
+2023-08-28,F265,Funded account started,0.0,0.0
+2023-08-29,E256,Eval passed,0.0,0.0
+2023-08-29,E257,Eval passed,0.0,0.0
+2023-09-15,F258,Payout,2000.0,1800.0
+2023-09-15,F259,Payout,2000.0,1800.0
+2023-09-15,F260,Payout,2000.0,1800.0
+2023-09-15,F264,Payout,2000.0,1800.0
+2023-09-15,F265,Payout,2000.0,1800.0
+2023-09-29,F258,Payout,2000.0,1800.0
+2023-09-29,F259,Payout,2000.0,1800.0
+2023-09-29,F260,Payout,2000.0,1800.0
+2023-09-29,F264,Payout,2000.0,1800.0
+2023-09-29,F265,Payout,2000.0,1800.0
+2023-10-20,F264,Stopped: cushion below $400,0.0,0.0
+2023-10-20,F265,Stopped: cushion below $400,0.0,0.0
+2023-10-23,F266,Funded account started,0.0,0.0
+2023-10-23,F267,Funded account started,0.0,0.0
+2023-10-23,E268,Eval bought,-88.2,-88.2
+2023-10-24,E269,Eval bought,-88.2,-88.2
+2023-11-09,F266,Stopped: cushion below $400,0.0,0.0
+2023-11-09,F267,Stopped: cushion below $400,0.0,0.0
+2023-11-10,F270,Funded account started,0.0,0.0
+2023-11-10,F271,Funded account started,0.0,0.0
+2023-11-10,E272,Eval bought,-88.2,-88.2
+2023-11-13,E273,Eval bought,-88.2,-88.2
+2023-11-16,F258,Stopped: cushion below $400,0.0,0.0
+2023-11-16,F259,Stopped: cushion below $400,0.0,0.0
+2023-11-16,F260,Stopped: cushion below $400,0.0,0.0
+2023-11-16,E268,Eval failed,0.0,0.0
+2023-11-16,E269,Eval failed,0.0,0.0
+2023-11-17,F274,Funded account started,0.0,0.0
+2023-11-17,E275,Eval bought,-88.2,-88.2
+2023-11-17,F270,Stopped: cushion below $400,0.0,0.0
+2023-11-17,F271,Stopped: cushion below $400,0.0,0.0
+2023-11-20,E276,Eval bought,-88.2,-88.2
+2023-11-21,E277,Eval bought,-88.2,-88.2
+2023-11-22,E278,Eval bought,-88.2,-88.2
+2023-11-23,E279,Eval bought,-88.2,-88.2
+2023-11-24,E280,Eval bought,-88.2,-88.2
+2023-11-27,E281,Eval bought,-88.2,-88.2
+2023-11-29,F274,Stopped: cushion below $400,0.0,0.0
+2023-11-30,E282,Eval bought,-88.2,-88.2
+2023-12-04,E272,Eval failed,0.0,0.0
+2023-12-04,E273,Eval failed,0.0,0.0
+2023-12-04,E275,Eval failed,0.0,0.0
+2023-12-04,E276,Eval failed,0.0,0.0
+2023-12-04,E277,Eval failed,0.0,0.0
+2023-12-04,E278,Eval failed,0.0,0.0
+2023-12-04,E279,Eval failed,0.0,0.0
+2023-12-04,E280,Eval failed,0.0,0.0
+2023-12-04,E281,Eval failed,0.0,0.0
+2023-12-05,E283,Eval bought,-88.2,-88.2
+2023-12-06,E284,Eval bought,-88.2,-88.2
+2023-12-07,E285,Eval bought,-88.2,-88.2
+2023-12-08,E286,Eval bought,-88.2,-88.2
+2023-12-11,E287,Eval bought,-88.2,-88.2
+2023-12-12,E288,Eval bought,-88.2,-88.2
+2023-12-13,E289,Eval bought,-88.2,-88.2
+2023-12-14,E290,Eval bought,-88.2,-88.2
+2023-12-15,E291,Eval bought,-88.2,-88.2
+2023-12-15,E282,Eval failed,0.0,0.0
+2023-12-15,E283,Eval failed,0.0,0.0
+2023-12-15,E284,Eval failed,0.0,0.0
+2023-12-15,E285,Eval failed,0.0,0.0
+2023-12-15,E286,Eval failed,0.0,0.0
+2023-12-15,E287,Eval failed,0.0,0.0
+2023-12-15,E288,Eval failed,0.0,0.0
+2023-12-18,E292,Eval bought,-88.2,-88.2
+2023-12-18,E289,Eval failed,0.0,0.0
+2023-12-18,E290,Eval failed,0.0,0.0
+2023-12-19,E293,Eval bought,-88.2,-88.2
+2023-12-20,E294,Eval bought,-88.2,-88.2
+2023-12-20,E291,Eval failed,0.0,0.0
+2023-12-21,E295,Eval bought,-88.2,-88.2
+2023-12-22,E296,Eval bought,-88.2,-88.2
+2023-12-26,E297,Eval bought,-88.2,-88.2
+2023-12-27,E298,Eval bought,-88.2,-88.2
+2023-12-28,E299,Eval bought,-88.2,-88.2
+2023-12-29,E300,Eval bought,-88.2,-88.2
+2024-01-02,E301,Eval bought,-88.2,-88.2
+2024-01-02,E293,Eval passed,0.0,0.0
+2024-01-02,E294,Eval passed,0.0,0.0
+2024-01-02,E295,Eval passed,0.0,0.0
+2024-01-02,E296,Eval passed,0.0,0.0
+2024-01-02,E297,Eval passed,0.0,0.0
+2024-01-03,F302,Funded account started,0.0,0.0
+2024-01-03,F303,Funded account started,0.0,0.0
+2024-01-03,F304,Funded account started,0.0,0.0
+2024-01-03,F305,Funded account started,0.0,0.0
+2024-01-03,F306,Funded account started,0.0,0.0
+2024-01-04,E292,Eval passed,0.0,0.0
+2024-01-04,E298,Eval passed,0.0,0.0
+2024-01-04,E299,Eval passed,0.0,0.0
+2024-01-04,E300,Eval passed,0.0,0.0
+2024-01-05,E301,Eval passed,0.0,0.0
+2024-01-08,F302,Stopped: cushion below $400,0.0,0.0
+2024-01-08,F303,Stopped: cushion below $400,0.0,0.0
+2024-01-08,F304,Stopped: cushion below $400,0.0,0.0
+2024-01-08,F305,Stopped: cushion below $400,0.0,0.0
+2024-01-08,F306,Stopped: cushion below $400,0.0,0.0
+2024-01-09,F307,Funded account started,0.0,0.0
+2024-01-09,F308,Funded account started,0.0,0.0
+2024-01-09,F309,Funded account started,0.0,0.0
+2024-01-09,F310,Funded account started,0.0,0.0
+2024-01-09,F311,Funded account started,0.0,0.0
+2024-01-09,E312,Eval bought,-88.2,-88.2
+2024-01-10,E313,Eval bought,-88.2,-88.2
+2024-01-11,E314,Eval bought,-88.2,-88.2
+2024-01-12,E315,Eval bought,-88.2,-88.2
+2024-01-15,E316,Eval bought,-88.2,-88.2
+2024-01-18,E312,Eval failed,0.0,0.0
+2024-01-18,E313,Eval failed,0.0,0.0
+2024-01-18,E314,Eval failed,0.0,0.0
+2024-01-19,E317,Eval bought,-88.2,-88.2
+2024-01-19,E315,Eval failed,0.0,0.0
+2024-01-19,E316,Eval failed,0.0,0.0
+2024-01-22,E318,Eval bought,-88.2,-88.2
+2024-01-23,E319,Eval bought,-88.2,-88.2
+2024-01-24,E320,Eval bought,-88.2,-88.2
+2024-01-25,E321,Eval bought,-88.2,-88.2
+2024-01-25,F307,Stopped: cushion below $400,0.0,0.0
+2024-01-25,F308,Stopped: cushion below $400,0.0,0.0
+2024-01-25,F309,Stopped: cushion below $400,0.0,0.0
+2024-01-25,F310,Stopped: cushion below $400,0.0,0.0
+2024-01-25,F311,Stopped: cushion below $400,0.0,0.0
+2024-01-25,E317,Eval failed,0.0,0.0
+2024-01-25,E318,Eval failed,0.0,0.0
+2024-01-26,E322,Eval bought,-88.2,-88.2
+2024-01-29,E323,Eval bought,-88.2,-88.2
+2024-01-29,E319,Eval failed,0.0,0.0
+2024-01-30,E324,Eval bought,-88.2,-88.2
+2024-01-31,E325,Eval bought,-88.2,-88.2
+2024-02-01,E326,Eval bought,-88.2,-88.2
+2024-02-02,E327,Eval bought,-88.2,-88.2
+2024-02-05,E328,Eval bought,-88.2,-88.2
+2024-02-06,E329,Eval bought,-88.2,-88.2
+2024-02-12,E320,Eval failed,0.0,0.0
+2024-02-12,E321,Eval failed,0.0,0.0
+2024-02-12,E322,Eval failed,0.0,0.0
+2024-02-12,E323,Eval failed,0.0,0.0
+2024-02-12,E324,Eval failed,0.0,0.0
+2024-02-12,E325,Eval failed,0.0,0.0
+2024-02-12,E326,Eval failed,0.0,0.0
+2024-02-12,E327,Eval failed,0.0,0.0
+2024-02-12,E328,Eval failed,0.0,0.0
+2024-02-12,E329,Eval failed,0.0,0.0
+2024-02-13,E330,Eval bought,-88.2,-88.2
+2024-02-14,E331,Eval bought,-88.2,-88.2
+2024-02-15,E332,Eval bought,-88.2,-88.2
+2024-02-16,E333,Eval bought,-88.2,-88.2
+2024-02-19,E334,Eval bought,-88.2,-88.2
+2024-02-20,E335,Eval bought,-88.2,-88.2
+2024-02-21,E336,Eval bought,-88.2,-88.2
+2024-02-22,E337,Eval bought,-88.2,-88.2
+2024-02-23,E338,Eval bought,-88.2,-88.2
+2024-02-23,E330,Eval failed,0.0,0.0
+2024-02-23,E331,Eval failed,0.0,0.0
+2024-02-23,E332,Eval failed,0.0,0.0
+2024-02-23,E333,Eval failed,0.0,0.0
+2024-02-23,E334,Eval failed,0.0,0.0
+2024-02-23,E335,Eval failed,0.0,0.0
+2024-02-26,E339,Eval bought,-88.2,-88.2
+2024-02-26,E336,Eval failed,0.0,0.0
+2024-02-26,E337,Eval failed,0.0,0.0
+2024-02-27,E340,Eval bought,-88.2,-88.2
+2024-02-28,E341,Eval bought,-88.2,-88.2
+2024-02-29,E342,Eval bought,-88.2,-88.2
+2024-03-01,E343,Eval bought,-88.2,-88.2
+2024-03-01,E338,Eval failed,0.0,0.0
+2024-03-04,E344,Eval bought,-88.2,-88.2
+2024-03-04,E339,Eval failed,0.0,0.0
+2024-03-05,E345,Eval bought,-88.2,-88.2
+2024-03-05,E343,Eval passed,0.0,0.0
+2024-03-06,F346,Funded account started,0.0,0.0
+2024-03-06,E347,Eval bought,-88.2,-88.2
+2024-03-07,E348,Eval bought,-88.2,-88.2
+2024-03-08,E349,Eval bought,-88.2,-88.2
+2024-03-08,E340,Eval passed,0.0,0.0
+2024-03-08,E341,Eval passed,0.0,0.0
+2024-03-08,E342,Eval passed,0.0,0.0
+2024-03-11,F350,Funded account started,0.0,0.0
+2024-03-11,F351,Funded account started,0.0,0.0
+2024-03-11,F352,Funded account started,0.0,0.0
+2024-03-11,E353,Eval bought,-88.2,-88.2
+2024-03-12,E344,Eval failed,0.0,0.0
+2024-03-12,E345,Eval failed,0.0,0.0
+2024-03-12,E347,Eval failed,0.0,0.0
+2024-03-12,E348,Eval failed,0.0,0.0
+2024-03-12,E349,Eval failed,0.0,0.0
+2024-03-13,E354,Eval bought,-88.2,-88.2
+2024-03-13,E353,Eval failed,0.0,0.0
+2024-03-14,E355,Eval bought,-88.2,-88.2
+2024-03-15,E356,Eval bought,-88.2,-88.2
+2024-03-18,E357,Eval bought,-88.2,-88.2
+2024-03-19,E358,Eval bought,-88.2,-88.2
+2024-03-20,E359,Eval bought,-88.2,-88.2
+2024-03-22,F346,Stopped: cushion below $400,0.0,0.0
+2024-03-25,E360,Eval bought,-88.2,-88.2
+2024-03-27,E358,Eval passed,0.0,0.0
+2024-03-27,E359,Eval passed,0.0,0.0
+2024-03-28,F361,Funded account started,0.0,0.0
+2024-03-28,F362,Funded account started,0.0,0.0
+2024-04-01,E354,Eval passed,0.0,0.0
+2024-04-03,F350,Payout,877.97,790.17
+2024-04-03,F351,Payout,877.97,790.17
+2024-04-03,F352,Payout,877.97,790.17
+2024-04-03,E355,Eval failed,0.0,0.0
+2024-04-03,E356,Eval failed,0.0,0.0
+2024-04-03,E357,Eval failed,0.0,0.0
+2024-04-03,E360,Eval failed,0.0,0.0
+2024-04-04,E363,Eval bought,-88.2,-88.2
+2024-04-05,E364,Eval bought,-88.2,-88.2
+2024-04-08,E365,Eval bought,-88.2,-88.2
+2024-04-09,E366,Eval bought,-88.2,-88.2
+2024-04-12,F361,Payout,1913.15,1721.84
+2024-04-12,F362,Payout,1913.15,1721.84
+2024-04-16,E363,Eval passed,0.0,0.0
+2024-04-16,E364,Eval passed,0.0,0.0
+2024-04-16,E365,Eval passed,0.0,0.0
+2024-04-16,E366,Eval passed,0.0,0.0
+2024-04-22,F350,Payout,1308.09,1177.28
+2024-04-22,F351,Payout,1308.09,1177.28
+2024-04-22,F352,Payout,1308.09,1177.28
+2024-04-26,F361,Payout,1673.13,1505.82
+2024-04-26,F362,Payout,1673.13,1505.82
+2024-05-02,F350,Payout,1861.26,1675.13
+2024-05-02,F351,Payout,1861.26,1675.13
+2024-05-02,F352,Payout,1861.26,1675.13
+2024-05-15,F361,Payout,1325.0,1192.5
+2024-05-15,F362,Payout,1325.0,1192.5
+2024-05-21,F350,Payout,1664.6,1498.14
+2024-05-21,F350,Closed after its 4th payout,0.0,0.0
+2024-05-21,F351,Payout,1664.6,1498.14
+2024-05-21,F351,Closed after its 4th payout,0.0,0.0
+2024-05-21,F352,Payout,1664.6,1498.14
+2024-05-21,F352,Closed after its 4th payout,0.0,0.0
+2024-05-22,F367,Funded account started,0.0,0.0
+2024-05-22,F368,Funded account started,0.0,0.0
+2024-05-22,F369,Funded account started,0.0,0.0
+2024-05-22,E370,Eval bought,-88.2,-88.2
+2024-05-23,E371,Eval bought,-88.2,-88.2
+2024-05-24,E372,Eval bought,-88.2,-88.2
+2024-05-30,E370,Eval passed,0.0,0.0
+2024-05-30,E371,Eval passed,0.0,0.0
+2024-05-31,E372,Eval passed,0.0,0.0
+2024-06-03,F361,Payout,2000.0,1800.0
+2024-06-03,F361,Closed after its 4th payout,0.0,0.0
+2024-06-03,F362,Payout,2000.0,1800.0
+2024-06-03,F362,Closed after its 4th payout,0.0,0.0
+2024-06-04,F373,Funded account started,0.0,0.0
+2024-06-04,F374,Funded account started,0.0,0.0
+2024-06-04,E375,Eval bought,-88.2,-88.2
+2024-06-05,E376,Eval bought,-88.2,-88.2
+2024-06-10,F367,Payout,982.11,883.9
+2024-06-10,F368,Payout,982.11,883.9
+2024-06-10,F369,Payout,982.11,883.9
+2024-06-10,E375,Eval failed,0.0,0.0
+2024-06-11,E377,Eval bought,-88.2,-88.2
+2024-06-17,F373,Payout,972.53,875.27
+2024-06-17,F374,Payout,972.53,875.27
+2024-06-20,E376,Eval passed,0.0,0.0
+2024-06-20,E377,Eval passed,0.0,0.0
+2024-06-21,F373,Stopped: cushion below $400,0.0,0.0
+2024-06-21,F374,Stopped: cushion below $400,0.0,0.0
+2024-06-24,F378,Funded account started,0.0,0.0
+2024-06-24,F379,Funded account started,0.0,0.0
+2024-06-24,E380,Eval bought,-88.2,-88.2
+2024-06-24,F367,Stopped: cushion below $400,0.0,0.0
+2024-06-24,F368,Stopped: cushion below $400,0.0,0.0
+2024-06-24,F369,Stopped: cushion below $400,0.0,0.0
+2024-06-25,F381,Funded account started,0.0,0.0
+2024-06-25,F382,Funded account started,0.0,0.0
+2024-06-25,F383,Funded account started,0.0,0.0
+2024-06-25,E384,Eval bought,-88.2,-88.2
+2024-06-26,E385,Eval bought,-88.2,-88.2
+2024-06-27,E386,Eval bought,-88.2,-88.2
+2024-06-28,E387,Eval bought,-88.2,-88.2
+2024-06-28,E380,Eval failed,0.0,0.0
+2024-07-01,E388,Eval bought,-88.2,-88.2
+2024-07-01,E384,Eval failed,0.0,0.0
+2024-07-01,E385,Eval failed,0.0,0.0
+2024-07-01,E386,Eval failed,0.0,0.0
+2024-07-02,E389,Eval bought,-88.2,-88.2
+2024-07-02,E387,Eval failed,0.0,0.0
+2024-07-03,E390,Eval bought,-88.2,-88.2
+2024-07-04,E391,Eval bought,-88.2,-88.2
+2024-07-05,E392,Eval bought,-88.2,-88.2
+2024-07-11,F378,Stopped: cushion below $400,0.0,0.0
+2024-07-11,F379,Stopped: cushion below $400,0.0,0.0
+2024-07-11,F381,Stopped: cushion below $400,0.0,0.0
+2024-07-11,F382,Stopped: cushion below $400,0.0,0.0
+2024-07-11,F383,Stopped: cushion below $400,0.0,0.0
+2024-07-12,E393,Eval bought,-88.2,-88.2
+2024-07-15,E394,Eval bought,-88.2,-88.2
+2024-07-16,E395,Eval bought,-88.2,-88.2
+2024-07-17,E396,Eval bought,-88.2,-88.2
+2024-07-18,E397,Eval bought,-88.2,-88.2
+2024-07-22,E388,Eval passed,0.0,0.0
+2024-07-22,E389,Eval passed,0.0,0.0
+2024-07-22,E393,Eval passed,0.0,0.0
+2024-07-22,E394,Eval passed,0.0,0.0
+2024-07-22,E395,Eval passed,0.0,0.0
+2024-07-22,E396,Eval passed,0.0,0.0
+2024-07-23,F398,Funded account started,0.0,0.0
+2024-07-23,F399,Funded account started,0.0,0.0
+2024-07-23,F400,Funded account started,0.0,0.0
+2024-07-23,F401,Funded account started,0.0,0.0
+2024-07-23,F402,Funded account started,0.0,0.0
+2024-07-24,E390,Eval passed,0.0,0.0
+2024-07-24,E391,Eval passed,0.0,0.0
+2024-07-24,E392,Eval passed,0.0,0.0
+2024-07-24,E397,Eval passed,0.0,0.0
+2024-08-07,F398,Payout,1766.07,1589.46
+2024-08-07,F399,Payout,1766.07,1589.46
+2024-08-07,F400,Payout,1766.07,1589.46
+2024-08-07,F401,Payout,1766.07,1589.46
+2024-08-07,F402,Payout,1766.07,1589.46
+2024-08-19,F398,Payout,1656.47,1490.82
+2024-08-19,F399,Payout,1656.47,1490.82
+2024-08-19,F400,Payout,1656.47,1490.82
+2024-08-19,F401,Payout,1656.47,1490.82
+2024-08-19,F402,Payout,1656.47,1490.82
+2024-09-09,F398,Payout,1350.14,1215.13
+2024-09-09,F399,Payout,1350.14,1215.13
+2024-09-09,F400,Payout,1350.14,1215.13
+2024-09-09,F401,Payout,1350.14,1215.13
+2024-09-09,F402,Payout,1350.14,1215.13
+2024-09-19,F398,Stopped: cushion below $400,0.0,0.0
+2024-09-19,F399,Stopped: cushion below $400,0.0,0.0
+2024-09-19,F400,Stopped: cushion below $400,0.0,0.0
+2024-09-19,F401,Stopped: cushion below $400,0.0,0.0
+2024-09-19,F402,Stopped: cushion below $400,0.0,0.0
+2024-09-20,F403,Funded account started,0.0,0.0
+2024-09-20,F404,Funded account started,0.0,0.0
+2024-09-20,F405,Funded account started,0.0,0.0
+2024-09-20,F406,Funded account started,0.0,0.0
+2024-09-20,F407,Funded account started,0.0,0.0
+2024-09-20,E408,Eval bought,-88.2,-88.2
+2024-09-23,E409,Eval bought,-88.2,-88.2
+2024-09-24,E410,Eval bought,-88.2,-88.2
+2024-09-25,E411,Eval bought,-88.2,-88.2
+2024-09-26,E412,Eval bought,-88.2,-88.2
+2024-10-03,E408,Eval passed,0.0,0.0
+2024-10-03,E409,Eval passed,0.0,0.0
+2024-10-03,E410,Eval passed,0.0,0.0
+2024-10-03,E411,Eval passed,0.0,0.0
+2024-10-03,E412,Eval passed,0.0,0.0
+2024-10-09,F403,Payout,1297.01,1167.31
+2024-10-09,F404,Payout,1297.01,1167.31
+2024-10-09,F405,Payout,1297.01,1167.31
+2024-10-09,F406,Payout,1297.01,1167.31
+2024-10-09,F407,Payout,1297.01,1167.31
+2024-10-31,F403,Payout,2000.0,1800.0
+2024-10-31,F404,Payout,2000.0,1800.0
+2024-10-31,F405,Payout,2000.0,1800.0
+2024-10-31,F406,Payout,2000.0,1800.0
+2024-10-31,F407,Payout,2000.0,1800.0
+2024-11-12,F403,Payout,2000.0,1800.0
+2024-11-12,F404,Payout,2000.0,1800.0
+2024-11-12,F405,Payout,2000.0,1800.0
+2024-11-12,F406,Payout,2000.0,1800.0
+2024-11-12,F407,Payout,2000.0,1800.0
+2024-11-27,F403,Payout,2000.0,1800.0
+2024-11-27,F403,Closed after its 4th payout,0.0,0.0
+2024-11-27,F404,Payout,2000.0,1800.0
+2024-11-27,F404,Closed after its 4th payout,0.0,0.0
+2024-11-27,F405,Payout,2000.0,1800.0
+2024-11-27,F405,Closed after its 4th payout,0.0,0.0
+2024-11-27,F406,Payout,2000.0,1800.0
+2024-11-27,F406,Closed after its 4th payout,0.0,0.0
+2024-11-27,F407,Payout,2000.0,1800.0
+2024-11-27,F407,Closed after its 4th payout,0.0,0.0
+2024-11-28,F413,Funded account started,0.0,0.0
+2024-11-28,F414,Funded account started,0.0,0.0
+2024-11-28,F415,Funded account started,0.0,0.0
+2024-11-28,F416,Funded account started,0.0,0.0
+2024-11-28,F417,Funded account started,0.0,0.0
+2024-11-28,E418,Eval bought,-88.2,-88.2
+2024-11-29,E419,Eval bought,-88.2,-88.2
+2024-12-02,E420,Eval bought,-88.2,-88.2
+2024-12-03,E421,Eval bought,-88.2,-88.2
+2024-12-04,E422,Eval bought,-88.2,-88.2
+2024-12-06,E418,Eval passed,0.0,0.0
+2024-12-06,E419,Eval passed,0.0,0.0
+2024-12-06,E420,Eval passed,0.0,0.0
+2024-12-09,E421,Eval passed,0.0,0.0
+2024-12-10,F413,Payout,999.56,899.6
+2024-12-10,F414,Payout,999.56,899.6
+2024-12-10,F415,Payout,999.56,899.6
+2024-12-10,F416,Payout,999.56,899.6
+2024-12-10,F417,Payout,999.56,899.6
+2024-12-16,E422,Eval passed,0.0,0.0
+2024-12-27,F413,Payout,1881.02,1692.92
+2024-12-27,F414,Payout,1881.02,1692.92
+2024-12-27,F415,Payout,1881.02,1692.92
+2024-12-27,F416,Payout,1881.02,1692.92
+2024-12-27,F417,Payout,1881.02,1692.92
+2025-01-14,F413,Payout,1198.97,1079.07
+2025-01-14,F414,Payout,1198.97,1079.07
+2025-01-14,F415,Payout,1198.97,1079.07
+2025-01-14,F416,Payout,1198.97,1079.07
+2025-01-14,F417,Payout,1198.97,1079.07
+2025-01-31,F413,Stopped: cushion below $400,0.0,0.0
+2025-01-31,F414,Stopped: cushion below $400,0.0,0.0
+2025-01-31,F415,Stopped: cushion below $400,0.0,0.0
+2025-01-31,F416,Stopped: cushion below $400,0.0,0.0
+2025-01-31,F417,Stopped: cushion below $400,0.0,0.0
+2025-02-03,F423,Funded account started,0.0,0.0
+2025-02-03,F424,Funded account started,0.0,0.0
+2025-02-03,F425,Funded account started,0.0,0.0
+2025-02-03,F426,Funded account started,0.0,0.0
+2025-02-03,F427,Funded account started,0.0,0.0
+2025-02-03,E428,Eval bought,-88.2,-88.2
+2025-02-04,E429,Eval bought,-88.2,-88.2
+2025-02-05,E430,Eval bought,-88.2,-88.2
+2025-02-06,E431,Eval bought,-88.2,-88.2
+2025-02-07,E432,Eval bought,-88.2,-88.2
+2025-02-13,E428,Eval passed,0.0,0.0
+2025-02-13,E429,Eval passed,0.0,0.0
+2025-02-14,F423,Stopped: cushion below $400,0.0,0.0
+2025-02-14,F424,Stopped: cushion below $400,0.0,0.0
+2025-02-14,F425,Stopped: cushion below $400,0.0,0.0
+2025-02-14,F426,Stopped: cushion below $400,0.0,0.0
+2025-02-14,F427,Stopped: cushion below $400,0.0,0.0
+2025-02-17,F433,Funded account started,0.0,0.0
+2025-02-17,F434,Funded account started,0.0,0.0
+2025-02-17,E435,Eval bought,-88.2,-88.2
+2025-02-18,E436,Eval bought,-88.2,-88.2
+2025-02-19,E437,Eval bought,-88.2,-88.2
+2025-02-20,E438,Eval bought,-88.2,-88.2
+2025-02-20,E430,Eval passed,0.0,0.0
+2025-02-20,E431,Eval passed,0.0,0.0
+2025-02-20,E432,Eval passed,0.0,0.0
+2025-02-21,F439,Funded account started,0.0,0.0
+2025-02-21,F440,Funded account started,0.0,0.0
+2025-02-21,F441,Funded account started,0.0,0.0
+2025-02-21,E442,Eval bought,-88.2,-88.2
+2025-02-25,E435,Eval passed,0.0,0.0
+2025-02-25,E436,Eval passed,0.0,0.0
+2025-02-25,E437,Eval passed,0.0,0.0
+2025-02-25,E438,Eval passed,0.0,0.0
+2025-03-03,E442,Eval failed,0.0,0.0
+2025-03-04,E443,Eval bought,-88.2,-88.2
+2025-03-05,F439,Stopped: cushion below $400,0.0,0.0
+2025-03-05,F440,Stopped: cushion below $400,0.0,0.0
+2025-03-05,F441,Stopped: cushion below $400,0.0,0.0
+2025-03-06,F444,Funded account started,0.0,0.0
+2025-03-06,F445,Funded account started,0.0,0.0
+2025-03-06,F446,Funded account started,0.0,0.0
+2025-03-06,E447,Eval bought,-88.2,-88.2
+2025-03-06,F433,Stopped: cushion below $400,0.0,0.0
+2025-03-06,F434,Stopped: cushion below $400,0.0,0.0
+2025-03-06,E443,Eval failed,0.0,0.0
+2025-03-07,F448,Funded account started,0.0,0.0
+2025-03-07,E449,Eval bought,-88.2,-88.2
+2025-03-10,E450,Eval bought,-88.2,-88.2
+2025-03-11,E451,Eval bought,-88.2,-88.2
+2025-03-11,F444,Stopped: cushion below $400,0.0,0.0
+2025-03-11,F445,Stopped: cushion below $400,0.0,0.0
+2025-03-11,F446,Stopped: cushion below $400,0.0,0.0
+2025-03-12,E452,Eval bought,-88.2,-88.2
+2025-03-13,E453,Eval bought,-88.2,-88.2
+2025-03-14,E454,Eval bought,-88.2,-88.2
+2025-03-17,E455,Eval bought,-88.2,-88.2
+2025-03-17,E452,Eval passed,0.0,0.0
+2025-03-18,F456,Funded account started,0.0,0.0
+2025-03-18,E457,Eval bought,-88.2,-88.2
+2025-03-18,E450,Eval passed,0.0,0.0
+2025-03-19,F458,Funded account started,0.0,0.0
+2025-03-20,E447,Eval passed,0.0,0.0
+2025-03-20,E449,Eval passed,0.0,0.0
+2025-03-21,F459,Funded account started,0.0,0.0
+2025-03-21,F460,Funded account started,0.0,0.0
+2025-03-28,F448,Payout,2000.0,1800.0
+2025-03-28,E451,Eval passed,0.0,0.0
+2025-03-28,E453,Eval passed,0.0,0.0
+2025-03-28,E454,Eval passed,0.0,0.0
+2025-04-01,E455,Eval passed,0.0,0.0
+2025-04-02,F456,Payout,2000.0,1800.0
+2025-04-02,F458,Payout,2000.0,1800.0
+2025-04-02,F459,Payout,2000.0,1800.0
+2025-04-02,F460,Payout,2000.0,1800.0
+2025-04-02,E457,Eval passed,0.0,0.0
+2025-04-22,F448,Payout,1752.35,1577.12
+2025-05-09,F448,Stopped: cushion below $400,0.0,0.0
+2025-05-12,F461,Funded account started,0.0,0.0
+2025-05-12,E462,Eval bought,-88.2,-88.2
+2025-05-15,E462,Eval failed,0.0,0.0
+2025-05-16,E463,Eval bought,-88.2,-88.2
+2025-05-19,F458,Stopped: cushion below $400,0.0,0.0
+2025-05-20,F464,Funded account started,0.0,0.0
+2025-05-20,E465,Eval bought,-88.2,-88.2
+2025-05-26,E463,Eval passed,0.0,0.0
+2025-05-27,E465,Eval passed,0.0,0.0
+2025-06-03,F461,Payout,533.33,480.0
+2025-06-03,F464,Payout,819.66,737.7
+2025-06-05,F461,Stopped: cushion below $400,0.0,0.0
+2025-06-06,F466,Funded account started,0.0,0.0
+2025-06-06,E467,Eval bought,-88.2,-88.2
+2025-06-06,F464,Stopped: cushion below $400,0.0,0.0
+2025-06-09,F468,Funded account started,0.0,0.0
+2025-06-09,E469,Eval bought,-88.2,-88.2
+2025-06-16,F468,Stopped: cushion below $400,0.0,0.0
+2025-06-17,F470,Funded account started,0.0,0.0
+2025-06-17,E471,Eval bought,-88.2,-88.2
+2025-06-17,F466,Stopped: cushion below $400,0.0,0.0
+2025-06-18,F472,Funded account started,0.0,0.0
+2025-06-18,E473,Eval bought,-88.2,-88.2
+2025-06-23,F456,Stopped: cushion below $400,0.0,0.0
+2025-06-23,F459,Stopped: cushion below $400,0.0,0.0
+2025-06-23,F460,Stopped: cushion below $400,0.0,0.0
+2025-06-24,F474,Funded account started,0.0,0.0
+2025-06-24,E475,Eval bought,-88.2,-88.2
+2025-06-25,E476,Eval bought,-88.2,-88.2
+2025-06-26,E477,Eval bought,-88.2,-88.2
+2025-07-04,F470,Payout,529.81,476.82
+2025-07-04,F472,Payout,537.35,483.61
+2025-07-04,F474,Payout,663.59,597.23
+2025-07-08,F470,Stopped: cushion below $400,0.0,0.0
+2025-07-08,F472,Stopped: cushion below $400,0.0,0.0
+2025-07-08,F474,Stopped: cushion below $400,0.0,0.0
+2025-07-09,E478,Eval bought,-88.2,-88.2
+2025-07-10,E479,Eval bought,-88.2,-88.2
+2025-07-10,E467,Eval failed,0.0,0.0
+2025-07-10,E469,Eval failed,0.0,0.0
+2025-07-10,E471,Eval failed,0.0,0.0
+2025-07-10,E473,Eval failed,0.0,0.0
+2025-07-10,E475,Eval failed,0.0,0.0
+2025-07-10,E476,Eval failed,0.0,0.0
+2025-07-10,E477,Eval failed,0.0,0.0
+2025-07-11,E480,Eval bought,-88.2,-88.2
+2025-07-14,E481,Eval bought,-88.2,-88.2
+2025-07-15,E482,Eval bought,-88.2,-88.2
+2025-07-15,E479,Eval passed,0.0,0.0
+2025-07-16,F483,Funded account started,0.0,0.0
+2025-07-16,E484,Eval bought,-88.2,-88.2
+2025-07-16,E478,Eval passed,0.0,0.0
+2025-07-16,E480,Eval passed,0.0,0.0
+2025-07-17,F485,Funded account started,0.0,0.0
+2025-07-17,F486,Funded account started,0.0,0.0
+2025-07-17,E487,Eval bought,-88.2,-88.2
+2025-07-18,E488,Eval bought,-88.2,-88.2
+2025-07-21,E489,Eval bought,-88.2,-88.2
+2025-07-21,E481,Eval passed,0.0,0.0
+2025-07-21,E482,Eval passed,0.0,0.0
+2025-07-22,F490,Funded account started,0.0,0.0
+2025-07-22,F491,Funded account started,0.0,0.0
+2025-07-22,E492,Eval bought,-88.2,-88.2
+2025-07-22,E484,Eval passed,0.0,0.0
+2025-07-23,E487,Eval passed,0.0,0.0
+2025-07-23,E488,Eval passed,0.0,0.0
+2025-07-23,E489,Eval passed,0.0,0.0
+2025-07-24,F483,Payout,1734.44,1561.0
+2025-07-24,F485,Payout,1794.93,1615.44
+2025-07-24,F486,Payout,1794.93,1615.44
+2025-07-31,F490,Payout,1506.23,1355.61
+2025-07-31,F491,Payout,1506.23,1355.61
+2025-08-01,E492,Eval failed,0.0,0.0
+2025-08-04,E493,Eval bought,-88.2,-88.2
+2025-08-05,F483,Payout,2000.0,1800.0
+2025-08-05,F485,Payout,2000.0,1800.0
+2025-08-05,F486,Payout,2000.0,1800.0
+2025-08-06,E493,Eval passed,0.0,0.0
+2025-08-07,F490,Payout,2000.0,1800.0
+2025-08-07,F491,Payout,2000.0,1800.0
+2025-08-20,F483,Payout,2000.0,1800.0
+2025-08-20,F485,Payout,2000.0,1800.0
+2025-08-20,F486,Payout,2000.0,1800.0
+2025-09-01,F483,Stopped: cushion below $400,0.0,0.0
+2025-09-02,F494,Funded account started,0.0,0.0
+2025-09-02,E495,Eval bought,-88.2,-88.2
+2025-09-05,E495,Eval failed,0.0,0.0
+2025-09-08,E496,Eval bought,-88.2,-88.2
+2025-09-08,F485,Stopped: cushion below $400,0.0,0.0
+2025-09-08,F486,Stopped: cushion below $400,0.0,0.0
+2025-09-09,F497,Funded account started,0.0,0.0
+2025-09-09,F498,Funded account started,0.0,0.0
+2025-09-09,E499,Eval bought,-88.2,-88.2
+2025-09-09,F490,Stopped: cushion below $400,0.0,0.0
+2025-09-09,F491,Stopped: cushion below $400,0.0,0.0
+2025-09-10,F500,Funded account started,0.0,0.0
+2025-09-10,F501,Funded account started,0.0,0.0
+2025-09-10,E502,Eval bought,-88.2,-88.2
+2025-09-10,F494,Stopped: cushion below $400,0.0,0.0
+2025-09-11,E503,Eval bought,-88.2,-88.2
+2025-09-12,E504,Eval bought,-88.2,-88.2
+2025-09-15,E505,Eval bought,-88.2,-88.2
+2025-09-22,F497,Stopped: cushion below $400,0.0,0.0
+2025-09-22,F498,Stopped: cushion below $400,0.0,0.0
+2025-09-22,F500,Stopped: cushion below $400,0.0,0.0
+2025-09-22,F501,Stopped: cushion below $400,0.0,0.0
+2025-09-22,E499,Eval passed,0.0,0.0
+2025-09-22,E502,Eval passed,0.0,0.0
+2025-09-23,F506,Funded account started,0.0,0.0
+2025-09-23,F507,Funded account started,0.0,0.0
+2025-09-23,E508,Eval bought,-88.2,-88.2
+2025-09-24,E509,Eval bought,-88.2,-88.2
+2025-09-24,E496,Eval passed,0.0,0.0
+2025-09-25,F510,Funded account started,0.0,0.0
+2025-09-25,E511,Eval bought,-88.2,-88.2
+2025-09-26,E512,Eval bought,-88.2,-88.2
+2025-09-29,E503,Eval failed,0.0,0.0
+2025-09-29,E504,Eval failed,0.0,0.0
+2025-09-29,E505,Eval failed,0.0,0.0
+2025-09-29,E508,Eval failed,0.0,0.0
+2025-09-29,E509,Eval failed,0.0,0.0
+2025-09-29,E511,Eval failed,0.0,0.0
+2025-09-30,E513,Eval bought,-88.2,-88.2
+2025-09-30,E512,Eval failed,0.0,0.0
+2025-10-01,E514,Eval bought,-88.2,-88.2
+2025-10-01,F506,Payout,923.69,831.32
+2025-10-01,F507,Payout,923.69,831.32
+2025-10-02,E515,Eval bought,-88.2,-88.2
+2025-10-02,E513,Eval failed,0.0,0.0
+2025-10-03,E516,Eval bought,-88.2,-88.2
+2025-10-06,E517,Eval bought,-88.2,-88.2
+2025-10-07,E518,Eval bought,-88.2,-88.2
+2025-10-07,E514,Eval failed,0.0,0.0
+2025-10-08,E519,Eval bought,-88.2,-88.2
+2025-10-08,F510,Payout,908.75,817.88
+2025-10-09,E520,Eval bought,-88.2,-88.2
+2025-10-10,E521,Eval bought,-88.2,-88.2
+2025-10-14,F506,Payout,1664.96,1498.46
+2025-10-14,F507,Payout,1664.96,1498.46
+2025-10-14,E515,Eval passed,0.0,0.0
+2025-10-14,E516,Eval passed,0.0,0.0
+2025-10-14,E517,Eval passed,0.0,0.0
+2025-10-14,E518,Eval passed,0.0,0.0
+2025-10-14,E519,Eval passed,0.0,0.0
+2025-10-15,F522,Funded account started,0.0,0.0
+2025-10-15,F523,Funded account started,0.0,0.0
+2025-10-16,E520,Eval failed,0.0,0.0
+2025-10-16,E521,Eval failed,0.0,0.0
+2025-10-17,E524,Eval bought,-88.2,-88.2
+2025-10-20,E525,Eval bought,-88.2,-88.2
+2025-10-20,F506,Stopped: cushion below $400,0.0,0.0
+2025-10-20,F507,Stopped: cushion below $400,0.0,0.0
+2025-10-20,F510,Stopped: cushion below $400,0.0,0.0
+2025-10-21,F526,Funded account started,0.0,0.0
+2025-10-21,F527,Funded account started,0.0,0.0
+2025-10-21,F528,Funded account started,0.0,0.0
+2025-10-21,E529,Eval bought,-88.2,-88.2
+2025-10-22,E530,Eval bought,-88.2,-88.2
+2025-10-22,F522,Stopped: cushion below $400,0.0,0.0
+2025-10-22,F523,Stopped: cushion below $400,0.0,0.0
+2025-10-22,E524,Eval passed,0.0,0.0
+2025-10-23,F531,Funded account started,0.0,0.0
+2025-10-23,E532,Eval bought,-88.2,-88.2
+2025-10-24,E533,Eval bought,-88.2,-88.2
+2025-10-27,E534,Eval bought,-88.2,-88.2
+2025-10-31,F526,Payout,623.1,560.79
+2025-10-31,F527,Payout,623.1,560.79
+2025-10-31,F528,Payout,623.1,560.79
+2025-10-31,F531,Payout,609.04,548.14
+2025-10-31,E525,Eval passed,0.0,0.0
+2025-10-31,E529,Eval failed,0.0,0.0
+2025-10-31,E530,Eval failed,0.0,0.0
+2025-10-31,E532,Eval failed,0.0,0.0
+2025-10-31,E533,Eval failed,0.0,0.0
+2025-10-31,E534,Eval failed,0.0,0.0
+2025-11-03,F535,Funded account started,0.0,0.0
+2025-11-03,E536,Eval bought,-88.2,-88.2
+2025-11-04,E537,Eval bought,-88.2,-88.2
+2025-11-04,F526,Stopped: cushion below $400,0.0,0.0
+2025-11-04,F527,Stopped: cushion below $400,0.0,0.0
+2025-11-04,F528,Stopped: cushion below $400,0.0,0.0
+2025-11-04,F531,Stopped: cushion below $400,0.0,0.0
+2025-11-05,E538,Eval bought,-88.2,-88.2
+2025-11-06,E539,Eval bought,-88.2,-88.2
+2025-11-06,E536,Eval failed,0.0,0.0
+2025-11-06,E537,Eval failed,0.0,0.0
+2025-11-07,E540,Eval bought,-88.2,-88.2
+2025-11-10,E541,Eval bought,-88.2,-88.2
+2025-11-11,E542,Eval bought,-88.2,-88.2
+2025-11-12,E543,Eval bought,-88.2,-88.2
+2025-11-12,E538,Eval passed,0.0,0.0
+2025-11-12,E539,Eval passed,0.0,0.0
+2025-11-12,E540,Eval passed,0.0,0.0
+2025-11-13,F544,Funded account started,0.0,0.0
+2025-11-13,F545,Funded account started,0.0,0.0
+2025-11-13,F546,Funded account started,0.0,0.0
+2025-11-13,E547,Eval bought,-88.2,-88.2
+2025-11-13,E541,Eval passed,0.0,0.0
+2025-11-14,F548,Funded account started,0.0,0.0
+2025-11-14,E549,Eval bought,-88.2,-88.2
+2025-11-17,E550,Eval bought,-88.2,-88.2
+2025-11-18,E547,Eval failed,0.0,0.0
+2025-11-18,E549,Eval failed,0.0,0.0
+2025-11-19,E551,Eval bought,-88.2,-88.2
+2025-11-19,E542,Eval failed,0.0,0.0
+2025-11-19,E543,Eval failed,0.0,0.0
+2025-11-19,E550,Eval failed,0.0,0.0
+2025-11-20,E552,Eval bought,-88.2,-88.2
+2025-11-20,F535,Stopped: cushion below $400,0.0,0.0
+2025-11-20,F544,Stopped: cushion below $400,0.0,0.0
+2025-11-20,F545,Stopped: cushion below $400,0.0,0.0
+2025-11-20,F546,Stopped: cushion below $400,0.0,0.0
+2025-11-20,F548,Stopped: cushion below $400,0.0,0.0
+2025-11-21,E553,Eval bought,-88.2,-88.2
+2025-11-24,E554,Eval bought,-88.2,-88.2
+2025-11-25,E555,Eval bought,-88.2,-88.2
+2025-11-26,E556,Eval bought,-88.2,-88.2
+2025-11-27,E557,Eval bought,-88.2,-88.2
+2025-11-28,E558,Eval bought,-88.2,-88.2
+2025-12-01,E559,Eval bought,-88.2,-88.2
+2025-12-02,E560,Eval bought,-88.2,-88.2
+2025-12-19,E551,Eval passed,0.0,0.0
+2025-12-19,E552,Eval passed,0.0,0.0
+2025-12-19,E553,Eval passed,0.0,0.0
+2025-12-22,F561,Funded account started,0.0,0.0
+2025-12-22,F562,Funded account started,0.0,0.0
+2025-12-22,F563,Funded account started,0.0,0.0
+2025-12-24,E555,Eval passed,0.0,0.0
+2025-12-24,E556,Eval passed,0.0,0.0
+2025-12-24,E557,Eval passed,0.0,0.0
+2025-12-24,E558,Eval passed,0.0,0.0
+2025-12-24,E559,Eval passed,0.0,0.0
+2025-12-24,E560,Eval passed,0.0,0.0
+2025-12-26,F564,Funded account started,0.0,0.0
+2025-12-26,F565,Funded account started,0.0,0.0
+2025-12-26,E554,Eval passed,0.0,0.0
+2026-01-16,F561,Stopped: cushion below $400,0.0,0.0
+2026-01-16,F562,Stopped: cushion below $400,0.0,0.0
+2026-01-16,F563,Stopped: cushion below $400,0.0,0.0
+2026-01-16,F564,Stopped: cushion below $400,0.0,0.0
+2026-01-16,F565,Stopped: cushion below $400,0.0,0.0
+2026-01-19,F566,Funded account started,0.0,0.0
+2026-01-19,F567,Funded account started,0.0,0.0
+2026-01-19,F568,Funded account started,0.0,0.0
+2026-01-19,F569,Funded account started,0.0,0.0
+2026-01-19,F570,Funded account started,0.0,0.0
+2026-01-19,E571,Eval bought,-88.2,-88.2
+2026-01-20,E572,Eval bought,-88.2,-88.2
+2026-01-21,E573,Eval bought,-88.2,-88.2
+2026-01-22,E574,Eval bought,-88.2,-88.2
+2026-01-22,E571,Eval failed,0.0,0.0
+2026-01-22,E572,Eval failed,0.0,0.0
+2026-01-23,E575,Eval bought,-88.2,-88.2
+2026-01-26,E576,Eval bought,-88.2,-88.2
+2026-01-27,E577,Eval bought,-88.2,-88.2
+2026-02-03,E574,Eval passed,0.0,0.0
+2026-02-03,E575,Eval passed,0.0,0.0
+2026-02-03,E576,Eval passed,0.0,0.0
+2026-02-03,E577,Eval passed,0.0,0.0
+2026-02-04,F566,Payout,870.3,783.27
+2026-02-04,F567,Payout,870.3,783.27
+2026-02-04,F568,Payout,870.3,783.27
+2026-02-04,F569,Payout,870.3,783.27
+2026-02-04,F570,Payout,870.3,783.27
+2026-02-04,E573,Eval passed,0.0,0.0
+2026-02-09,F566,Stopped: cushion below $400,0.0,0.0
+2026-02-09,F567,Stopped: cushion below $400,0.0,0.0
+2026-02-09,F568,Stopped: cushion below $400,0.0,0.0
+2026-02-09,F569,Stopped: cushion below $400,0.0,0.0
+2026-02-09,F570,Stopped: cushion below $400,0.0,0.0
+2026-02-10,F578,Funded account started,0.0,0.0
+2026-02-10,F579,Funded account started,0.0,0.0
+2026-02-10,F580,Funded account started,0.0,0.0
+2026-02-10,F581,Funded account started,0.0,0.0
+2026-02-10,F582,Funded account started,0.0,0.0
+2026-02-10,E583,Eval bought,-88.2,-88.2
+2026-02-11,E584,Eval bought,-88.2,-88.2
+2026-02-12,E585,Eval bought,-88.2,-88.2
+2026-02-13,E586,Eval bought,-88.2,-88.2
+2026-02-16,E587,Eval bought,-88.2,-88.2
+2026-03-02,E583,Eval passed,0.0,0.0
+2026-03-02,E584,Eval passed,0.0,0.0
+2026-03-02,E585,Eval passed,0.0,0.0
+2026-03-02,E586,Eval passed,0.0,0.0
+2026-03-02,E587,Eval passed,0.0,0.0
+2026-03-03,F578,Payout,1151.71,1036.54
+2026-03-03,F579,Payout,1151.71,1036.54
+2026-03-03,F580,Payout,1151.71,1036.54
+2026-03-03,F581,Payout,1151.71,1036.54
+2026-03-03,F582,Payout,1151.71,1036.54
+2026-03-05,F578,Stopped: cushion below $400,0.0,0.0
+2026-03-05,F579,Stopped: cushion below $400,0.0,0.0
+2026-03-05,F580,Stopped: cushion below $400,0.0,0.0
+2026-03-05,F581,Stopped: cushion below $400,0.0,0.0
+2026-03-05,F582,Stopped: cushion below $400,0.0,0.0
+2026-03-06,F588,Funded account started,0.0,0.0
+2026-03-06,F589,Funded account started,0.0,0.0
+2026-03-06,F590,Funded account started,0.0,0.0
+2026-03-06,F591,Funded account started,0.0,0.0
+2026-03-06,F592,Funded account started,0.0,0.0
+2026-03-06,E593,Eval bought,-88.2,-88.2
+2026-03-09,E594,Eval bought,-88.2,-88.2
+2026-03-10,E595,Eval bought,-88.2,-88.2
+2026-03-11,E596,Eval bought,-88.2,-88.2
+2026-03-12,E597,Eval bought,-88.2,-88.2
+2026-03-12,E593,Eval failed,0.0,0.0
+2026-03-12,E594,Eval failed,0.0,0.0
+2026-03-13,E598,Eval bought,-88.2,-88.2
+2026-03-16,E599,Eval bought,-88.2,-88.2
+2026-03-16,E595,Eval failed,0.0,0.0
+2026-03-16,E596,Eval failed,0.0,0.0
+2026-03-17,E600,Eval bought,-88.2,-88.2
+2026-03-18,E601,Eval bought,-88.2,-88.2
+2026-03-23,F588,Stopped: cushion below $400,0.0,0.0
+2026-03-23,F589,Stopped: cushion below $400,0.0,0.0
+2026-03-23,F590,Stopped: cushion below $400,0.0,0.0
+2026-03-23,F591,Stopped: cushion below $400,0.0,0.0
+2026-03-23,F592,Stopped: cushion below $400,0.0,0.0
+2026-03-23,E599,Eval failed,0.0,0.0
+2026-03-23,E600,Eval failed,0.0,0.0
+2026-03-23,E601,Eval failed,0.0,0.0
+2026-03-24,E602,Eval bought,-88.2,-88.2
+2026-03-24,E597,Eval failed,0.0,0.0
+2026-03-24,E598,Eval failed,0.0,0.0
+2026-03-25,E603,Eval bought,-88.2,-88.2
+2026-03-26,E604,Eval bought,-88.2,-88.2
+2026-03-27,E605,Eval bought,-88.2,-88.2
+2026-03-30,E606,Eval bought,-88.2,-88.2
+2026-03-30,E602,Eval failed,0.0,0.0
+2026-03-31,E607,Eval bought,-88.2,-88.2
+2026-04-01,E608,Eval bought,-88.2,-88.2
+2026-04-02,E609,Eval bought,-88.2,-88.2
+2026-04-03,E610,Eval bought,-88.2,-88.2
+2026-04-06,E611,Eval bought,-88.2,-88.2
+2026-04-07,E612,Eval bought,-88.2,-88.2
+2026-04-10,E603,Eval failed,0.0,0.0
+2026-04-10,E604,Eval failed,0.0,0.0
+2026-04-10,E605,Eval failed,0.0,0.0
+2026-04-10,E606,Eval failed,0.0,0.0
+2026-04-10,E607,Eval failed,0.0,0.0
+2026-04-10,E608,Eval failed,0.0,0.0
+2026-04-10,E609,Eval failed,0.0,0.0
+2026-04-10,E610,Eval failed,0.0,0.0
+2026-04-10,E611,Eval failed,0.0,0.0
+2026-04-13,E613,Eval bought,-88.2,-88.2
+2026-04-14,E614,Eval bought,-88.2,-88.2
+2026-04-14,E612,Eval failed,0.0,0.0
+2026-04-15,E615,Eval bought,-88.2,-88.2
+2026-04-15,E613,Eval failed,0.0,0.0
+2026-04-16,E616,Eval bought,-88.2,-88.2
+2026-04-17,E617,Eval bought,-88.2,-88.2
+2026-04-20,E618,Eval bought,-88.2,-88.2
+2026-04-20,E614,Eval failed,0.0,0.0
+2026-04-21,E619,Eval bought,-88.2,-88.2
+2026-04-21,E615,Eval failed,0.0,0.0
+2026-04-21,E616,Eval failed,0.0,0.0
+2026-04-21,E617,Eval failed,0.0,0.0
+2026-04-22,E620,Eval bought,-88.2,-88.2
+2026-04-23,E621,Eval bought,-88.2,-88.2
+2026-04-23,E618,Eval failed,0.0,0.0
+2026-04-24,E622,Eval bought,-88.2,-88.2
+2026-04-27,E623,Eval bought,-88.2,-88.2
+2026-04-28,E624,Eval bought,-88.2,-88.2
+2026-04-28,E619,Eval failed,0.0,0.0
+2026-04-28,E620,Eval failed,0.0,0.0
+2026-04-29,E625,Eval bought,-88.2,-88.2
+2026-04-30,E626,Eval bought,-88.2,-88.2
+2026-05-01,E627,Eval bought,-88.2,-88.2
+2026-05-01,E621,Eval failed,0.0,0.0
+2026-05-01,E622,Eval failed,0.0,0.0
+2026-05-01,E623,Eval failed,0.0,0.0
+2026-05-01,E624,Eval failed,0.0,0.0
+2026-05-01,E625,Eval failed,0.0,0.0
+2026-05-04,E628,Eval bought,-88.2,-88.2
+2026-05-05,E629,Eval bought,-88.2,-88.2
+2026-05-05,E626,Eval passed,0.0,0.0
+2026-05-06,F630,Funded account started,0.0,0.0
+2026-05-06,E631,Eval bought,-88.2,-88.2
+2026-05-06,E627,Eval passed,0.0,0.0
+2026-05-07,F632,Funded account started,0.0,0.0
+2026-05-07,E633,Eval bought,-88.2,-88.2
+2026-05-08,E634,Eval bought,-88.2,-88.2
+2026-05-08,E628,Eval passed,0.0,0.0
+2026-05-08,E629,Eval passed,0.0,0.0
+2026-05-11,F635,Funded account started,0.0,0.0
+2026-05-11,F636,Funded account started,0.0,0.0
+2026-05-11,E637,Eval bought,-88.2,-88.2
+2026-05-11,E631,Eval passed,0.0,0.0
+2026-05-12,F638,Funded account started,0.0,0.0
+2026-05-12,E639,Eval bought,-88.2,-88.2
+2026-05-13,E640,Eval bought,-88.2,-88.2
+2026-05-14,F630,Payout,1716.37,1544.73
+2026-05-14,E633,Eval passed,0.0,0.0
+2026-05-14,E634,Eval passed,0.0,0.0
+2026-05-15,F632,Payout,2000.0,1800.0
+2026-05-15,E637,Eval passed,0.0,0.0
+2026-05-15,E639,Eval passed,0.0,0.0
+2026-05-18,F635,Payout,2000.0,1800.0
+2026-05-18,F636,Payout,2000.0,1800.0
+2026-05-18,F638,Payout,2000.0,1800.0
+2026-05-18,E640,Eval passed,0.0,0.0
+2026-06-04,F630,Payout,1702.66,1532.39
+2026-06-05,F632,Payout,1729.75,1556.78
+2026-06-08,F635,Payout,2000.0,1800.0
+2026-06-08,F636,Payout,2000.0,1800.0
+2026-06-08,F638,Payout,2000.0,1800.0
+2026-06-16,F630,Payout,2000.0,1800.0
+2026-06-22,F632,Payout,2000.0,1800.0
+2026-06-25,F635,Payout,2000.0,1800.0
+2026-06-25,F636,Payout,2000.0,1800.0
+2026-06-25,F638,Payout,2000.0,1800.0
+2026-07-28,F630,Payout,2000.0,1800.0
+2026-07-28,F630,Closed after its 4th payout,0.0,0.0
+2026-07-29,F641,Funded account started,0.0,0.0
+2026-07-29,E642,Eval bought,-88.2,-88.2
+2026-07-30,F632,Payout,1995.33,1795.8
+2026-07-30,F632,Closed after its 4th payout,0.0,0.0
+2026-07-31,F643,Funded account started,0.0,0.0
+2026-07-31,E644,Eval bought,-88.2,-88.2
+2026-08-04,F635,Payout,2000.0,1800.0
+2026-08-04,F635,Closed after its 4th payout,0.0,0.0
+2026-08-04,F636,Payout,2000.0,1800.0
+2026-08-04,F636,Closed after its 4th payout,0.0,0.0
+2026-08-04,F638,Payout,2000.0,1800.0
+2026-08-04,F638,Closed after its 4th payout,0.0,0.0
+2026-08-05,F645,Funded account started,0.0,0.0
+2026-08-05,F646,Funded account started,0.0,0.0
+2026-08-05,F647,Funded account started,0.0,0.0
+2026-08-05,E648,Eval bought,-88.2,-88.2
+2026-08-05,E642,Eval failed,0.0,0.0
+2026-08-05,E644,Eval failed,0.0,0.0
+2026-08-06,E649,Eval bought,-88.2,-88.2
+2026-08-06,F641,Payout,1353.27,1217.94
+2026-08-07,E650,Eval bought,-88.2,-88.2
+2026-08-10,E651,Eval bought,-88.2,-88.2
+2026-08-10,E648,Eval failed,0.0,0.0
+2026-08-11,E652,Eval bought,-88.2,-88.2
+2026-08-12,E653,Eval bought,-88.2,-88.2
+2026-08-14,F641,Stopped: cushion below $400,0.0,0.0
+2026-08-17,E654,Eval bought,-88.2,-88.2
+2026-08-19,F645,Stopped: cushion below $400,0.0,0.0
+2026-08-19,F646,Stopped: cushion below $400,0.0,0.0
+2026-08-19,F647,Stopped: cushion below $400,0.0,0.0
+2026-08-20,E655,Eval bought,-88.2,-88.2
+2026-08-21,E656,Eval bought,-88.2,-88.2
+2026-08-24,E657,Eval bought,-88.2,-88.2
+2026-08-24,F643,Payout,649.93,584.94
+2026-08-24,E651,Eval passed,0.0,0.0
+2026-08-24,E652,Eval passed,0.0,0.0
+2026-08-25,F658,Funded account started,0.0,0.0
+2026-08-25,F659,Funded account started,0.0,0.0
+2026-08-25,E656,Eval passed,0.0,0.0
+2026-08-26,F660,Funded account started,0.0,0.0
+2026-08-26,E653,Eval passed,0.0,0.0
+2026-08-26,E654,Eval passed,0.0,0.0
+2026-08-27,F661,Funded account started,0.0,0.0
+2026-09-03,F643,Stopped: cushion below $400,0.0,0.0
+2026-09-03,E649,Eval failed,0.0,0.0
+2026-09-03,E650,Eval failed,0.0,0.0
+2026-09-03,E655,Eval failed,0.0,0.0
+2026-09-03,E657,Eval failed,0.0,0.0
+2026-09-04,F662,Funded account started,0.0,0.0
+2026-09-04,E663,Eval bought,-88.2,-88.2
+2026-09-07,E664,Eval bought,-88.2,-88.2
+2026-09-08,E665,Eval bought,-88.2,-88.2
+2026-09-09,E666,Eval bought,-88.2,-88.2
+2026-09-10,E667,Eval bought,-88.2,-88.2
+2026-09-11,F658,Payout,714.59,643.13
+2026-09-11,F659,Payout,714.59,643.13
+2026-09-14,F660,Payout,831.63,748.47
+2026-09-14,F661,Payout,920.59,828.54
+2026-09-15,E664,Eval passed,0.0,0.0
+2026-09-15,E665,Eval passed,0.0,0.0
+2026-09-16,F660,Stopped: cushion below $400,0.0,0.0
+2026-09-17,F668,Funded account started,0.0,0.0
+2026-09-17,E669,Eval bought,-88.2,-88.2
+2026-09-17,F658,Stopped: cushion below $400,0.0,0.0
+2026-09-17,F659,Stopped: cushion below $400,0.0,0.0
+2026-09-17,F662,Payout,1644.99,1480.49
+2026-09-18,F670,Funded account started,0.0,0.0
+2026-09-18,E671,Eval bought,-88.2,-88.2
+2026-09-21,E672,Eval bought,-88.2,-88.2
+2026-09-23,F661,Stopped: cushion below $400,0.0,0.0
+2026-09-24,E673,Eval bought,-88.2,-88.2
+2026-09-28,E666,Eval passed,0.0,0.0
+2026-09-28,E667,Eval passed,0.0,0.0
+2026-09-28,E671,Eval passed,0.0,0.0
+2026-09-28,E672,Eval passed,0.0,0.0
+2026-09-29,F674,Funded account started,0.0,0.0
+2026-09-29,F675,Funded account started,0.0,0.0
+2026-09-29,E663,Eval passed,0.0,0.0
+2026-09-30,E669,Eval passed,0.0,0.0
+2026-10-05,F668,Payout,2000.0,1800.0
+2026-10-07,F662,Payout,2000.0,1800.0
+2026-10-07,F670,Payout,2000.0,1800.0
+2026-10-07,E673,Eval passed,0.0,0.0
+2026-10-16,F674,Payout,559.25,503.33
+2026-10-16,F675,Payout,559.25,503.33
+2026-10-19,F668,Payout,2000.0,1800.0
+2026-10-20,F674,Stopped: cushion below $400,0.0,0.0
+2026-10-20,F675,Stopped: cushion below $400,0.0,0.0
+2026-10-21,F676,Funded account started,0.0,0.0
+2026-10-21,F677,Funded account started,0.0,0.0
+2026-10-21,E678,Eval bought,-88.2,-88.2
+2026-10-21,F662,Payout,2000.0,1800.0
+2026-10-21,F670,Payout,2000.0,1800.0
+2026-10-22,E679,Eval bought,-88.2,-88.2
+2026-10-28,E678,Eval failed,0.0,0.0
+2026-10-28,E679,Eval failed,0.0,0.0
+2026-10-29,E680,Eval bought,-88.2,-88.2
+2026-10-30,E681,Eval bought,-88.2,-88.2
+2026-11-02,F668,Payout,2000.0,1800.0
+2026-11-02,E680,Eval failed,0.0,0.0
+2026-11-03,E682,Eval bought,-88.2,-88.2
+2026-11-05,F662,Payout,2000.0,1800.0
+2026-11-05,F662,Closed after its 4th payout,0.0,0.0
+2026-11-05,F670,Payout,2000.0,1800.0
+2026-11-06,F683,Funded account started,0.0,0.0
+2026-11-06,E684,Eval bought,-88.2,-88.2
+2026-11-06,F676,Payout,522.04,469.83
+2026-11-06,F677,Payout,522.04,469.83
+2026-11-10,E682,Eval failed,0.0,0.0
+2026-11-10,E684,Eval failed,0.0,0.0
+2026-11-11,E685,Eval bought,-88.2,-88.2
+2026-11-12,E686,Eval bought,-88.2,-88.2
+2026-11-16,E681,Eval passed,0.0,0.0
+2026-11-16,E685,Eval passed,0.0,0.0
+2026-11-16,E686,Eval passed,0.0,0.0
+2026-11-19,F668,Payout,2000.0,1800.0
+2026-11-19,F668,Closed after its 4th payout,0.0,0.0
+2026-11-20,F687,Funded account started,0.0,0.0
+2026-11-20,E688,Eval bought,-88.2,-88.2

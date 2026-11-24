@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import account  # noqa: E402
 import engine  # noqa: E402
 from account import RULES, EvalAccount, FundedAccount, run_eval, run_funded  # noqa: E402
-from engine import Sessions, load_npz, rth_sessions  # noqa: E402
+from engine import Sessions, adr_seed, load_npz, rth_sessions  # noqa: E402
 
 # same-day trade results are identical for every account of the same size: cache them (pure functions of their args)
 account.funded_on = functools.lru_cache(maxsize=None)(engine.funded_on)
@@ -310,13 +310,12 @@ def main(dd, out):
         hy[year(d)] = hy.get(year(d), 0.0) + p
     write_csv(os.path.join(out, "book_years_full_history.csv"), ["year", "net_usd"], [[y, round(v, 0)] for y, v in sorted(hy.items())])
 
-    # ---------------- real MNQ futures (Yahoo 5-min bars, Sep 9 - Nov 17 2026)
+    # ---------------- real MNQ futures: DATA_DIR's recent window MNQ_5m_60d.npz, when it has one (prep_mnq.py --cut)
     mp_ = os.path.join(dd, "MNQ_5m_60d.npz")
     if os.path.exists(mp_):
         mnq = load_npz(mp_)
         own = rth_sessions(*mnq)
-        src = {d: v for d, v in rth_sessions(*load_npz(os.path.join(dd, "NSXUSD.npz"))).items() if d < min(own)}
-        src.update(own)
+        src = adr_seed(dd, own)
         S_main = S
         S = Sessions(mnq, load_npz(os.path.join(dd, "SPXUSD.npz")), tf=5, adr_src=src)
         m0 = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in S.days]))

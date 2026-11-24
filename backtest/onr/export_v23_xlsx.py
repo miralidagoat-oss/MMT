@@ -21,6 +21,7 @@ from openpyxl.utils import get_column_letter
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from account import USER_ADDON, USER_EVAL, USER_TAG  # noqa: E402  (the user's prices; runs at them go to <name><USER_TAG>)
+import windows as W  # noqa: E402  (the MNQ file's first and last sessions)
 
 T = os.path.join(HERE, f"results_v23_trades{USER_TAG}")
 LV = os.path.join(HERE, f"results_live{USER_TAG}")
@@ -106,9 +107,9 @@ def main(out):
         ("Trades: every trade of every account: entry, exit, reason and P&L after commission (a formula).", F),
         ("", F),
         ("Where the numbers come from", FB),
-        ("Prices: real NQ futures 5-minute bars, Aug 2019 - Aug 9 2024 (clock repaired), then the Nasdaq-100 CFD to Sep 9 2026, then real MNQ futures to Nov 17 2026.", F),
-        ("The futures file is back-adjusted: a constant was added to older contracts at each roll, so entry and exit prices before Aug 2024 differ from the prices", F),
-        ("a chart showed at the time. Every move, stop, target and P&L in points and dollars is exact.", F),
+        (f"Prices: your real MNQ futures file, 5-minute bars, Dec 1 2019 - {W.LAST_MD} {W.LAST[:4]}, as recorded (nothing filled or repaired). The S&P 500 (HistData, then Dukascopy) is only the overnight signal's input.", F),
+        ("The file is MNQ's front contract as it traded (not back-adjusted), so every entry and exit price is a price the front contract printed. It changes contract", F),
+        ("at each quarterly roll on a session's 18:00 ET open, when the plan holds nothing. Every move, stop, target and P&L in points and dollars is exact.", F),
         ("This history starts on Nov 15 2021 (the first of the 12 start dates the website averages). Different start dates give slightly different histories.", F),
         ("Fills are simulated on 5-minute bars: a stop fills at its price (or at the open on a gap through it), a target needs a tick through, a stop wins a tie.", F),
         ("Made by backtest/onr/export_v23.py (checked to reproduce the simulator's events and P&L exactly) and export_v23_xlsx.py in the MMT repo.", F),
@@ -137,7 +138,7 @@ def main(out):
     put(sm, "A7", "Dollars per point per MNQ contract ($)")
     put(sm, "B7", 2.0, USD2, FBLUE, None, "CME Micro E-mini Nasdaq-100 (MNQ): $2 per index point. Contract spec, not an assumption.")
     put(sm, "A8", "Last session in the data")
-    put(sm, "B8", dt.datetime(2026, 11, 17), DATE, FBLUE, None, "The price data ends at 12:40 ET on Nov 17 2026.")
+    put(sm, "B8", dt.datetime.fromisoformat(W.LAST), DATE, FBLUE, None, f"The price data ends with the 16:55 ET bar of {W.LAST_MD} {W.LAST[:4]}.")
 
     put(sm, "A10", "This history (one start date: Nov 15 2021)", FB)
     put(sm, "B10", "Value", FB)
@@ -229,7 +230,7 @@ def main(out):
         if i >= 13:
             put(mo, f"H{i}", f"=SUM(C{i - 11}:C{i})", USD0)
     n = len(months) + 1
-    put(mo, f"A{n + 2}", "Nov 2021 starts on Nov 15 and Nov 2026 ends on Nov 17. 'Last 12 months' is the sum of that month and the 11 before it.", font=FNOTE)
+    put(mo, f"A{n + 2}", f"Nov 2021 starts on Nov 15 and Nov 2026 ends on {W.LAST_MD}. 'Last 12 months' is the sum of that month and the 11 before it.", font=FNOTE)
     mo.freeze_panes = "A2"
 
     # ------------------------------------------------------------------ Years
@@ -242,7 +243,7 @@ def main(out):
     for i, y in enumerate(range(2021, 2027), 2):
         put(yr, f"A{i}", str(y))
         put(yr, f"B{i}", y, "0")
-        put(yr, f"C{i}", "Nov 15 - Dec 31" if y == 2021 else ("Jan 1 - Nov 17" if y == 2026 else "Full year"))
+        put(yr, f"C{i}", "Nov 15 - Dec 31" if y == 2021 else (f"Jan 1 - {W.LAST_MD}" if y == 2026 else "Full year"))
         put(yr, f"D{i}", f"=SUMIFS(Ledger!$G:$G,Ledger!$B:$B,B{i})", USD0)
         put(yr, f"E{i}", f'=COUNTIFS(Ledger!$E:$E,"Payout",Ledger!$B:$B,B{i})', "0")
         put(yr, f"F{i}", f'=SUMIFS(Ledger!$F:$F,Ledger!$E:$E,"Payout",Ledger!$B:$B,B{i})', USD0)

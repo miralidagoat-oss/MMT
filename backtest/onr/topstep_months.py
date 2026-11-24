@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Topstep month by month: every month of every Topstep configuration (topstep_sim.py's runs, same pools, same costs).
 
-usage: topstep_months.py FUT_DATA_DIR CFD_DATA_DIR OUT_DIR
-Reruns topstep_sim.py's 216 pools (3 sizes x 2 payout paths x 12 start dates on futures over the last 5 years and from
-Aug 30 2019, and on the Nasdaq-100 CFD from Feb 15 2011) and keeps each month. Checks: each run's monthly cash adds up to
+usage: topstep_months.py FUT_DATA_DIR CFD_DATA_DIR OUT_DIR      (CFD_DATA_DIR "-": futures only)
+Reruns topstep_sim.py's pools (3 sizes x 2 payout paths x 12 start dates on the MNQ file over the last 5 years and
+from Dec 20 2019; with a CFD_DATA_DIR, as before Nov 23 2026, also on the Nasdaq-100 CFD from Feb 15 2011) and keeps
+each month. Checks: each run's monthly cash adds up to
 topstep_sim.cash_flows exactly, and each year's total equals results_topstep/runs.json.
 Writes
   topstep_months.csv       one row per window, configuration and calendar month: net to you, the median, lowest and
@@ -95,7 +96,7 @@ def streak(flags):
 
 def main(fd, dd, out):
     res = {}
-    for kind, data, windows in (("fut", fd, ("5y", "all")), ("cfd", dd, ("all",))):
+    for kind, data, windows in (("fut", fd, ("5y", "all")),) + ((("cfd", dd, ("all",)),) if dd != "-" else ()):
         jobs = [(w, o, s, p) for w in windows for s in T.SIZES for p in ("standard", "consistency") for o in T.OFF]
         with Pool(4, initializer=T._init, initargs=(kind, data)) as pool:
             res.update(dict(pool.map(_job, jobs, chunksize=2)))
@@ -113,6 +114,8 @@ def main(fd, dd, out):
     lab = {("fut", "5y"): "5y", ("fut", "all"): "2019", ("cfd", "all"): "2011"}
     rows, stats = [], []
     for (kind, window), wid in lab.items():
+        if kind == "cfd" and dd == "-":
+            continue  # futures only (the user's MNQ file)
         for size in T.SIZES:
             for path in ("standard", "consistency"):
                 for f in FEES:

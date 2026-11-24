@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Lucid's maximum (5 funded + 5 evals) with Lucid's move-to-live rule, on real NQ futures.
+"""Lucid's maximum (5 funded + 5 evals) with Lucid's move-to-live rule, on real futures (since Nov 23 2026 the user's
+MNQ file, Dec 2019 - Nov 20 2026).
 
 usage: ONR_EVAL_FEE_50K=88.20 [ONR_ADDON_FEE_50K=10] python3 live50k.py FUT_DATA_DIR OUT_DIR
-  FUT_DATA_DIR: NQFUT.npz (prep_nqfut.py) and SPXUSD.npz.
+  FUT_DATA_DIR: NQFUT.npz (prep_mnq.py; prep_nqfut.py before Nov 23 2026) and SPXUSD.npz.
   ONR_ADDON_FEE_50K: what the 50% consistency add-on adds to each eval's price (default 0: not counted). It is charged
   on the add-on runs' evals only; like the eval price it changes the bookkeeping, not a single trade.
 
@@ -52,6 +53,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from account import RULES, EvalAccount, FundedAccount  # noqa: E402
 from engine import Sessions, load_npz  # noqa: E402
+import windows as W  # noqa: E402
 from research4 import E_KW, F_KW, FEE, OFFSETS, SPLIT, run_metrics, sim_pool  # noqa: E402
 
 N_FUNDED, MAX_TOTAL = 5, 10          # Lucid's caps (per household)
@@ -437,7 +439,7 @@ def main(dd, out):
                 v = [r["years"][y] for r in R if y in r["years"]]
                 med = lambda key: float(np.median([x[key] for x in v]))  # noqa: E731
                 yrows.append(["50% add-on" if cons == 0.5 else "40% (standard)", model, sk[5:], y,
-                              "Nov 15 - Dec 31" if y == "2021" else "Jan 1 - Nov 17" if y == "2026" else "full year",
+                              "Nov 15 - Dec 31" if y == "2021" else f"Jan 1 - {W.LAST_MD}" if y == "2026" else "full year",
                               round(med("net")), round(min(x["net"] for x in v)), round(max(x["net"] for x in v)),
                               round(med("sim_payouts_net")), round(med("live_wd_net")), round(med("bonus_net")),
                               med("evals_bought"), med("moves"), med("live_opened"), med("sessions_live_only")])
@@ -487,7 +489,7 @@ def main(dd, out):
                                 "live_bonuses_paid", "eval_price_usd"], lrows)
     wy = []
     for y in ("2021", "2022", "2023", "2024", "2025", "2026"):
-        row = [y if y not in ("2021", "2026") else y + (" (from Nov 15)" if y == "2021" else " (to Nov 17)")]
+        row = [y if y not in ("2021", "2026") else y + (" (from Nov 15)" if y == "2021" else f" ({W.TO})")]
         for cons in (0.4, 0.5):
             for model in ("live", "stop4", "cycle"):
                 v = [res[(model, cons, "5y", o)]["split80"]["years"][y]["net"] for o in OFFSETS

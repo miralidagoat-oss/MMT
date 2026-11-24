@@ -1,10 +1,8 @@
 id,source,from,to,bars,note
-fut,Real NQ futures (the 5-year file),2019-08-11,2024-08-09,343210,clock repaired; 5-minute moves vs the market 0.985 to 0.999 by month
-fill2019,  2019: day-session bars filled from the CFD,,,1692,22.2% of 7611
-fill2020,  2020: day-session bars filled from the CFD,,,4038,20.8% of 19423
-fill2021,  2021: day-session bars filled from the CFD,,,5376,27.5% of 19578
-fill2022,  2022: day-session bars filled from the CFD,,,4440,24.4% of 18174
-fill2023,  2023: day-session bars filled from the CFD,,,1,0.0% of 19687
-fill2024,  2024: day-session bars filled from the CFD,,,0,0.0% of 12111
-cfd,"HistData Nasdaq-100 CFD, made into 5-minute bars",2024-08-11,2026-09-09,141904,the gap after the file ends
-mnq,"Real MNQ futures (Yahoo Finance, 5-minute)",2026-09-09,2026-11-17,13407,to 12:40 ET on Nov 17 2026
+mnq,"Real MNQ futures, your file (MICRONASDAQ100_futures_5m_2019-12-01_2026-11-23.parquet)",2019-12-01,2026-11-20,492923,"1,803 sessions; 5-minute bars as recorded, nothing filled or repaired"
+gaps,  restarts inside a session after 45 minutes or more without a bar,,,8,"2020-03-16 (4), 2020-03-18 (2), 2020-06-30, 2025-11-28"
+short,  day sessions with fewer than 78 five-minute bars,,,63,"59 holidays and early closes (42 to 46 bars); 4 days missing a bar or two: 2020-03-09, 2020-03-12, 2020-03-16, 2020-03-18"
+spx,"S&P 500 for the overnight signal: HistData CFD, then Dukascopy from Nov 13 2026",,,,the signal's input only; no trade is on the S&P
+clock2023-03-13,"  S&P clock 60 minutes early, moved 60 minutes later: week of 2023-03-13",,,4844,"5-minute match with MNQ 0.04 before, 0.93 after"
+clock2023-03-20,"  S&P clock 60 minutes early, moved 60 minutes later: week of 2023-03-20",,,4829,"5-minute match with MNQ 0.02 before, 0.93 after"
+clock2025-10-27,"  S&P clock 60 minutes early, moved 60 minutes later: week of 2025-10-27",,,6623,"5-minute match with MNQ -0.10 before, 0.94 after"

@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import export_charts as X  # noqa: E402
 import research4 as R4  # noqa: E402
 from account import FEE_TAG, RULES, run_eval  # noqa: E402
-from engine import Sessions, load_npz, rth_sessions  # noqa: E402
+from engine import Sessions, adr_seed, load_npz, rth_sessions  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OFF = R4.OFFSETS
@@ -115,8 +115,7 @@ def years(b_all, a_all, b5, a5):
 def real(dd):
     mnq = load_npz(os.path.join(dd, "MNQ_5m_60d.npz"))
     own = rth_sessions(*mnq)
-    src = {d: v for d, v in rth_sessions(*load_npz(os.path.join(dd, "NSXUSD.npz"))).items() if d < min(own)}
-    src.update(own)
+    src = adr_seed(dd, own)
     R = Sessions(mnq, load_npz(os.path.join(dd, "SPXUSD.npz")), tf=5, adr_src=src)
     m0 = int(np.argmax([not np.isnan(R.S[d]["adr"]) and not np.isnan(R.S[d]["score"]) for d in R.days]))
     kr = range(m0, len(R.days))

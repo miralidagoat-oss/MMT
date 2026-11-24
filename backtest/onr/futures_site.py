@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""The dashboard's datasets on real NQ futures (prep_nqfut.py's series), in the same formats as the CFD ones.
+"""The dashboard's datasets on real futures (since Nov 23 2026 the user's MNQ file, prep_mnq.py; before, prep_nqfut.py's
+NQ series), in the same formats as the CFD ones.
 
 usage (ONR_EVAL_FEE_50K=88.20): futures_site.py FUT_DATA_DIR OUT_DIR
   FUT_DATA_DIR: NQFUT.npz (5-minute bars) and SPXUSD.npz.
 Research round 5's machinery runs unchanged, with its NQ sessions replaced by the futures series (research4._init is
 swapped for one that loads NQFUT.npz at 5-minute bars; nothing else changes):
   - 1-5 accounts in round 4's structures A, B and C over the last 5 years, 12 start dates (as research5.py Part 1)
-  - the current rules (BASE), the 8 placebo runs and the 50% add-on, over the last 5 years and from Aug 30 2019, the
-    futures' first tradable session (research5's "2011-21" period then covers Aug 30 2019 -> Nov 14 2021 only, and
-    its worst full year is 2020's)
-It also gathers report50k.py's futures and CFD reports (results_nqfut*, results_cfd19*) and nqfut_check.py's output.
+  - the current rules (BASE), the 8 placebo runs and the 50% add-on, over the last 5 years and from the futures' first
+    tradable session (Dec 20 2019 on the MNQ file; research5's "2011-21" period then covers Dec 20 2019 -> Nov 14 2021
+    only, and its one full year is 2020: windows.full_years_only)
+It also gathers report50k.py's futures reports (results_nqfut*); before Nov 23 2026 also the CFD's (results_cfd19*) and
+nqfut_check.py's output (fut_tables(cfd=True)). Since then the futures are the user's real MNQ file alone (prep_mnq.py).
 Writes accounts_5y.csv, accounts_5y_years_wide.csv, addon_kpis.csv, addon_years.csv, addon_prices.csv,
-addon_summary.csv, fut_full.csv, fut_years.csv, fut_check.csv, fut_data.csv and runs.json into OUT_DIR.
+addon_summary.csv, fut_full.csv, fut_years.csv, fut_data.csv (and fut_check.csv with the CFD) and runs.json into OUT_DIR.
 """
 import csv
 import json
@@ -27,6 +29,7 @@ import research4 as R4  # noqa: E402
 import research5 as R5  # noqa: E402
 from account import FEE_TAG, RULES, FundedAccount  # noqa: E402
 from engine import Sessions, load_npz  # noqa: E402
+import windows as W  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OFF = R4.OFFSETS
@@ -48,6 +51,7 @@ def fut_init(dd):
 
 
 R4._init = fut_init  # research5._init calls research4._init: from here on every run uses the futures series
+W.full_years_only(R5.FULL5)  # 2019 (Dec 20-31) and 2026 (to Nov 20) are never a "full year"
 
 
 def write(out, name, header, rows):
@@ -72,7 +76,7 @@ def accounts(res, out):
                 nets = [v["net"] for v in vals]
                 med = lambda key: float(np.median([v[key] for v in vals]))  # noqa: E731
                 rp, rf = sum(v["evals_passed"] for v in vals), sum(v["evals_failed"] for v in vals)
-                rows.append([LAB[st], N, y + (" (from Nov 15)" if y == "2021" else " (to Nov 17)" if y == "2026" else ""),
+                rows.append([LAB[st], N, y + (" (from Nov 15)" if y == "2021" else f" ({W.TO})" if y == "2026" else ""),
                              round(float(np.median(nets))), round(min(nets)), round(max(nets)), med("payouts"),
                              round(med("payouts_usd")), med("evals_bought"), med("evals_passed"), med("evals_failed"),
                              round(100 * rp / (rp + rf), 1) if rp + rf else "", med("funded_started")])
@@ -130,9 +134,9 @@ def addon(res, out, plac):
             if window == "last 5 years" and y == "2021":
                 per = "Nov 15 - Dec 31"
             elif window == "all years" and y == "2019":
-                per = "from Aug 30"
+                per = f"from {W.FIRST_MD}"
             if y == "2026":
-                per = "Jan 1 - Nov 17"
+                per = f"Jan 1 - {W.LAST_MD}"
             yrows.append([window, y, per, round(med(B, "net")), round(med(Ad, "net")), round(med(Ad, "net") - med(B, "net")),
                           med(B, "payouts"), med(Ad, "payouts"), med(B, "evals_bought"), med(Ad, "evals_bought"), pas(B), pas(Ad)])
     write(out, "addon_years.csv", ["window", "year", "period", "current_net_usd", "addon_net_usd", "difference_usd",
@@ -191,7 +195,7 @@ def addon(res, out, plac):
               round(float(np.mean([r["periods"]["last 5y"]["worst12"] for r in b5]))), "usd"],
              ["worst12_addon_5y", "Worst 12 months with the add-on, last 5 years",
               round(float(np.mean([r["periods"]["last 5y"]["worst12"] for r in a5]))), "usd"],
-             ["net_gain_early", "Net a year gained (before its price), Aug 30 2019 - Nov 14 2021", round(z[3]), "usd"],
+             ["net_gain_early", f"Net a year gained (before its price), {W.FIRST_MD} {W.FIRST[:4]} - Nov 14 2021", round(z[3]), "usd"],
              ["band_net_5y", "Noise band for net a year, last 5 years (8 placebo runs)", round(band["last 5y"][0]), "usd"],
              ["rule5y_at_0", "Rule 5Y at an add-on price of $0", 1 if (z[5] and z[6]) else 0, "count"],
              ["max_price_rule5y", "Highest add-on price per eval at which rule 5Y still passes", round(p_max, 2) if p_max is not None else 0, "usd"],
@@ -201,9 +205,12 @@ def addon(res, out, plac):
           f"(band {band['last 5y'][1]:,.0f}), early period {z[3]:+,.0f}; rule 5Y at $0: {'pass' if z[5] and z[6] else 'fail'}")
 
 
-def fut_tables(out, fd):
-    R = {"fut_current": "results_nqfut", "fut_addon": "results_nqfut_addon", "cfd_current": "results_cfd19",
-         "cfd_addon": "results_cfd19_addon"}
+def fut_tables(out, fd, cfd=False):
+    """fut_full.csv and fut_years.csv (the plan on the futures, 40% rule and add-on, from the first tradable session) and
+    fut_data.csv (the data). With cfd=True, as before Nov 23 2026: the CFD's runs beside them and fut_check.csv."""
+    R = {"fut_current": "results_nqfut", "fut_addon": "results_nqfut_addon"}
+    if cfd:
+        R.update(cfd_current="results_cfd19", cfd_addon="results_cfd19_addon")
     S = {k: json.load(open(os.path.join(HERE, v + FEE_TAG, "summary.json"))) for k, v in R.items()}
     rows = [("eval_pass", "Eval pass rate (an eval started on every session)", lambda s: s["eval"]["pass_pct"], "pct"),
             ("eval_days_median", "Sessions to pass, median", lambda s: s["eval"]["sessions_to_pass"]["median"], "sessions"),
@@ -221,17 +228,25 @@ def fut_tables(out, fd):
             ("stress_net_year", "2x commission + 1 tick slippage: net a year", lambda s: s["stress_2x_costs_1_tick"]["net_per_year_median"], "usd"),
             ("book_net_year", "One funded account trading every day: net a year", lambda s: s["book"]["net_per_year"], "usd"),
             ("book_worst_day", "One funded account trading every day: worst day", lambda s: s["book"]["worst_day"], "usd")]
-    write(out, "fut_full.csv", ["metric", "label", "fut_current", "fut_addon", "cfd_current", "cfd_addon", "unit"],
-          [[m, lab, round(float(f(S["fut_current"])), 2), round(float(f(S["fut_addon"])), 2), round(float(f(S["cfd_current"])), 2),
-            round(float(f(S["cfd_addon"])), 2), u] for m, lab, f, u in rows])
+    write(out, "fut_full.csv", ["metric", "label"] + list(R) + ["unit"],
+          [[m, lab] + [round(float(f(S[k])), 2) for k in R] + [u] for m, lab, f, u in rows])
 
     pool = {k: {r["year"]: float(r["net_usd_first_path"]) for r in csv.DictReader(open(os.path.join(HERE, v + FEE_TAG, "pool_years.csv")))}
             for k, v in R.items()}
     book = {k: {r["year"]: float(r["net_usd"]) for r in csv.DictReader(open(os.path.join(HERE, R[k] + FEE_TAG, "book_years.csv")))}
-            for k in ("fut_current", "cfd_current")}
+            for k in ("fut_current", "cfd_current") if k in R}
     evp = {k: {r["year_started"]: float(r["pass_pct"]) for r in csv.DictReader(open(os.path.join(HERE, v + FEE_TAG, "eval_pass_by_year.csv")))}
            for k, v in R.items()}
     yrows = []
+    if not cfd:  # the user's MNQ file alone
+        for y in sorted(pool["fut_current"]):
+            per = f"from {W.FIRST_MD}" if y == W.FIRST[:4] else (W.TO if y == W.LAST[:4] else "full year")
+            yrows.append([y, per, "real MNQ futures (your file)", round(pool["fut_current"][y]), round(pool["fut_addon"][y]),
+                          round(book["fut_current"][y]), evp["fut_current"][y], evp["fut_addon"][y]])
+        write(out, "fut_years.csv", ["year", "period", "futures_data", "fut_current_usd", "fut_addon_usd", "fut_book_usd",
+                                     "fut_pass_current_pct", "fut_pass_addon_pct"], yrows)
+        mnq_data(out, fd)
+        return
     for y in sorted(pool["fut_current"]):
         per = "from Sep 3" if y == "2019" else ("to Nov 17; CFD to Nov 13" if y == "2026" else "full year")
         src = ("real NQ futures" if y <= "2023" else "real futures to Aug 9, then the CFD" if y == "2024"
@@ -258,6 +273,32 @@ def fut_tables(out, fd):
     drows.append(["mnq", "Real MNQ futures (Yahoo Finance, 5-minute)", seg[2]["first"][:10], seg[2]["last"][:10], seg[2]["bars"],
                   "to 12:40 ET on Nov 17 2026"])
     write(out, "fut_data.csv", ["id", "source", "from", "to", "bars", "note"], drows)
+
+
+def mnq_data(out, fd):
+    """fut_data.csv for the user's MNQ file (prep_mnq.py's notes) and the S&P input of the overnight signal (spx_clock.py)."""
+    info = json.load(open(os.path.join(fd, "NQFUT.npz.json")))
+    spx = json.load(open(os.path.join(fd, "SPXUSD.npz.json")))
+    gaps = info["sessions_not_opening_at_1800"]  # bars that follow 45 minutes or more without a bar, other than 18:00 opens
+    per_day = {}
+    for g in gaps:
+        per_day[g[:10]] = per_day.get(g[:10], 0) + 1
+    short = info["rth_days_under_78_bars"]
+    big = sorted(d for d, n in short.items() if n >= 70)
+    rows = [["mnq", f"Real MNQ futures, your file ({info['source']})", info["first_et"][:10], info["last_et"][:10], info["bars"],
+             f"{info['sessions']:,} sessions; 5-minute bars as recorded, nothing filled or repaired"],
+            ["gaps", "  restarts inside a session after 45 minutes or more without a bar", "", "", len(gaps),
+             ", ".join(f"{d}" + (f" ({n})" if n > 1 else "") for d, n in sorted(per_day.items()))],
+            ["short", "  day sessions with fewer than 78 five-minute bars", "", "", len(short),
+             f"{len(short) - len(big)} holidays and early closes (42 to 46 bars); {len(big)} days missing a bar or two: {', '.join(big)}"],
+            ["spx", "S&P 500 for the overnight signal: HistData CFD, then Dukascopy from Nov 13 2026", "", "", "",
+             "the signal's input only; no trade is on the S&P"]]
+    for m in spx["moved_weeks"]:
+        sh = m["shift_minutes"]
+        rows.append([f"clock{m['week_of']}", f"  S&P clock {abs(sh)} minutes {'early' if sh > 0 else 'late'}, moved {abs(sh)} minutes "
+                     f"{'later' if sh > 0 else 'earlier'}: week of {m['week_of']}",
+                     "", "", m["bars"], f"5-minute match with MNQ {m['corr_before']:.2f} before, {m['corr_after']:.2f} after"])
+    write(out, "fut_data.csv", ["id", "source", "from", "to", "bars", "note"], rows)
 
 
 def main(fd, out):

@@ -21,15 +21,17 @@ modelled.
 Not modelled: the optional Daily Loss Limit and its limited-time doubled caps, the monthly reset credit, and the
 Scaling Plan tiers (its table could not be read). Each funded leg is capped at 6 / 10 / 10 micros, so three legs fit
 the tiers we believe start at 20 / 30 / 30 micros: an assumption. It binds when NQ's daily range is below about
-108 / 100 / 150 points: over the last 5 years never at 50K and 100K and on 6 days at 150K, but on most sessions of
-2019 and of every CFD year before 2020 (topstep_cap.csv), so the windows reaching back there trade smaller than Lucid's
-plan, whose caps are 20 / 30 / 40.
+108 / 100 / 150 points: rarely over the last 5 years, more in Dec 2019 - early 2020 and on most sessions of every
+CFD year before 2020 (topstep_cap.csv counts the sessions of each window), so the windows reaching back there trade
+smaller than Lucid's plan, whose caps are 20 / 30 / 40.
 Payout requests: as the indicator's panel says, once an account is $1,000 up, half the profit up to Topstep's cap
 (Topstep's own minimum is $125: ONR_TS_PAYMIN=125 tests requesting that early).
 Costs: each Combine attempt pays the month's price when it starts and again every 30 days while it is open; each XFA
 pays the activation fee on the Standard path.
-Runs: 12 start dates (research4.OFFSETS) in each window: real NQ futures over the last 5 years and from Aug 30 2019,
-and the Nasdaq-100 CFD from Feb 2011. Lucid's plan (results_scale_sizes) is the reference.
+Runs: 12 start dates (research4.OFFSETS) in each window: the futures over the last 5 years and from their first tradable
+session, and the Nasdaq-100 CFD from Feb 2011 unless CFD_DATA_DIR is "-". Since Nov 23 2026 every result is the user's
+real MNQ file alone (prep_mnq.py; windows.py: Dec 20 2019 to Nov 20 2026, CFD_DATA_DIR "-"). Lucid's plan
+(results_scale_sizes) is the reference.
 Writes runs.json and, from it (also alone: topstep_sim.py --tables FUT_DATA_DIR CFD_DATA_DIR OUT_DIR):
   topstep.csv          mean of the 12 start dates per window, size, payout path and fee path (36 rows, with ids)
   topstep_years.csv    net by calendar year, median / lowest / highest of the 12 start dates
@@ -51,6 +53,7 @@ import research4 as R4  # noqa: E402
 import research5 as R5  # noqa: E402
 from account import USER_ADDON, USER_EVAL, FundedAccount  # noqa: E402
 from engine import Sessions, load_npz  # noqa: E402
+import windows as W  # noqa: E402
 
 SIZES = (50, 100, 150)
 TS = {50: dict(target=3000.0, mll=2000.0, qday=150.0, evalmax=50, fundmax=6),
@@ -65,7 +68,7 @@ SPLIT, OFF = 0.9, R4.OFFSETS
 # payout requests follow the indicator's panel: once an account is $1,000 up (a payout of at least $500), half the
 # profit up to Topstep's cap. ONR_TS_PAYMIN=125 requests as soon as Topstep allows ($125 minimum, $250 of profit).
 PAY_MIN = float(os.environ.get("ONR_TS_PAYMIN", "500"))
-START5 = "2021-11-15"
+START5 = W.START5
 _S = {}
 
 
@@ -159,8 +162,8 @@ def summarise_run(S, k0, cash, ev, periods, full_years):
     return out
 
 
-WINDOWS = {("fut", "5y"): ("last 5y", START5, "2026-12-31", [str(y) for y in range(2022, 2026)]),
-           ("fut", "all"): ("2019-26", "2019-01-01", "2026-12-31", [str(y) for y in range(2020, 2026)]),
+WINDOWS = {("fut", "5y"): ("last 5y", START5, "2026-12-31", W.FULL_YEARS_5Y),
+           ("fut", "all"): ("2019-26", "2019-01-01", "2026-12-31", W.FULL_YEARS_ALL),
            ("cfd", "all"): ("all years", "2011-01-01", "2026-12-31", [str(y) for y in range(2012, 2026)])}
 
 
@@ -195,13 +198,14 @@ def check(S):
     ref = R5.metrics([("nq", S, k0, ev)], R5.FULL5, R5.P_5Y, fee)["periods"]["last 5y"]
     for key in ("M", "W", "L", "D", "worst12", "gap", "months_paid", "evals_yr"):
         assert abs(mine[key] - ref[key]) < 1e-6, (key, mine[key], ref[key])
+    W.check(S)
     print(f"check passed: the summary equals research5.metrics on Lucid's plan (${ref['M']:,.0f} a year from {iso(S, k0)})", flush=True)
 
 
 def main(fd, dd, out):
     os.makedirs(out, exist_ok=True)
     res = {}
-    for kind, data, windows in (("fut", fd, ("5y", "all")), ("cfd", dd, ("all",))):
+    for kind, data, windows in (("fut", fd, ("5y", "all")),) + ((("cfd", dd, ("all",)),) if dd != "-" else ()):
         if kind == "fut":
             check(load("fut", data))
         jobs = [(w, o, s, p) for w in windows for s in SIZES for p in ("standard", "consistency") for o in OFF]
@@ -212,10 +216,10 @@ def main(fd, dd, out):
     write_tables(out, fd, dd)
 
 
-WIN_LABEL = {"last 5y": "futures, last 5 years", "2019-26": "futures, from Aug 30 2019", "all years": "CFD, from Feb 2011"}
+WIN_LABEL = {"last 5y": "futures, last 5 years", "2019-26": f"futures, {W.SINCE}", "all years": "CFD, from Feb 2011"}
 WIN_ID = {"last 5y": "5y", "2019-26": "2019", "all years": "2011"}
-FIRST = {"last 5y": "from Nov 15", "2019-26": "from Aug 30", "all years": "from Feb 15"}
-LAST = {"last 5y": "to Nov 17", "2019-26": "to Nov 17", "all years": "to Nov 13"}
+FIRST = {"last 5y": f"from {W.md(W.START5)}", "2019-26": f"from {W.FIRST_MD}", "all years": "from Feb 15"}
+LAST = {"last 5y": W.TO, "2019-26": W.TO, "all years": "to Nov 13"}
 
 
 def write_csv(out, name, rows):
@@ -294,7 +298,7 @@ def cap_rows(fd, dd):
     years on futures. The median ADR (NQ points) shows why: NQ moved far fewer points before 2020."""
     from account import funded_size
     rows = []
-    for kind, data, name in (("fut", fd, "futures"), ("cfd", dd, "CFD")):
+    for kind, data, name in (("fut", fd, "futures"),) + ((("cfd", dd, "CFD"),) if dd != "-" else ()):
         S = load(kind, data)
         k0, k5 = first_tradable(S), int(np.searchsorted(S.days, np.datetime64(START5).astype(int)))
         groups = {}
@@ -328,6 +332,8 @@ def write_tables(out, fd, dd=None):
         res[(kind, window, int(off), int(size), path)] = v
     rows, yrows = [], []
     for (kind, window), (lab, _, _, _) in WINDOWS.items():
+        if not any(k[0] == kind and k[1] == window for k in res):
+            continue  # not run (the CFD window with CFD_DATA_DIR "-")
         for size in SIZES:
             for path in ("standard", "consistency"):
                 for fee_path in ("standard", "noact"):

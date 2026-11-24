@@ -1,18 +1,18 @@
 metric,label,value,unit
 eval_price,Eval price used,88.2,usd
-pass_default_5y,"Eval pass rate, 40% rule, last 5 years",42.5,pct
-pass_addon_5y,"Eval pass rate, 50% add-on, last 5 years",46.1,pct
-slot_first_default_5y,"First payout after the first eval, median, 40% rule",64.0,days
-slot_first_addon_5y,"First payout after the first eval, median, 50% add-on",54.0,days
-net_current_5y,"Net a year, current rules, last 5 years",61504,usd
-net_addon_5y,"Net a year with the add-on (before its price), last 5 years",61757,usd
-net_gain_5y,"Net a year gained (before its price), last 5 years",253,usd
-worst_current_5y,"Worst full year, current rules, last 5 years",33494,usd
-worst_addon_5y,"Worst full year with the add-on, last 5 years",40104,usd
-worst12_current_5y,"Worst 12 months, current rules, last 5 years",22242,usd
-worst12_addon_5y,"Worst 12 months with the add-on, last 5 years",32294,usd
-net_gain_early,"Net a year gained (before its price), Aug 30 2019 - Nov 14 2021",5226,usd
-band_net_5y,"Noise band for net a year, last 5 years (8 placebo runs)",4977,usd
-rule5y_at_0,Rule 5Y at an add-on price of $0,0,count
-max_price_rule5y,Highest add-on price per eval at which rule 5Y still passes,0,usd
-evals_year_addon_5y,"Evals bought a year with the add-on, last 5 years",94.1,count
+pass_default_5y,"Eval pass rate, 40% rule, last 5 years",42.6,pct
+pass_addon_5y,"Eval pass rate, 50% add-on, last 5 years",43.0,pct
+slot_first_default_5y,"First payout after the first eval, median, 40% rule",57.0,days
+slot_first_addon_5y,"First payout after the first eval, median, 50% add-on",52.0,days
+net_current_5y,"Net a year, current rules, last 5 years",54175,usd
+net_addon_5y,"Net a year with the add-on (before its price), last 5 years",65844,usd
+net_gain_5y,"Net a year gained (before its price), last 5 years",11670,usd
+worst_current_5y,"Worst full year, current rules, last 5 years",28815,usd
+worst_addon_5y,"Worst full year with the add-on, last 5 years",40672,usd
+worst12_current_5y,"Worst 12 months, current rules, last 5 years",20849,usd
+worst12_addon_5y,"Worst 12 months with the add-on, last 5 years",28427,usd
+net_gain_early,"Net a year gained (before its price), Dec 20 2019 - Nov 14 2021",-1824,usd
+band_net_5y,"Noise band for net a year, last 5 years (8 placebo runs)",3565,usd
+rule5y_at_0,Rule 5Y at an add-on price of $0,1,count
+max_price_rule5y,Highest add-on price per eval at which rule 5Y still passes,5.76,usd
+evals_year_addon_5y,"Evals bought a year with the add-on, last 5 years",93.3,count

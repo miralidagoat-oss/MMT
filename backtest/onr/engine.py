@@ -52,6 +52,17 @@ def rth_sessions(t, o, h, l, c, rth=(930, 1320)):
     return out
 
 
+def adr_seed(dd, own):
+    """adr_src for a short window of real MNQ (own = rth_sessions of its bars): the sessions before the window come from
+    DATA_DIR's NQFUT.npz, the user's MNQ file the window is cut from, so every session's 14-session average range is the
+    same as on the whole file; from NSXUSD.npz (the CFD) only when there is no NQFUT.npz (as before Nov 23 2026)."""
+    import os
+    f = "NQFUT.npz" if os.path.exists(os.path.join(dd, "NQFUT.npz")) else "NSXUSD.npz"
+    src = {d: v for d, v in rth_sessions(*load_npz(os.path.join(dd, f))).items() if d < min(own)}
+    src.update(own)
+    return src
+
+
 def adr_by_session(rth, n=14, nb_full=13):
     """ADR used for session X = mean range of the last n FULL (13 x 30-min) RTH sessions before X."""
     days = sorted(rth)
