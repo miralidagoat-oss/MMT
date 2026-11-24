@@ -138,6 +138,10 @@ Topstep 50K 5 XFAs + 5 Combines from day one (have about $11,000 ready: the most
 
 Sep 9 - Nov 20 2026 (53 sessions), cut from the same file (`prep_mnq.py --cut`; each session's 14-day range from the file's own earlier sessions, `engine.adr_seed`). One funded 50K account: 78 trades, 46.2% winners, +$16,880 after $225 commission (overnight 19 trades +$3,679, pyramid 25 +$10,967, IB breakout 34 +$2,233). Evals or Combines started every session: 33 of 50 passed. 5 funded + 5 evals made +$2,411 at Lucid (add-on) and +$2,491 at Topstep in those 10 weeks, most of the time spent passing evals.
 
+### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.6.5)
+
+Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_fee8820/alarm_bands.csv` (v2.6.4). v2.6.5 changes no trade. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
+
 ### Reproduce
 
 ```bash

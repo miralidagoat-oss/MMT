@@ -1,8 +1,8 @@
 //@version=6
-indicator("ONR Book v2.6.4 (50% add-on) - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book 50%", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("ONR Book v2.6.5 (50% add-on) - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book 50%", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2.6.4, 50% CONSISTENCY ADD-ON EDITION (2026-11-24). Chart: MNQ1! (or NQ1!), 1-5 minute bars, 24h (ETH)
+// ONR BOOK v2.6.5, 50% CONSISTENCY ADD-ON EDITION (2026-11-24). Chart: MNQ1! (or NQ1!), 1-5 minute bars, 24h (ETH)
 // session. Sizes in MNQ ($2/pt). Same trading logic as onr_book.pine: only "LUCID EVAL: consistency rule you bought"
 // defaults to the 50% add-on, and the Lucid backtest text below leads with the add-on's figures.
 // ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K or Topstep 25K / 50K / 100K / 150K (inputs "Prop firm" and "Account size",
@@ -20,7 +20,10 @@ indicator("ONR Book v2.6.4 (50% add-on) - Lucid Flex / Topstep (overnight revers
 //            2) opening-drive pyramid 09:35: stop 0.35 ADR, add N at +0.15 ADR (stop -> breakeven), trail 0.25 ADR, exit 16:00
 //            3) initial-balance breakout: stop order 1 tick beyond the 09:30-10:30 range, live 10:30-13:00, stop 0.25 /
 //               target 0.5 ADR; on a 09:35-drive day only on the drive's side (else both sides, OCO)
-//          No 09:35 / 10:30 entries on US holiday half-sessions and early closes.
+//          No 09:35 / 10:30 entries on US holiday half-sessions and early closes. Good Friday has no session, except
+//          when the jobs report falls on it (2021, 2023 and 2026 in your file; next in 2034): CME then halts at 09:15
+//          ET, before the 09:30 exit, so close an overnight trade by 09:10 ET (panel; alert at 09:05). The backtest
+//          exits it at 09:15, the session's last bar.
 //          N ("Auto", default) = round(350 / ADR) per $1,000 of max loss. At 50K that is round(700 / ADR): 1 MNQ above a
 //          467-point range, 2 MNQ at 280-467, 3 MNQ at 200-280, more below 200 (cap by size: Lucid 10 / 20 / 30 / 40 MNQ,
 //          Topstep 6 / 10 / 10). When eligible (Lucid: 5 qualifying days; P&L >= $1,000 at every size, and up since the
@@ -69,7 +72,7 @@ indicator("ONR Book v2.6.4 (50% add-on) - Lucid Flex / Topstep (overnight revers
 //          so copy-trading never creates opposing positions across accounts (Lucid prohibits that). Lucid allows 10
 //          accounts per household, at most 5 of them funded: keep the 5 funded slots full from 5 evals behind them.
 //          Topstep allows up to 5 XFAs at once: the same plan, 5 XFAs with 5 Combines behind them.
-// YOUR PLAN (v2.6.4; backtest/onr/plan_search.py, 31 ways of running the accounts tested from 48 start dates): Topstep
+// YOUR PLAN (v2.6.5; backtest/onr/plan_search.py, 31 ways of running the accounts tested from 48 start dates): Topstep
 //          50K, 5 XFAs + 5 Combines from day one (No Activation Fee path, Standard payouts). Every payout stays in the
 //          business, 30% set aside for tax. At $12,000 of spare cash add Lucid 50K with the add-on (5 funded + 5 evals).
 //          At $25,000 each new Topstep Combine is 150K while NQ's 14-day range is at least 151 points, else 50K: below
@@ -82,7 +85,7 @@ indicator("ONR Book v2.6.4 (50% add-on) - Lucid Flex / Topstep (overnight revers
 //          add-on's $10; $88.20 with the 40% rule): 43.2% of evals pass with the add-on (43.1% with the 40% rule) and the
 //          first payout comes a median 54 days after the first eval (58). 5 funded + 5 evals, each account closed after
 //          its 4th payout: about $60.7k a year ($56.1k with the 40% rule), every full year positive, worst 12 months
-//          +$25.7k (+$22.4k), longest wait for a payout 6.4 months. Taking 5th payouts and going live instead: $63.1k a
+//          +$25.7k (+$22.4k), longest payout wait 6.1 months (6.4). Taking 5th payouts and going live instead: $63.1k a
 //          year, a little more but with a weaker worst full year ($51.3k with the 40% rule, less than closing; going
 //          live rests on this backtest's simple model of a live account); the live accounts mostly closed
 //          within about two weeks, and each move cost the evals in reserve. Lucid's risk team decides who goes live and
@@ -183,6 +186,7 @@ bool evIB = f_hit(990)
 bool evIBend = f_hit(1140)
 bool evEOD = f_hit(1320)
 bool evEarly = f_hit(1135)
+bool evGF = f_hit(905)   // 09:05: Good Friday warning (that session halts at 09:15)
 bool isRth = sStart >= 930 and sStart < 1320
 var int onBars = 0
 if sStart < 900
@@ -209,13 +213,28 @@ f_halfDay(int t) =>
     bool hol = (m == 1 and d == f_nthDow(y, 1, dayofweek.monday, 3)) or (m == 2 and d == f_nthDow(y, 2, dayofweek.monday, 3)) or (m == 5 and d == f_lastDow(y, 5, dayofweek.monday)) or (m == 6 and y >= 2022 and d == f_obs(y, 6, 19)) or (m == 7 and d == f_obs(y, 7, 4)) or (m == 9 and d == f_nthDow(y, 9, dayofweek.monday, 1)) or (m == 11 and d == tg)
     bool early = (m == 11 and d == tg + 1) or (m == 12 and d == 24 and wk and f_obs(y, 12, 25) != 24) or (m == 7 and d == 3 and wk and f_obs(y, 7, 4) != 3)
     hol or early
+// Good Friday = Easter Sunday - 2 days (Gregorian computus). CME equity futures are closed then, except when the jobs
+// report falls on it (2021, 2023 and 2026 in your file): that session halts at 09:15 ET, before the 09:30 exit.
+f_goodFri(int t) =>
+    int y = year(t, TZ)
+    int a = y % 19
+    int b = math.floor(y / 100.0)
+    int c = y % 100
+    int h = (19 * a + b - math.floor(b / 4.0) - math.floor((b - math.floor((b + 8) / 25.0) + 1) / 3.0) + 15) % 30
+    int lw = (32 + 2 * (b % 4) + 2 * math.floor(c / 4.0) - h - c % 4) % 7
+    int mq = math.floor((a + 11 * h + 22 * lw) / 451.0)
+    int q = h + lw - 7 * mq + 114
+    int gf = timestamp(TZ, y, math.floor(q / 31.0), q % 31 + 1, 12, 0) - 2 * 86400000
+    month(t, TZ) == month(gf, TZ) and dayofmonth(t, TZ) == dayofmonth(gf, TZ)
 var bool halfDay = false
-var int halfEnd = 0
+var bool goodFri = false
+var int halfEnd = 0   // when a shortened session halts: 13:00 ET on half days, 09:15 ET on Good Friday
 if newDay
     // the session's calendar day = the day 6 hours after the 18:00 open (same rule as the research)
     int t6 = time + 6 * 3600000
     halfDay := f_halfDay(t6)
-    halfEnd := timestamp(TZ, year(t6, TZ), month(t6, TZ), dayofmonth(t6, TZ), 13, 0)
+    goodFri := f_goodFri(t6)
+    halfEnd := timestamp(TZ, year(t6, TZ), month(t6, TZ), dayofmonth(t6, TZ), goodFri ? 9 : 13, goodFri ? 15 : 0)
 
 // ---------- NQ RTH range and ADR14
 var float rHi = na
@@ -276,7 +295,8 @@ float adr = not na(adr30) ? adr30 : (array.size(rngs) >= 14 ? array.avg(rngs) : 
 // ---------- S&P stretch score: RTH sessions (09:30-16:00) of an S&P 500 CFD built from 30-minute bars, features exactly as
 // in the research (HistData SPXUSD, an S&P 500 CFD), full sessions only, fixed z constants. Final once the 16:00 bar closes.
 // The 30-min feed's history reaches far before the chart's first bar. After a half session (holiday / early close) the
-// last full session's score stays in force for the next evening (as in v1; backtest: those 62 of 1,303 trades were fine).
+// last full session's score stays in force for the next evening, as in v1 and in the backtests (in the 2011-2026
+// research those 62 of 1,303 overnight trades were fine).
 f_mean(array<float> a, int k0, int k1) =>
     float s = 0.0
     for i = k0 to k1
@@ -667,6 +687,9 @@ if evEOD
         alert("ONR: 16:00 - close everything at market. Then update the account inputs.", alert.freq_once_per_bar_close)
 if halfDay and evEarly and (eSide != 0 or oSide != 0 or pSide != 0 or iSide != 0)
     alert("ONR: HALF DAY - the market halts at 13:00 ET. Close everything now (12:55 ET / 9:55 AM PT).", alert.freq_once_per_bar_close)
+if goodFri and evGF and (eSide != 0 or oSide != 0)
+    lastMsg := "GOOD FRIDAY (CME halts at 09:15 ET): close the overnight trade now"
+    alert("ONR: GOOD FRIDAY - the market halts at 09:15 ET. Close the overnight position now (09:05 ET / 6:05 AM PT).", alert.freq_once_per_bar_close)
 
 // 18:10 overnight reversion (eval trigger 1 / funded leg 1)
 if evON and not na(adr) and sigSide != 0
@@ -896,7 +919,7 @@ if showPanel and barstate.islast
         warn := "WITHDRAW $" + str.tostring(pnlNow - MLL - 100.0, "#") + " (everything above $" + str.tostring(MLL + 100.0, "#") + ", keeping a $" + str.tostring(MLL, "#") + " cushion)"
     else if isLive and not liveLocked
         warn := "LIVE: no withdrawal until live profit reaches $" + str.tostring(MLL, "#") + " (a payout before that locks the drawdown at +$100 at once)"
-    table.cell(T, 0, 0, "ONR Book v2.6.4 (50%)", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 0, 0, "ONR Book v2.6.5 (50%)", bgcolor = color.new(color.navy, 0), text_color = color.white)
     table.cell(T, 1, 0, TS ? "Backtest Nov 2021 - Nov 2026 on your MNQ file, Topstep, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path: 50K ~$72.3k/yr (worst full year +$49.5k), 100K ~$116.4k (+$91.7k), 150K ~$133.3k (+$41.4k); Consistency payouts ~$39.9k / $58.6k / $84.3k; 25K Static (5 Combines a month): Standard ~$32.5k (+$12.9k), Consistency ~$32.4k (+$6.7k) | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on your MNQ file (50K, 50% add-on, $98.20 evals): eval pass 43.2%, first payout median 54 days; 5 funded + 5 evals closing each account after its 4th payout ~$60.7k/yr (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$63.1k/yr | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
@@ -914,10 +937,10 @@ if showPanel and barstate.islast
     table.cell(T, 0, 7, "Action", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 7, warn, text_color = warn == "-" ? color.white : color.yellow, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 8, "Today's eval trigger", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    table.cell(T, 1, 8, isEval ? (evalDone ? "none: the profit target is reached" : evalUsedToday ? "used (one eval trade per day)" : (halfDay ? "half day: overnight trade only" : "waiting: 18:10 overnight -> 09:35 drive")) : "-", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    string nxt = halfDay ? (timenow < halfEnd ? "HALF DAY (13:00 ET halt): exit the overnight trade at 09:30, no new trades, flat by 12:55 ET / 9:55 AM PT." : "Half day over (13:00 ET halt). Next: 18:10 ET / 3:10 PM PT overnight check once the next session opens.") : f_nextStep(isEval)
+    table.cell(T, 1, 8, isEval ? (evalDone ? "none: the profit target is reached" : evalUsedToday ? "used (one eval trade per day)" : (goodFri ? "Good Friday (09:15 ET halt): no 09:35 drive" : halfDay ? "half day: overnight trade only" : "waiting: 18:10 overnight -> 09:35 drive")) : "-", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    string nxt = goodFri ? (timenow < halfEnd ? "GOOD FRIDAY (CME halts at 09:15 ET): close any overnight trade by 09:10 ET / 6:10 AM PT; no 09:35 / 10:30 trades." : "Good Friday: the market is closed. Next: Sunday 18:10 ET / 3:10 PM PT overnight check.") : halfDay ? (timenow < halfEnd ? "HALF DAY (13:00 ET halt): exit the overnight trade at 09:30, no new trades, flat by 12:55 ET / 9:55 AM PT." : "Half day over (13:00 ET halt). Next: 18:10 ET / 3:10 PM PT overnight check once the next session opens.") : f_nextStep(isEval)
     table.cell(T, 0, 9, "Next step", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    table.cell(T, 1, 9, nxt, text_color = halfDay ? color.orange : color.aqua, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 9, nxt, text_color = halfDay or goodFri ? color.orange : color.aqua, bgcolor = color.new(color.gray, 40))
     float bandScale = M / 2.0  // bands are for 50K (M = 2)
     float yl = f_interp(liveDays, AX, AYEL) * bandScale
     float rd = f_interp(liveDays, AX, ARED) * bandScale
