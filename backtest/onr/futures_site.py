@@ -275,8 +275,34 @@ def fut_tables(out, fd, cfd=False):
     write(out, "fut_data.csv", ["id", "source", "from", "to", "bars", "note"], drows)
 
 
+def _spans(days):
+    """['2023-02-21', ...] -> 'Mar 9 - Mar 24 2020 (8), Nov 30 2020, Feb 21 - Jul 28 2023 (108), Jan 8 and Jan 12 2024':
+    runs of sessions less than a month apart."""
+    ds = [np.datetime64(d, "D") for d in days]
+    runs, cur = [], [ds[0]]
+    for p, d in zip(ds, ds[1:]):
+        if int((d - p).astype(int)) <= 31:
+            cur.append(d)
+        else:
+            runs.append(cur)
+            cur = [d]
+    runs.append(cur)
+    out = []
+    for r in runs:
+        a, b = str(r[0]), str(r[-1])
+        if len(r) == 1:
+            out.append(f"{W.md(a)} {a[:4]}")
+        elif len(r) == 2:
+            out.append(f"{W.md(a)} and {W.md(b)} {b[:4]}")
+        else:
+            out.append(f"{W.md(a)}{' ' + a[:4] if a[:4] != b[:4] else ''} - {W.md(b)} {b[:4]} ({len(r)})")
+    return ", ".join(out)
+
+
 def mnq_data(out, fd):
-    """fut_data.csv for the user's MNQ file (prep_mnq.py's notes) and the S&P input of the overnight signal (spx_clock.py)."""
+    """fut_data.csv: the user's MNQ file (prep_mnq.py's notes) and the S&P input of the overnight signal (spx_clock.py,
+    then fill_spx.py). Each row's count is of what it names: 5-minute bars, restarts, sessions or 1-minute bars."""
+    from engine import rth_sessions, sess_cols
     info = json.load(open(os.path.join(fd, "NQFUT.npz.json")))
     spx = json.load(open(os.path.join(fd, "SPXUSD.npz.json")))
     gaps = info["sessions_not_opening_at_1800"]  # bars that follow 45 minutes or more without a bar, other than 18:00 opens
@@ -285,20 +311,39 @@ def mnq_data(out, fd):
         per_day[g[:10]] = per_day.get(g[:10], 0) + 1
     short = info["rth_days_under_78_bars"]
     big = sorted(d for d, n in short.items() if n >= 70)
+    # the S&P sessions the backtest reads: from the 60 full sessions behind the first tradable session's score to the last
+    t, o, h, l, c = load_npz(os.path.join(fd, "SPXUSD.npz"))
+    full = [d for d, r in sorted(rth_sessions(t, o, h, l, c).items()) if r["nb"] >= 13]
+    first, last = (int(np.datetime64(x, "D").astype(int)) for x in (W.FIRST, W.LAST))
+    k = int(np.searchsorted(full, first)) - 1          # the S&P session whose score sets the first tradable evening
+    a = full[k - 59]
+    _, sday = sess_cols(t)
+    iso = lambda d: str(np.datetime64(int(d), "D"))  # noqa: E731
     rows = [["mnq", f"Real MNQ futures, your file ({info['source']})", info["first_et"][:10], info["last_et"][:10], info["bars"],
-             f"{info['sessions']:,} sessions; 5-minute bars as recorded, nothing filled or repaired"],
+             f"5-minute bars, {info['sessions']:,} sessions, as recorded: nothing filled or repaired"],
             ["gaps", "  restarts inside a session after 45 minutes or more without a bar", "", "", len(gaps),
              ", ".join(f"{d}" + (f" ({n})" if n > 1 else "") for d, n in sorted(per_day.items()))],
             ["short", "  day sessions with fewer than 78 five-minute bars", "", "", len(short),
              f"{len(short) - len(big)} holidays and early closes (42 to 46 bars); {len(big)} days missing a bar or two: {', '.join(big)}"],
-            ["spx", "S&P 500 for the overnight signal: HistData CFD, then Dukascopy from Nov 13 2026", "", "", "",
-             "the signal's input only; no trade is on the S&P"]]
+            ["spx", "S&P 500 for the overnight signal: HistData's CFD, then Dukascopy's after the Nov 13 2026 session",
+             iso(a), iso(last), int(((sday >= a) & (sday <= last)).sum()),
+             "1-minute bars; each score reads the 60 full day sessions to its day; the signal's input only, no trade is on the S&P"]]
+    fills = [f["day"] for f in spx.get("filled_sessions", [])]
+    if fills:
+        nb = spx["check_neighbours"]["summary"]
+        shifts = sorted({f["level_shift"] for f in spx["filled_sessions"]})
+        lev = "no level shift needed" if shifts == [0.0] else f"level shift {', '.join(f'{x:+.2f}' for x in shifts)}"
+        rows.append(["fill", "  day sessions HistData's CFD lacks or has an hour off, taken from Dukascopy's S&P 500 CFD", "", "",
+                     len(fills), f"{_spans(fills)}; on {nb['sessions']} complete sessions both have, the two sources are "
+                     f"identical to the cent on {100 * nb['identical']:.1f}% of shared minutes ({lev})"])
     for m in spx["moved_weeks"]:
+        if m.get("sessions") and m.get("sessions_filled", 0) >= m["sessions"]:
+            continue  # every session of the week was replaced by the fill: nothing of the moved bars is left
         sh = m["shift_minutes"]
         rows.append([f"clock{m['week_of']}", f"  S&P clock {abs(sh)} minutes {'early' if sh > 0 else 'late'}, moved {abs(sh)} minutes "
                      f"{'later' if sh > 0 else 'earlier'}: week of {m['week_of']}",
-                     "", "", m["bars"], f"5-minute match with MNQ {m['corr_before']:.2f} before, {m['corr_after']:.2f} after"])
-    write(out, "fut_data.csv", ["id", "source", "from", "to", "bars", "note"], rows)
+                     "", "", m["bars"], f"1-minute bars moved; 5-minute match with MNQ {m['corr_before']:.2f} before, {m['corr_after']:.2f} after"])
+    write(out, "fut_data.csv", ["id", "source", "from", "to", "count", "note"], rows)
 
 
 def main(fd, out):

@@ -1,7 +1,7 @@
 step,setup,net_per_year_usd,payouts_per_year,paid_per_year_usd,firm_share_per_year_usd,fees_per_year_usd,evals_bought_per_year,funded_started_per_year,average_payout_usd,worst_full_year_usd,worst_12_months_usd
-A,"Lucid plan (add-on, closed after the 4th payout, $98.20 evals)",61795,54.4,78794,7879,9120,92.9,42.8,1448,39619,30192
-B,A without the payout limit,75830,58.5,92815,9281,7704,78.4,33.3,1588,50671,31067
-C,B with Topstep's fees,74713,58.5,92815,9281,8820,78.4,33.3,1588,50632,28827
-D,C with Topstep's account rules = the Topstep plan,69069,56.3,87451,8745,9636,84.8,36.4,1554,46496,24225
-E,A with Topstep's fees only,59948,54.4,78794,7879,10967,92.9,42.8,1448,35756,28055
-F,A with Topstep's account rules only,56754,51.7,73798,7380,9664,98.4,45.8,1426,36890,30807
+A,"Lucid plan (add-on, closed after the 4th payout, $98.20 evals)",60709,54.4,78055,7806,9540,97.2,43.6,1434,39619,25717
+B,A without the payout limit,75131,58.7,92483,9248,8104,82.5,34.5,1577,47146,27615
+C,B with Topstep's fees,74033,58.7,92483,9248,9202,82.5,34.5,1577,47395,27758
+D,C with Topstep's account rules = the Topstep plan,70917,56.9,89771,8977,9877,87.9,37.0,1578,46896,24225
+E,A with Topstep's fees only,58952,54.4,78055,7806,11298,97.2,43.6,1434,35756,25909
+F,A with Topstep's account rules only,56073,51.3,73464,7346,10044,102.3,46.4,1431,36890,25874

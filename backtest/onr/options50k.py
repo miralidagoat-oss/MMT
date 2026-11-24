@@ -2,6 +2,9 @@
 """The indicator's eval options at Lucid Flex 50K (final review, 2026-11-18): the numbers behind its input tooltips.
 
 usage: options50k.py DATA_DIR OUT_DIR      (ONR_EVAL_FEE_50K sets the eval price, as everywhere; default $115)
+       options50k.py --mnq FUT_DATA_DIR OUT_DIR   (since Nov 23 2026: part 1 only, on the user's MNQ file, NQFUT.npz at
+       5-minute bars, from its first tradable session (Dec 20 2019) and over the last 5 years; the add-on's rule 5Y on
+       the MNQ file is site_v23.py's addon_summary.csv)
 
 1. Eval pass rate of each eval option, evals started on every session (an eval still open at the data's end is left
    out, as report50k.py does): the default (40% rule, wide bracket, news skip), the paid 50% consistency add-on,
@@ -37,9 +40,15 @@ PRICES = (0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0)
 S = None
 
 
+MNQ = [False]  # --mnq: the user's MNQ file
+
+
 def _init(dd):
     global S
-    S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
+    if MNQ[0]:
+        S = Sessions(load_npz(os.path.join(dd, "NQFUT.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=5)
+    else:
+        S = Sessions(load_npz(os.path.join(dd, "NSXUSD.npz")), load_npz(os.path.join(dd, "SPXUSD.npz")), tf=1)
 
 
 def _eval_job(args):
@@ -48,7 +57,7 @@ def _eval_job(args):
     return name, k, r["result"], r["days"]
 
 
-def pass_rates(dd):
+def pass_rates(dd, periods=PERIODS):
     _init(dd)
     days = S.days
     k_first = int(np.argmax([not np.isnan(S.S[d]["adr"]) and not np.isnan(S.S[d]["score"]) for d in days]))
@@ -56,7 +65,7 @@ def pass_rates(dd):
         res = mp.map(_eval_job, [(n, k) for n in OPTIONS for k in range(k_first, len(days))], chunksize=200)
     iso = lambda k: str(np.datetime64(int(days[k]), "D"))  # noqa: E731
     rows = []
-    for lab, a, b in PERIODS:
+    for lab, a, b in periods:
         for n in OPTIONS:
             sel = [(r, dd_) for nm, k, r, dd_ in res if nm == n and r != "open" and a <= iso(k) <= b]
             ps = [dd_ for r, dd_ in sel if r == "pass"]
@@ -177,5 +186,24 @@ def main(dd, out):
         w.writerows(k)
 
 
+def main_mnq(fd, out):
+    import windows as W
+    MNQ[0] = True
+    os.makedirs(out, exist_ok=True)
+    periods = ((f"since {W.FIRST}", W.FIRST, "2026-12-31"), (f"{W.FIRST} - 2021-11-14", W.FIRST, "2021-11-14"),
+               ("last 5 years", W.START5, "2026-12-31"))
+    pr = pass_rates(fd, periods)
+    with open(os.path.join(out, "options_pass_rates.csv"), "w", newline="") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["period", "option", "evals_finished", "evals_passed", "pass_pct", "median_sessions_to_pass"])
+        w.writerows(pr)
+    print("Lucid Flex 50K on the user's MNQ file, $1.34 per MNQ round turn: eval pass rate by option (an eval started on every session)")
+    for r in pr:
+        print(f"  {r[0]:26s} {r[1]:45s} {r[4]:5.1f}% of {r[2]:5d}, median {r[5]:.0f} sessions to pass")
+
+
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    if sys.argv[1] == "--mnq":
+        main_mnq(sys.argv[2], sys.argv[3])
+    else:
+        main(sys.argv[1], sys.argv[2])

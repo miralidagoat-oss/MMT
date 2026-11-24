@@ -1,33 +1,33 @@
 chart,order,bucket,value
-sessions_to_pass,0,1-3,51
-sessions_to_pass,1,4-6,169
-sessions_to_pass,2,7-9,126
-sessions_to_pass,3,10-12,85
-sessions_to_pass,4,13-15,62
-sessions_to_pass,5,16-20,47
-sessions_to_pass,6,21-30,17
+sessions_to_pass,0,1-3,54
+sessions_to_pass,1,4-6,172
+sessions_to_pass,2,7-9,127
+sessions_to_pass,3,10-12,82
+sessions_to_pass,4,13-15,61
+sessions_to_pass,5,16-20,48
+sessions_to_pass,6,21-30,16
 sessions_to_pass,7,31-60,0
 sessions_to_pass,8,61+,0
-payouts_per_funded_account,0,0,40.6
-payouts_per_funded_account,1,1,36.1
-payouts_per_funded_account,2,2,7.8
-payouts_per_funded_account,3,3,8.2
-payouts_per_funded_account,4,4,7.4
+payouts_per_funded_account,0,0,42.6
+payouts_per_funded_account,1,1,35.8
+payouts_per_funded_account,2,2,6.1
+payouts_per_funded_account,3,3,4.7
+payouts_per_funded_account,4,4,10.8
 payouts_per_funded_account,5,5,0.0
-daily_pnl,0,-1400 to -1200,0
-daily_pnl,1,-1200 to -1000,19
+daily_pnl,0,-1400 to -1200,1
+daily_pnl,1,-1200 to -1000,20
 daily_pnl,2,-1000 to -800,38
-daily_pnl,3,-800 to -600,61
-daily_pnl,4,-600 to -400,107
-daily_pnl,5,-400 to -200,291
-daily_pnl,6,-200 to 0,158
-daily_pnl,7,0 to 200,109
-daily_pnl,8,200 to 400,98
-daily_pnl,9,400 to 600,102
-daily_pnl,10,600 to 800,122
-daily_pnl,11,800 to 1000,34
-daily_pnl,12,1000 to 1200,21
-daily_pnl,13,1200 to 1400,11
+daily_pnl,3,-800 to -600,63
+daily_pnl,4,-600 to -400,104
+daily_pnl,5,-400 to -200,283
+daily_pnl,6,-200 to 0,166
+daily_pnl,7,0 to 200,108
+daily_pnl,8,200 to 400,103
+daily_pnl,9,400 to 600,100
+daily_pnl,10,600 to 800,116
+daily_pnl,11,800 to 1000,37
+daily_pnl,12,1000 to 1200,22
+daily_pnl,13,1200 to 1400,14
 daily_pnl,14,1400 to 1600,16
 daily_pnl,15,1600 to 1800,8
 daily_pnl,16,1800 to 2000,5

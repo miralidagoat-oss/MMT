@@ -6,6 +6,7 @@ futures, including several Lucid accounts side by side.
 
 ## Verdict
 
+- **Your MNQ file only (Nov 23-24 2026):** every published figure now comes from your MNQ futures file (Dec 2019 - Nov 20 2026) and nothing else for prices. Over the last 5 years your Topstep plan (50K, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path) made $72,332 a year after every cost, worst full year $49,512, and your Lucid plan (5 funded + 5 evals with the add-on, each closed after its 4th payout) $60,709. On Nov 24 the S&P input's 119 missing or mistimed sessions (most of Feb-Jul 2023) were taken from Dukascopy and every result was rerun. See *Your MNQ file only* below; the bullets after this one are the research's findings on its earlier series.
 - The code is careful work: no look-ahead or repainting (`request.security(..., expr[1], lookahead_on)` is the correct
   pattern), conservative fills (stop wins ties, targets need a tick through) and the Lucid Flex 25K rules match the
   currently published ones.
@@ -54,7 +55,140 @@ futures, including several Lucid accounts side by side.
   other half were times it made money but the eval kept failing. More accounts run as an eval pool fix much of the
   second kind (longest gap 12 → 8 months in 2011–18, 8 → 6.5 in 2019–26) but nothing fixes the first kind.
 
-## Data
+## Your MNQ file only (Nov 23-24 2026): every result
+
+**Every figure in this section, on the website and in both indicators' texts comes from your MNQ futures file and nothing else for prices**: `MICRONASDAQ100_futures_5m_2019-12-01_2026-11-23.parquet`, 5-minute bars from 2019-12-01 18:00 ET to 2026-11-20 16:55 ET (492,923 bars, 1,803 sessions), used as recorded. The Nasdaq-100 CFD (HistData `NSXUSD`, 2011-2026), your earlier NQ export and Yahoo's MNQ bars are no longer used anywhere; the sections after this one are the history of the research on them, and their figures are not your file's. The only other input is the S&P 500 series the overnight signal reads (as the indicator reads OANDA's `SPX500USD`); no trade is on the S&P.
+
+Windows: the **last 5 years** are Nov 15 2021 - Nov 20 2026 (research rule 5Y); **since Dec 20 2019** starts at the file's first tradable session (the 14-day range needs 14 full sessions); full years are 2020-2025 (2019 is Dec 20-31 and 2026 ends Nov 20). Every figure is after $1.34 commission per MNQ round turn, the firm's 10% share of each payout and every eval or Combine fee, including the failed ones; money figures are the mean of 12 start dates (Nov 15 2021 and every 5 sessions after it) unless a row says otherwise.
+
+### The file and its checks (`prep_mnq.py`)
+
+- Checked before use: times sorted and on the 5-minute grid, every price on MNQ's 0.25 tick, every bar's high and low around its open and close, no bar in the daily 17:00-18:00 ET halt. Nothing was filled, repaired or adjusted.
+- 8 restarts inside a session after 45 minutes or more without a bar (2020-03-16 (4), 2020-03-18 (2), 2020-06-30, 2025-11-28); 63 day sessions with fewer than 78 five-minute bars: 59 holidays and early closes, and 4 days missing a bar or two (2020-03-09, 2020-03-12, 2020-03-16, 2020-03-18).
+- It is the front contract as it traded: the price jumps at each quarterly roll, always at a session's 18:00 ET open, when the plan holds nothing; trades and ranges are measured inside a session, so no roll changes a trade.
+
+### The S&P 500 input of the overnight signal (`prep_spx_ext.py`, `spx_clock.py`, `fill_spx.py`)
+
+HistData's `SPXUSD` 1-minute bars (an S&P 500 CFD, the research's own source), then Dukascopy's `USA500IDXUSD` after HistData's last session (Nov 13 2026). Where HistData is complete and on time, its bars are Dukascopy's to the cent. Two repairs:
+
+1. **Clock** (`spx_clock.py`): in the week of 2023-03-13, the week of 2023-03-20, the week of 2025-10-27 HistData's clock was an hour early; each week's bars were moved by the hour that matches its 5-minute moves to MNQ's (2023-03-13: r 0.04 -> 0.93; 2023-03-20: r 0.02 -> 0.93; 2025-10-27: r -0.10 -> 0.94).
+2. **Missing day sessions** (`fill_spx.py`, Nov 24 2026): 119 sessions had no full S&P day session behind them (13 half-hour buckets from 09:30 to 16:00), so the backtest skipped the overnight trade after each, and the scores after the long 2023 gap took their 60-session features across it. HistData misses most of the day session from Feb 21 to Jul 28 2023 (as its `NSXUSD` does, see *A defect in the CFD*), its clock is an hour early on 8 days of Mar 2020 (12 of 13 buckets), it has nothing on Nov 30 2020 and 7 buckets on Jan 8 and Jan 12 2024. Each of these sessions is Dukascopy's (UTC day files, so exact New York times), at HistData's level. Checks:
+   - on the 54 complete sessions both sources have (the days around each gap, and the Oct 28 2019 clock-change week inside the first scores' 60-session lookback, before your file starts), 100.00% of 70,037 shared minutes are identical to the cent (open, high, low and close), and each replaced alone by Dukascopy's bars keeps its score (largest difference 0.0000; same signal 54 of 54);
+   - the filled sessions' 5-minute moves match MNQ's at r = 0.909;
+   - every session MNQ has, day session against MNQ at the recorded time and an hour either way: an hour off before the fill on 8 sessions (2020-03-09, 2020-03-12, 2020-03-13, 2020-03-16, 2020-03-17, 2020-03-18, 2020-03-23, 2020-03-24), after it on none;
+   - full MNQ day sessions with no S&P score for that evening: 119 before, 0 after.
+
+**What the fill changed** (your Topstep plan, last 5 years; one funded 50K account's overnight trade since Dec 20 2019):
+
+| | Before the fill | After |
+|---|---|---|
+| Topstep 50K plan, net a year | $70,534 | $72,332 |
+| Worst full year | $48,875 | $49,512 |
+| Lucid plan (add-on, closed after the 4th payout), net a year | $61,795 | $60,709 |
+| Overnight trades a year (one funded account) | 83.1 | 87.0 |
+| Overnight trade, net a year / t | +$2,550 / 1.17 | +$2,514 / 1.14 |
+| 2023, one funded account: net / overnight leg | +$5,999 / -$2,510 | +$8,392 / -$2,349 |
+
+### Topstep (`topstep_sim.py`, `topstep25k.py`): 5 XFAs with 5 Combines behind them, one new Combine a session
+
+| Size, payout path (No Activation Fee path) | Net a year | Worst full year | Worst 12 months | Deepest drop | Combines passed | Since Dec 20 2019: net a year / worst full year |
+|---|---|---|---|---|---|---|
+| 50K, Standard | $72,332 | $49,512 | $26,578 | -$8,835 | 43.3% | $71,371 / $44,860 |
+| 50K, Consistency | $39,859 | $27,000 | $0 | -$3,246 | 26.4% | $39,718 / $24,965 |
+| 100K, Standard | $116,400 | $91,707 | $32,086 | -$12,814 | 35.1% | $117,480 / $84,997 |
+| 100K, Consistency | $58,632 | $36,000 | $0 | -$5,488 | 22.9% | $58,369 / $33,330 |
+| 150K, Standard | $133,340 | $41,377 | $30,952 | -$19,694 | 34.0% | $128,354 / $41,377 |
+| 150K, Consistency | $84,301 | $54,000 | $0 | -$8,473 | 23.5% | $79,075 / $48,754 |
+| 50K, Standard, Standard fee path ($49 a month + $149 activation) | $70,917 | $46,896 | $24,225 | -$7,537 | 43.3% | $70,446 / $45,298 |
+| 25K Labs Static, Standard (at most 5 Combines a month) | $32,517 | $12,908 | $9,767 | -$2,412 | 45.8% | $29,970 / $11,901 |
+| 25K Labs Static, Consistency (at most 5 a month) | $32,388 | $6,710 | $6,497 | -$2,144 | 47.1% | $33,113 / $6,679 |
+
+Fewer XFAs at 50K (Standard, No Activation Fee path, N XFAs + N Combines, last 5 years): 1: $15,372 a year (worst full year $11,046); 2: $30,472 a year (worst full year $24,491); 3: $43,592 a year (worst full year $31,995); 4: $55,182 a year (worst full year $37,892); 5: $72,332 a year (worst full year $49,512).
+
+### Lucid Flex 50K (`live50k.py`, `scale_sizes.py`, `futures_site.py`): 5 funded + 5 evals
+
+| Plan, last 5 years | Net a year | Worst full year | Worst 12 months | Deepest drop | The pool's evals passed |
+|---|---|---|---|---|---|
+| Add-on ($98.20 an eval), each account closed after its 4th payout (your plan) | $60,709 | $39,619 | $25,717 | -$8,838 | 45.8% |
+| 40% rule ($88.20), closed after the 4th payout | $56,095 | $28,815 | $22,444 | -$8,732 | 45.1% |
+| Add-on, Lucid's rules: moved live at the first 5th payout | $63,123 | $36,298 | $31,015 | -$8,249 | 47.9% |
+| 40% rule, moved live at the first 5th payout | $51,255 | $28,815 | $23,947 | -$8,732 | 45.8% |
+
+With the 40% rule, closing after the 4th payout made $56,095 a year against $51,255 going live. With the add-on, going live made a little more, $63,123 against $60,709, with a weaker worst full year ($36,298 against $39,619); that gain rests on this backtest's simple model of a live account (Lucid moves you live after a 5th payout and closes every sim account), so the indicator still closes each account after its 4th payout by default.
+
+Other sizes (each account closed after its 4th payout; add-on / 40% rule, last 5 years): 25K $29,775 / $30,095 a year; 100K $74,932 / $67,321 a year; 150K $97,249 / $92,303 a year. 1 to 5 funded accounts with as many evals behind them (your Lucid plan's rules: the add-on, each closed after its 4th payout): 1: $12,673; 2: $25,897; 3: $36,470; 4: $48,411; 5: $60,709.
+
+The 50% add-on at $10 an eval: +$4,614 a year against the 40% rule over the last 5 years (+$5,586 if it were free; noise band $1,882), worst full year $39,619 against $28,815; it pays for itself up to $57.50 an eval. Rule 5Y fails at $10 (and at every price tested, $0 to $50): from Dec 20 2019 to Nov 14 2021 the difference was -$5,785 a year, outside that window's noise band of $1,659 (it passed before the S&P input was filled). Over the last 5 years it passes both the money and the worst-year tests; whether to keep buying it is your call.
+
+**Eval options** (`options50k.py --mnq`; an eval started on every session, Lucid 50K). The wide bracket stays the best; the 08:30 news skip no longer raises the pass rate on your file (it is kept as a risk rule):
+
+| Option | Last 5 years: passed / median sessions | Since Dec 20 2019 |
+|---|---|---|
+| default (40% rule, wide bracket, news skip) | 43.1% of 1296 / 9 | 41.2% of 1787 / 9 |
+| 50% consistency add-on | 43.2% of 1295 / 8 | 41.3% of 1786 / 8 |
+| medium bracket x0.75 | 41.2% of 1296 / 7 | 37.4% of 1787 / 7 |
+| tight bracket x0.5 | 37.9% of 1296 / 6 | 37.9% of 1787 / 7 |
+| no news skip | 43.3% of 1293 / 9 | 41.6% of 1784 / 9 |
+
+### Your plan (`plan_search.py`): 48 monthly start dates from Dec 2019 to Nov 2023, 3 years each
+
+Topstep 50K 5 XFAs + 5 Combines from day one (have about $11,000 ready: the most of your own money any start needed was $10,165); Lucid 50K with the add-on at $12,000 of spare cash; each new Topstep Combine 150K by the range rule at $25,000; the $15,000 car at $52,000: each step once the spare cash covers that setup's own worst fall since Dec 20 2019 (5 funded + 5 evaluations, the worst of 12 start dates, rounded up; Topstep 50K $9,000). A typical start had $262,147 of spare cash after 3 years, after every fee and the 30% tax set-aside (1 start in 10 below $187,446, worst $177,157). Of the plans needing about the same own money, 5 made a little more for a typical start, up to $271,726 (they stepped up sooner on less cash, or kept 7 Combines behind the XFAs): a gap under 4%, within what 48 overlapping starts can tell apart, so the plan keeps its rule of a full reserve before each step. Steps reached (months after the start, median / 9 in 10 by / latest): Add Lucid 50K (spare cash $12,000) 5.6 / 11.2 / 13.6; Topstep 150K by the range rule ($25,000) 9.1 / 13.6 / 15.6; The $15,000 car ($52,000) 13.9 / 17.4 / 20.1.
+
+### The last 60 days on real MNQ (`export_charts.py`, `topstep_charts.py`, `mnq_real50k.py`)
+
+Sep 9 - Nov 20 2026 (53 sessions), cut from the same file (`prep_mnq.py --cut`; each session's 14-day range from the file's own earlier sessions, `engine.adr_seed`). One funded 50K account: 78 trades, 46.2% winners, +$16,880 after $225 commission (overnight 19 trades +$3,679, pyramid 25 +$10,967, IB breakout 34 +$2,233). Evals or Combines started every session: 33 of 50 passed. 5 funded + 5 evals made +$2,411 at Lucid (add-on) and +$2,491 at Topstep in those 10 weeks, most of the time spent passing evals.
+
+### Reproduce
+
+```bash
+cd backtest/onr
+python3 -I prep_mnq.py MICRONASDAQ100_futures_5m_2019-12-01_2026-11-23.parquet ../../data_mnq/NQFUT.npz
+python3 -I prep_mnq.py --cut ../../data_mnq/NQFUT.npz 2026-09-09 ../../data_live_mnq/MNQ_5m_60d.npz   # the last 53 sessions
+cp ../../data_mnq/NQFUT.npz* ../../data_live_mnq/   # the whole file beside it: engine.adr_seed's earlier sessions
+python3 -I fetch_dukascopy.py ../../data/duk_spx USA500IDXUSD 2026-11-09 2026-11-20   # the S&P past HistData's end
+python3 -I prep_spx_ext.py ../../data ../../data/duk_spx ../../data_mnq/SPXUSD_ext.npz
+python3 -I spx_clock.py ../../data_mnq/NQFUT.npz ../../data_mnq/SPXUSD_ext.npz ../../data_mnq/SPXUSD_clock.npz
+python3 -I fetch_dukascopy.py ../../data/duk_fill USA500IDXUSD 2023-02-12 2023-08-04
+python3 -I fetch_dukascopy.py ../../data/duk_fill USA500IDXUSD 2020-03-01 2020-03-31
+python3 -I fetch_dukascopy.py ../../data/duk_fill USA500IDXUSD 2020-11-22 2020-12-07
+python3 -I fetch_dukascopy.py ../../data/duk_fill USA500IDXUSD 2024-01-01 2024-01-19
+python3 -I fetch_dukascopy.py ../../data/duk_fill USA500IDXUSD 2019-10-27 2019-11-01
+python3 -I fill_spx.py ../../data_mnq/SPXUSD_clock.npz ../../data/duk_fill ../../data_mnq/NQFUT.npz ../../data_mnq/SPXUSD.npz
+cp ../../data_mnq/SPXUSD.npz* ../../data_live_mnq/
+# every result folder (the website's, the indicator texts' and the workbook's), in this order:
+FD=../../data_mnq; LD=../../data_live_mnq
+ONR_MAX_PAY=4 ONR_EVAL_FEE_50K=98.20 ONR_EVAL_CONS=0.5 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py $FD results_v23_nqfut_5y_addon 2021-11-15
+ONR_MAX_PAY=4 ONR_EVAL_FEE_50K=88.20 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py $FD results_v23_nqfut_5y 2021-11-15
+ONR_MAX_PAY=4 ONR_EVAL_FEE_50K=98.20 ONR_EVAL_CONS=0.5 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py $FD results_v23_nqfut_addon 2019-12-20
+ONR_MAX_PAY=4 ONR_EVAL_FEE_50K=88.20 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py $FD results_v23_nqfut 2019-12-20
+ONR_EVAL_FEE_50K=88.20 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 ONR_EVAL_CONS=0.5 python3 report50k.py $FD results_nqfut_addon_fee8820 2019-12-20 && python3 make_kpis.py results_nqfut_addon_fee8820 results_nqfut_addon_fee8820/kpis.csv 'Dec 20 2019 - Nov 20 2026' '2020-2025'
+ONR_EVAL_FEE_50K=88.20 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py $FD results_nqfut_fee8820 2019-12-20 && python3 make_kpis.py results_nqfut_fee8820 results_nqfut_fee8820/kpis.csv 'Dec 20 2019 - Nov 20 2026' '2020-2025'
+ONR_EVAL_FEE_50K=88.20 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 ONR_EVAL_CONS=0.5 python3 report50k.py $FD results_nqfut_5y_addon_fee8820 2021-11-15 && python3 make_kpis.py results_nqfut_5y_addon_fee8820 results_nqfut_5y_addon_fee8820/kpis.csv 'Nov 15 2021 - Nov 20 2026' '2022-2025'
+ONR_EVAL_FEE_50K=88.20 ONR_NQ_FILE=NQFUT.npz ONR_NQ_TF=5 python3 report50k.py $FD results_nqfut_5y_fee8820 2021-11-15 && python3 make_kpis.py results_nqfut_5y_fee8820 results_nqfut_5y_fee8820/kpis.csv 'Nov 15 2021 - Nov 20 2026' '2022-2025'
+ONR_EVAL_FEE_50K=88.20 python3 futures_site.py $FD results_futsite_fee8820
+ONR_EVAL_FEE_50K=88.20 python3 live50k.py $FD results_live_fee8820
+ONR_EVAL_FEE_50K=88.20 ONR_ADDON_FEE_50K=10 python3 live50k.py $FD results_live_fee8820_addon10
+python3 scale_sizes.py $FD - results_scale_sizes
+python3 topstep_sim.py $FD - results_topstep && python3 topstep_sim.py --tables $FD - results_topstep && python3 topstep_months.py $FD - results_topstep
+ONR_TS_PAYMIN=125 python3 topstep_sim.py $FD - results_topstep_paymin125 && ONR_TS_PAYMIN=125 python3 topstep_sim.py --tables $FD - results_topstep_paymin125
+python3 topstep25k.py $FD - results_topstep25k
+python3 topstep_why.py $FD results_topstep_why
+python3 startcash.py $FD - results_startcash
+ONR_EVAL_FEE_50K=88.20 python3 export_v23.py $FD results_v23_trades_fee8820
+ONR_EVAL_FEE_50K=98.20 ONR_EVAL_CONS=0.5 ONR_MAX_PAY=4 ONR_ADDON_FEE_50K=10 python3 export_charts.py $LD results_v23_charts $FD results_v23_nqfut_5y_addon results_v23_nqfut_addon && python3 make_kpis.py results_v23_nqfut_5y_addon results_v23_charts/kpis.csv 'Nov 15 2021 - Nov 20 2026' '2022-2025' results_v23_charts
+ONR_MAX_PAY=4 python3 site_v23.py $FD - $LD results_v23_site && ONR_MAX_PAY=4 python3 site_v23.py --fut-tables $FD results_v23_site && rm -rf results_v23_site/_fut_tmp
+python3 topstep_report.py $FD results_v23_nqfut_5y_addon results_topstep_report
+python3 topstep_charts.py $LD $FD results_v23_charts results_topstep_report results_topstep_site
+python3 export_v23_xlsx.py results_v23_trades_fee8820/ONR_v2.3_backtest.xlsx   # then recalculate its formulas (LibreOffice)
+python3 mnq_real50k.py $LD && ONR_EVAL_CONS=0.5 ONR_MAX_PAY=4 python3 mnq_real50k.py $LD
+python3 plan_search.py $FD - results_plan_search && python3 budget_table.py results_plan_search
+python3 topstep_sim.py $FD - /tmp/topstep_verify && python3 -c "import json; a=json.load(open('results_topstep/runs.json')); b=json.load(open('/tmp/topstep_verify/runs.json')); assert a==b; print('runs.json identical')"
+python3 options50k.py --mnq $FD results_options_mnq
+```
+
+## Data (history: the research's earlier series)
+
+*Everything from here to the end describes the research on its earlier series (the Nasdaq-100 CFD from 2011, the user's earlier NQ export, Yahoo's MNQ bars). Since Nov 23 2026 no published figure comes from them: see* Your MNQ file only *above.*
 
 | Use | Source | Period |
 |---|---|---|
@@ -1627,6 +1761,8 @@ session's value (62 of 1,303 overnight trades, average +0.07 ADR, not harmful); 
 ≤ 7th; small effect either way).
 
 ## Reproduce
+
+*The earlier series. Your MNQ file's results: the commands at the end of* Your MNQ file only *above.*
 
 ```bash
 python3 backtest/onr/fetch_histdata.py data/raw SPXUSD NSXUSD

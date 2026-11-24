@@ -1,8 +1,7 @@
-id,source,from,to,bars,note
-mnq,"Real MNQ futures, your file (MICRONASDAQ100_futures_5m_2019-12-01_2026-11-23.parquet)",2019-12-01,2026-11-20,492923,"1,803 sessions; 5-minute bars as recorded, nothing filled or repaired"
+id,source,from,to,count,note
+mnq,"Real MNQ futures, your file (MICRONASDAQ100_futures_5m_2019-12-01_2026-11-23.parquet)",2019-12-01,2026-11-20,492923,"5-minute bars, 1,803 sessions, as recorded: nothing filled or repaired"
 gaps,  restarts inside a session after 45 minutes or more without a bar,,,8,"2020-03-16 (4), 2020-03-18 (2), 2020-06-30, 2025-11-28"
 short,  day sessions with fewer than 78 five-minute bars,,,63,"59 holidays and early closes (42 to 46 bars); 4 days missing a bar or two: 2020-03-09, 2020-03-12, 2020-03-16, 2020-03-18"
-spx,"S&P 500 for the overnight signal: HistData CFD, then Dukascopy from Nov 13 2026",,,,the signal's input only; no trade is on the S&P
-clock2023-03-13,"  S&P clock 60 minutes early, moved 60 minutes later: week of 2023-03-13",,,4844,"5-minute match with MNQ 0.04 before, 0.93 after"
-clock2023-03-20,"  S&P clock 60 minutes early, moved 60 minutes later: week of 2023-03-20",,,4829,"5-minute match with MNQ 0.02 before, 0.93 after"
-clock2025-10-27,"  S&P clock 60 minutes early, moved 60 minutes later: week of 2025-10-27",,,6623,"5-minute match with MNQ -0.10 before, 0.94 after"
+spx,"S&P 500 for the overnight signal: HistData's CFD, then Dukascopy's after the Nov 13 2026 session",2019-09-25,2026-11-20,2399507,"1-minute bars; each score reads the 60 full day sessions to its day; the signal's input only, no trade is on the S&P"
+fill,"  day sessions HistData's CFD lacks or has an hour off, taken from Dukascopy's S&P 500 CFD",,,119,"Mar 9 - Mar 24 2020 (8), Nov 30 2020, Feb 21 - Jul 28 2023 (108), Jan 8 and Jan 12 2024; on 54 complete sessions both have, the two sources are identical to the cent on 100.0% of shared minutes (no level shift needed)"
+clock2025-10-27,"  S&P clock 60 minutes early, moved 60 minutes later: week of 2025-10-27",,,6623,"1-minute bars moved; 5-minute match with MNQ -0.10 before, 0.94 after"

@@ -1,17 +1,17 @@
 metric,label,fut_current,fut_addon,unit
-eval_pass,Eval pass rate (an eval started on every session),40.9,41.1,pct
+eval_pass,Eval pass rate (an eval started on every session),41.2,41.3,pct
 eval_days_median,"Sessions to pass, median",9.0,8.0,sessions
-funded_paid,Funded accounts that reach a payout,64.0,61.2,pct
-funded_avg_net,"Paid to you per funded account, average",1768.0,1542.0,usd
-slot_first_median,"One account slot: first payout, median",59.0,53.5,days
-slot_within_90,One account slot: first payout within 90 days,68.0,73.2,pct
-pool_net_year,5 funded + 5 evals: net a year (median of 10 start dates),54154.0,58849.0,usd
-pool_worst_12m,5 funded + 5 evals: worst 12 months,18630.0,29575.0,usd
-pool_gap,5 funded + 5 evals: longest wait for a payout,6.1,7.1,months
-pool_months_paid,5 funded + 5 evals: months with a payout,63.4,63.3,pct
+funded_paid,Funded accounts that reach a payout,61.8,60.5,pct
+funded_avg_net,"Paid to you per funded account, average",1759.0,1579.0,usd
+slot_first_median,"One account slot: first payout, median",59.0,53.0,days
+slot_within_90,One account slot: first payout within 90 days,69.4,72.8,pct
+pool_net_year,5 funded + 5 evals: net a year (median of 10 start dates),54698.0,56865.0,usd
+pool_worst_12m,5 funded + 5 evals: worst 12 months,18630.0,25717.0,usd
+pool_gap,5 funded + 5 evals: longest wait for a payout,6.4,8.3,months
+pool_months_paid,5 funded + 5 evals: months with a payout,67.1,65.7,pct
 pool_years_positive,5 funded + 5 evals: full years positive (2020-2025),100.0,100.0,pct
-pool_total,5 funded + 5 evals: total over the period (first start date),373008.0,405334.0,usd
-pool_max_dd,5 funded + 5 evals: deepest drop (first start date),-7762.0,-8445.0,usd
-stress_net_year,2x commission + 1 tick slippage: net a year,49127.0,53827.0,usd
-book_net_year,One funded account trading every day: net a year,20838.0,20838.0,usd
+pool_total,5 funded + 5 evals: total over the period (first start date),376759.0,391657.0,usd
+pool_max_dd,5 funded + 5 evals: deepest drop (first start date),-8379.0,-10016.0,usd
+stress_net_year,2x commission + 1 tick slippage: net a year,47937.0,51678.0,usd
+book_net_year,One funded account trading every day: net a year,21420.0,21420.0,usd
 book_worst_day,One funded account trading every day: worst day,-1306.0,-1306.0,usd

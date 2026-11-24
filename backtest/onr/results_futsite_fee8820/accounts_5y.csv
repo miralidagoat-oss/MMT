@@ -1,16 +1,16 @@
 id,structure,accounts,net_per_year_usd,worst_full_year_usd,losing_full_years,deepest_drop_usd,worst_12_months_usd,longest_gap_months,months_with_payout_pct,evals_per_year,most_cash_out_usd,total_net_5y_usd,evals_bought,eval_pass_pct,eval_median_sessions,funded_accounts,funded_with_payout_pct,payouts,average_payout_usd,funded_abandoned,funded_done_5_payouts,funded_blown
-A1,N accounts bought the same day (copy-traded in lockstep),1,9133,4727,0.0,-1235,3385,6.4,50.2,14.2,-412,44799,69.7,43.1,9.4,30.0,63.3,37.0,1530,26.0,3.0,0.0
-A2,N accounts bought the same day (copy-traded in lockstep),2,18266,9453,0.0,-2470,6770,6.4,50.2,28.4,-823,89598,139.3,43.1,9.4,60.0,63.3,74.0,1530,52.0,6.0,0.0
-A3,N accounts bought the same day (copy-traded in lockstep),3,27400,14180,0.0,-3704,10154,6.4,50.2,42.6,-1235,134397,209.0,43.1,9.4,90.0,63.3,111.0,1530,78.0,9.0,0.0
-A4,N accounts bought the same day (copy-traded in lockstep),4,36533,18906,0.0,-4939,13539,6.4,50.2,56.8,-1646,179195,278.7,43.1,9.4,120.0,63.3,148.0,1530,104.0,12.0,0.0
-A5,N accounts bought the same day (copy-traded in lockstep),5,45666,23633,0.0,-6174,16924,6.4,50.2,71.0,-2058,223994,348.3,43.1,9.4,150.0,63.3,185.0,1530,130.0,15.0,0.0
-C1,"N accounts, each an eval then funded, at most one new eval a day",1,10083,5269,0.0,-882,4451,6.4,46.9,12.6,-412,49453,61.7,43.8,9.0,27.0,70.4,38.1,1602,23.0,3.0,0.0
-C2,"N accounts, each an eval then funded, at most one new eval a day",2,18066,9358,0.0,-1852,8060,6.4,53.6,24.9,-816,88610,122.2,44.1,9.0,53.9,70.3,71.1,1554,46.9,5.0,0.0
-C3,"N accounts, each an eval then funded, at most one new eval a day",3,25405,13643,0.0,-2999,11083,6.4,53.6,37.2,-1213,124611,182.8,42.6,9.5,77.8,71.7,102.1,1532,67.8,7.0,0.0
-C4,"N accounts, each an eval then funded, at most one new eval a day",4,33904,19636,0.0,-3881,15482,6.4,56.9,47.7,-1595,166303,234.2,44.3,9.5,103.7,73.0,137.8,1507,90.7,9.0,0.0
-C5,"N accounts, each an eval then funded, at most one new eval a day",5,41604,24418,0.0,-4410,18189,6.1,56.9,58.7,-1918,204073,287.9,44.1,9.0,126.8,70.8,168.9,1509,109.8,12.0,0.0
-B1,N funded + N evals in reserve,1,11727,7834,0.0,-1499,5029,6.4,58.7,21.4,-816,57515,105.2,43.5,9.0,44.8,57.9,51.2,1450,39.8,4.0,0.0
-B2,N funded + N evals in reserve,2,20467,10497,0.0,-3263,8356,6.4,60.4,43.5,-1595,100374,213.7,43.8,9.0,91.6,60.8,94.3,1404,84.5,5.1,0.0
-B3,N funded + N evals in reserve,3,31929,16828,0.0,-4410,12956,6.1,65.4,62.6,-2234,156596,307.1,44.2,9.0,132.7,59.4,141.4,1443,120.6,9.1,0.0
-B4,N funded + N evals in reserve,4,44052,24860,0.0,-6350,18290,6.1,64.9,81.3,-2837,216113,398.9,43.6,9.0,169.8,59.6,191.5,1458,153.0,12.8,0.0
-B5,N funded + N evals in reserve,5,54175,28815,0.0,-7762,20849,6.1,63.6,100.3,-3285,265727,492.2,44.1,9.0,212.0,59.9,237.0,1449,192.0,15.0,0.0
+A1,N accounts bought the same day (copy-traded in lockstep),1,9462,4727,0.0,-1235,3956,6.4,51.9,14.6,-412,46411,71.7,43.3,9.0,31.0,61.3,38.0,1542,27.0,3.0,0.0
+A2,N accounts bought the same day (copy-traded in lockstep),2,18924,9453,0.0,-2470,7913,6.4,51.9,29.2,-823,92823,143.3,43.3,9.0,62.0,61.3,76.0,1542,54.0,6.0,0.0
+A3,N accounts bought the same day (copy-traded in lockstep),3,28386,14180,0.0,-3704,11869,6.4,51.9,43.8,-1235,139234,215.0,43.3,9.0,93.0,61.3,114.0,1542,81.0,9.0,0.0
+A4,N accounts bought the same day (copy-traded in lockstep),4,37848,18906,0.0,-4939,15825,6.4,51.9,58.4,-1646,185645,286.7,43.3,9.0,124.0,61.3,152.0,1542,108.0,12.0,0.0
+A5,N accounts bought the same day (copy-traded in lockstep),5,47310,23633,0.0,-6174,19781,6.4,51.9,73.0,-2058,232056,358.3,43.3,9.0,155.0,61.3,190.0,1542,135.0,15.0,0.0
+C1,"N accounts, each an eval then funded, at most one new eval a day",1,9965,5269,0.0,-1147,4400,6.7,48.5,13.4,-412,48876,65.7,42.6,9.0,28.0,67.9,38.1,1595,24.0,3.0,0.0
+C2,"N accounts, each an eval then funded, at most one new eval a day",2,17851,9358,0.0,-2293,8122,6.7,55.2,26.3,-816,87558,129.2,44.0,9.0,56.9,66.6,71.1,1547,49.9,5.0,0.0
+C3,"N accounts, each an eval then funded, at most one new eval a day",3,25587,13643,0.0,-3528,11133,6.7,55.2,39.1,-1213,125502,191.8,42.7,9.0,81.8,68.2,103.1,1535,71.8,7.0,0.0
+C4,"N accounts, each an eval then funded, at most one new eval a day",4,34013,19636,0.0,-4586,15230,6.7,58.6,50.0,-1595,166836,245.2,44.3,9.0,108.7,69.6,138.8,1508,95.7,9.0,0.0
+C5,"N accounts, each an eval then funded, at most one new eval a day",5,42168,24418,0.0,-5204,18287,6.4,58.6,60.7,-1918,206840,297.9,44.3,9.0,131.8,68.1,170.9,1515,114.8,12.0,0.0
+B1,N funded + N evals in reserve,1,11677,7589,0.0,-2029,4318,6.7,62.1,22.7,-816,57269,111.2,42.1,9.0,45.8,58.8,52.2,1429,40.8,4.0,0.0
+B2,N funded + N evals in reserve,2,20266,10415,0.0,-4057,8417,6.7,63.8,46.0,-1595,99389,225.7,42.8,8.9,94.6,59.9,95.3,1390,87.5,5.1,0.0
+B3,N funded + N evals in reserve,3,32206,16942,0.0,-5557,14585,6.4,70.5,66.2,-2234,157958,325.1,43.0,9.0,136.7,58.4,143.4,1446,123.6,10.1,0.0
+B4,N funded + N evals in reserve,4,44825,26739,0.0,-7321,21056,6.4,69.9,84.6,-2837,219907,414.9,43.1,9.0,174.8,59.1,195.5,1458,157.0,13.8,0.0
+B5,N funded + N evals in reserve,5,55594,28815,0.0,-8732,23194,6.4,68.6,103.2,-3285,272688,506.2,43.9,9.0,217.0,60.4,244.0,1445,196.0,16.0,0.0

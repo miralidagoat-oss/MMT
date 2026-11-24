@@ -19,14 +19,15 @@ Plans: a start setup, then steps taken the first session the spare cash reaches 
 of rounds 1 and 2 are reserves: each setup's deepest fall since Dec 20 2019 on the MNQ file (5 funded + 5 evaluations,
 the worst of 12 start dates, computed here), rounded up to $1,000.
   round 1  17 plans: sizes, firms, fee paths, reserve sizes, the range rule, the order of the steps
-  round 2  14 plans around round 1's best: when to add Lucid and switch to 150K, Lucid's rule, 7 Combines in reserve,
-           Lucid 150K by range, the range rule at 125 / 175 / 200 points, the range rule from the first day
+  round 2  14 plans around round 1's plan B (Lucid, then 150K by range, at the reserves): when to add Lucid and switch to
+           150K, Lucid's rule, 7 Combines in reserve, Lucid 150K by range, the range rule at 125 / 175 / 200 points, the
+           range rule from the first day
   car      7 ways to fit a $15,000 car (bought when the spare cash reaches the threshold; scaling may wait for it), and
            your first ladder: 1 XFA + 1 Combine, 2 + 2 at the first payout, 5 + 5 at $11k, Lucid at $22k, both firms to
            150K at $46k, the car at $61k
   final    the plan ("FINAL"): Topstep 50K 5+5, Lucid 50K with the add-on at Lucid 50K's reserve, Topstep 150K by the
-           range rule at Topstep 150K's reserve, the car at both reserves plus its price (at the Nov 23 2026 prices:
-           $12k, $24k, $51k). Its steps follow the reserves, so a price change moves them.
+           range rule at Topstep 150K's reserve, the car at both reserves plus its price (on the MNQ file with the S&P input
+           filled, Nov 24 2026: $12k, $25k, $52k). Its steps follow the reserves, so a price or data change moves them.
   budget   the final plan started with only $500 or $1,000 and never more: a Combine is bought only while the spare
            cash covers its price, one more month of every open Combine and, on the Standard fee path, the $149
            activation; a passed Combine on that path starts its XFA once the $149 is there. On the No Activation Fee
@@ -225,7 +226,7 @@ def round2(R):
     tr = lambda thr=None: {"ts": (5, 10, "RANGE:T150n:T50n" + (f":{thr}" if thr else ""))}  # noqa: E731
     base, up = R["T50n"] + R["L50a"], R["T150n"] + R["L50a"]
     P = [("A T50+L50", f"Topstep 50K, Lucid 50K at {kusd(base)} (round 1)", [(None, T5), (base, LU50)]),
-         ("B base", f"Topstep 50K, Lucid at {kusd(base)}, Topstep 150K by range at {kusd(up)} (round 1's best)", [(None, T5), (base, LU50), (up, tr())])]
+         ("B base", f"Topstep 50K, Lucid at {kusd(base)}, Topstep 150K by range at {kusd(up)} (round 1)", [(None, T5), (base, LU50), (up, tr())])]
     for lu_at, up_at in ((11000.0, 23000.0), (11000.0, 35000.0), (22000.0, 22000.0), (16500.0, 17500.0), (0.0, 0.0)):
         P.append((f"C L{int(lu_at / 1000)}k T{int(up_at / 1000)}k", f"Lucid at ${lu_at:,.0f}, Topstep 150K by range at ${up_at:,.0f}",
                   [(None, T5), (lu_at, LU50), (up_at, tr())]))
@@ -442,13 +443,14 @@ def main(fd, dd, out, only=None):
     with get_context("fork").Pool(4, initializer=_init, initargs=("fut", fd)) as p:
         res = p.map(drop_job, [(c, o) for c in CFG for o in R4.OFFSETS], chunksize=3)
     worst = {c: min(d for cc, _, d in res if cc == c) for c in CFG}
+    mean = {c: float(np.mean([d for cc, _, d in res if cc == c])) for c in CFG}
     here = os.path.dirname(os.path.abspath(__file__))
     ts = {r["id"]: float(r["deepest_drop_usd"]) for r in csv.DictReader(open(os.path.join(here, "results_topstep", "topstep.csv")))}
     lu = {r["id"]: float(r["deepest_drop_usd"]) for r in csv.DictReader(open(os.path.join(here, "results_scale_sizes", "sizes.csv")))}
     ref = {"T50n": ts["2019-50-standard-noact"], "T150n": ts["2019-150-standard-noact"], "L25a": lu["2019-25-addon"],
            "L25f": lu["2019-25-40"], "L50a": lu["2019-50-addon"], "L50f": lu["2019-50-40"], "L150f": lu["2019-150-40"]}
-    for c, v in ref.items():  # the same deepest falls as topstep_sim.py's and scale_sizes.py's runs (same prices)
-        assert round(worst[c]) == v, (c, worst[c], v)
+    for c, v in ref.items():  # the same deepest falls as topstep_sim.py's and scale_sizes.py's runs (same prices); their
+        assert round(mean[c]) == v, (c, mean[c], v)  # tables give the mean of the 12 starts, the reserve takes the worst
     R = {c: 1000.0 * math.ceil(-v / 1000.0) for c, v in worst.items()}
     json.dump({"deepest_fall_since_first_start": worst, "reserve": R}, open(os.path.join(out, "reserves.json"), "w"), indent=1)
     print("reserves:", {c: int(v) for c, v in R.items()}, flush=True)

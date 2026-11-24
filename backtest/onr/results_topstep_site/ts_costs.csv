@@ -1,14 +1,14 @@
 item_id,setup,item,real_60d_usd,last_5y_usd,all_years_usd
-book_gross,"One funded account, every session",Trading profit before commission,17105,110659,151935
-book_comm,"One funded account, every session",Commission at $1.34 per MNQ round turn,-225,-7288,-11572
-book_net,"One funded account, every session",Trading profit after commission,16880,103371,140363
-slot_payouts,One account slot (a new Combine whenever one ends),Payouts requested,559,72812,104011
-slot_topstep,One account slot (a new Combine whenever one ends),Topstep's 10% share,-56,-7281,-10401
-slot_fees,One account slot (a new Combine whenever one ends),Combine fees at $95 per 30 days open,-475,-6365,-8740
-slot_net,One account slot (a new Combine whenever one ends),Net to you,28,59166,84870
-slot_comm,One account slot (a new Combine whenever one ends),Commission paid in the accounts (already taken out before the payouts),-163,-6191,-10132
-pool_payouts,5 XFAs + 5 Combines,Payouts requested,5406,428448,604821
-pool_topstep,5 XFAs + 5 Combines,Topstep's 10% share,-541,-42845,-60482
-pool_fees,5 XFAs + 5 Combines,Combine fees at $95 per 30 days open,-2375,-42370,-56715
-pool_net,5 XFAs + 5 Combines,Net to you,2491,343233,487624
-pool_comm,5 XFAs + 5 Combines,Commission paid in the accounts (already taken out before the payouts),-1160,-38371,-61667
+book_gross,"One funded account, every session",Trading profit before commission,17105,114431,156043
+book_comm,"One funded account, every session",Commission at $1.34 per MNQ round turn,-225,-7367,-11650
+book_net,"One funded account, every session",Trading profit after commission,16880,107064,144393
+slot_payouts,One account slot (a new Combine whenever one ends),Payouts requested,559,72718,97264
+slot_topstep,One account slot (a new Combine whenever one ends),Topstep's 10% share,-56,-7272,-9726
+slot_fees,One account slot (a new Combine whenever one ends),Combine fees at $95 per 30 days open,-475,-6555,-9310
+slot_net,One account slot (a new Combine whenever one ends),Net to you,28,58891,78227
+slot_comm,One account slot (a new Combine whenever one ends),Commission paid in the accounts (already taken out before the payouts),-163,-6216,-9990
+pool_payouts,5 XFAs + 5 Combines,Payouts requested,5406,439830,607961
+pool_topstep,5 XFAs + 5 Combines,Topstep's 10% share,-541,-43983,-60796
+pool_fees,5 XFAs + 5 Combines,Combine fees at $95 per 30 days open,-2375,-43795,-55860
+pool_net,5 XFAs + 5 Combines,Net to you,2491,352052,491305
+pool_comm,5 XFAs + 5 Combines,Commission paid in the accounts (already taken out before the payouts),-1160,-38836,-61758

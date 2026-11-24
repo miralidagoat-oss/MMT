@@ -12,204 +12,213 @@ date,phase,account_pnl_usd,payout_usd,eval_bought,your_cash_usd,event
 2020-03-13,Combine 8,-1200.0,0.0,1,820.07,Combine 7 ended (less than $50 above its max loss)
 2020-03-16,Combine 8,-2564.52,0.0,0,820.07,Combine failed
 2020-03-17,Combine 9,1495.98,0.0,1,725.07,
-2020-03-20,Combine 10,1495.98,0.0,1,630.07,Combine 9 ended (less than $50 above its max loss)
-2020-03-24,Combine 10,3030.62,0.0,0,630.07,Combine passed
-2020-04-20,XFA 10,-1730.1,0.0,0,630.07,XFA abandoned (cushion below $400)
-2020-04-21,Combine 11,1491.96,0.0,1,535.07,
-2020-04-23,Combine 11,3025.98,0.0,0,535.07,Combine passed
-2020-05-11,XFA 11,1248.41,1248.41,0,1658.64,payout 1 requested
-2020-05-27,XFA 11,1145.62,1145.62,0,2689.7,payout 2 requested
-2020-06-12,XFA 11,2178.08,2000.0,0,4489.7,payout 3 requested
-2020-06-25,XFA 11,2255.08,2000.0,0,6289.7,payout 4 requested
-2020-07-09,XFA 11,3207.73,2000.0,0,8089.7,payout 5 requested
-2020-08-12,XFA 11,3243.45,2000.0,0,9889.7,payout 6 requested
-2020-09-10,XFA 11,1920.29,1920.29,0,11617.97,payout 7 requested
-2020-09-25,XFA 11,1498.21,1498.21,0,12966.35,payout 8 requested
-2020-10-01,XFA 11,274.52,0.0,0,12966.35,XFA abandoned (cushion below $400)
-2020-10-02,Combine 12,-1200.0,0.0,1,12871.35,
-2020-10-14,Combine 13,-254.38,0.0,1,12776.35,Combine 12 ended (less than $50 above its max loss)
-2020-10-27,Combine 14,-1200.0,0.0,1,12681.35,Combine 13 ended (less than $50 above its max loss)
-2020-11-05,Combine 15,-706.7,0.0,1,12586.35,Combine 14 ended (less than $50 above its max loss)
-2020-11-09,Combine 16,-1200.0,0.0,1,12491.35,Combine 15 ended (less than $50 above its max loss)
-2020-12-09,Combine 16,-1283.4,0.0,0,12396.35,Combine 16's 30-day fee
-2020-12-10,Combine 17,-1200.0,0.0,1,12301.35,Combine 16 ended (less than $50 above its max loss)
-2020-12-18,Combine 18,-498.06,0.0,1,12206.35,Combine 17 ended (less than $50 above its max loss)
-2020-12-23,Combine 19,671.94,0.0,1,12111.35,Combine 18 ended (less than $50 above its max loss)
-2021-01-07,Combine 19,3019.28,0.0,0,12111.35,Combine passed
-2021-01-28,XFA 19,-1707.82,0.0,0,12111.35,XFA abandoned (cushion below $400)
-2021-01-29,Combine 20,0.0,0.0,1,12016.35,
-2021-02-15,Combine 21,0.0,0.0,1,11921.35,Combine 20 ended (less than $50 above its max loss)
-2021-02-24,Combine 22,0.0,0.0,1,11826.35,Combine 21 ended (less than $50 above its max loss)
-2021-03-08,Combine 22,3025.98,0.0,0,11826.35,Combine passed
-2021-03-23,XFA 22,-1655.97,0.0,0,11826.35,XFA abandoned (cushion below $400)
-2021-03-24,Combine 23,1493.3,0.0,1,11731.35,
-2021-04-23,Combine 23,3021.96,0.0,0,11636.35,Combine 23's 30-day fee; Combine passed
-2021-05-10,XFA 23,1630.66,1630.66,0,13103.95,payout 1 requested
-2021-05-20,XFA 23,2871.29,2000.0,0,14903.95,payout 2 requested
-2021-06-15,XFA 23,2456.04,2000.0,0,16703.95,payout 3 requested
-2021-06-28,XFA 23,4386.06,2000.0,0,18503.95,payout 4 requested
-2021-08-23,XFA 23,2736.07,2000.0,0,20303.95,payout 5 requested
-2021-09-14,XFA 23,2802.16,2000.0,0,22103.95,payout 6 requested
-2021-09-22,XFA 23,4262.52,2000.0,0,23903.95,payout 7 requested
-2021-10-11,XFA 23,4730.53,2000.0,0,25703.95,payout 8 requested
-2021-11-09,XFA 23,330.53,0.0,0,25703.95,XFA abandoned (cushion below $400)
-2021-11-10,Combine 24,-1200.0,0.0,1,25608.95,
-2021-11-22,Combine 25,1489.28,0.0,1,25513.95,Combine 24 ended (less than $50 above its max loss)
-2021-11-25,Combine 26,0.0,0.0,1,25418.95,Combine 25 ended (less than $50 above its max loss)
-2021-12-10,Combine 27,-1200.0,0.0,1,25323.95,Combine 26 ended (less than $50 above its max loss)
-2022-01-03,Combine 28,-1200.0,0.0,1,25228.95,Combine 27 ended (less than $50 above its max loss)
-2022-01-06,Combine 29,-1200.0,0.0,1,25133.95,Combine 28 ended (less than $50 above its max loss)
-2022-01-10,Combine 30,-1200.0,0.0,1,25038.95,Combine 29 ended (less than $50 above its max loss)
-2022-01-13,Combine 31,0.0,0.0,1,24943.95,Combine 30 ended (less than $50 above its max loss)
-2022-01-20,Combine 32,0.0,0.0,1,24848.95,Combine 31 ended (less than $50 above its max loss)
-2022-01-26,Combine 33,1495.98,0.0,1,24753.95,Combine 32 ended (less than $50 above its max loss)
-2022-01-28,Combine 33,3030.62,0.0,0,24753.95,Combine passed
-2022-02-10,XFA 33,603.98,603.98,0,25297.53,payout 1 requested
-2022-02-22,XFA 33,2156.88,2000.0,0,27097.53,payout 2 requested
-2022-03-09,XFA 33,2179.3,2000.0,0,28897.53,payout 3 requested
-2022-03-21,XFA 33,1961.16,1961.16,0,30662.57,payout 4 requested
-2022-03-29,XFA 33,362.38,0.0,0,30662.57,XFA abandoned (cushion below $400)
-2022-03-30,Combine 34,322.64,0.0,1,30567.57,
-2022-04-12,Combine 34,3024.64,0.0,0,30567.57,Combine passed
-2022-04-27,XFA 34,1138.97,1138.97,0,31592.64,payout 1 requested
-2022-05-02,XFA 34,326.0,0.0,0,31592.64,XFA abandoned (cushion below $400)
-2022-05-03,Combine 35,178.98,0.0,1,31497.64,
-2022-05-26,Combine 35,3027.32,0.0,0,31497.64,Combine passed
-2022-06-06,XFA 35,1343.62,1343.62,0,32706.9,payout 1 requested
-2022-06-10,XFA 35,225.42,0.0,0,32706.9,XFA abandoned (cushion below $400)
-2022-06-13,Combine 36,-1200.0,0.0,1,32611.9,
-2022-06-24,Combine 37,1493.3,0.0,1,32516.9,Combine 36 ended (less than $50 above its max loss)
-2022-06-30,Combine 38,1493.3,0.0,1,32421.9,Combine 37 ended (less than $50 above its max loss)
-2022-07-13,Combine 38,3027.32,0.0,0,32421.9,Combine passed
-2022-07-27,XFA 38,1292.74,1292.74,0,33585.37,payout 1 requested
-2022-08-04,XFA 38,44.42,0.0,0,33585.37,XFA abandoned (cushion below $400)
-2022-08-05,Combine 39,473.3,0.0,1,33490.37,
-2022-08-12,Combine 40,0.0,0.0,1,33395.37,Combine 39 ended (less than $50 above its max loss)
-2022-08-30,Combine 41,1491.96,0.0,1,33300.37,Combine 40 ended (less than $50 above its max loss)
-2022-09-02,Combine 41,3025.98,0.0,0,33300.37,Combine passed
-2022-09-14,XFA 41,967.48,967.48,0,34171.1,payout 1 requested
-2022-09-20,XFA 41,229.87,0.0,0,34171.1,XFA abandoned (cushion below $400)
-2022-09-21,Combine 42,0.0,0.0,1,34076.1,
-2022-10-04,Combine 43,1493.3,0.0,1,33981.1,Combine 42 ended (less than $50 above its max loss)
-2022-10-07,Combine 44,0.0,0.0,1,33886.1,Combine 43 ended (less than $50 above its max loss)
-2022-10-24,Combine 44,3027.32,0.0,0,33886.1,Combine passed
-2022-11-28,XFA 44,572.65,572.65,0,34401.48,payout 1 requested
-2022-11-29,XFA 44,220.98,0.0,0,34401.48,XFA abandoned (cushion below $400)
-2022-11-30,Combine 45,1491.96,0.0,1,34306.48,
-2022-12-06,Combine 45,3024.64,0.0,0,34306.48,Combine passed
-2022-12-20,XFA 45,-118.68,0.0,0,34306.48,XFA abandoned (cushion below $400)
-2022-12-21,Combine 46,-29.04,0.0,1,34211.48,
-2023-01-03,Combine 47,0.0,0.0,1,34116.48,Combine 46 ended (less than $50 above its max loss)
-2023-01-11,Combine 48,0.0,0.0,1,34021.48,Combine 47 ended (less than $50 above its max loss)
-2023-01-16,Combine 48,3025.98,0.0,0,34021.48,Combine passed
-2023-01-31,XFA 48,1125.39,1125.39,0,35034.33,payout 1 requested
-2023-02-09,XFA 48,1599.98,1599.98,0,36474.31,payout 2 requested
-2023-02-16,XFA 48,136.85,0.0,0,36474.31,XFA abandoned (cushion below $400)
-2023-02-17,Combine 49,0.0,0.0,1,36379.31,
-2023-03-09,Combine 49,3023.3,0.0,0,36379.31,Combine passed
-2023-03-23,XFA 49,-1160.11,0.0,0,36379.31,XFA abandoned (cushion below $400)
-2023-03-24,Combine 50,0.0,0.0,1,36284.31,
-2023-04-19,Combine 50,3021.96,0.0,0,36284.31,Combine passed
-2023-05-15,XFA 50,650.27,650.27,0,36869.56,payout 1 requested
-2023-06-09,XFA 50,2156.42,2000.0,0,38669.56,payout 2 requested
-2023-06-27,XFA 50,1589.32,1589.32,0,40099.95,payout 3 requested
-2023-07-10,XFA 50,115.3,0.0,0,40099.95,XFA abandoned (cushion below $400)
-2023-07-11,Combine 51,0.0,0.0,1,40004.95,
-2023-07-20,Combine 52,-1200.0,0.0,1,39909.95,Combine 51 ended (less than $50 above its max loss)
-2023-07-24,Combine 53,-1200.0,0.0,1,39814.95,Combine 52 ended (less than $50 above its max loss)
-2023-07-28,Combine 54,0.0,0.0,1,39719.95,Combine 53 ended (less than $50 above its max loss)
-2023-08-04,Combine 54,3025.98,0.0,0,39719.95,Combine passed
-2023-08-24,XFA 54,2088.78,2000.0,0,41519.95,payout 1 requested
-2023-09-15,XFA 54,7319.5,2000.0,0,43319.95,payout 2 requested
-2023-09-29,XFA 54,5593.61,2000.0,0,45119.95,payout 3 requested
-2023-11-15,XFA 54,292.79,0.0,0,45119.95,XFA abandoned (cushion below $400)
-2023-11-16,Combine 55,0.0,0.0,1,45024.95,
-2023-12-04,Combine 56,0.0,0.0,1,44929.95,Combine 55 ended (less than $50 above its max loss)
-2023-12-15,Combine 57,-1200.0,0.0,1,44834.95,Combine 56 ended (less than $50 above its max loss)
-2023-12-20,Combine 58,601.28,0.0,1,44739.95,Combine 57 ended (less than $50 above its max loss)
-2024-01-02,Combine 58,3020.62,0.0,0,44739.95,Combine passed
-2024-01-05,XFA 58,-1930.66,0.0,0,44739.95,XFA abandoned (cushion below $400)
-2024-01-08,Combine 59,-1200.0,0.0,1,44644.95,
-2024-01-10,Combine 60,1489.28,0.0,1,44549.95,Combine 59 ended (less than $50 above its max loss)
-2024-01-18,Combine 61,-1200.0,0.0,1,44454.95,Combine 60 ended (less than $50 above its max loss)
-2024-01-23,Combine 62,-352.38,0.0,1,44359.95,Combine 61 ended (less than $50 above its max loss)
-2024-01-29,Combine 63,0.0,0.0,1,44264.95,Combine 62 ended (less than $50 above its max loss)
-2024-02-12,Combine 64,-250.88,0.0,1,44169.95,Combine 63 ended (less than $50 above its max loss)
-2024-02-23,Combine 65,-1200.0,0.0,1,44074.95,Combine 64 ended (less than $50 above its max loss)
-2024-03-01,Combine 66,1490.62,0.0,1,43979.95,Combine 65 ended (less than $50 above its max loss)
-2024-03-05,Combine 66,3021.96,0.0,0,43979.95,Combine passed
-2024-03-21,XFA 66,-1488.87,0.0,0,43979.95,XFA abandoned (cushion below $400)
-2024-03-22,Combine 67,393.96,0.0,1,43884.95,
-2024-04-03,Combine 68,1489.28,0.0,1,43789.95,Combine 67 ended (less than $50 above its max loss)
-2024-04-15,Combine 68,3025.98,0.0,0,43789.95,Combine passed
-2024-04-30,XFA 68,845.73,845.73,0,44551.1,payout 1 requested
-2024-05-13,XFA 68,388.23,0.0,0,44551.1,XFA abandoned (cushion below $400)
-2024-05-14,Combine 69,0.0,0.0,1,44456.1,
-2024-05-23,Combine 69,3021.96,0.0,0,44456.1,Combine passed
-2024-06-11,XFA 69,1141.74,1141.74,0,45483.67,payout 1 requested
-2024-06-24,XFA 69,390.12,0.0,0,45483.67,XFA abandoned (cushion below $400)
-2024-06-25,Combine 70,0.0,0.0,1,45388.67,
-2024-07-01,Combine 71,-1200.0,0.0,1,45293.67,Combine 70 ended (less than $50 above its max loss)
-2024-07-22,Combine 71,3024.64,0.0,0,45293.67,Combine passed
-2024-08-07,XFA 71,1766.07,1766.07,0,46883.13,payout 1 requested
-2024-08-19,XFA 71,1656.47,1656.47,0,48373.95,payout 2 requested
-2024-09-09,XFA 71,1350.14,1350.14,0,49589.07,payout 3 requested
-2024-09-19,XFA 71,247.89,0.0,0,49589.07,XFA abandoned (cushion below $400)
-2024-09-20,Combine 72,0.0,0.0,1,49494.07,
-2024-10-03,Combine 72,3023.3,0.0,0,49494.07,Combine passed
-2024-10-25,XFA 72,840.66,840.66,0,50250.67,payout 1 requested
-2024-11-08,XFA 72,2057.54,2000.0,0,52050.67,payout 2 requested
-2024-11-21,XFA 72,4163.75,2000.0,0,53850.67,payout 3 requested
-2024-12-06,XFA 72,3804.95,2000.0,0,55650.67,payout 4 requested
-2024-12-19,XFA 72,4104.47,2000.0,0,57450.67,payout 5 requested
-2025-01-07,XFA 72,4631.97,2000.0,0,59250.67,payout 6 requested
-2025-02-05,XFA 72,3141.17,2000.0,0,61050.67,payout 7 requested
-2025-03-07,XFA 72,293.78,0.0,0,61050.67,XFA abandoned (cushion below $400)
-2025-03-10,Combine 73,1495.98,0.0,1,60955.67,
-2025-03-18,Combine 73,3027.32,0.0,0,60955.67,Combine passed
-2025-04-02,XFA 73,3631.38,2000.0,0,62755.67,payout 1 requested
-2025-06-20,XFA 73,294.95,0.0,0,62755.67,XFA abandoned (cushion below $400)
-2025-06-23,Combine 74,1491.96,0.0,1,62660.67,
-2025-07-10,Combine 75,1491.96,0.0,1,62565.67,Combine 74 ended (less than $50 above its max loss)
-2025-07-15,Combine 75,3025.98,0.0,0,62565.67,Combine passed
-2025-07-24,XFA 75,1734.44,1734.44,0,64126.67,payout 1 requested
-2025-08-05,XFA 75,4755.42,2000.0,0,65926.67,payout 2 requested
-2025-08-20,XFA 75,3694.7,2000.0,0,67726.67,payout 3 requested
-2025-09-05,XFA 75,81.95,0.0,0,67726.67,XFA abandoned (cushion below $400)
-2025-09-08,Combine 76,-174.2,0.0,1,67631.67,
-2025-09-24,Combine 76,3023.3,0.0,0,67631.67,Combine passed
-2025-10-08,XFA 76,908.75,908.75,0,68449.55,payout 1 requested
-2025-10-21,XFA 76,169.08,0.0,0,68449.55,XFA abandoned (cushion below $400)
-2025-10-22,Combine 77,1494.64,0.0,1,68354.55,
-2025-10-31,Combine 78,1494.64,0.0,1,68259.55,Combine 77 ended (less than $50 above its max loss)
-2025-11-06,Combine 79,0.0,0.0,1,68164.55,Combine 78 ended (less than $50 above its max loss)
-2025-11-12,Combine 79,3027.32,0.0,0,68164.55,Combine passed
-2025-11-19,XFA 79,-642.76,0.0,0,68164.55,XFA abandoned (cushion below $400)
-2025-11-20,Combine 80,0.0,0.0,1,68069.55,
-2025-12-19,Combine 80,3025.98,0.0,0,68069.55,Combine passed
-2026-01-15,XFA 80,-1542.85,0.0,0,68069.55,XFA abandoned (cushion below $400)
-2026-01-16,Combine 81,0.0,0.0,1,67974.55,
-2026-01-22,Combine 82,42.64,0.0,1,67879.55,Combine 81 ended (less than $50 above its max loss)
-2026-02-03,Combine 82,3024.64,0.0,0,67879.55,Combine passed
-2026-02-25,XFA 82,786.82,786.82,0,68587.69,payout 1 requested
-2026-03-12,XFA 82,334.14,0.0,0,68587.69,XFA abandoned (cushion below $400)
-2026-03-13,Combine 83,498.48,0.0,1,68492.69,
-2026-03-24,Combine 84,-1200.0,0.0,1,68397.69,Combine 83 ended (less than $50 above its max loss)
-2026-03-30,Combine 85,1494.64,0.0,1,68302.69,Combine 84 ended (less than $50 above its max loss)
-2026-04-10,Combine 86,-395.52,0.0,1,68207.69,Combine 85 ended (less than $50 above its max loss)
-2026-04-15,Combine 87,-129.36,0.0,1,68112.69,Combine 86 ended (less than $50 above its max loss)
-2026-04-21,Combine 88,-3.36,0.0,1,68017.69,Combine 87 ended (less than $50 above its max loss)
-2026-04-28,Combine 89,1494.64,0.0,1,67922.69,Combine 88 ended (less than $50 above its max loss)
-2026-05-01,Combine 90,808.64,0.0,1,67827.69,Combine 89 ended (less than $50 above its max loss)
-2026-05-06,Combine 90,3024.64,0.0,0,67827.69,Combine passed
-2026-05-15,XFA 90,2681.45,2000.0,0,69627.69,payout 1 requested
-2026-06-05,XFA 90,1729.75,1729.75,0,71184.46,payout 2 requested
-2026-06-22,XFA 90,2901.14,2000.0,0,72984.46,payout 3 requested
-2026-07-30,XFA 90,1995.33,1995.33,0,74780.26,payout 4 requested
-2026-08-19,XFA 90,1686.36,1686.36,0,76297.99,payout 5 requested
-2026-09-03,XFA 90,1524.46,1524.46,0,77670.0,payout 6 requested
-2026-09-17,XFA 90,2411.82,2000.0,0,79470.0,payout 7 requested
-2026-10-07,XFA 90,8309.1,2000.0,0,81270.0,payout 8 requested
-2026-10-21,XFA 90,8577.07,2000.0,0,83070.0,payout 9 requested
-2026-11-05,XFA 90,9766.79,2000.0,0,84870.0,payout 10 requested
-2026-11-20,XFA 90,11203.95,0.0,0,84870.0,
+2020-03-20,Combine 10,0.0,0.0,1,630.07,Combine 9 ended (less than $50 above its max loss)
+2020-03-25,Combine 10,3030.62,0.0,0,630.07,Combine passed
+2020-04-08,XFA 10,856.85,856.85,0,1401.24,payout 1 requested
+2020-04-13,XFA 10,143.88,0.0,0,1401.24,XFA abandoned (cushion below $400)
+2020-04-14,Combine 11,0.0,0.0,1,1306.24,
+2020-04-22,Combine 11,3025.98,0.0,0,1306.24,Combine passed
+2020-05-11,XFA 11,1051.76,1051.76,0,2252.82,payout 1 requested
+2020-05-14,XFA 11,226.42,0.0,0,2252.82,XFA abandoned (cushion below $400)
+2020-05-15,Combine 12,-1200.0,0.0,1,2157.82,
+2020-06-09,Combine 12,3023.3,0.0,0,2157.82,Combine passed
+2020-06-24,XFA 12,1594.84,1594.84,0,3593.18,payout 1 requested
+2020-07-06,XFA 12,2638.0,2000.0,0,5393.18,payout 2 requested
+2020-07-23,XFA 12,1656.04,1656.04,0,6883.62,payout 3 requested
+2020-07-31,XFA 12,63.73,0.0,0,6883.62,XFA abandoned (cushion below $400)
+2020-08-03,Combine 13,258.96,0.0,1,6788.62,
+2020-08-27,Combine 13,3021.96,0.0,0,6788.62,Combine passed
+2020-09-02,XFA 13,-1963.76,0.0,0,6788.62,XFA abandoned (cushion below $400)
+2020-09-03,Combine 14,1489.28,0.0,1,6693.62,
+2020-09-09,Combine 15,1493.3,0.0,1,6598.62,Combine 14 ended (less than $50 above its max loss)
+2020-09-14,Combine 15,3027.32,0.0,0,6598.62,Combine passed
+2020-10-01,XFA 15,-537.17,0.0,0,6598.62,XFA abandoned (cushion below $400)
+2020-10-02,Combine 16,-1200.0,0.0,1,6503.62,
+2020-10-14,Combine 17,-254.38,0.0,1,6408.62,Combine 16 ended (less than $50 above its max loss)
+2020-10-27,Combine 18,-1200.0,0.0,1,6313.62,Combine 17 ended (less than $50 above its max loss)
+2020-11-05,Combine 19,-706.7,0.0,1,6218.62,Combine 18 ended (less than $50 above its max loss)
+2020-11-09,Combine 20,-1200.0,0.0,1,6123.62,Combine 19 ended (less than $50 above its max loss)
+2020-12-09,Combine 20,-1283.4,0.0,0,6028.62,Combine 20's 30-day fee
+2020-12-10,Combine 21,-1200.0,0.0,1,5933.62,Combine 20 ended (less than $50 above its max loss)
+2020-12-18,Combine 22,-498.06,0.0,1,5838.62,Combine 21 ended (less than $50 above its max loss)
+2020-12-23,Combine 23,671.94,0.0,1,5743.62,Combine 22 ended (less than $50 above its max loss)
+2021-01-07,Combine 23,3019.28,0.0,0,5743.62,Combine passed
+2021-01-28,XFA 23,-1707.82,0.0,0,5743.62,XFA abandoned (cushion below $400)
+2021-01-29,Combine 24,0.0,0.0,1,5648.62,
+2021-02-15,Combine 25,0.0,0.0,1,5553.62,Combine 24 ended (less than $50 above its max loss)
+2021-02-24,Combine 26,0.0,0.0,1,5458.62,Combine 25 ended (less than $50 above its max loss)
+2021-03-08,Combine 26,3025.98,0.0,0,5458.62,Combine passed
+2021-03-23,XFA 26,-1655.97,0.0,0,5458.62,XFA abandoned (cushion below $400)
+2021-03-24,Combine 27,1493.3,0.0,1,5363.62,
+2021-04-23,Combine 27,3021.96,0.0,0,5268.62,Combine 27's 30-day fee; Combine passed
+2021-05-10,XFA 27,1630.66,1630.66,0,6736.21,payout 1 requested
+2021-05-20,XFA 27,2871.29,2000.0,0,8536.21,payout 2 requested
+2021-06-15,XFA 27,2456.04,2000.0,0,10336.21,payout 3 requested
+2021-06-28,XFA 27,4386.06,2000.0,0,12136.21,payout 4 requested
+2021-08-23,XFA 27,2736.07,2000.0,0,13936.21,payout 5 requested
+2021-09-14,XFA 27,2802.16,2000.0,0,15736.21,payout 6 requested
+2021-09-22,XFA 27,4262.52,2000.0,0,17536.21,payout 7 requested
+2021-10-11,XFA 27,4730.53,2000.0,0,19336.21,payout 8 requested
+2021-11-09,XFA 27,330.53,0.0,0,19336.21,XFA abandoned (cushion below $400)
+2021-11-10,Combine 28,-1200.0,0.0,1,19241.21,
+2021-11-22,Combine 29,1489.28,0.0,1,19146.21,Combine 28 ended (less than $50 above its max loss)
+2021-11-25,Combine 30,0.0,0.0,1,19051.21,Combine 29 ended (less than $50 above its max loss)
+2021-12-10,Combine 31,-1200.0,0.0,1,18956.21,Combine 30 ended (less than $50 above its max loss)
+2022-01-03,Combine 32,-1200.0,0.0,1,18861.21,Combine 31 ended (less than $50 above its max loss)
+2022-01-06,Combine 33,-1200.0,0.0,1,18766.21,Combine 32 ended (less than $50 above its max loss)
+2022-01-10,Combine 34,-1200.0,0.0,1,18671.21,Combine 33 ended (less than $50 above its max loss)
+2022-01-13,Combine 35,0.0,0.0,1,18576.21,Combine 34 ended (less than $50 above its max loss)
+2022-01-20,Combine 36,0.0,0.0,1,18481.21,Combine 35 ended (less than $50 above its max loss)
+2022-01-26,Combine 37,1495.98,0.0,1,18386.21,Combine 36 ended (less than $50 above its max loss)
+2022-01-28,Combine 37,3030.62,0.0,0,18386.21,Combine passed
+2022-02-10,XFA 37,603.98,603.98,0,18929.79,payout 1 requested
+2022-02-22,XFA 37,2156.88,2000.0,0,20729.79,payout 2 requested
+2022-03-09,XFA 37,2179.3,2000.0,0,22529.79,payout 3 requested
+2022-03-21,XFA 37,1961.16,1961.16,0,24294.83,payout 4 requested
+2022-03-29,XFA 37,362.38,0.0,0,24294.83,XFA abandoned (cushion below $400)
+2022-03-30,Combine 38,322.64,0.0,1,24199.83,
+2022-04-12,Combine 38,3024.64,0.0,0,24199.83,Combine passed
+2022-04-27,XFA 38,1138.97,1138.97,0,25224.91,payout 1 requested
+2022-05-02,XFA 38,326.0,0.0,0,25224.91,XFA abandoned (cushion below $400)
+2022-05-03,Combine 39,178.98,0.0,1,25129.91,
+2022-05-26,Combine 39,3027.32,0.0,0,25129.91,Combine passed
+2022-06-06,XFA 39,1343.62,1343.62,0,26339.17,payout 1 requested
+2022-06-10,XFA 39,225.42,0.0,0,26339.17,XFA abandoned (cushion below $400)
+2022-06-13,Combine 40,-1200.0,0.0,1,26244.17,
+2022-06-24,Combine 41,1493.3,0.0,1,26149.17,Combine 40 ended (less than $50 above its max loss)
+2022-06-30,Combine 42,1493.3,0.0,1,26054.17,Combine 41 ended (less than $50 above its max loss)
+2022-07-13,Combine 42,3027.32,0.0,0,26054.17,Combine passed
+2022-07-27,XFA 42,1292.74,1292.74,0,27217.63,payout 1 requested
+2022-08-04,XFA 42,44.42,0.0,0,27217.63,XFA abandoned (cushion below $400)
+2022-08-05,Combine 43,473.3,0.0,1,27122.63,
+2022-08-12,Combine 44,0.0,0.0,1,27027.63,Combine 43 ended (less than $50 above its max loss)
+2022-08-30,Combine 45,1491.96,0.0,1,26932.63,Combine 44 ended (less than $50 above its max loss)
+2022-09-02,Combine 45,3025.98,0.0,0,26932.63,Combine passed
+2022-09-14,XFA 45,967.48,967.48,0,27803.36,payout 1 requested
+2022-09-20,XFA 45,229.87,0.0,0,27803.36,XFA abandoned (cushion below $400)
+2022-09-21,Combine 46,0.0,0.0,1,27708.36,
+2022-10-04,Combine 47,1493.3,0.0,1,27613.36,Combine 46 ended (less than $50 above its max loss)
+2022-10-07,Combine 48,0.0,0.0,1,27518.36,Combine 47 ended (less than $50 above its max loss)
+2022-10-24,Combine 48,3027.32,0.0,0,27518.36,Combine passed
+2022-11-28,XFA 48,572.65,572.65,0,28033.75,payout 1 requested
+2022-11-29,XFA 48,220.98,0.0,0,28033.75,XFA abandoned (cushion below $400)
+2022-11-30,Combine 49,1491.96,0.0,1,27938.75,
+2022-12-06,Combine 49,3024.64,0.0,0,27938.75,Combine passed
+2022-12-20,XFA 49,-118.68,0.0,0,27938.75,XFA abandoned (cushion below $400)
+2022-12-21,Combine 50,-29.04,0.0,1,27843.75,
+2023-01-03,Combine 51,0.0,0.0,1,27748.75,Combine 50 ended (less than $50 above its max loss)
+2023-01-11,Combine 52,0.0,0.0,1,27653.75,Combine 51 ended (less than $50 above its max loss)
+2023-01-16,Combine 52,3025.98,0.0,0,27653.75,Combine passed
+2023-01-31,XFA 52,1125.39,1125.39,0,28666.6,payout 1 requested
+2023-02-09,XFA 52,1599.98,1599.98,0,30106.58,payout 2 requested
+2023-02-16,XFA 52,136.85,0.0,0,30106.58,XFA abandoned (cushion below $400)
+2023-02-17,Combine 53,0.0,0.0,1,30011.58,
+2023-03-13,Combine 53,3023.3,0.0,0,30011.58,Combine passed
+2023-03-24,XFA 53,-1120.12,0.0,0,30011.58,XFA abandoned (cushion below $400)
+2023-03-27,Combine 54,0.0,0.0,1,29916.58,
+2023-04-19,Combine 54,3020.62,0.0,0,29916.58,Combine passed
+2023-05-12,XFA 54,553.41,553.41,0,30414.65,payout 1 requested
+2023-05-26,XFA 54,3781.05,2000.0,0,32214.65,payout 2 requested
+2023-06-19,XFA 54,2205.61,2000.0,0,34014.65,payout 3 requested
+2023-07-06,XFA 54,1591.98,1591.98,0,35447.43,payout 4 requested
+2023-07-12,XFA 54,206.97,0.0,0,35447.43,XFA abandoned (cushion below $400)
+2023-07-13,Combine 55,0.0,0.0,1,35352.43,
+2023-07-19,Combine 56,-902.72,0.0,1,35257.43,Combine 55 ended (less than $50 above its max loss)
+2023-07-21,Combine 57,-1200.0,0.0,1,35162.43,Combine 56 ended (less than $50 above its max loss)
+2023-07-25,Combine 58,1490.62,0.0,1,35067.43,Combine 57 ended (less than $50 above its max loss)
+2023-07-28,Combine 59,0.0,0.0,1,34972.43,Combine 58 ended (less than $50 above its max loss)
+2023-08-17,Combine 60,1490.62,0.0,1,34877.43,Combine 59 ended (less than $50 above its max loss)
+2023-08-25,Combine 60,3023.3,0.0,0,34877.43,Combine passed
+2023-09-15,XFA 60,5232.71,2000.0,0,36677.43,payout 1 requested
+2023-09-29,XFA 60,3506.83,2000.0,0,38477.43,payout 2 requested
+2023-10-23,XFA 60,233.79,0.0,0,38477.43,XFA abandoned (cushion below $400)
+2023-10-24,Combine 61,385.8,0.0,1,38382.43,
+2023-11-16,Combine 62,0.0,0.0,1,38287.43,Combine 61 ended (less than $50 above its max loss)
+2023-12-04,Combine 63,0.0,0.0,1,38192.43,Combine 62 ended (less than $50 above its max loss)
+2023-12-15,Combine 64,-1200.0,0.0,1,38097.43,Combine 63 ended (less than $50 above its max loss)
+2023-12-20,Combine 65,601.28,0.0,1,38002.43,Combine 64 ended (less than $50 above its max loss)
+2024-01-02,Combine 65,3020.62,0.0,0,38002.43,Combine passed
+2024-01-05,XFA 65,-1930.66,0.0,0,38002.43,XFA abandoned (cushion below $400)
+2024-01-08,Combine 66,-1200.0,0.0,1,37907.43,
+2024-01-18,Combine 67,-1200.0,0.0,1,37812.43,Combine 66 ended (less than $50 above its max loss)
+2024-01-23,Combine 68,-352.38,0.0,1,37717.43,Combine 67 ended (less than $50 above its max loss)
+2024-01-29,Combine 69,0.0,0.0,1,37622.43,Combine 68 ended (less than $50 above its max loss)
+2024-02-12,Combine 70,-250.88,0.0,1,37527.43,Combine 69 ended (less than $50 above its max loss)
+2024-02-23,Combine 71,-1200.0,0.0,1,37432.43,Combine 70 ended (less than $50 above its max loss)
+2024-03-01,Combine 72,1490.62,0.0,1,37337.43,Combine 71 ended (less than $50 above its max loss)
+2024-03-05,Combine 72,3021.96,0.0,0,37337.43,Combine passed
+2024-03-21,XFA 72,-1488.87,0.0,0,37337.43,XFA abandoned (cushion below $400)
+2024-03-22,Combine 73,393.96,0.0,1,37242.43,
+2024-04-03,Combine 74,1489.28,0.0,1,37147.43,Combine 73 ended (less than $50 above its max loss)
+2024-04-15,Combine 74,3025.98,0.0,0,37147.43,Combine passed
+2024-04-30,XFA 74,845.73,845.73,0,37908.59,payout 1 requested
+2024-05-13,XFA 74,388.23,0.0,0,37908.59,XFA abandoned (cushion below $400)
+2024-05-14,Combine 75,0.0,0.0,1,37813.59,
+2024-05-23,Combine 75,3021.96,0.0,0,37813.59,Combine passed
+2024-06-11,XFA 75,1141.74,1141.74,0,38841.15,payout 1 requested
+2024-06-24,XFA 75,390.12,0.0,0,38841.15,XFA abandoned (cushion below $400)
+2024-06-25,Combine 76,0.0,0.0,1,38746.15,
+2024-07-01,Combine 77,-1200.0,0.0,1,38651.15,Combine 76 ended (less than $50 above its max loss)
+2024-07-22,Combine 77,3024.64,0.0,0,38651.15,Combine passed
+2024-08-07,XFA 77,1766.07,1766.07,0,40240.62,payout 1 requested
+2024-08-19,XFA 77,1656.47,1656.47,0,41731.43,payout 2 requested
+2024-09-09,XFA 77,1350.14,1350.14,0,42946.56,payout 3 requested
+2024-09-19,XFA 77,247.89,0.0,0,42946.56,XFA abandoned (cushion below $400)
+2024-09-20,Combine 78,0.0,0.0,1,42851.56,
+2024-10-03,Combine 78,3023.3,0.0,0,42851.56,Combine passed
+2024-10-25,XFA 78,840.66,840.66,0,43608.16,payout 1 requested
+2024-11-08,XFA 78,2057.54,2000.0,0,45408.16,payout 2 requested
+2024-11-21,XFA 78,4163.75,2000.0,0,47208.16,payout 3 requested
+2024-12-06,XFA 78,3804.95,2000.0,0,49008.16,payout 4 requested
+2024-12-19,XFA 78,4104.47,2000.0,0,50808.16,payout 5 requested
+2025-01-07,XFA 78,4631.97,2000.0,0,52608.16,payout 6 requested
+2025-02-05,XFA 78,3141.17,2000.0,0,54408.16,payout 7 requested
+2025-03-07,XFA 78,293.78,0.0,0,54408.16,XFA abandoned (cushion below $400)
+2025-03-10,Combine 79,1495.98,0.0,1,54313.16,
+2025-03-18,Combine 79,3027.32,0.0,0,54313.16,Combine passed
+2025-04-02,XFA 79,3631.38,2000.0,0,56113.16,payout 1 requested
+2025-06-20,XFA 79,294.95,0.0,0,56113.16,XFA abandoned (cushion below $400)
+2025-06-23,Combine 80,1491.96,0.0,1,56018.16,
+2025-07-10,Combine 81,1491.96,0.0,1,55923.16,Combine 80 ended (less than $50 above its max loss)
+2025-07-15,Combine 81,3025.98,0.0,0,55923.16,Combine passed
+2025-07-24,XFA 81,1734.44,1734.44,0,57484.16,payout 1 requested
+2025-08-05,XFA 81,4755.42,2000.0,0,59284.16,payout 2 requested
+2025-08-20,XFA 81,3694.7,2000.0,0,61084.16,payout 3 requested
+2025-09-05,XFA 81,81.95,0.0,0,61084.16,XFA abandoned (cushion below $400)
+2025-09-08,Combine 82,-174.2,0.0,1,60989.16,
+2025-09-24,Combine 82,3023.3,0.0,0,60989.16,Combine passed
+2025-10-08,XFA 82,908.75,908.75,0,61807.03,payout 1 requested
+2025-10-21,XFA 82,169.08,0.0,0,61807.03,XFA abandoned (cushion below $400)
+2025-10-22,Combine 83,1494.64,0.0,1,61712.03,
+2025-10-31,Combine 84,1494.64,0.0,1,61617.03,Combine 83 ended (less than $50 above its max loss)
+2025-11-06,Combine 85,0.0,0.0,1,61522.03,Combine 84 ended (less than $50 above its max loss)
+2025-11-12,Combine 85,3027.32,0.0,0,61522.03,Combine passed
+2025-11-19,XFA 85,-642.76,0.0,0,61522.03,XFA abandoned (cushion below $400)
+2025-11-20,Combine 86,0.0,0.0,1,61427.03,
+2025-12-19,Combine 86,3025.98,0.0,0,61427.03,Combine passed
+2026-01-15,XFA 86,-1542.85,0.0,0,61427.03,XFA abandoned (cushion below $400)
+2026-01-16,Combine 87,0.0,0.0,1,61332.03,
+2026-01-22,Combine 88,42.64,0.0,1,61237.03,Combine 87 ended (less than $50 above its max loss)
+2026-02-03,Combine 88,3024.64,0.0,0,61237.03,Combine passed
+2026-02-25,XFA 88,786.82,786.82,0,61945.17,payout 1 requested
+2026-03-12,XFA 88,334.14,0.0,0,61945.17,XFA abandoned (cushion below $400)
+2026-03-13,Combine 89,498.48,0.0,1,61850.17,
+2026-03-24,Combine 90,-1200.0,0.0,1,61755.17,Combine 89 ended (less than $50 above its max loss)
+2026-03-30,Combine 91,1494.64,0.0,1,61660.17,Combine 90 ended (less than $50 above its max loss)
+2026-04-10,Combine 92,-395.52,0.0,1,61565.17,Combine 91 ended (less than $50 above its max loss)
+2026-04-15,Combine 93,-129.36,0.0,1,61470.17,Combine 92 ended (less than $50 above its max loss)
+2026-04-21,Combine 94,-3.36,0.0,1,61375.17,Combine 93 ended (less than $50 above its max loss)
+2026-04-28,Combine 95,1494.64,0.0,1,61280.17,Combine 94 ended (less than $50 above its max loss)
+2026-05-01,Combine 96,808.64,0.0,1,61185.17,Combine 95 ended (less than $50 above its max loss)
+2026-05-06,Combine 96,3024.64,0.0,0,61185.17,Combine passed
+2026-05-15,XFA 96,2681.45,2000.0,0,62985.17,payout 1 requested
+2026-06-05,XFA 96,1729.75,1729.75,0,64541.95,payout 2 requested
+2026-06-22,XFA 96,2901.14,2000.0,0,66341.95,payout 3 requested
+2026-07-30,XFA 96,1995.33,1995.33,0,68137.75,payout 4 requested
+2026-08-19,XFA 96,1686.36,1686.36,0,69655.47,payout 5 requested
+2026-09-03,XFA 96,1524.46,1524.46,0,71027.49,payout 6 requested
+2026-09-17,XFA 96,2411.82,2000.0,0,72827.49,payout 7 requested
+2026-10-07,XFA 96,8309.1,2000.0,0,74627.49,payout 8 requested
+2026-10-21,XFA 96,8577.07,2000.0,0,76427.49,payout 9 requested
+2026-11-05,XFA 96,9766.79,2000.0,0,78227.49,payout 10 requested
+2026-11-20,XFA 96,11203.95,0.0,0,78227.49,

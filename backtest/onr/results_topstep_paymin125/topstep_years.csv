@@ -1,62 +1,62 @@
 window_id,config,size,payout_path,fee_path,year,year_label,net_median_usd,net_low_usd,net_high_usd
 5y,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2021,2021 (from Nov 15),-686,-1323,-196
 5y,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2022,2022,46965,46916,54564
-5y,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,42601,42601,42601
-5y,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,96372,96372,96372
+5y,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,61378,61378,61378
+5y,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,96272,96272,96272
 5y,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2025,2025,55615,55615,55615
 5y,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),90391,90391,90391
 5y,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2021,2021 (from Nov 15),-1330,-2565,-380
 5y,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2022,2022,49502,49407,58104
-5y,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,43345,43345,43345
-5y,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,98102,98102,98102
+5y,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,61513,61513,61513
+5y,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,98197,98197,98197
 5y,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2025,2025,57849,57849,57849
 5y,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2026,2026 (to Nov 20),90841,90841,90841
 5y,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2021,2021 (from Nov 15),-686,-1323,-196
 5y,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2022,2022,48362,47801,49097
 5y,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2023,2023,27000,27000,27000
-5y,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2024,2024,40500,40500,40500
+5y,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2024,2024,54000,54000,54000
 5y,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2025,2025,40500,40500,40500
 5y,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),27000,27000,27000
 5y,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2021,2021 (from Nov 15),-1330,-2565,-380
 5y,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2022,2022,47589,47494,49014
 5y,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2023,2023,27000,27000,27000
-5y,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2024,2024,40500,40500,40500
+5y,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2024,2024,54000,54000,54000
 5y,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2025,2025,40500,40500,40500
 5y,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2026,2026 (to Nov 20),27000,27000,27000
 5y,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2021,2021 (from Nov 15),-1782,-2970,-396
 5y,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2022,2022,93011,89710,94496
-5y,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,52055,52055,52055
-5y,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,156791,156791,156791
+5y,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,87669,87669,87669
+5y,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,156939,156939,156939
 5y,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2025,2025,97791,97791,97791
 5y,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),138748,138748,138748
 5y,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2021,2021 (from Nov 15),-2682,-4470,-596
 5y,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2022,2022,92521,90219,94756
-5y,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,50427,50427,50427
-5y,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,157705,157705,157705
+5y,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,87290,87290,87290
+5y,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,158152,158152,158152
 5y,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2025,2025,98900,98900,98900
 5y,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2026,2026 (to Nov 20),137831,137831,137831
 5y,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2021,2021 (from Nov 15),-1782,-2970,-396
 5y,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2022,2022,56063,54505,57548
 5y,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2023,2023,36000,36000,36000
-5y,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2024,2024,54000,54000,54000
+5y,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2024,2024,72000,72000,72000
 5y,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2025,2025,72000,72000,72000
 5y,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),54000,54000,54000
 5y,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2021,2021 (from Nov 15),-2682,-4470,-596
 5y,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2022,2022,54806,54148,57041
 5y,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2023,2023,36000,36000,36000
-5y,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2024,2024,54000,54000,54000
+5y,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2024,2024,72000,72000,72000
 5y,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2025,2025,72000,72000,72000
 5y,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2026,2026 (to Nov 20),54000,54000,54000
 5y,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2021,2021 (from Nov 15),-3582,-6169,-796
 5y,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2022,2022,110329,107778,113314
-5y,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,58796,58796,58796
-5y,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,244637,244637,244637
+5y,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,39635,39635,39635
+5y,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,247274,247274,247274
 5y,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2025,2025,104929,104929,104929
 5y,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),147047,147047,147047
 5y,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2021,2021 (from Nov 15),-4122,-7099,-916
 5y,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2022,2022,112628,110617,116063
-5y,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,59904,59904,59904
-5y,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,247063,247063,247063
+5y,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,41006,41006,41006
+5y,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,250269,250269,250269
 5y,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2025,2025,107052,107052,107052
 5y,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2026,2026 (to Nov 20),148934,148934,148934
 5y,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2021,2021 (from Nov 15),-3582,-6169,-796
@@ -72,87 +72,87 @@ window_id,config,size,payout_path,fee_path,year,year_label,net_median_usd,net_lo
 5y,150-consistency-noact,150K,Consistency payouts (40%),No Activation Fee path,2025,2025,81000,81000,81000
 5y,150-consistency-noact,150K,Consistency payouts (40%),No Activation Fee path,2026,2026 (to Nov 20),54000,54000,54000
 2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2019,2019 (from Dec 20),-220,-343,-98
-2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2020,2020,44580,42579,54545
+2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2020,2020,46048,44048,56013
 2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2021,2021,61615,61615,61615
 2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2022,2022,46965,46965,46965
-2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,42601,42601,42601
-2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,96372,96372,96372
+2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,61378,61378,61378
+2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,96272,96272,96272
 2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2025,2025,55615,55615,55615
 2019,50-standard-standard,50K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),90391,90391,90391
 2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2019,2019 (from Dec 20),-428,-665,-190
-2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2020,2020,43638,41785,54277
+2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2020,2020,45724,43872,56363
 2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2021,2021,61695,61695,61695
 2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2022,2022,49502,49502,49502
-2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,43345,43345,43345
-2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,98102,98102,98102
+2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,61513,61513,61513
+2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,98197,98197,98197
 2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2025,2025,57849,57849,57849
 2019,50-standard-noact,50K,Standard payouts (5 days of $150),No Activation Fee path,2026,2026 (to Nov 20),90841,90841,90841
 2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2019,2019 (from Dec 20),-220,-343,-98
-2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2020,2020,23820,21674,31696
+2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2020,2020,24708,22562,32584
 2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2021,2021,40500,40500,40500
 2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2022,2022,54000,54000,54000
 2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2023,2023,27000,27000,27000
-2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2024,2024,40500,40500,40500
+2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2024,2024,54000,54000,54000
 2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2025,2025,40500,40500,40500
 2019,50-consistency-standard,50K,Consistency payouts (40%),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),27000,27000,27000
 2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2019,2019 (from Dec 20),-428,-665,-190
-2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2020,2020,23722,21585,32273
+2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2020,2020,24578,22440,33128
 2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2021,2021,40500,40500,40500
 2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2022,2022,54000,54000,54000
 2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2023,2023,27000,27000,27000
-2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2024,2024,40500,40500,40500
+2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2024,2024,54000,54000,54000
 2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2025,2025,40500,40500,40500
 2019,50-consistency-noact,50K,Consistency payouts (40%),No Activation Fee path,2026,2026 (to Nov 20),27000,27000,27000
 2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2019,2019 (from Dec 20),-446,-693,-198
-2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2020,2020,86234,83183,108528
+2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2020,2020,98214,94945,119868
 2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2021,2021,103948,103948,103948
 2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2022,2022,121938,121938,121938
-2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,52055,52055,52055
-2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,156791,156791,156791
+2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,87669,87669,87669
+2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,156939,156939,156939
 2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2025,2025,97791,97791,97791
 2019,100-standard-standard,100K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),138748,138748,138748
 2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2019,2019 (from Dec 20),-670,-1043,-298
-2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2020,2020,85610,81611,108997
+2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2020,2020,97742,93525,120389
 2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2021,2021,103823,103823,103823
 2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2022,2022,121604,121604,121604
-2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,50427,50427,50427
-2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,157705,157705,157705
+2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,87290,87290,87290
+2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,158152,158152,158152
 2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2025,2025,98900,98900,98900
 2019,100-standard-noact,100K,Standard payouts (5 days of $150),No Activation Fee path,2026,2026 (to Nov 20),137831,137831,137831
 2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2019,2019 (from Dec 20),-446,-693,-198
-2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2020,2020,31986,29212,46220
+2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2020,2020,33324,30550,47558
 2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2021,2021,54000,54000,54000
 2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2022,2022,72000,72000,72000
 2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2023,2023,36000,36000,36000
-2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2024,2024,54000,54000,54000
+2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2024,2024,72000,72000,72000
 2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2025,2025,72000,72000,72000
 2019,100-consistency-standard,100K,Consistency payouts (40%),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),54000,54000,54000
 2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2019,2019 (from Dec 20),-670,-1043,-298
-2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2020,2020,31754,28550,46554
+2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2020,2020,33094,29891,47895
 2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2021,2021,54000,54000,54000
 2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2022,2022,72000,72000,72000
 2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2023,2023,36000,36000,36000
-2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2024,2024,54000,54000,54000
+2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2024,2024,72000,72000,72000
 2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2025,2025,72000,72000,72000
 2019,100-consistency-noact,100K,Consistency payouts (40%),No Activation Fee path,2026,2026 (to Nov 20),54000,54000,54000
 2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2019,2019 (from Dec 20),-896,-1393,-398
-2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2020,2020,54221,49942,73545
+2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2020,2020,54404,50126,81703
 2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2021,2021,154109,154109,154109
 2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2022,2022,110329,110329,110329
-2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,58796,58796,58796
-2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,244637,244637,244637
+2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2023,2023,39635,39635,39635
+2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2024,2024,247274,247274,247274
 2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2025,2025,104929,104929,104929
 2019,150-standard-standard,150K,Standard payouts (5 days of $150),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),147047,147047,147047
 2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2019,2019 (from Dec 20),-1030,-1603,-458
-2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2020,2020,54451,49527,74980
+2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2020,2020,54515,49592,82990
 2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2021,2021,154329,154329,154329
 2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2022,2022,112628,112628,112628
-2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,59904,59904,59904
-2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,247063,247063,247063
+2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2023,2023,41006,41006,41006
+2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2024,2024,250269,250269,250269
 2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2025,2025,107052,107052,107052
 2019,150-standard-noact,150K,Standard payouts (5 days of $150),No Activation Fee path,2026,2026 (to Nov 20),148934,148934,148934
 2019,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2019,2019 (from Dec 20),-896,-1393,-398
-2019,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2020,2020,46192,41168,64137
+2019,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2020,2020,47336,42312,64336
 2019,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2021,2021,81000,81000,81000
 2019,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2022,2022,108000,108000,108000
 2019,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2023,2023,54000,54000,54000
@@ -160,7 +160,7 @@ window_id,config,size,payout_path,fee_path,year,year_label,net_median_usd,net_lo
 2019,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2025,2025,81000,81000,81000
 2019,150-consistency-standard,150K,Consistency payouts (40%),Standard path ($/month + $149 activation),2026,2026 (to Nov 20),54000,54000,54000
 2019,150-consistency-noact,150K,Consistency payouts (40%),No Activation Fee path,2019,2019 (from Dec 20),-1030,-1603,-458
-2019,150-consistency-noact,150K,Consistency payouts (40%),No Activation Fee path,2020,2020,46558,41634,65174
+2019,150-consistency-noact,150K,Consistency payouts (40%),No Activation Fee path,2020,2020,47702,42779,65403
 2019,150-consistency-noact,150K,Consistency payouts (40%),No Activation Fee path,2021,2021,81000,81000,81000
 2019,150-consistency-noact,150K,Consistency payouts (40%),No Activation Fee path,2022,2022,108000,108000,108000
 2019,150-consistency-noact,150K,Consistency payouts (40%),No Activation Fee path,2023,2023,54000,54000,54000

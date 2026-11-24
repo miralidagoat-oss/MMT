@@ -1,14 +1,14 @@
 item_id,setup,item,real_60d_usd,last_5y_usd,all_years_usd
-book_gross,"One funded account, every session",Trading profit before commission,17105,110659,155997
-book_comm,"One funded account, every session",Commission at $1.34 per MNQ round turn,-225,-7288,-11831
-book_net,"One funded account, every session",Trading profit after commission,16880,103371,144166
-slot_payouts,One account slot (new eval whenever one ends),Payouts requested,559,60810,81277
-slot_lucid,One account slot (new eval whenever one ends),Lucid's 10% share,-56,-6081,-8128
-slot_fees,One account slot (new eval whenever one ends),Eval fees at $98.20,-491,-8151,-11980
-slot_net,One account slot (new eval whenever one ends),Net to you,12,46579,61168
-slot_comm,One account slot (new eval whenever one ends),Commission paid in the accounts (already taken out before the payouts),-163,-6022,-9747
-pool_payouts,5 funded accounts + evals,Payouts requested,5406,386888,527077
-pool_lucid,5 funded accounts + evals,Lucid's 10% share,-541,-38689,-52708
-pool_fees,5 funded accounts + evals,Eval fees at $98.20,-2455,-46940,-69035
-pool_net,5 funded accounts + evals,Net to you,2411,301259,405334
-pool_comm,5 funded accounts + evals,Commission paid in the accounts (already taken out before the payouts),-1160,-38977,-63898
+book_gross,"One funded account, every session",Trading profit before commission,17105,114431,160105
+book_comm,"One funded account, every session",Commission at $1.34 per MNQ round turn,-225,-7367,-11909
+book_net,"One funded account, every session",Trading profit after commission,16880,107064,148196
+slot_payouts,One account slot (new eval whenever one ends),Payouts requested,559,60716,81843
+slot_lucid,One account slot (new eval whenever one ends),Lucid's 10% share,-56,-6072,-8184
+slot_fees,One account slot (new eval whenever one ends),Eval fees at $98.20,-491,-8347,-12177
+slot_net,One account slot (new eval whenever one ends),Net to you,12,46298,61481
+slot_comm,One account slot (new eval whenever one ends),Commission paid in the accounts (already taken out before the payouts),-163,-6031,-9749
+pool_payouts,5 funded accounts + evals,Payouts requested,5406,383262,513625
+pool_lucid,5 funded accounts + evals,Lucid's 10% share,-541,-38326,-51363
+pool_fees,5 funded accounts + evals,Eval fees at $98.20,-2455,-49002,-70606
+pool_net,5 funded accounts + evals,Net to you,2411,295934,391657
+pool_comm,5 funded accounts + evals,Commission paid in the accounts (already taken out before the payouts),-1160,-39393,-62908
