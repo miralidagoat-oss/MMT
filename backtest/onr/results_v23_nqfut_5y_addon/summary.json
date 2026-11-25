@@ -4,7 +4,7 @@
   "2026-11-20"
  ],
  "size": "Lucid Flex 50K",
- "commission": 1.34,
+ "commission": 1.0,
  "eval_price": 98.2,
  "payout_policy": "maximum allowed (50% of profit, cap $2,000)",
  "eval_consistency": 0.5,
@@ -13,15 +13,15 @@
  "nq_bar_minutes": 5,
  "book": {
   "trades": 1784,
-  "net_per_year": 21357.0,
+  "net_per_year": 21730.0,
   "days_traded": 1228,
-  "pct_days_positive": 45.0,
+  "pct_days_positive": 45.1,
   "pct_days_qualifying": 37.8,
-  "avg_day": 87.2,
-  "median_day": -61.2,
-  "best_day": 7074.0,
-  "worst_day": -1208.0,
-  "daily_sharpe": 1.91
+  "avg_day": 88.7,
+  "median_day": -58.7,
+  "best_day": 7078.0,
+  "worst_day": -1205.0,
+  "daily_sharpe": 1.94
  },
  "eval": {
   "started": 1295,
@@ -38,9 +38,9 @@
  },
  "funded": {
   "accounts": 491,
-  "pct_with_a_payout": 57.4,
-  "avg_payouts": 1.05,
-  "avg_withdrawn_net": 1351.0,
+  "pct_with_a_payout": 58.2,
+  "avg_payouts": 1.06,
+  "avg_withdrawn_net": 1372.0,
   "days_to_first_payout": {
    "median": 15.0,
    "p75": 21.0,
@@ -48,8 +48,8 @@
   },
   "outcome_pct": {
    "blown": 0.0,
-   "abandon": 89.2,
-   "done": 10.8,
+   "abandon": 89.6,
+   "done": 10.4,
    "open": 0.0
   },
   "median_life_days": 20.0
@@ -58,29 +58,29 @@
   "starts": 1161,
   "pct_paid_by_end": 100.0,
   "pct_within_30_days": 22.9,
-  "pct_within_60_days": 56.3,
-  "pct_within_90_days": 75.9,
+  "pct_within_60_days": 57.4,
+  "pct_within_90_days": 78.6,
   "pct_within_180_days": 96.0,
   "pct_within_365_days": 100.0,
-  "median_days": 54.0,
-  "avg_evals_before": 4.26
+  "median_days": 53.0,
+  "avg_evals_before": 4.17
  },
  "pool": {
   "paths": 10,
-  "net_per_year_median": 59864.0,
+  "net_per_year_median": 57390.0,
   "net_per_year_range": [
-   59033.0,
-   60631.0
+   56584.0,
+   58131.0
   ],
-  "payouts_per_year": 53.8,
-  "evals_per_year": 98.4,
+  "payouts_per_year": 52.0,
+  "evals_per_year": 100.2,
   "pct_months_net_positive": 69.0,
   "pct_months_with_a_payout": 70.7,
   "monthly_net_percentiles": {
    "10": -1375.0,
-   "25": -687.0,
-   "50": 3585.0,
-   "75": 8548.0,
+   "25": -982.0,
+   "50": 3448.0,
+   "75": 8590.0,
    "90": 14302.0
   },
   "pct_full_years_positive": 100.0,
@@ -88,9 +88,9 @@
    "median": 6.1,
    "max": 6.1
   },
-  "worst_12_months": 25717.0,
+  "worst_12_months": 26013.0,
   "first_path_max_drawdown": 8838.0,
-  "first_path_total": 295934.0
+  "first_path_total": 283658.0
  },
  "stress_2x_costs_1_tick": {
   "net_per_year_median": 54663.0,
@@ -100,33 +100,33 @@
  "alarm_bands": [
   [
    20,
-   1520.0,
-   -3154.0,
-   -5096.0
+   1549.0,
+   -3126.0,
+   -5063.0
   ],
   [
    40,
-   3137.0,
-   -3630.0,
-   -6322.0
+   3195.0,
+   -3569.0,
+   -6261.0
   ],
   [
    60,
-   4778.0,
-   -3663.0,
-   -6858.0
+   4861.0,
+   -3574.0,
+   -6766.0
   ],
   [
    120,
-   9705.0,
-   -2149.0,
-   -7017.0
+   9878.0,
+   -1969.0,
+   -6853.0
   ],
   [
    250,
-   20570.0,
-   2927.0,
-   -3985.0
+   20920.0,
+   3295.0,
+   -3622.0
   ]
  ]
 }

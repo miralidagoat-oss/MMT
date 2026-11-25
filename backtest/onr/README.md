@@ -6,14 +6,7 @@ futures, including several Lucid accounts side by side.
 
 ## Verdict
 
-- **Your MNQ file only (Nov 23-24 2026):** every published figure now comes from your MNQ futures file (Dec 2019 - Nov 20 2026) and nothing else for prices. Over the last 5 years your Topstep plan (50K, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path) made $72,332 a year after every cost, worst full year $49,512, and your Lucid plan (5 funded + 5 evals with the add-on, each closed after its 4th payout) $60,709. On Nov 24 the S&P input's 119 missing or mistimed sessions (most of Feb-Jul 2023) were taken from Dukascopy and every result was rerun. See *Your MNQ file only* below; the bullets after this one are the research's findings on its earlier series.
-- The code is careful work: no look-ahead or repainting (`request.security(..., expr[1], lookahead_on)` is the correct
-  pattern), conservative fills (stop wins ties, targets need a tick through) and the Lucid Flex 25K rules match the
-  currently published ones.
-- The edge is real but smaller and less evenly spread than v1's header says. Most of it comes from the
-  **opening-drive pyramid** (t = 5.4) and the **IB breakout** (t = 3.1, only after 2019). The **overnight S&P
-  "stretch" signal**, the book's namesake, does predict the overnight move (t = 4.1 with no stop, both halves of the
-  sample), but its 0.5 ADR stop throws away about half of it; with the stop the leg is t = 1.2.
+- **Your MNQ file only (Nov 23-25 2026):** every published figure now comes from your MNQ futures file (Dec 2019 - Nov 20 2026) and nothing else for prices. Over the last 5 years your Topstep plan (50K, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path) made $73,075 a year after every cost, worst full year $47,523, and your Lucid plan (5 funded + 5 evals with the add-on, each closed after its 4th payout) $58,262. On Nov 24 the S&P input's 119 missing or mistimed sessions (most of Feb-Jul 2023) were taken from Dukascopy and every result was rerun; on Nov 25 every result was rerun again at your $1.00 commission per MNQ round turn ($0.50 in + $0.50 out; it was $1.34). See *Your MNQ file only* below; the bullets after this one are the research's findings on its earlier series.
 - **Overfitting:** no knife-edge. Every parameter tested degrades smoothly and keeps its sign in both halves; the
   09:35 entry time is the most "picked" choice. What is fitted is the research narrative: several header numbers
   were measured on the same data the rules were chosen on, and some do not reproduce (table below).
@@ -55,11 +48,11 @@ futures, including several Lucid accounts side by side.
   other half were times it made money but the eval kept failing. More accounts run as an eval pool fix much of the
   second kind (longest gap 12 → 8 months in 2011–18, 8 → 6.5 in 2019–26) but nothing fixes the first kind.
 
-## Your MNQ file only (Nov 23-24 2026): every result
+## Your MNQ file only (Nov 23-25 2026): every result
 
 **Every figure in this section, on the website and in both indicators' texts comes from your MNQ futures file and nothing else for prices**: `MICRONASDAQ100_futures_5m_2019-12-01_2026-11-23.parquet`, 5-minute bars from 2019-12-01 18:00 ET to 2026-11-20 16:55 ET (492,923 bars, 1,803 sessions), used as recorded. The Nasdaq-100 CFD (HistData `NSXUSD`, 2011-2026), your earlier NQ export and Yahoo's MNQ bars are no longer used anywhere; the sections after this one are the history of the research on them, and their figures are not your file's. The only other input is the S&P 500 series the overnight signal reads (as the indicator reads OANDA's `SPX500USD`); no trade is on the S&P.
 
-Windows: the **last 5 years** are Nov 15 2021 - Nov 20 2026 (research rule 5Y); **since Dec 20 2019** starts at the file's first tradable session (the 14-day range needs 14 full sessions); full years are 2020-2025 (2019 is Dec 20-31 and 2026 ends Nov 20). Every figure is after $1.34 commission per MNQ round turn, the firm's 10% share of each payout and every eval or Combine fee, including the failed ones; money figures are the mean of 12 start dates (Nov 15 2021 and every 5 sessions after it) unless a row says otherwise.
+Windows: the **last 5 years** are Nov 15 2021 - Nov 20 2026 (research rule 5Y); **since Dec 20 2019** starts at the file's first tradable session (the 14-day range needs 14 full sessions); full years are 2020-2025 (2019 is Dec 20-31 and 2026 ends Nov 20). Every figure is after your commission of $1.00 per MNQ round turn ($0.50 to enter and $0.50 to exit; see *The commission* below), the firm's 10% share of each payout and every eval or Combine fee, including the failed ones; money figures are the mean of 12 start dates (Nov 15 2021 and every 5 sessions after it) unless a row says otherwise.
 
 ### The file and its checks (`prep_mnq.py`)
 
@@ -78,7 +71,7 @@ HistData's `SPXUSD` 1-minute bars (an S&P 500 CFD, the research's own source), t
    - every session MNQ has, day session against MNQ at the recorded time and an hour either way: an hour off before the fill on 8 sessions (2020-03-09, 2020-03-12, 2020-03-13, 2020-03-16, 2020-03-17, 2020-03-18, 2020-03-23, 2020-03-24), after it on none;
    - full MNQ day sessions with no S&P score for that evening: 119 before, 0 after.
 
-**What the fill changed** (your Topstep plan, last 5 years; one funded 50K account's overnight trade since Dec 20 2019):
+**What the fill changed** (your Topstep plan, last 5 years; one funded 50K account's overnight trade since Dec 20 2019; both columns at the $1.34 commission of that rerun):
 
 | | Before the fill | After |
 |---|---|---|
@@ -89,58 +82,72 @@ HistData's `SPXUSD` 1-minute bars (an S&P 500 CFD, the research's own source), t
 | Overnight trade, net a year / t | +$2,550 / 1.17 | +$2,514 / 1.14 |
 | 2023, one funded account: net / overnight leg | +$5,999 / -$2,510 | +$8,392 / -$2,349 |
 
+### The commission: $1.00 per MNQ round turn (Nov 25 2026)
+
+Every result in this section was rerun on Nov 25 2026 at your commission: $0.50 to enter and $0.50 to exit one MNQ contract, $1.00 a round turn (it was $1.34, a typical prop-firm all-in rate). The lower commission is in every trade's result, and it also widens each eval bracket's stop a little (the stop leaves room for the commission: at 50K, 2 MNQ, about 0.17 point), so a few evals pass or fail on another day and a 10-account plan's 5-year path shifts a little either way. Those shifts are inside the backtest's noise bands; the trades of one funded account are the same.
+
+| | At $1.34 | At $1.00 |
+|---|---|---|
+| One funded 50K account trading every session, last 5 years: trades / net a year | 1,784 / $21,357 | 1,784 / $21,730 |
+| Eval pass rate, Lucid 50K, 40% rule / add-on (an eval started every session) | 43.1% / 43.2% | 43.4% / 43.2% |
+| Topstep 50K plan, net a year / worst full year | $72,332 / $49,512 | $73,075 / $47,523 |
+| Topstep 150K plan, net a year | $133,340 | $136,013 |
+| Lucid plan (add-on, closed after the 4th payout), net a year | $60,709 | $58,262 |
+| Lucid, 40% rule, closed after the 4th payout, net a year | $56,095 | $55,669 |
+| Your plan, a typical start's 3 years (worst start) | $262,147 ($177,157) | $259,137 ($167,620) |
+
 ### Topstep (`topstep_sim.py`, `topstep25k.py`): 5 XFAs with 5 Combines behind them, one new Combine a session
 
 | Size, payout path (No Activation Fee path) | Net a year | Worst full year | Worst 12 months | Deepest drop | Combines passed | Since Dec 20 2019: net a year / worst full year |
 |---|---|---|---|---|---|---|
-| 50K, Standard | $72,332 | $49,512 | $26,578 | -$8,835 | 43.3% | $71,371 / $44,860 |
-| 50K, Consistency | $39,859 | $27,000 | $0 | -$3,246 | 26.4% | $39,718 / $24,965 |
-| 100K, Standard | $116,400 | $91,707 | $32,086 | -$12,814 | 35.1% | $117,480 / $84,997 |
-| 100K, Consistency | $58,632 | $36,000 | $0 | -$5,488 | 22.9% | $58,369 / $33,330 |
-| 150K, Standard | $133,340 | $41,377 | $30,952 | -$19,694 | 34.0% | $128,354 / $41,377 |
-| 150K, Consistency | $84,301 | $54,000 | $0 | -$8,473 | 23.5% | $79,075 / $48,754 |
-| 50K, Standard, Standard fee path ($49 a month + $149 activation) | $70,917 | $46,896 | $24,225 | -$7,537 | 43.3% | $70,446 / $45,298 |
-| 25K Labs Static, Standard (at most 5 Combines a month) | $32,517 | $12,908 | $9,767 | -$2,412 | 45.8% | $29,970 / $11,901 |
-| 25K Labs Static, Consistency (at most 5 a month) | $32,388 | $6,710 | $6,497 | -$2,144 | 47.1% | $33,113 / $6,679 |
+| 50K, Standard | $73,075 | $47,523 | $27,801 | -$8,835 | 43.4% | $74,773 / $49,172 |
+| 50K, Consistency | $42,619 | $27,000 | $0 | -$3,246 | 26.4% | $43,713 / $25,133 |
+| 100K, Standard | $122,070 | $94,944 | $28,274 | -$11,920 | 35.0% | $121,433 / $79,682 |
+| 100K, Consistency | $58,665 | $36,000 | $0 | -$5,488 | 22.9% | $58,940 / $37,121 |
+| 150K, Standard | $136,013 | $41,061 | $31,168 | -$19,694 | 35.0% | $131,253 / $41,061 |
+| 150K, Consistency | $84,344 | $54,000 | $0 | -$8,473 | 23.5% | $78,836 / $48,521 |
+| 50K, Standard, Standard fee path ($49 a month + $149 activation) | $71,711 | $44,761 | $27,352 | -$7,537 | 43.4% | $73,969 / $49,921 |
+| 25K Labs Static, Standard (at most 5 Combines a month) | $32,201 | $10,091 | $8,237 | -$2,412 | 46.3% | $30,511 / $10,091 |
+| 25K Labs Static, Consistency (at most 5 a month) | $32,243 | $6,931 | $6,694 | -$2,700 | 46.9% | $33,325 / $6,900 |
 
-Fewer XFAs at 50K (Standard, No Activation Fee path, N XFAs + N Combines, last 5 years): 1: $15,372 a year (worst full year $11,046); 2: $30,472 a year (worst full year $24,491); 3: $43,592 a year (worst full year $31,995); 4: $55,182 a year (worst full year $37,892); 5: $72,332 a year (worst full year $49,512).
+Fewer XFAs at 50K (Standard, No Activation Fee path, N XFAs + N Combines, last 5 years): 1: $15,985 a year (worst full year $11,048); 2: $30,512 a year (worst full year $23,264); 3: $44,801 a year (worst full year $30,248); 4: $56,363 a year (worst full year $37,430); 5: $73,075 a year (worst full year $47,523).
 
 ### Lucid Flex 50K (`live50k.py`, `scale_sizes.py`, `futures_site.py`): 5 funded + 5 evals
 
 | Plan, last 5 years | Net a year | Worst full year | Worst 12 months | Deepest drop | The pool's evals passed |
 |---|---|---|---|---|---|
-| Add-on ($98.20 an eval), each account closed after its 4th payout (your plan) | $60,709 | $39,619 | $25,717 | -$8,838 | 45.8% |
-| 40% rule ($88.20), closed after the 4th payout | $56,095 | $28,815 | $22,444 | -$8,732 | 45.1% |
-| Add-on, Lucid's rules: moved live at the first 5th payout | $63,123 | $36,298 | $31,015 | -$8,249 | 47.9% |
-| 40% rule, moved live at the first 5th payout | $51,255 | $28,815 | $23,947 | -$8,732 | 45.8% |
+| Add-on ($98.20 an eval), each account closed after its 4th payout (your plan) | $58,262 | $40,987 | $26,013 | -$8,838 | 45.8% |
+| 40% rule ($88.20), closed after the 4th payout | $55,669 | $29,081 | $22,752 | -$8,644 | 45.3% |
+| Add-on, Lucid's rules: moved live at the first 5th payout | $65,175 | $37,731 | $27,407 | -$8,249 | 48.0% |
+| 40% rule, moved live at the first 5th payout | $52,260 | $29,081 | $23,276 | -$8,114 | 44.4% |
 
-With the 40% rule, closing after the 4th payout made $56,095 a year against $51,255 going live. With the add-on, going live made a little more, $63,123 against $60,709, with a weaker worst full year ($36,298 against $39,619); that gain rests on this backtest's simple model of a live account (Lucid moves you live after a 5th payout and closes every sim account), so the indicator still closes each account after its 4th payout by default.
+With the 40% rule, closing after the 4th payout made $55,669 a year against $52,260 going live. With the add-on, going live made more, $65,175 against $58,262, with a weaker worst full year ($37,731 against $40,987); that gain rests on this backtest's simple model of a live account (Lucid moves you live after a 5th payout and closes every sim account), so the indicator still closes each account after its 4th payout by default.
 
-Other sizes (each account closed after its 4th payout; add-on / 40% rule, last 5 years): 25K $29,775 / $30,095 a year; 100K $74,932 / $67,321 a year; 150K $97,249 / $92,303 a year. 1 to 5 funded accounts with as many evals behind them (your Lucid plan's rules: the add-on, each closed after its 4th payout): 1: $12,673; 2: $25,897; 3: $36,470; 4: $48,411; 5: $60,709.
+Other sizes (each account closed after its 4th payout; add-on / 40% rule, last 5 years): 25K $31,133 / $29,868 a year; 100K $71,608 / $67,995 a year; 150K $97,079 / $90,136 a year. 1 to 5 funded accounts with as many evals behind them (your Lucid plan's rules: the add-on, each closed after its 4th payout): 1: $11,634; 2: $24,493; 3: $35,415; 4: $46,390; 5: $58,262.
 
-The 50% add-on at $10 an eval: +$4,614 a year against the 40% rule over the last 5 years (+$5,586 if it were free; noise band $1,882), worst full year $39,619 against $28,815; it pays for itself up to $57.50 an eval. Rule 5Y fails at $10 (and at every price tested, $0 to $50): from Dec 20 2019 to Nov 14 2021 the difference was -$5,785 a year, outside that window's noise band of $1,659 (it passed before the S&P input was filled). Over the last 5 years it passes both the money and the worst-year tests; whether to keep buying it is your call.
+The 50% add-on at $10 an eval: +$2,593 a year against the 40% rule over the last 5 years (+$3,584 if it were free; noise band $3,040), worst full year $40,987 against $29,081; it pays for itself up to $36.17 an eval. Rule 5Y fails at $10 (and at every price tested, $0 to $50): from Dec 20 2019 to Nov 14 2021 the difference was -$6,757 a year, outside that window's noise band of $1,592 (it passed before the S&P input was filled). Over the last 5 years its worst full year is clearly better, but its money gain is inside that window's noise band; whether to keep buying it is your call.
 
-**Eval options** (`options50k.py --mnq`; an eval started on every session, Lucid 50K). The wide bracket stays the best; the 08:30 news skip no longer raises the pass rate on your file (it is kept as a risk rule):
+**Eval options** (`options50k.py --mnq`; an eval started on every session, Lucid 50K). The wide bracket stays the best; the 08:30 news skip makes no real difference on your file (43.4% with it against 43.2% without over the last 5 years, 41.6% against 42.0% since Dec 20 2019; it is kept as a risk rule):
 
 | Option | Last 5 years: passed / median sessions | Since Dec 20 2019 |
 |---|---|---|
-| default (40% rule, wide bracket, news skip) | 43.1% of 1296 / 9 | 41.2% of 1787 / 9 |
+| default (40% rule, wide bracket, news skip) | 43.4% of 1296 / 9 | 41.6% of 1787 / 9 |
 | 50% consistency add-on | 43.2% of 1295 / 8 | 41.3% of 1786 / 8 |
-| medium bracket x0.75 | 41.2% of 1296 / 7 | 37.4% of 1787 / 7 |
-| tight bracket x0.5 | 37.9% of 1296 / 6 | 37.9% of 1787 / 7 |
-| no news skip | 43.3% of 1293 / 9 | 41.6% of 1784 / 9 |
+| medium bracket x0.75 | 41.4% of 1296 / 7 | 37.5% of 1787 / 7 |
+| tight bracket x0.5 | 38.2% of 1296 / 6 | 38.4% of 1787 / 7 |
+| no news skip | 43.2% of 1293 / 9 | 42.0% of 1784 / 9 |
 
 ### Your plan (`plan_search.py`): 48 monthly start dates from Dec 2019 to Nov 2023, 3 years each
 
-Topstep 50K 5 XFAs + 5 Combines from day one (have about $11,000 ready: the most of your own money any start needed was $10,165); Lucid 50K with the add-on at $12,000 of spare cash; each new Topstep Combine 150K by the range rule at $25,000; the $15,000 car at $52,000: each step once the spare cash covers that setup's own worst fall since Dec 20 2019 (5 funded + 5 evaluations, the worst of 12 start dates, rounded up; Topstep 50K $9,000). A typical start had $262,147 of spare cash after 3 years, after every fee and the 30% tax set-aside (1 start in 10 below $187,446, worst $177,157). Of the plans needing about the same own money, 5 made a little more for a typical start, up to $271,726 (they stepped up sooner on less cash, or kept 7 Combines behind the XFAs): a gap under 4%, within what 48 overlapping starts can tell apart, so the plan keeps its rule of a full reserve before each step. Steps reached (months after the start, median / 9 in 10 by / latest): Add Lucid 50K (spare cash $12,000) 5.6 / 11.2 / 13.6; Topstep 150K by the range rule ($25,000) 9.1 / 13.6 / 15.6; The $15,000 car ($52,000) 13.9 / 17.4 / 20.1.
+Topstep 50K 5 XFAs + 5 Combines from day one (have about $11,000 ready: the most of your own money any start needed was $10,165); Lucid 50K with the add-on at $11,000 of spare cash; each new Topstep Combine 150K by the range rule at $25,000; the $15,000 car at $51,000: each step once the spare cash covers that setup's own worst fall since Dec 20 2019 (5 funded + 5 evaluations, the worst of 12 start dates, rounded up; Topstep 50K $11,000). A typical start had $259,137 of spare cash after 3 years, after every fee and the 30% tax set-aside (1 start in 10 below $182,447, worst $167,620). Of the plans needing about the same own money, 4 made a little more for a typical start, up to $261,158 (they stepped up sooner on less cash, or took Lucid to 150K by the range rule too): a gap under 4%, within what 48 overlapping starts can tell apart, so the plan keeps its rule of a full reserve before each step. Steps reached (months after the start, median / 9 in 10 by / latest): Add Lucid 50K (spare cash $11,000) 5.1 / 10.3 / 13.6; Topstep 150K by the range rule ($25,000) 9.3 / 13.5 / 15.6; The $15,000 car ($51,000) 12.9 / 17.5 / 20.3.
 
 ### The last 60 days on real MNQ (`export_charts.py`, `topstep_charts.py`, `mnq_real50k.py`)
 
-Sep 9 - Nov 20 2026 (53 sessions), cut from the same file (`prep_mnq.py --cut`; each session's 14-day range from the file's own earlier sessions, `engine.adr_seed`). One funded 50K account: 78 trades, 46.2% winners, +$16,880 after $225 commission (overnight 19 trades +$3,679, pyramid 25 +$10,967, IB breakout 34 +$2,233). Evals or Combines started every session: 33 of 50 passed. 5 funded + 5 evals made +$2,411 at Lucid (add-on) and +$2,491 at Topstep in those 10 weeks, most of the time spent passing evals.
+Sep 9 - Nov 20 2026 (53 sessions), cut from the same file (`prep_mnq.py --cut`; each session's 14-day range from the file's own earlier sessions, `engine.adr_seed`). One funded 50K account: 78 trades, 46.2% winners, +$16,937 after $168 commission (overnight 19 trades +$3,691, pyramid 25 +$10,990, IB breakout 34 +$2,256). Evals or Combines started every session: 33 of 50 passed. 5 funded + 5 evals made +$2,461 at Lucid (add-on) and +$2,541 at Topstep in those 10 weeks, most of the time spent passing evals.
 
-### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.6.5)
+### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.6.6)
 
-Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_fee8820/alarm_bands.csv` (v2.6.4). v2.6.5 changes no trade. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
+Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_addon_fee8820/alarm_bands.csv`. v2.6.6 (Nov 25 2026) changes no rule: the commission input defaults to your $1.00 per MNQ round turn ($0.50 to enter and $0.50 to exit), and every quoted figure and the alarm bands come from the $1.00 rerun. v2.6.5 (Nov 24) changed no trade either. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
 
 ### Reproduce
 

@@ -1,14 +1,14 @@
 date,current_phase,current_event,current_account_pnl_usd,current_your_cash_usd,addon_phase,addon_event,addon_account_pnl_usd,addon_your_cash_usd
 2026-09-09,eval 1,eval 1 bought,0.0,-88.2,eval 1,eval 1 bought,0.0,-98.2
-2026-09-28,,,,,eval 1,eval passed,3025.98,-98.2
-2026-09-29,eval 1,eval passed,3027.32,-88.2,,,,
-2026-10-16,funded 1,"payout 1 requested ($1,041)",1040.67,848.41,funded 1,payout 1 requested ($559),559.25,405.13
-2026-10-19,,,,,funded 1,funded account abandoned (cushion below $400),200.23,405.13
-2026-10-20,,,,,eval 2,eval 2 bought,-1200.0,306.93
-2026-10-27,,,,,eval 3,"eval 2 ends (cushion below $100, too small to trade); eval 3 bought",1495.98,208.73
-2026-10-30,funded 1,"payout 2 requested ($1,231)",1231.47,1956.73,,,,
-2026-11-02,,,,,eval 4,"eval 3 ends (cushion below $100, too small to trade); eval 4 bought",526.98,110.53
-2026-11-04,funded 1,funded account abandoned (cushion below $400),488.45,1956.73,,,,
-2026-11-05,eval 2,eval 2 bought,1195.98,1868.53,,,,
-2026-11-10,eval 3,"eval 2 ends (cushion below $100, too small to trade); eval 3 bought",0.0,1780.33,eval 5,"eval 4 ends (cushion below $100, too small to trade); eval 5 bought",0.0,12.33
-2026-11-16,eval 3,eval passed,3027.32,1780.33,eval 5,eval passed,3033.3,12.33
+2026-09-28,,,,,eval 1,eval passed,3027.0,-98.2
+2026-09-29,eval 1,eval passed,3028.0,-88.2,,,,
+2026-10-16,funded 1,"payout 1 requested ($1,047)",1046.79,853.92,funded 1,payout 1 requested ($566),566.05,411.25
+2026-10-19,,,,,funded 1,funded account abandoned (cushion below $400),207.71,411.25
+2026-10-20,,,,,eval 2,eval 2 bought,-1200.0,313.05
+2026-10-27,,,,,eval 3,"eval 2 ends (cushion below $100, too small to trade); eval 3 bought",1497.0,214.85
+2026-10-30,funded 1,"payout 2 requested ($1,239)",1238.61,1968.67,,,,
+2026-11-02,,,,,eval 4,"eval 3 ends (cushion below $100, too small to trade); eval 4 bought",528.0,116.65
+2026-11-04,funded 1,funded account abandoned (cushion below $400),497.97,1968.67,,,,
+2026-11-05,eval 2,eval 2 bought,1197.0,1880.47,,,,
+2026-11-10,eval 3,"eval 2 ends (cushion below $100, too small to trade); eval 3 bought",0.0,1792.27,eval 5,"eval 4 ends (cushion below $100, too small to trade); eval 5 bought",0.0,18.45
+2026-11-16,eval 3,eval passed,3028.0,1792.27,eval 5,eval passed,3035.0,18.45

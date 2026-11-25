@@ -7,7 +7,7 @@ usage: topstep_charts.py LIVE_DATA_DIR FUT_DATA_DIR LUCID_CHARTS_DIR TS_REPORT_D
   Every year is the MNQ file from its first tradable session (Dec 20 2019); only when LIVE_DATA_DIR holds the CFD
   (NSXUSD.npz, as before Nov 23 2026) is it the CFD's from Feb 2011. LUCID_CHARTS_DIR: export_charts.py's output for the
   Lucid plan (results_v23_charts). TS_REPORT_DIR: topstep_report.py's output.
-Rules and costs are topstep_sim.py's (ek(50), fk(50, "standard")): $1.34 per MNQ round turn, Topstep keeps 10% of each
+Rules and costs are topstep_sim.py's (ek(50), fk(50, "standard")): account.COMM_RT ($1.00) per MNQ round turn, Topstep keeps 10% of each
 payout, $95 per Combine when it is bought and again every 30 days while it is open, no activation fee. Each funded leg
 is at most 6 micros (the cap topstep_sim.py assumes for Topstep's scaling plan): it binds when the 14-session average
 range is below about 108 points (the size rule's round(700 / range) is 7 or more), as on most CFD sessions before 2020;
@@ -432,7 +432,7 @@ def main(dd, fd, lucid_dir, rep_dir, out):
 
     bk = "One funded account, every session"
     block("book_gross", bk, "Trading profit before commission", sum(t[6] for t in rt), sum(t[6] for t in bt), sum(t[6] for t in at))
-    block("book_comm", bk, "Commission at $1.34 per MNQ round turn", sum(t[7] for t in rt), sum(t[7] for t in bt), sum(t[7] for t in at))
+    block("book_comm", bk, f"Commission at ${X.COMM:.2f} per MNQ round turn", sum(t[7] for t in rt), sum(t[7] for t in bt), sum(t[7] for t in at))
     block("book_net", bk, "Trading profit after commission", sum(t[8] for t in rt), sum(t[8] for t in bt), sum(t[8] for t in at))
     sl = "One account slot (a new Combine whenever one ends)"
     block("slot_payouts", sl, "Payouts requested", rpay, spay, apay)

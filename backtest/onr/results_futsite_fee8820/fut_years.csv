@@ -1,9 +1,9 @@
 year,period,futures_data,fut_current_usd,fut_addon_usd,fut_book_usd,fut_pass_current_pct,fut_pass_addon_pct
-2019,from Dec 20,real MNQ futures (your file),-617,-617,1031,28.6,0.0
-2020,full year,real MNQ futures (your file),43017,53986,21494,34.7,39.0
-2021,full year,real MNQ futures (your file),63386,56905,19795,33.6,29.3
-2022,full year,real MNQ futures (your file),28506,67671,24412,43.8,45.0
-2023,full year,real MNQ futures (your file),41960,48107,8392,32.9,39.5
-2024,full year,real MNQ futures (your file),98143,98482,26973,57.1,47.5
-2025,full year,real MNQ futures (your file),35008,40672,18730,38.8,45.0
-2026,to Nov 20,real MNQ futures (your file),69535,65664,27369,48.9,45.2
+2019,from Dec 20,real MNQ futures (your file),-617,-617,1083,28.6,0.0
+2020,full year,real MNQ futures (your file),48882,51490,22099,34.7,39.4
+2021,full year,real MNQ futures (your file),64617,57148,20341,34.4,29.3
+2022,full year,real MNQ futures (your file),28772,59515,24751,43.8,45.0
+2023,full year,real MNQ futures (your file),44933,54664,8873,35.3,39.5
+2024,full year,real MNQ futures (your file),97830,96578,27396,56.8,47.5
+2025,full year,real MNQ futures (your file),33919,44042,19070,38.8,45.0
+2026,to Nov 20,real MNQ futures (your file),67285,60412,27605,48.9,45.2

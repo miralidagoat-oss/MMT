@@ -20,7 +20,7 @@ from openpyxl.utils import get_column_letter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from account import USER_ADDON, USER_EVAL, USER_TAG  # noqa: E402  (the user's prices; runs at them go to <name><USER_TAG>)
+from account import COMM_RT, USER_ADDON, USER_EVAL, USER_TAG  # noqa: E402  (the user's prices; runs at them go to <name><USER_TAG>)
 import windows as W  # noqa: E402  (the MNQ file's first and last sessions)
 
 T = os.path.join(HERE, f"results_v23_trades{USER_TAG}")
@@ -96,7 +96,7 @@ def main(out):
         ("5 funded + 5 evals in reserve (Lucid's maximum: 10 accounts per household, at most 5 funded); one new eval bought a session while below 10 accounts.", F),
         ("Payouts: the maximum allowed (50% of profit, up to $2,000) once 5 days of $150+ and $1,000 of profit; each funded account is closed right after its 4th payout,", F),
         ("because a 5th payout moves you to a live account and Lucid then closes every sim account. A funded account is also stopped below a $400 cushion.", F),
-        (f"Costs: ${USER_EVAL[50]:.2f} per eval (your discount-code price; the add-on's own price is NOT included), $1.34 commission per MNQ round turn, Lucid keeps 10% of each payout.", F),
+        (f"Costs: ${USER_EVAL[50]:.2f} per eval (your discount-code price; the add-on's own price is NOT included), ${COMM_RT:.2f} commission per MNQ round turn ($0.50 in + $0.50 out), Lucid keeps 10% of each payout.", F),
         ("", F),
         ("The sheets", FB),
         ("Summary: this history's totals (formulas over Trades and Ledger) next to the average over 12 start dates. The yellow cells are inputs you can change.", F),
@@ -117,7 +117,7 @@ def main(out):
         ("Caveats", FB),
         ("Simulated on past prices with the indicator's rules; not live-tested. Past results do not guarantee future payouts.", F),
         ("Lucid's risk team decides who goes live and may move a trader for other reasons (for example total payouts); the plan assumes it moves you only at a 5th payout.", F),
-        ("Changing the commission input re-prices the Trades sheet only; the payouts in the Ledger were simulated at $1.34.", F),
+        (f"Changing the commission input re-prices the Trades sheet only; the payouts in the Ledger were simulated at ${COMM_RT:.2f}.", F),
     ]
     for i, (text, font) in enumerate(lines, 1):
         c = ws.cell(row=i, column=1, value=text)
@@ -134,7 +134,7 @@ def main(out):
     put(sm, "A5", "Your share of each payout")
     put(sm, "B5", 0.90, PCT, FBLUE, INPUT, "Lucid's LucidFlex split: 90% to the trader (help centre, LucidFlex Payouts, Jul 28 2026).")
     put(sm, "A6", "Commission per MNQ round turn ($)")
-    put(sm, "B6", 1.34, USD2, FBLUE, INPUT, "All-in cost the backtest used. Changing it re-prices the Trades sheet; the simulated payouts stay as run at $1.34.")
+    put(sm, "B6", COMM_RT, USD2, FBLUE, INPUT, f"Your cost per round turn ($0.50 in + $0.50 out), as the backtest used. Changing it re-prices the Trades sheet; the simulated payouts stay as run at ${COMM_RT:.2f}.")
     put(sm, "A7", "Dollars per point per MNQ contract ($)")
     put(sm, "B7", 2.0, USD2, FBLUE, None, "CME Micro E-mini Nasdaq-100 (MNQ): $2 per index point. Contract spec, not an assumption.")
     put(sm, "A8", "Last session in the data")

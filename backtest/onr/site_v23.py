@@ -239,6 +239,8 @@ def addon_tables(res, out):
               round(float(np.mean([r["periods"]["last 5y"]["worst12"] for r in a5]))), "usd"],
              ["net_gain_early", f"Net a year gained with the add-on at $10, {W.FIRST_MD} {W.FIRST[:4]} - Nov 14 2021", round(z10[3]), "usd"],
              ["band_net_5y", "Noise band for net a year, last 5 years (8 placebo runs)", round(band["last 5y"][0]), "usd"],
+             ["band_net_early", f"Noise band for net a year, {W.FIRST_MD} {W.FIRST[:4]} - Nov 14 2021 (8 placebo runs)",
+              round(band["2011-21"][0]), "usd"],
              ["band_worst_5y", "Noise band for the worst full year, last 5 years (8 placebo runs)", round(band["last 5y"][1]), "usd"],
              ["rule5y_at_10", "Rule 5Y at the add-on's $10", 1 if (z10[5] and z10[6]) else 0, "count"],
              ["evals_year_addon_5y", "Evals bought a year with the add-on, last 5 years",
@@ -285,7 +287,8 @@ def real_tables(dd, out):
         want = X.REAL_BY_PLAN[(cons, 4)]
         assert [round(p) for p in pays] == want["slot_payouts"] and sum(x[4] for x in ja) == want["slot_evals"], (name, pays)
         assert (rs["payouts"], round(rs["gross"]), rs["evals"]) == want["pool"], (name, rs)
-        assert abs(ja[-1][5] - (0.9 * sum(pays) - fee * want["slot_evals"])) < 0.01
+        # the journey keeps its cash rounded to the cent, so allow two roundings
+        assert abs(ja[-1][5] - (0.9 * sum(pays) - fee * want["slot_evals"])) < 0.02, (name, ja[-1][5], pays)
         out_[name] = dict(finished=len(fin), passed=sum(r["result"] == "pass" for r in fin), slot_payouts=len(pays),
                           slot_evals=sum(x[4] for x in ja), slot_cash=ja[-1][5], pool_payouts=rs["payouts"],
                           pool_gross=rs["gross"], pool_evals=rs["evals"], pool_net=rs["net"])

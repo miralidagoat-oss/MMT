@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import site_v23 as V  # noqa: E402  (futures loader swap; account functions without export_charts' wrappers)
 import research4 as R4  # noqa: E402
 import research5 as R5  # noqa: E402
-from account import USER_ADDON, USER_EVAL, USER_TAG  # noqa: E402
+from account import COMM_RT, USER_ADDON, USER_EVAL, USER_TAG  # noqa: E402
 import windows as W  # noqa: E402
 
 SIZES = (25, 50, 100, 150)
@@ -87,10 +87,10 @@ def main(fd, dd, out):
     rp, dp = os.path.join(out, "runs.json"), os.path.join(out, "runs_data.json")  # runs made on the same data are reused
     cfd = dd != "-"
     ids = {"F": data_id(fd, ("NQFUT.npz", "SPXUSD.npz")), "C": data_id(dd, ("NSXUSD.npz", "SPXUSD.npz")) if cfd else "-",
-           "prices": json.dumps({"eval": PRICE, "addon": ADDON}, sort_keys=True)}
+           "prices": json.dumps({"eval": PRICE, "addon": ADDON, "commission": COMM_RT}, sort_keys=True)}
     seen = json.load(open(dp)) if os.path.exists(dp) else {}
     res = {tuple(k.rsplit("|", 2)[:2]) + (int(k.rsplit("|", 1)[1]),): v for k, v in json.load(open(rp)).items()} if os.path.exists(rp) else {}
-    # a run on other price files, or at other eval prices (its net includes the fees), is made again
+    # a run on other price files, at other eval prices (its net includes the fees) or another commission, is made again
     res = {k: v for k, v in res.items() if seen.get(k[0][0]) == ids[k[0][0]] and seen.get("prices") == ids["prices"]}
     for prefix, data, windows in (("F", fd, ("5y", "all")),) + ((("C", dd, ("all",)),) if cfd else ()):
         todo = [j for j in jobs(prefix, windows, ("addon", "40")) if (j[0], j[2], j[3]) not in res]

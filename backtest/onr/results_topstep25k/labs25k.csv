@@ -1,7 +1,7 @@
 id,window_id,window,payout_path,purchase_limit,net_per_year_usd,worst_full_year_usd,losing_full_years,deepest_drop_usd,worst_12_months_usd,longest_gap_months,months_with_payout_pct,evals_per_year,most_cash_out_usd,eval_pass_pct,funded_with_payout_pct,payouts,average_payout_usd,months_at_purchase_limit_pct
-5y-25-standard,5y,"futures, last 5 years",Standard payouts (5 days of $150),5 a month,32517,12908,0.0,-2412,9767,6.4,60.3,49.4,-1981,45.8,72.6,194.0,1018,71.3
-5y-25-consistency,5y,"futures, last 5 years",Consistency payouts (40%),5 a month,32388,6710,0.0,-2144,6497,9.3,46.9,19.0,-2131,47.1,61.5,88.0,2094,22.7
-5y-25-standard-nolimit,5y,"futures, last 5 years",Standard payouts (5 days of $150),none,35433,16214,0.0,-4156,5508,6.4,61.9,63.8,-3131,40.9,75.6,226.0,970,46.2
-5y-25-consistency-nolimit,5y,"futures, last 5 years",Consistency payouts (40%),none,36844,15614,0.0,-4106,13424,7.0,48.5,25.6,-3131,38.1,48.6,98.9,2136,15.9
-2019-25-standard,2019,"futures, from Dec 20 2019",Standard payouts (5 days of $150),5 a month,29970,11901,0.0,-2850,9559,7.2,58.2,51.2,-1094,42.6,69.3,245.8,1040,76.7
-2019-25-consistency,2019,"futures, from Dec 20 2019",Consistency payouts (40%),5 a month,33113,6679,0.0,-1875,6644,9.4,42.0,18.3,-1144,47.2,61.1,122.3,2131,23.1
+5y-25-standard,5y,"futures, last 5 years",Standard payouts (5 days of $150),5 a month,32201,10091,0.0,-2412,8237,6.4,58.6,48.4,-1981,46.3,73.3,189.0,1033,69.6
+5y-25-consistency,5y,"futures, last 5 years",Consistency payouts (40%),5 a month,32243,6931,0.0,-2700,6694,9.3,38.5,17.8,-2131,46.9,50.0,83.0,2205,22.7
+5y-25-standard-nolimit,5y,"futures, last 5 years",Standard payouts (5 days of $150),none,37102,22176,0.0,-4094,12716,6.4,61.9,60.3,-3131,46.0,70.2,233.0,974,46.2
+5y-25-consistency-nolimit,5y,"futures, last 5 years",Consistency payouts (40%),none,36706,15795,0.0,-4131,13554,7.0,41.9,20.8,-3131,33.1,51.6,89.9,2320,14.2
+2019-25-standard,2019,"futures, from Dec 20 2019",Standard payouts (5 days of $150),5 a month,30511,10091,0.0,-2850,8237,7.2,59.5,49.3,-1094,44.2,71.6,249.9,1035,70.6
+2019-25-consistency,2019,"futures, from Dec 20 2019",Consistency payouts (40%),5 a month,33325,6900,0.0,-2700,6900,9.4,36.2,17.1,-1144,47.7,58.3,120.5,2171,23.1

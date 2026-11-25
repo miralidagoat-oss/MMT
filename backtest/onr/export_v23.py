@@ -7,7 +7,7 @@ usage: ONR_EVAL_FEE_50K=88.20 python3 export_v23.py FUT_DATA_DIR OUT_DIR
 
 The plan: Lucid Flex 50K, evals with the 50% consistency add-on, 5 funded + 5 evals (Lucid's maximum: 10 accounts,
 at most 5 funded), one new eval a session, each funded account closed right after its 4th payout (so no 5th payout
-moves the trader live), maximum-allowed payouts, $1.34 commission per MNQ round turn, 90% payout split, evals at
+moves the trader live), maximum-allowed payouts, account.COMM_RT ($1.00) commission per MNQ round turn, 90% payout split, evals at
 the 50K price of account.RULES ($88.20 with ONR_EVAL_FEE_50K=88.20). Real MNQ futures 5-minute bars (the user's file,
 Dec 2019 - Nov 20 2026). One path: the first start date of the last-5-years window, Nov 15 2021 (the website's figures
 are the mean of 12 start dates; live50k.py).

@@ -27,11 +27,11 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import research4 as R4  # noqa: E402
 import research5 as R5  # noqa: E402
-from account import FEE_TAG, RULES, run_eval  # noqa: E402
+from account import COMM_RT, FEE_TAG, RULES, run_eval  # noqa: E402
 from engine import Sessions, load_npz  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-E_KW = dict(improved=True, comm=1.34, size=50)  # report50k.E_KW
+E_KW = dict(improved=True, comm=COMM_RT, size=50)  # report50k.E_KW
 OPTIONS = {"default (40% rule, wide bracket, news skip)": {}, "50% consistency add-on": dict(cons=0.5),
            "medium bracket x0.75": dict(span=0.75), "tight bracket x0.5": dict(span=0.5), "no news skip": dict(news=False)}
 PERIODS = (("2011-20", "2011-01-01", "2020-12-31"), ("2021-26", "2021-01-01", "2026-12-31"),
@@ -133,7 +133,7 @@ def main(dd, out):
         lines.append(s)
 
     fee = RULES[50]["price"]
-    say(f"Lucid Flex 50K, $1.34 per MNQ round turn, evals at ${fee:.2f}")
+    say(f"Lucid Flex 50K, ${COMM_RT:.2f} per MNQ round turn, evals at ${fee:.2f}")
     pr = pass_rates(dd)
     with open(os.path.join(out, "options_pass_rates.csv"), "w", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
@@ -197,7 +197,7 @@ def main_mnq(fd, out):
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["period", "option", "evals_finished", "evals_passed", "pass_pct", "median_sessions_to_pass"])
         w.writerows(pr)
-    print("Lucid Flex 50K on the user's MNQ file, $1.34 per MNQ round turn: eval pass rate by option (an eval started on every session)")
+    print(f"Lucid Flex 50K on the user's MNQ file, ${COMM_RT:.2f} per MNQ round turn: eval pass rate by option (an eval started on every session)")
     for r in pr:
         print(f"  {r[0]:26s} {r[1]:45s} {r[4]:5.1f}% of {r[2]:5d}, median {r[5]:.0f} sessions to pass")
 

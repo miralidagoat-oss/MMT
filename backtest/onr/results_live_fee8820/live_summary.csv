@@ -1,21 +1,21 @@
 window,period,eval_rule,model,live_split_pct,description,net_per_year_usd,worst_full_year_usd,worst_12_months_usd,deepest_drop_usd,longest_gap_months,months_with_cash_pct,evals_per_year,moves_live,first_move_days_median,paths_moved_live_of_12,live_accounts_opened,live_account_life_sessions_median,live_withdrawn_per_account_gross_median_usd,live_only_sessions_pct,waiting_sessions_pct,sim_payouts_per_year,live_bonuses_paid,total_net_usd,most_cash_out_usd
-5y,last 5y,40% (standard),cycle,80,Accounts cycle for ever (every earlier backtest; not Lucid's rules),55594,28815,23194,-8732,6.4,68.6,103.2,0.0,,0,0.0,,,0.0,0.0,48.4,0.0,272688,-3285
-5y,last 5y,40% (standard),live,80,Moved live at the first 5th payout; live split 80% (main),51255,28815,23947,-8732,6.4,63.6,93.4,4.0,560,12,20.0,12.5,0,5.4,3.5,43.4,0.0,251403,-3285
-5y,last 5y,40% (standard),live,90,Moved live at the first 5th payout; live split 90%,51465,28815,23947,-8732,6.4,63.6,93.4,4.0,560,12,20.0,12.5,0,5.4,3.5,43.4,0.0,252433,-3285
-5y,last 5y,40% (standard),side,80,"Moved live; evals again 2 weeks after the first live loss, beside live (80%)",51255,28815,23947,-8732,6.4,63.6,93.4,4.0,560,12,20.0,12.5,0,5.4,3.5,43.4,0.0,251403,-3285
-5y,last 5y,40% (standard),stop4,80,"Each account closed after its 4th payout, so none is moved live",56095,28815,22444,-8732,6.4,70.3,101.3,0.0,,0,0.0,,,0.0,0.0,48.8,0.0,275147,-3285
-5y,last 5y,50% add-on,cycle,80,Accounts cycle for ever (every earlier backtest; not Lucid's rules),65169,40672,28427,-7938,6.1,70.2,97.6,0.0,,0,0.0,,,0.0,0.0,54.5,0.0,319666,-2852
-5y,last 5y,50% add-on,live,80,Moved live at the first 5th payout; live split 80% (main),63948,37228,32015,-7409,6.1,70.2,82.5,5.0,264,12,25.0,9.0,0,5.7,4.3,50.3,0.0,313677,-2852
-5y,last 5y,50% add-on,live,90,Moved live at the first 5th payout; live split 90%,64158,37803,32015,-7409,6.1,70.2,82.5,5.0,264,12,25.0,9.0,0,5.7,4.3,50.3,0.0,314707,-2852
-5y,last 5y,50% add-on,side,80,"Moved live; evals again 2 weeks after the first live loss, beside live (80%)",63948,37228,32015,-7409,6.1,70.2,82.5,5.0,264,12,25.0,9.0,0,5.7,4.3,50.3,0.0,313677,-2852
-5y,last 5y,50% add-on,stop4,80,"Each account closed after its 4th payout, so none is moved live",61681,40509,26937,-7938,6.1,70.2,97.2,0.0,,0,0.0,,,0.0,0.0,52.9,0.0,302554,-2852
-all,since 2019,40% (standard),cycle,80,Accounts cycle for ever (every earlier backtest; not Lucid's rules),55025,28506,18365,-8732,6.4,66.0,105.2,0.0,,0,0.0,,,0.0,0.0,46.4,0.0,374351,-2278
-all,since 2019,40% (standard),live,80,Moved live at the first 5th payout; live split 80% (main),49140,26470,18630,-8732,6.4,58.7,97.0,6.0,160,12,30.0,12.5,0,5.8,3.7,40.6,0.0,334313,-2278
-all,since 2019,40% (standard),live,90,Moved live at the first 5th payout; live split 90%,49291,26470,18630,-8732,6.4,58.7,97.0,6.0,160,12,30.0,12.5,0,5.8,3.7,40.6,0.0,335343,-2278
-all,since 2019,40% (standard),side,80,"Moved live; evals again 2 weeks after the first live loss, beside live (80%)",49140,26470,18630,-8732,6.4,58.7,97.0,6.0,160,12,30.0,12.5,0,5.8,3.7,40.6,0.0,334313,-2278
-all,since 2019,40% (standard),stop4,80,"Each account closed after its 4th payout, so none is moved live",54705,28506,18630,-8732,6.4,67.2,105.3,0.0,,0,0.0,,,0.0,0.0,45.9,0.0,372173,-2278
-all,since 2019,50% add-on,cycle,80,Accounts cycle for ever (every earlier backtest; not Lucid's rules),62270,40540,28427,-7938,7.1,66.6,98.0,0.0,,0,0.0,,,0.0,0.0,50.1,0.0,423654,-2084
-all,since 2019,50% add-on,live,80,Moved live at the first 5th payout; live split 80% (main),60671,37228,32015,-7409,7.1,66.6,86.5,6.0,514,12,30.0,8.5,0,4.5,3.7,46.6,0.0,412775,-2084
-all,since 2019,50% add-on,live,90,Moved live at the first 5th payout; live split 90%,60822,37803,32015,-7409,7.1,66.6,86.5,6.0,514,12,30.0,8.5,0,4.5,3.7,46.6,0.0,413806,-2084
-all,since 2019,50% add-on,side,80,"Moved live; evals again 2 weeks after the first live loss, beside live (80%)",60671,37228,32015,-7409,7.1,66.6,86.5,6.0,514,12,30.0,8.5,0,4.5,3.7,46.6,0.0,412775,-2084
-all,since 2019,50% add-on,stop4,80,"Each account closed after its 4th payout, so none is moved live",57563,34224,26937,-9967,8.3,65.4,103.6,0.0,,0,0.0,,,0.0,0.0,48.3,0.0,391631,-2084
+5y,last 5y,40% (standard),cycle,80,Accounts cycle for ever (every earlier backtest; not Lucid's rules),55510,29081,23276,-8114,6.1,65.3,100.7,0.0,,0,0.0,,,0.0,0.0,47.2,0.0,272275,-3285
+5y,last 5y,40% (standard),live,80,Moved live at the first 5th payout; live split 80% (main),52260,29081,23276,-8114,6.1,60.3,95.0,3.0,907,12,15.0,8.0,0,3.7,2.6,43.0,0.0,256333,-3285
+5y,last 5y,40% (standard),live,90,Moved live at the first 5th payout; live split 90%,52473,29081,23276,-8114,6.1,60.3,95.0,3.0,907,12,15.0,8.0,0,3.7,2.6,43.0,0.0,257377,-3285
+5y,last 5y,40% (standard),side,80,"Moved live; evals again 2 weeks after the first live loss, beside live (80%)",52260,29081,23276,-8114,6.1,60.3,95.0,3.0,907,12,15.0,8.0,0,3.7,2.6,43.0,0.0,256333,-3285
+5y,last 5y,40% (standard),stop4,80,"Each account closed after its 4th payout, so none is moved live",55669,29081,22752,-8644,6.4,65.3,99.7,0.0,,0,0.0,,,0.0,0.0,47.4,0.0,273057,-3285
+5y,last 5y,50% add-on,cycle,80,Accounts cycle for ever (every earlier backtest; not Lucid's rules),64094,44042,23499,-7938,6.1,71.8,99.3,0.0,,0,0.0,,,0.0,0.0,54.1,0.0,314392,-2852
+5y,last 5y,50% add-on,live,80,Moved live at the first 5th payout; live split 80% (main),65987,38651,28537,-7409,6.1,68.5,81.2,5.0,215,12,25.0,16.0,0,8.1,4.3,47.1,5.0,323687,-2852
+5y,last 5y,50% add-on,live,90,Moved live at the first 5th payout; live split 90%,66538,39229,28537,-7409,6.1,68.5,81.2,5.0,215,12,25.0,16.0,0,8.1,4.3,47.1,5.0,326387,-2852
+5y,last 5y,50% add-on,side,80,"Moved live; evals again 2 weeks after the first live loss, beside live (80%)",65987,38651,28537,-7409,6.1,68.5,81.2,5.0,215,12,25.0,16.0,0,8.1,4.3,47.1,5.0,323687,-2852
+5y,last 5y,50% add-on,stop4,80,"Each account closed after its 4th payout, so none is moved live",59253,41867,27188,-7938,6.1,70.2,99.1,0.0,,0,0.0,,,0.0,0.0,51.2,0.0,290636,-2852
+all,since 2019,40% (standard),cycle,80,Accounts cycle for ever (every earlier backtest; not Lucid's rules),55465,28772,18529,-8114,6.1,64.0,103.7,0.0,,0,0.0,,,0.0,0.0,45.9,0.0,377367,-2176
+all,since 2019,40% (standard),live,80,Moved live at the first 5th payout; live split 80% (main),50885,28636,18793,-8114,6.1,56.8,97.0,5.0,160,12,25.0,8.0,0,4.7,3.1,41.2,0.0,346206,-2176
+all,since 2019,40% (standard),live,90,Moved live at the first 5th payout; live split 90%,51038,28636,18793,-8114,6.1,56.8,97.0,5.0,160,12,25.0,8.0,0,4.7,3.1,41.2,0.0,347251,-2176
+all,since 2019,40% (standard),side,80,"Moved live; evals again 2 weeks after the first live loss, beside live (80%)",50885,28636,18793,-8114,6.1,56.8,97.0,5.0,160,12,25.0,8.0,0,4.7,3.1,41.2,0.0,346206,-2176
+all,since 2019,40% (standard),stop4,80,"Each account closed after its 4th payout, so none is moved live",54972,28772,18793,-8644,6.4,64.0,103.4,0.0,,0,0.0,,,0.0,0.0,45.8,0.0,374012,-2176
+all,since 2019,50% add-on,cycle,80,Accounts cycle for ever (every earlier backtest; not Lucid's rules),60954,39269,23499,-9702,8.3,66.6,102.5,0.0,,0,0.0,,,0.0,0.0,50.0,0.0,414709,-2080
+all,since 2019,50% add-on,live,80,Moved live at the first 5th payout; live split 80% (main),60475,37640,24238,-8644,8.3,64.1,87.1,7.0,194,12,35.0,8.0,0,6.5,4.4,44.4,0.0,411455,-2080
+all,since 2019,50% add-on,live,90,Moved live at the first 5th payout; live split 90%,60872,37881,24238,-8644,8.3,64.1,87.1,7.0,194,12,35.0,8.0,0,6.5,4.4,44.4,0.0,414154,-2080
+all,since 2019,50% add-on,side,80,"Moved live; evals again 2 weeks after the first live loss, beside live (80%)",60475,37640,24238,-8644,8.3,64.1,87.1,7.0,194,12,35.0,8.0,0,6.5,4.4,44.4,0.0,411455,-2080
+all,since 2019,50% add-on,stop4,80,"Each account closed after its 4th payout, so none is moved live",56083,35187,26248,-9261,8.3,65.4,104.6,0.0,,0,0.0,,,0.0,0.0,47.8,0.0,381578,-2080

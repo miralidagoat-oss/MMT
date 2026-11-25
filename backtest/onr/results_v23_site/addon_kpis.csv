@@ -1,26 +1,26 @@
 metric,label,current,addon,unit,source
 eval_price,Eval price (with the add-on: $88.20 + $10),88.2,98.2,usd,setup
-eval_pass,Eval pass rate (an eval started on every session),43.1,43.2,pct,report
+eval_pass,Eval pass rate (an eval started on every session),43.4,43.2,pct,report
 eval_days_median,"Sessions to pass, median",9.0,8.0,sessions,report
 eval_days_p90,"Sessions to pass, 90th percentile",19.0,16.0,sessions,report
 eval_fail_median,"Sessions to fail, median",6.0,6.0,sessions,report
 evals_per_funded,Evals bought per funded account,2.3,2.3,count,report
-fees_per_funded,Eval fees per funded account,205.0,227.0,usd,report
-funded_paid,Funded accounts that reach a payout,60.0,57.4,pct,report
+fees_per_funded,Eval fees per funded account,203.0,227.0,usd,report
+funded_paid,Funded accounts that reach a payout,60.4,58.2,pct,report
 funded_avg_payouts,"Payouts per funded account, average",1.2,1.1,count,report
-funded_avg_net,"Paid to you per funded account, average (after Lucid's 10%)",1649.0,1351.0,usd,report
-slot_first_median,"One account slot: days from the first eval to the first payout, median",58.0,54.0,days,report
+funded_avg_net,"Paid to you per funded account, average (after Lucid's 10%)",1662.0,1372.0,usd,report
+slot_first_median,"One account slot: days from the first eval to the first payout, median",58.0,53.0,days,report
 slot_within_30,One account slot: first payout within 30 days,18.3,22.9,pct,report
-slot_within_90,One account slot: first payout within 90 days,73.1,75.9,pct,report
-slot_evals_before,"One account slot: evals bought before the first payout, average",3.8,4.3,count,report
-pool_net_year,5 funded + 5 evals: net a year,56095.0,60709.0,usd,pool
-pool_worst_year,5 funded + 5 evals: worst full year (2022-2025),28815.0,39619.0,usd,pool
-pool_worst_12m,5 funded + 5 evals: worst 12 months,22444.0,25717.0,usd,pool
+slot_within_90,One account slot: first payout within 90 days,73.1,78.6,pct,report
+slot_evals_before,"One account slot: evals bought before the first payout, average",3.7,4.2,count,report
+pool_net_year,5 funded + 5 evals: net a year,55669.0,58262.0,usd,pool
+pool_worst_year,5 funded + 5 evals: worst full year (2022-2025),29081.0,40987.0,usd,pool
+pool_worst_12m,5 funded + 5 evals: worst 12 months,22752.0,26013.0,usd,pool
 pool_gap,5 funded + 5 evals: longest wait for a payout,6.44,6.14,months,pool
-pool_months_paid,5 funded + 5 evals: months with a payout,70.31,70.17,pct,pool
-pool_deepest_drop,5 funded + 5 evals: deepest drop in cumulative net,-8732.0,-8838.0,usd,pool
-pool_total,"5 funded + 5 evals: total net, 5 years",275147.0,297786.0,usd,pool
-pool_cash_low,5 funded + 5 evals: most cash out of pocket,-3285.0,-3217.0,usd,pool
-pool_payouts,5 funded + 5 evals: payouts in 5 years,246.0,266.9,count,pool
-pool_evals_year,5 funded + 5 evals: evals bought a year,101.3,97.2,count,pool
-pool_pass_pct,5 funded + 5 evals: share of the evals it bought that passed,45.17,45.85,pct,pool
+pool_months_paid,5 funded + 5 evals: months with a payout,65.29,70.17,pct,pool
+pool_deepest_drop,5 funded + 5 evals: deepest drop in cumulative net,-8644.0,-8838.0,usd,pool
+pool_total,"5 funded + 5 evals: total net, 5 years",273057.0,285774.0,usd,pool
+pool_cash_low,5 funded + 5 evals: most cash out of pocket,-3285.0,-3214.0,usd,pool
+pool_payouts,5 funded + 5 evals: payouts in 5 years,239.0,258.0,count,pool
+pool_evals_year,5 funded + 5 evals: evals bought a year,99.7,99.1,count,pool
+pool_pass_pct,5 funded + 5 evals: share of the evals it bought that passed,45.3,45.79,pct,pool

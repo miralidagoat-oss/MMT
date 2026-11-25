@@ -8,7 +8,7 @@ Rules and costs are topstep_sim.py's (ek(50), fk(50, "standard")):
   Combine: $3,000 target, best day at most 55% of the profit, end-of-day trailing $2,000 max loss that stops at the start
   balance, at most 50 micros. XFA: starts at $0, the same max loss locking at $0 and at $0 after a payout, at most
   6 micros a leg, half the balance up to $2,000 after 5 winning days of $150 once the account is $1,000 up, no payout
-  limit. $1.34 per MNQ round turn, Topstep keeps 10% of each payout, $95 per Combine when it is bought and again every
+  limit. account.COMM_RT ($1.00) per MNQ round turn, Topstep keeps 10% of each payout, $95 per Combine when it is bought and again every
   30 days while it is open, no activation fee (the No Activation Fee path).
 Definitions as report50k.py's, window Nov 15 2021 to the data's last session:
   book          one funded account trading every session (a fresh XFA each day, full $1,200 day budget). Topstep's
@@ -173,7 +173,7 @@ def main(fd, lucid_dir, out):
     lucid = json.load(open(os.path.join(lucid_dir, "summary.json")))
     assert lucid["window"] == [W0, day(days[-1])] and lucid["nq_file"] == "NQFUT.npz", lucid["window"]
     summary = dict(window=[day(days[k0]), day(days[-1])], size="Topstep 50K (Trading Combine and Express Funded Account)",
-                   commission=1.34, eval_price=PRICE, fee_path="No Activation Fee: $95 per Combine per 30 days, no activation fee",
+                   commission=account.COMM_RT, eval_price=PRICE, fee_path="No Activation Fee: $95 per Combine per 30 days, no activation fee",
                    payout_path="Standard: 5 winning days of $150+, half the balance up to $2,000", split=SPLIT,
                    payout_limit="none", nq_file="NQFUT.npz", nq_bar_minutes=5)
     print(f"window {day(days[k0])} -> {day(days[-1])} ({len(wdays)} sessions)", flush=True)
@@ -289,7 +289,7 @@ def main(fd, lucid_dir, out):
     offs = list(range(0, 30, 3))
     with mp.get_context("fork").Pool(4) as pool:
         paths = pool.map(pool_job, [(k0 + o, {}, {}) for o in offs])
-        stress = pool.map(pool_job, [(k0 + o, dict(comm=2.0, slip=0.25), dict(comm=2.0, slip=0.25)) for o in offs[:5]])
+        stress = pool.map(pool_job, [(k0 + o, dict(comm=2 * account.COMM_RT, slip=0.25), dict(comm=2 * account.COMM_RT, slip=0.25)) for o in offs[:5]])
     runs = json.load(open(os.path.join(HERE, "results_topstep", "runs.json")))
     ref = runs[f"fut|5y|0|{SIZE}|{PATH}"][FEE_PATH]
     assert abs(paths[0]["total"] - ref["total"]) < 0.01, (paths[0]["total"], ref["total"])  # topstep_sim.py, offset 0

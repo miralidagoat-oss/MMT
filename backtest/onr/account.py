@@ -41,6 +41,10 @@ FEE_TAG = "" if RULES[50]["price"] == 115.0 else "_fee" + f"{RULES[50]['price']:
 USER_EVAL = {25: 50.30, 50: 88.20, 100: 150.50, 150: 226.10}
 USER_ADDON = 10.0
 USER_TAG = "_fee" + f"{USER_EVAL[50]:.2f}".replace(".", "")  # the folders of runs at the user's 50K price
+# The user's MNQ commission per round turn (Nov 25 2026): $0.50 to enter and $0.50 to exit one contract. It was $1.34,
+# a typical prop-firm all-in rate; the research rounds 1-6 (results_r3 ... results_r6) keep it as history. Every script
+# that prices the user's plan reads this.
+COMM_RT = 1.00
 
 
 def eval_bracket(adr, cushion, best, pnl, cons, span, comm_aware=False, comm=1.0, size=25, k=1.0, R=None, dll=None):

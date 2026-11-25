@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full backtest of the ONR Book v2.2 default setup: Lucid Flex 50K, max-allowed payouts, $1.34 per MNQ round turn.
+"""Full backtest of the ONR Book v2.2 default setup: Lucid Flex 50K, max-allowed payouts, account.COMM_RT per MNQ round turn ($1.00).
 
 Primary window: the last 4 years (Nov 14 2022 -> Nov 13 2026). 2011-2026 and real MNQ futures (Sep-Nov 2026) as context.
 usage: report50k.py DATA_DIR OUT_DIR [WINDOW_START]   (writes CSV tables + summary.json into OUT_DIR and prints the
@@ -30,7 +30,7 @@ account.pyramid = functools.lru_cache(maxsize=None)(engine.pyramid)
 account.ib_breakout = functools.lru_cache(maxsize=None)(engine.ib_breakout)
 
 SIZE = 50
-COMM = 1.34
+COMM = account.COMM_RT
 FEE = RULES[SIZE]["price"]
 # ONR_EVAL_CONS=0.5: evals bought with Lucid's paid 50% consistency add-on (pass rule and the bracket's target cap use
 # 50% instead of 40%). Unset, E_KW is exactly as before.

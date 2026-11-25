@@ -1,16 +1,16 @@
 period,option,evals_finished,evals_passed,pass_pct,median_sessions_to_pass
-since 2019-12-20,"default (40% rule, wide bracket, news skip)",1787,737,41.2,9.0
-since 2019-12-20,50% consistency add-on,1786,737,41.3,8.0
-since 2019-12-20,medium bracket x0.75,1787,668,37.4,7.0
-since 2019-12-20,tight bracket x0.5,1787,678,37.9,7.0
-since 2019-12-20,no news skip,1784,743,41.6,9.0
-2019-12-20 - 2021-11-14,"default (40% rule, wide bracket, news skip)",491,179,36.5,10.0
-2019-12-20 - 2021-11-14,50% consistency add-on,491,177,36.0,8.0
+since 2019-12-20,"default (40% rule, wide bracket, news skip)",1787,744,41.6,9.0
+since 2019-12-20,50% consistency add-on,1786,738,41.3,8.0
+since 2019-12-20,medium bracket x0.75,1787,670,37.5,7.0
+since 2019-12-20,tight bracket x0.5,1787,686,38.4,7.0
+since 2019-12-20,no news skip,1784,749,42.0,9.0
+2019-12-20 - 2021-11-14,"default (40% rule, wide bracket, news skip)",491,181,36.9,10.0
+2019-12-20 - 2021-11-14,50% consistency add-on,491,178,36.3,8.0
 2019-12-20 - 2021-11-14,medium bracket x0.75,491,134,27.3,7.0
-2019-12-20 - 2021-11-14,tight bracket x0.5,491,187,38.1,8.0
-2019-12-20 - 2021-11-14,no news skip,491,183,37.3,9.0
-last 5 years,"default (40% rule, wide bracket, news skip)",1296,558,43.1,9.0
+2019-12-20 - 2021-11-14,tight bracket x0.5,491,191,38.9,8.0
+2019-12-20 - 2021-11-14,no news skip,491,190,38.7,10.0
+last 5 years,"default (40% rule, wide bracket, news skip)",1296,563,43.4,9.0
 last 5 years,50% consistency add-on,1295,560,43.2,8.0
-last 5 years,medium bracket x0.75,1296,534,41.2,7.0
-last 5 years,tight bracket x0.5,1296,491,37.9,6.0
-last 5 years,no news skip,1293,560,43.3,9.0
+last 5 years,medium bracket x0.75,1296,536,41.4,7.0
+last 5 years,tight bracket x0.5,1296,495,38.2,6.0
+last 5 years,no news skip,1293,559,43.2,9.0

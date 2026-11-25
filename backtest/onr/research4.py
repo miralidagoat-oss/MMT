@@ -15,7 +15,8 @@ Part 2 (decisions): families T (eval-buying throttle), R (risk level), V (eval r
   against BASE and four placebos, with the decision rule of PREREG_R4.md applied mechanically.
 
 The two instrumented simulators reproduce portfolio() and pool() exactly (checked at start-up: same payouts, same
-eval purchases). Lucid Flex 50K, $1.34 per MNQ round turn, the 50K eval price of account.RULES ($115 list;
+eval purchases). Lucid Flex 50K, account.COMM_RT per MNQ round turn ($1.34 in the round-4 study; the user's $1.00
+since Nov 25 2026), the 50K eval price of account.RULES ($115 list;
 ONR_EVAL_FEE_50K sets another), 90% split, maximum-allowed payouts.
 """
 import csv
@@ -28,14 +29,14 @@ from multiprocessing import Pool as MP
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from account import RULES, EvalAccount, FundedAccount  # noqa: E402
+from account import COMM_RT, RULES, EvalAccount, FundedAccount  # noqa: E402
 from engine import Sessions, load_npz  # noqa: E402
 from portfolio import pool, portfolio  # noqa: E402
 
 FEE = RULES[50]["price"]
 SPLIT = 0.9
-E_KW = dict(improved=True, comm=1.34, size=50)
-F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=1.34, size=50, payout_max=True)
+E_KW = dict(improved=True, comm=COMM_RT, size=50)
+F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM_RT, size=50, payout_max=True)
 OFFSETS = tuple(range(0, 60, 5))  # 12 start dates inside the first 3 months of each window
 
 _G = {}

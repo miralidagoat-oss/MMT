@@ -5,7 +5,7 @@ evals_passed,Evals passed,34,33,count
 eval_pass,Eval pass rate,66.7,66.0,pct
 slot_payouts,One account bought on the first day: payouts,2,1,count
 slot_evals,One account bought on the first day: evals bought,3,5,count
-slot_net,One account bought on the first day: net to you,1780.33,12.33,usd
+slot_net,One account bought on the first day: net to you,1792.27,18.45,usd
 pool_payouts,5 funded + 5 evals: payouts,10,10,count
 pool_evals,5 funded + 5 evals: evals bought,16,25,count
-pool_net,5 funded + 5 evals: net to you,8813.46,2410.79,usd
+pool_net,5 funded + 5 evals: net to you,8873.13,2461.28,usd

@@ -1,17 +1,17 @@
 metric,label,fut_current,fut_addon,unit
-eval_pass,Eval pass rate (an eval started on every session),41.2,41.3,pct
+eval_pass,Eval pass rate (an eval started on every session),41.6,41.3,pct
 eval_days_median,"Sessions to pass, median",9.0,8.0,sessions
-funded_paid,Funded accounts that reach a payout,61.8,60.5,pct
-funded_avg_net,"Paid to you per funded account, average",1927.0,1696.0,usd
-slot_first_median,"One account slot: first payout, median",59.0,53.0,days
-slot_within_90,One account slot: first payout within 90 days,69.4,72.8,pct
-pool_net_year,5 funded + 5 evals: net a year (median of 10 start dates),55014.0,62545.0,usd
-pool_worst_12m,5 funded + 5 evals: worst 12 months,18365.0,28427.0,usd
-pool_gap,5 funded + 5 evals: longest wait for a payout,6.4,7.1,months
-pool_months_paid,5 funded + 5 evals: months with a payout,65.9,67.0,pct
+funded_paid,Funded accounts that reach a payout,62.2,61.1,pct
+funded_avg_net,"Paid to you per funded account, average",1961.0,1737.0,usd
+slot_first_median,"One account slot: first payout, median",58.0,52.0,days
+slot_within_90,One account slot: first payout within 90 days,71.2,74.6,pct
+pool_net_year,5 funded + 5 evals: net a year (median of 10 start dates),55983.0,61535.0,usd
+pool_worst_12m,5 funded + 5 evals: worst 12 months,18529.0,23499.0,usd
+pool_gap,5 funded + 5 evals: longest wait for a payout,6.1,8.3,months
+pool_months_paid,5 funded + 5 evals: months with a payout,64.3,67.0,pct
 pool_years_positive,5 funded + 5 evals: full years positive (2020-2025),100.0,100.0,pct
-pool_total,5 funded + 5 evals: total over the period (first start date),378937.0,430869.0,usd
-pool_max_dd,5 funded + 5 evals: deepest drop (first start date),-8379.0,-7938.0,usd
+pool_total,5 funded + 5 evals: total over the period (first start date),385620.0,423231.0,usd
+pool_max_dd,5 funded + 5 evals: deepest drop (first start date),-8114.0,-8732.0,usd
 stress_net_year,2x commission + 1 tick slippage: net a year,52451.0,55341.0,usd
-book_net_year,One funded account trading every day: net a year,21420.0,21420.0,usd
-book_worst_day,One funded account trading every day: worst day,-1306.0,-1306.0,usd
+book_net_year,One funded account trading every day: net a year,21857.0,21857.0,usd
+book_worst_day,One funded account trading every day: worst day,-1304.0,-1304.0,usd

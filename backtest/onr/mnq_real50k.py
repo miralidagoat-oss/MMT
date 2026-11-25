@@ -19,14 +19,14 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from account import RULES, EvalAccount, FundedAccount, funded_size, run_eval  # noqa: E402
+from account import COMM_RT, RULES, EvalAccount, FundedAccount, funded_size, run_eval  # noqa: E402
 from engine import Sessions, adr_seed, load_npz, rth_sessions  # noqa: E402
 from portfolio import pool  # noqa: E402
 
 CONS = float(os.environ.get("ONR_EVAL_CONS", "0.4"))
 MAXPAY = int(os.environ.get("ONR_MAX_PAY", "5"))
-E_KW = dict(improved=True, comm=1.34, size=50, **({} if CONS == 0.4 else dict(cons=CONS)))
-F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=1.34, size=50, payout_max=True,
+E_KW = dict(improved=True, comm=COMM_RT, size=50, **({} if CONS == 0.4 else dict(cons=CONS)))
+F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, comm=COMM_RT, size=50, payout_max=True,
             **({} if MAXPAY == 5 else dict(max_pay=MAXPAY)))
 FEE = RULES[50]["price"]
 LEG = {"on": "Overnight", "pyr": "Pyramid", "ib": "IB breakout"}

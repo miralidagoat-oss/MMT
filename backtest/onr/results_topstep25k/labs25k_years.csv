@@ -1,29 +1,29 @@
 window_id,payout_path,year,year_label,net_median_usd,net_low_usd,net_high_usd
 5y,Standard payouts (5 days of $150),2021,2021 (from Nov 15),-375,-750,-300
-5y,Standard payouts (5 days of $150),2022,2022,12876,12876,13251
-5y,Standard payouts (5 days of $150),2023,2023,14466,14466,14466
-5y,Standard payouts (5 days of $150),2024,2024,47521,47521,47521
-5y,Standard payouts (5 days of $150),2025,2025,33886,33886,33886
-5y,Standard payouts (5 days of $150),2026,2026 (to Nov 20),51006,51006,51006
+5y,Standard payouts (5 days of $150),2022,2022,13310,13310,13685
+5y,Standard payouts (5 days of $150),2023,2023,10091,10091,10091
+5y,Standard payouts (5 days of $150),2024,2024,47884,47884,47884
+5y,Standard payouts (5 days of $150),2025,2025,35096,35096,35096
+5y,Standard payouts (5 days of $150),2026,2026 (to Nov 20),51827,51827,51827
 5y,Consistency payouts (40%),2021,2021 (from Nov 15),-375,-750,-300
-5y,Consistency payouts (40%),2022,2022,6679,6679,7054
-5y,Consistency payouts (40%),2023,2023,26450,26450,26450
-5y,Consistency payouts (40%),2024,2024,57301,57301,57301
-5y,Consistency payouts (40%),2025,2025,27514,27514,27514
-5y,Consistency payouts (40%),2026,2026 (to Nov 20),41182,41182,41182
+5y,Consistency payouts (40%),2022,2022,6900,6900,7275
+5y,Consistency payouts (40%),2023,2023,31877,31877,31877
+5y,Consistency payouts (40%),2024,2024,49606,49606,49606
+5y,Consistency payouts (40%),2025,2025,31394,31394,31394
+5y,Consistency payouts (40%),2026,2026 (to Nov 20),38637,38637,38637
 2019,Standard payouts (5 days of $150),2019,2019 (from Dec 20),-262,-375,-150
-2019,Standard payouts (5 days of $150),2020,2020,12358,10787,16480
-2019,Standard payouts (5 days of $150),2021,2021,31382,31382,31382
-2019,Standard payouts (5 days of $150),2022,2022,12876,12876,12876
-2019,Standard payouts (5 days of $150),2023,2023,14466,14466,14466
-2019,Standard payouts (5 days of $150),2024,2024,47521,47521,47521
-2019,Standard payouts (5 days of $150),2025,2025,33886,33886,33886
-2019,Standard payouts (5 days of $150),2026,2026 (to Nov 20),51006,51006,51006
+2019,Standard payouts (5 days of $150),2020,2020,19656,18063,24714
+2019,Standard payouts (5 days of $150),2021,2021,29240,29240,29240
+2019,Standard payouts (5 days of $150),2022,2022,13310,13310,13310
+2019,Standard payouts (5 days of $150),2023,2023,10091,10091,10091
+2019,Standard payouts (5 days of $150),2024,2024,47884,47884,47884
+2019,Standard payouts (5 days of $150),2025,2025,35096,35096,35096
+2019,Standard payouts (5 days of $150),2026,2026 (to Nov 20),51827,51827,51827
 2019,Consistency payouts (40%),2019,2019 (from Dec 20),-262,-375,-150
-2019,Consistency payouts (40%),2020,2020,11606,10359,19513
-2019,Consistency payouts (40%),2021,2021,52412,52412,55861
-2019,Consistency payouts (40%),2022,2022,6679,6679,6679
-2019,Consistency payouts (40%),2023,2023,26450,26450,26450
-2019,Consistency payouts (40%),2024,2024,57301,57301,57301
-2019,Consistency payouts (40%),2025,2025,27514,27514,27514
-2019,Consistency payouts (40%),2026,2026 (to Nov 20),41182,41182,41182
+2019,Consistency payouts (40%),2020,2020,11739,10475,24714
+2019,Consistency payouts (40%),2021,2021,54117,54117,55065
+2019,Consistency payouts (40%),2022,2022,6900,6900,6900
+2019,Consistency payouts (40%),2023,2023,31877,31877,31877
+2019,Consistency payouts (40%),2024,2024,49606,49606,49606
+2019,Consistency payouts (40%),2025,2025,31394,31394,31394
+2019,Consistency payouts (40%),2026,2026 (to Nov 20),38637,38637,38637

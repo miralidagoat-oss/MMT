@@ -1,113 +1,113 @@
 window_id,config,window,size,rule,year,year_label,net_median_usd,net_low_usd,net_high_usd
 5y,25-addon,"futures, last 5 years",25K,50% add-on,2021,2021 (from Nov 15),-844,-1327,-241
-5y,25-addon,"futures, last 5 years",25K,50% add-on,2022,2022,27555,27133,28460
-5y,25-addon,"futures, last 5 years",25K,50% add-on,2023,2023,16859,16859,16859
-5y,25-addon,"futures, last 5 years",25K,50% add-on,2024,2024,41414,41414,41414
-5y,25-addon,"futures, last 5 years",25K,50% add-on,2025,2025,27881,27881,27881
-5y,25-addon,"futures, last 5 years",25K,50% add-on,2026,2026 (to Nov 20),32694,32694,32694
+5y,25-addon,"futures, last 5 years",25K,50% add-on,2022,2022,27000,26940,27904
+5y,25-addon,"futures, last 5 years",25K,50% add-on,2023,2023,18142,18142,18142
+5y,25-addon,"futures, last 5 years",25K,50% add-on,2024,2024,41347,41347,41347
+5y,25-addon,"futures, last 5 years",25K,50% add-on,2025,2025,34111,34111,34111
+5y,25-addon,"futures, last 5 years",25K,50% add-on,2026,2026 (to Nov 20),32395,32395,32395
 5y,25-40,"futures, last 5 years",25K,40% rule,2021,2021 (from Nov 15),-654,-1358,-201
-5y,25-40,"futures, last 5 years",25K,40% rule,2022,2022,18601,18500,19405
-5y,25-40,"futures, last 5 years",25K,40% rule,2023,2023,12682,12682,12682
-5y,25-40,"futures, last 5 years",25K,40% rule,2024,2024,50772,50772,50772
-5y,25-40,"futures, last 5 years",25K,40% rule,2025,2025,30787,30787,30787
-5y,25-40,"futures, last 5 years",25K,40% rule,2026,2026 (to Nov 20),35077,35077,35077
+5y,25-40,"futures, last 5 years",25K,40% rule,2022,2022,18935,18834,19740
+5y,25-40,"futures, last 5 years",25K,40% rule,2023,2023,13512,13512,13512
+5y,25-40,"futures, last 5 years",25K,40% rule,2024,2024,51098,51098,51098
+5y,25-40,"futures, last 5 years",25K,40% rule,2025,2025,29003,29003,29003
+5y,25-40,"futures, last 5 years",25K,40% rule,2026,2026 (to Nov 20),34256,34256,34256
 5y,50-addon,"futures, last 5 years",50K,50% add-on,2021,2021 (from Nov 15),-1375,-2651,-393
-5y,50-addon,"futures, last 5 years",50K,50% add-on,2022,2022,60057,58033,61530
-5y,50-addon,"futures, last 5 years",50K,50% add-on,2023,2023,45149,45149,45149
-5y,50-addon,"futures, last 5 years",50K,50% add-on,2024,2024,91685,91685,91685
-5y,50-addon,"futures, last 5 years",50K,50% add-on,2025,2025,39619,39619,39619
-5y,50-addon,"futures, last 5 years",50K,50% add-on,2026,2026 (to Nov 20),62075,62075,62075
+5y,50-addon,"futures, last 5 years",50K,50% add-on,2022,2022,49041,48942,50514
+5y,50-addon,"futures, last 5 years",50K,50% add-on,2023,2023,45703,45703,45703
+5y,50-addon,"futures, last 5 years",50K,50% add-on,2024,2024,92047,92047,92047
+5y,50-addon,"futures, last 5 years",50K,50% add-on,2025,2025,40987,40987,40987
+5y,50-addon,"futures, last 5 years",50K,50% add-on,2026,2026 (to Nov 20),58531,58531,58531
 5y,50-40,"futures, last 5 years",50K,40% rule,2021,2021 (from Nov 15),-1235,-2381,-353
-5y,50-40,"futures, last 5 years",50K,40% rule,2022,2022,28506,28418,30093
-5y,50-40,"futures, last 5 years",50K,40% rule,2023,2023,40160,40160,40160
-5y,50-40,"futures, last 5 years",50K,40% rule,2024,2024,91252,91252,91252
-5y,50-40,"futures, last 5 years",50K,40% rule,2025,2025,37250,37250,37250
-5y,50-40,"futures, last 5 years",50K,40% rule,2026,2026 (to Nov 20),78443,78443,78443
+5y,50-40,"futures, last 5 years",50K,40% rule,2022,2022,28772,28684,30360
+5y,50-40,"futures, last 5 years",50K,40% rule,2023,2023,40740,40740,40740
+5y,50-40,"futures, last 5 years",50K,40% rule,2024,2024,91759,91759,91759
+5y,50-40,"futures, last 5 years",50K,40% rule,2025,2025,36176,36176,36176
+5y,50-40,"futures, last 5 years",50K,40% rule,2026,2026 (to Nov 20),76071,76071,76071
 5y,100-addon,"futures, last 5 years",100K,50% add-on,2021,2021 (from Nov 15),-2889,-4815,-642
-5y,100-addon,"futures, last 5 years",100K,50% add-on,2022,2022,70888,70727,75585
-5y,100-addon,"futures, last 5 years",100K,50% add-on,2023,2023,57019,57019,57019
-5y,100-addon,"futures, last 5 years",100K,50% add-on,2024,2024,114291,114291,114291
-5y,100-addon,"futures, last 5 years",100K,50% add-on,2025,2025,48941,48941,48941
-5y,100-addon,"futures, last 5 years",100K,50% add-on,2026,2026 (to Nov 20),77256,77256,77256
+5y,100-addon,"futures, last 5 years",100K,50% add-on,2022,2022,71578,71417,76249
+5y,100-addon,"futures, last 5 years",100K,50% add-on,2023,2023,59697,59697,59697
+5y,100-addon,"futures, last 5 years",100K,50% add-on,2024,2024,95923,95923,95923
+5y,100-addon,"futures, last 5 years",100K,50% add-on,2025,2025,48691,48691,48691
+5y,100-addon,"futures, last 5 years",100K,50% add-on,2026,2026 (to Nov 20),76203,76203,76203
 5y,100-40,"futures, last 5 years",100K,40% rule,2021,2021 (from Nov 15),-2107,-4064,-602
-5y,100-40,"futures, last 5 years",100K,40% rule,2022,2022,58578,58428,67205
-5y,100-40,"futures, last 5 years",100K,40% rule,2023,2023,55589,55589,55589
-5y,100-40,"futures, last 5 years",100K,40% rule,2024,2024,103618,103618,103618
-5y,100-40,"futures, last 5 years",100K,40% rule,2025,2025,49417,49417,49417
-5y,100-40,"futures, last 5 years",100K,40% rule,2026,2026 (to Nov 20),63237,63237,63237
+5y,100-40,"futures, last 5 years",100K,40% rule,2022,2022,58500,58349,67665
+5y,100-40,"futures, last 5 years",100K,40% rule,2023,2023,58763,58763,58763
+5y,100-40,"futures, last 5 years",100K,40% rule,2024,2024,101942,101942,101942
+5y,100-40,"futures, last 5 years",100K,40% rule,2025,2025,51737,51737,51737
+5y,100-40,"futures, last 5 years",100K,40% rule,2026,2026 (to Nov 20),62756,62756,62756
 5y,150-addon,"futures, last 5 years",150K,50% add-on,2021,2021 (from Nov 15),-4250,-7319,-944
-5y,150-addon,"futures, last 5 years",150K,50% add-on,2022,2022,104768,103002,108309
-5y,150-addon,"futures, last 5 years",150K,50% add-on,2023,2023,59490,59490,59490
-5y,150-addon,"futures, last 5 years",150K,50% add-on,2024,2024,129746,129746,129746
-5y,150-addon,"futures, last 5 years",150K,50% add-on,2025,2025,102119,102119,102119
-5y,150-addon,"futures, last 5 years",150K,50% add-on,2026,2026 (to Nov 20),82911,82911,82911
+5y,150-addon,"futures, last 5 years",150K,50% add-on,2022,2022,101291,99518,104833
+5y,150-addon,"futures, last 5 years",150K,50% add-on,2023,2023,59699,59699,59699
+5y,150-addon,"futures, last 5 years",150K,50% add-on,2024,2024,130316,130316,130316
+5y,150-addon,"futures, last 5 years",150K,50% add-on,2025,2025,103864,103864,103864
+5y,150-addon,"futures, last 5 years",150K,50% add-on,2026,2026 (to Nov 20),83030,83030,83030
 5y,150-40,"futures, last 5 years",150K,40% rule,2021,2021 (from Nov 15),-4070,-6783,-904
-5y,150-40,"futures, last 5 years",150K,40% rule,2022,2022,91898,91672,96764
-5y,150-40,"futures, last 5 years",150K,40% rule,2023,2023,64727,64727,64727
-5y,150-40,"futures, last 5 years",150K,40% rule,2024,2024,126464,126464,126464
-5y,150-40,"futures, last 5 years",150K,40% rule,2025,2025,92639,92639,92639
-5y,150-40,"futures, last 5 years",150K,40% rule,2026,2026 (to Nov 20),78364,78364,78364
+5y,150-40,"futures, last 5 years",150K,40% rule,2022,2022,77317,76534,80709
+5y,150-40,"futures, last 5 years",150K,40% rule,2023,2023,64939,64939,64939
+5y,150-40,"futures, last 5 years",150K,40% rule,2024,2024,126936,126936,126936
+5y,150-40,"futures, last 5 years",150K,40% rule,2025,2025,90642,90642,90642
+5y,150-40,"futures, last 5 years",150K,40% rule,2026,2026 (to Nov 20),84106,84106,84106
 2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2019,2019 (from Dec 20),-271,-422,-121
-2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2020,2020,12127,9961,14063
-2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2021,2021,20988,20988,20988
-2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2022,2022,27555,27555,27555
-2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2023,2023,16859,16859,16859
-2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2024,2024,41414,41414,41414
-2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2025,2025,27881,27881,27881
-2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2026,2026 (to Nov 20),32694,32694,32694
+2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2020,2020,12062,9522,13617
+2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2021,2021,23346,23346,23346
+2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2022,2022,27000,27000,27000
+2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2023,2023,18142,18142,18142
+2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2024,2024,41347,41347,41347
+2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2025,2025,34111,34111,34111
+2019,25-addon,"futures, from Dec 20 2019",25K,50% add-on,2026,2026 (to Nov 20),32395,32395,32395
 2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2019,2019 (from Dec 20),-226,-352,-101
-2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2020,2020,11851,10044,14972
-2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2021,2021,22456,22456,22456
-2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2022,2022,18601,18601,18601
-2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2023,2023,12682,12682,12682
-2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2024,2024,50772,50772,50772
-2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2025,2025,30787,30787,30787
-2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2026,2026 (to Nov 20),35077,35077,35077
+2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2020,2020,11987,10172,13974
+2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2021,2021,22772,22772,22772
+2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2022,2022,18935,18935,18935
+2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2023,2023,13512,13512,13512
+2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2024,2024,51098,51098,51098
+2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2025,2025,29003,29003,29003
+2019,25-40,"futures, from Dec 20 2019",25K,40% rule,2026,2026 (to Nov 20),34256,34256,34256
 2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2019,2019 (from Dec 20),-442,-687,-196
-2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2020,2020,29413,27498,42389
-2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2021,2021,52155,52155,52155
-2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2022,2022,60057,60057,60057
-2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2023,2023,45149,45149,45149
-2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2024,2024,91685,91685,91685
-2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2025,2025,39619,39619,39619
-2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2026,2026 (to Nov 20),62075,62075,62075
+2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2020,2020,30098,28183,45582
+2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2021,2021,52441,52441,52441
+2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2022,2022,49041,49041,49041
+2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2023,2023,45703,45703,45703
+2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2024,2024,92047,92047,92047
+2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2025,2025,40987,40987,40987
+2019,50-addon,"futures, from Dec 20 2019",50K,50% add-on,2026,2026 (to Nov 20),58531,58531,58531
 2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2019,2019 (from Dec 20),-397,-617,-176
-2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2020,2020,32651,30755,40725
-2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2021,2021,61571,61571,61571
-2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2022,2022,28506,28506,28506
-2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2023,2023,40160,40160,40160
-2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2024,2024,91252,91252,91252
-2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2025,2025,37250,37250,37250
-2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2026,2026 (to Nov 20),78443,78443,78443
+2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2020,2020,33349,31453,47220
+2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2021,2021,62672,62672,62672
+2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2022,2022,28772,28772,28772
+2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2023,2023,40740,40740,40740
+2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2024,2024,91759,91759,91759
+2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2025,2025,36176,36176,36176
+2019,50-40,"futures, from Dec 20 2019",50K,40% rule,2026,2026 (to Nov 20),76071,76071,76071
 2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2019,2019 (from Dec 20),-722,-1124,-321
-2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2020,2020,32958,29507,65766
-2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2021,2021,73248,73248,73248
-2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2022,2022,70888,70888,70888
-2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2023,2023,57019,57019,57019
-2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2024,2024,114291,114291,114291
-2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2025,2025,48941,48941,48941
-2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2026,2026 (to Nov 20),77256,77256,77256
+2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2020,2020,32142,28691,65315
+2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2021,2021,72837,72837,72837
+2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2022,2022,71578,71578,71578
+2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2023,2023,59697,59697,59697
+2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2024,2024,95923,95923,95923
+2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2025,2025,48691,48691,48691
+2019,100-addon,"futures, from Dec 20 2019",100K,50% add-on,2026,2026 (to Nov 20),76203,76203,76203
 2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2019,2019 (from Dec 20),-677,-1054,-301
-2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2020,2020,34339,30501,42804
-2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2021,2021,57465,57465,57465
-2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2022,2022,58578,58578,58578
-2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2023,2023,55589,55589,55589
-2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2024,2024,103618,103618,103618
-2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2025,2025,49417,49417,49417
-2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2026,2026 (to Nov 20),63237,63237,63237
+2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2020,2020,30871,27033,39337
+2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2021,2021,56246,56246,56246
+2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2022,2022,58500,58500,58500
+2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2023,2023,58763,58763,58763
+2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2024,2024,101942,101942,101942
+2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2025,2025,51737,51737,51737
+2019,100-40,"futures, from Dec 20 2019",100K,40% rule,2026,2026 (to Nov 20),62756,62756,62756
 2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2019,2019 (from Dec 20),-1062,-1653,-472
-2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2020,2020,35066,29990,60716
-2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2021,2021,85299,85299,85299
-2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2022,2022,104768,104768,104768
-2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2023,2023,59490,59490,59490
-2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2024,2024,129746,129746,129746
-2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2025,2025,102119,102119,102119
-2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2026,2026 (to Nov 20),82911,82911,82911
+2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2020,2020,30111,25035,62674
+2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2021,2021,96820,96820,96820
+2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2022,2022,101291,101291,101291
+2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2023,2023,59699,59699,59699
+2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2024,2024,130316,130316,130316
+2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2025,2025,103864,103864,103864
+2019,150-addon,"futures, from Dec 20 2019",150K,50% add-on,2026,2026 (to Nov 20),83030,83030,83030
 2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2019,2019 (from Dec 20),-1017,-1583,-452
-2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2020,2020,40850,35763,52202
-2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2021,2021,64689,64689,64689
-2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2022,2022,91898,91898,91898
-2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2023,2023,64727,64727,64727
-2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2024,2024,126464,126464,126464
-2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2025,2025,92639,92639,92639
-2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2026,2026 (to Nov 20),78364,78364,78364
+2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2020,2020,44693,39606,54689
+2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2021,2021,69138,69138,69138
+2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2022,2022,77317,77317,77317
+2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2023,2023,64939,64939,64939
+2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2024,2024,126936,126936,126936
+2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2025,2025,90642,90642,90642
+2019,150-40,"futures, from Dec 20 2019",150K,40% rule,2026,2026 (to Nov 20),84106,84106,84106

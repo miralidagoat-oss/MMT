@@ -15,10 +15,10 @@ usage: export_charts.py DATA_DIR OUT_DIR [FUT_DATA_DIR REPORT_DIR [REPORT_DIR_AL
 Plan: ONR_EVAL_CONS (the eval's consistency rule, default 0.4; 0.5 = Lucid's paid add-on) and ONR_MAX_PAY (payouts
 a funded account takes before it is closed, default 5; 4 = indicator v2.3's default plan), as in report50k.py.
 
-Costs: $1.34 per MNQ round turn (inside every trade's net), Lucid keeps 10% of each payout, and the 50K eval price of
+Costs: account.COMM_RT ($1.00) per MNQ round turn (inside every trade's net), Lucid keeps 10% of each payout, and the 50K eval price of
 account.RULES per eval ($115 list; ONR_EVAL_FEE_50K sets another, e.g. 88.20 with a discount code). The eval price
 changes no trade, only "net to you", so the checks below are on counts and gross amounts.
-Commission per trade = the same trade replayed with commission 0, minus the trade with $1.34 (commission never changes
+Commission per trade = the same trade replayed with commission 0, minus the trade with COMM (commission never changes
 a fill or a decision of the day, so the two runs take the same trades). The script checks its totals against
 mnq_real50k.py and report50k.py before writing.
 """
@@ -36,7 +36,7 @@ from account import is_half  # noqa: E402
 from engine import PV, Sessions, adr_seed, bracket_exit, load_npz, news_night, rth_sessions  # noqa: E402
 from portfolio import pool  # noqa: E402
 
-COMM = 1.34
+COMM = account.COMM_RT
 FEE = RULES[50]["price"]
 SPLIT = 0.9
 CONS = float(os.environ.get("ONR_EVAL_CONS", "0.4"))
@@ -47,13 +47,13 @@ F_KW = dict(adr_ref=350, improved=True, ib_with_drive=True, cycle_rule=True, com
 LEG = {"on": "Overnight", "pyr": "Pyramid", "ib": "IB breakout"}
 WHY = {"stop": "stop", "target": "target", "time": "time exit", "stop-fillbar": "stop (fill bar)", "none": "time exit"}
 # the real-MNQ totals mnq_real50k.py prints for the same data, by plan (eval consistency, payouts per account), checked
-# before anything is written; read from mnq_real50k.py's output with ONR_EVAL_CONS / ONR_MAX_PAY set (Nov 23 2026: the
-# user's MNQ file, Sep 9 - Nov 20 2026, 53 sessions). No account reached a 4th payout in them, so the payout plan
-# changes nothing here.
-REAL_BY_PLAN = {(0.4, 5): dict(trades=78, net=16880, slot_payouts=[1041, 1231], slot_evals=3, pool=(10, 11361, 16)),
-                (0.4, 4): dict(trades=78, net=16880, slot_payouts=[1041, 1231], slot_evals=3, pool=(10, 11361, 16)),
-                (0.5, 5): dict(trades=78, net=16880, slot_payouts=[559], slot_evals=5, pool=(10, 5406, 25)),
-                (0.5, 4): dict(trades=78, net=16880, slot_payouts=[559], slot_evals=5, pool=(10, 5406, 25))}
+# before anything is written; read from mnq_real50k.py's output with ONR_EVAL_CONS / ONR_MAX_PAY set (Nov 25 2026: the
+# user's MNQ file, Sep 9 - Nov 20 2026, 53 sessions, at the user's $1.00 commission). No account reached a 4th payout
+# in them, so the payout plan changes nothing here.
+REAL_BY_PLAN = {(0.4, 5): dict(trades=78, net=16937, slot_payouts=[1047, 1239], slot_evals=3, pool=(10, 11427, 16)),
+                (0.4, 4): dict(trades=78, net=16937, slot_payouts=[1047, 1239], slot_evals=3, pool=(10, 11427, 16)),
+                (0.5, 5): dict(trades=78, net=16937, slot_payouts=[566], slot_evals=5, pool=(10, 5463, 25)),
+                (0.5, 4): dict(trades=78, net=16937, slot_payouts=[566], slot_evals=5, pool=(10, 5463, 25))}
 REAL = REAL_BY_PLAN[(CONS, MAXPAY)]
 ORD = {1: "1st", 2: "2nd", 3: "3rd"}
 
@@ -450,7 +450,7 @@ def main(dd, out, fd=None, report_dir=None, report_all=None):
 
     bk = "One funded account, every session"
     block("book_gross", bk, "Trading profit before commission", sum(t[6] for t in rt), sum(t[6] for t in bt), sum(t[6] for t in at))
-    block("book_comm", bk, "Commission at $1.34 per MNQ round turn", sum(t[7] for t in rt), sum(t[7] for t in bt),
+    block("book_comm", bk, f"Commission at ${COMM:.2f} per MNQ round turn", sum(t[7] for t in rt), sum(t[7] for t in bt),
           sum(t[7] for t in at))
     block("book_net", bk, "Trading profit after commission", sum(t[8] for t in rt), sum(t[8] for t in bt), sum(t[8] for t in at))
     sl = "One account slot (new eval whenever one ends)"
