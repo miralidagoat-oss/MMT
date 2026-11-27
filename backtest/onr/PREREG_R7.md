@@ -307,3 +307,14 @@ The report covers, in `results_r7/` and the README:
 
 The 1,556 configurations make it certain that some look good on the design period by luck. Only the single
 out-of-sample look and the controls decide.
+
+## Addendum (2026-11-27, written while building the harness, before any configuration was run)
+
+Two details made precise; neither changes a rule's intent, and no result had been computed.
+
+- **F6 entries at 09:30:** a market order at the 09:30 open cannot know that open. For the 09:30 entry, the gap is
+  measured from the last price before it, the 09:25 bar's close. For the 09:35 and 10:00 entries it is measured from
+  the 09:30 open, as written.
+- **F13's five drift windows trade every session.** A random-day control drawn from the same window *is* the rule, so P3
+  cannot apply to them. They are judged on P1, P2, P4 and P5 and reported as the drift controls of the long-only
+  rules. F13's Asia breakout and fade keep the random-side control.
