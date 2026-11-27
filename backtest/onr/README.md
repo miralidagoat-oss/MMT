@@ -272,7 +272,8 @@ two can differ in sign when a strategy's results are near zero (F10, F11).
   - its correlation with the book is 0.10.
 - Everything else failed out of sample:
   - last-hour momentum, VWAP trading, gap fades, the Globex range, daily mean reversion, overnight drift;
-  - 402 indicator configurations;
+  - the 5-minute indicators and mixes: the family's pick failed, and only 1 of the 402 configurations reached t 2
+    in 2023-26 (median t -0.30);
   - ICT's Silver Bullet, as in the 2011-2026 test that found it negative after costs.
 - **Overfitting:**
   - The probability of backtest overfitting across all 1,556 configurations is 7.4% (CSCV, 16 blocks). Per family,
