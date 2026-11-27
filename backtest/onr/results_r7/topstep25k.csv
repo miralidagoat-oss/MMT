@@ -1,0 +1,9 @@
+variant,window,slip_ticks,net_per_year,worst_full_year
++F1,5y,0,35782,14746
++F1,5y,1,30559,14292
++F1,oos,0,39372,13073
++F1,oos,1,33400,12881
+book,5y,0,32201,10091
+book,5y,1,31334,12703
+book,oos,0,38811,11672
+book,oos,1,37106,13463

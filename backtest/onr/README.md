@@ -334,6 +334,20 @@ noise):
 
 `results_r7/book_every_session.csv`.
 
+**Topstep 25K** (Labs Static plan of `topstep25k.py`: 5 XFAs + 5 Combines, Standard payouts, at most 5 Combines a
+month; checked after the account test, so descriptive; `r7_ts25k.py`, `results_r7/topstep25k.csv`). With the book's
+legs alone it reproduces the published $32,201 event for event.
+
+| Topstep 25K, net a year | Book | + F1 | Change |
+|---|---|---|---|
+| Last 5 years | $32,201 | $35,782 | +$3,581 (worst year $10,091 -> $14,746) |
+| 2023-26 | $38,811 | $39,372 | +$561 |
+| Last 5 years, 1 tick | $31,334 | $30,559 | -$775 |
+| 2023-26, 1 tick | $37,106 | $33,400 | -$3,706 |
+
+At 25K the $500 daily loss limit and the 6-micro cap per leg leave little room for a fourth leg, so F1 adds almost
+nothing there; its gain is a 50K result.
+
 ### Verdict
 
 - **Only one change passes rule 5Y in all three account types: adding F1**, the 5-minute ORB, as a fourth funded leg.
