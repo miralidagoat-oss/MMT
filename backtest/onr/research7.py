@@ -1820,6 +1820,188 @@ def write_tables(out, rows, sel, ref):
     print(f"wrote {len(rows)} rows")
 
 
+
+# ------------------------------------------------------------------------------------------------ diagnostics
+def control(D, P, c, r, rng, ndraw=400, slip=SLIP1):
+    """P3: the out-of-sample net against ndraw random copies. Returns (net, p95, kind) or None (not applicable)."""
+    m = D.oos & np.isfinite(D.adr)
+    x = net_adr(r, D.adr, slip)
+    obs = float(x[m].sum())
+    if c["kind"] == "drift":
+        return None
+    if c["kind"] == "long":
+        ra = run(P, c, all_days=True)
+        xa = net_adr(ra, D.adr, slip)
+        pool = np.flatnonzero(m & (ra["rt"] > 0))
+        k = int((m & (r["rt"] > 0)).sum())
+        if k == 0 or len(pool) < k:
+            return obs, np.nan, "random days"
+        sims = np.array([xa[rng.choice(pool, k, replace=False)].sum() for _ in range(ndraw)])
+        return obs, float(np.percentile(sims, 95)), "random days"
+    if c["kind"] == "single":
+        rf = run(P, c, flip=True)
+        xf = net_adr(rf, D.adr, slip)
+        kind = "random sides (each trade simulated both ways)"
+    else:
+        with np.errstate(invalid="ignore", divide="ignore"):
+            xf = np.where(r["rt"] > 0, (-r["g"] - COMM_PTS * r["rt"] - slip * r["sf"]) / D.adr, 0.0)
+        kind = "random sides (the day's path mirrored)"
+    sess = np.flatnonzero(m & (r["rt"] > 0))
+    a, b = x[sess], xf[sess]
+    sims = np.array([np.where(rng.random(len(sess)) < 0.5, a, b).sum() for _ in range(ndraw)])
+    return obs, float(np.percentile(sims, 95)), kind
+
+
+def pbo_cscv(M, S=16):
+    """Probability of backtest overfitting (Bailey, Borwein, Lopez de Prado & Zhu 2017) by CSCV: S contiguous blocks,
+    every half/half split; the in-sample best configuration's out-of-sample relative rank. M: configs x sessions."""
+    from itertools import combinations
+    N, T = M.shape
+    edges = np.linspace(0, T, S + 1).astype(int)
+    s1 = np.stack([M[:, a:b].sum(1) for a, b in zip(edges[:-1], edges[1:])], 1)
+    s2 = np.stack([(M[:, a:b] ** 2).sum(1) for a, b in zip(edges[:-1], edges[1:])], 1)
+    cnt = np.diff(edges)
+    lam = []
+    for comb in combinations(range(S), S // 2):
+        isb = np.zeros(S, bool); isb[list(comb)] = True
+        def sharpe(mask):
+            n_ = cnt[mask].sum()
+            mu = s1[:, mask].sum(1) / n_
+            var = s2[:, mask].sum(1) / n_ - mu ** 2
+            return mu / np.sqrt(np.maximum(var, 1e-18))
+        si, so = sharpe(isb), sharpe(~isb)
+        best = int(np.argmax(si))
+        rank = (so < so[best]).sum() + 0.5 * ((so == so[best]).sum() - 1) + 1
+        w = rank / (N + 1)
+        lam.append(math.log(w / (1 - w)))
+    lam = np.array(lam)
+    return float((lam <= 0).mean()), float(np.median(lam))
+
+
+def deflated_sharpe(x, sr_trials):
+    """Bailey & Lopez de Prado (2014): the probability that the per-session Sharpe of x beats the expected maximum of
+    len(sr_trials) unskilled trials with that dispersion."""
+    from statistics import NormalDist
+    nd = NormalDist()
+    T = len(x)
+    sr = x.mean() / x.std(ddof=1)
+    g3 = ((x - x.mean()) ** 3).mean() / x.std() ** 3
+    g4 = ((x - x.mean()) ** 4).mean() / x.std() ** 4
+    N = len(sr_trials)
+    v = np.var(sr_trials, ddof=1)
+    e = 0.5772156649
+    sr0 = math.sqrt(v) * ((1 - e) * nd.inv_cdf(1 - 1.0 / N) + e * nd.inv_cdf(1 - 1.0 / (N * math.e)))
+    z = (sr - sr0) * math.sqrt(T - 1) / math.sqrt(max(1e-12, 1 - g3 * sr + (g4 - 1) / 4 * sr ** 2))
+    return float(nd.cdf(z)), float(sr), float(sr0)
+
+
+def diag(dd, out):
+    import csv
+    D = load(dd)
+    P = Inputs(D)
+    cfgs = configs()
+    byid = {c["id"]: c for c in cfgs}
+    rows = {r["id"]: r for r in json.load(open(os.path.join(out, "all_configs.json")))}
+    sel = json.load(open(os.path.join(out, "selection.json")))
+    M = np.load(os.path.join(out, "net_adr_1tick.npy")).astype(float)
+    ids = json.load(open(os.path.join(out, "config_ids.json")))
+    assert ids == [c["id"] for c in cfgs]
+    ok = np.isfinite(D.adr)
+    rng = np.random.default_rng(20261127)
+    refs = {k: np.load(os.path.join(out, f"ref_{k}.npy")).astype(float) for k in ("book_overnight", "book_pyramid", "book_ib")}
+    book = refs["book_overnight"] + refs["book_pyramid"] + refs["book_ib"]
+    dec = []
+    allsr = M[:, D.design & ok].mean(1) / np.maximum(M[:, D.design & ok].std(1, ddof=1), 1e-12)
+    for fam, top in sel.items():
+        if not top:
+            dec.append(dict(family=fam, selected="(no configuration with enough trades)"))
+            continue
+        cid = top[0]
+        c = byid[cid]
+        r = run(P, c)
+        row = rows[cid]
+        o = row["oos"]
+        yrs = [o["by_year"].get(str(y), o["by_year"].get(y, 0.0)) for y in (2023, 2024, 2025, 2026)]
+        ctl = control(D, P, c, r, rng)
+        famidx = [q for q, x in enumerate(cfgs) if x["fam"] == fam]
+        fam_sr = allsr[famidx]
+        x_design = net_adr(r, D.adr)[D.design & ok]
+        dsr_f = deflated_sharpe(x_design, fam_sr)
+        dsr_all = deflated_sharpe(x_design, allsr)
+        pbo_f = pbo_cscv(M[famidx][:, ok]) if len(famidx) > 2 else (np.nan, np.nan)
+        # neighbours: same family, exactly one field different
+        f0 = cid.split("|")
+        nb_t = [rows[x["id"]]["design"]["t"] for x in cfgs if x["fam"] == fam and x["id"] != cid
+                and len(x["id"].split("|")) == len(f0) and sum(a != b for a, b in zip(x["id"].split("|"), f0)) == 1]
+        xs = net_adr(r, D.adr)
+        corr = {k: float(np.corrcoef(xs[ok], v[ok])[0, 1]) for k, v in list(refs.items()) + [("book", book)]}
+        corr_oos = float(np.corrcoef(xs[D.oos & ok], book[D.oos & ok])[0, 1])
+        p1 = o["t"] >= 2.0
+        p2 = sum(y > 0 for y in yrs) >= 3
+        p3 = (ctl is None) or (np.isfinite(ctl[1]) and ctl[0] > ctl[1])
+        p4 = row["oos_2tick"]["net_adr"] > 0
+        p5 = o["trades"] >= 30
+        dec.append(dict(family=fam, selected=cid, design_trades=row["design"]["trades"], design_t=round(row["design"]["t"], 2),
+                        design_per_trade_adr=round(row["design"]["per_trade_adr"], 4), oos_trades=o["trades"], oos_t=round(o["t"], 2),
+                        oos_per_trade_adr=round(o["per_trade_adr"], 4), oos_per_trade_pts=round(o["per_trade_pts"], 2), oos_net_adr=round(o["net_adr"], 2),
+                        oos_usd_1mnq=round(o["usd_1mnq"], 0), oos_2023=round(yrs[0], 2), oos_2024=round(yrs[1], 2), oos_2025=round(yrs[2], 2),
+                        oos_2026=round(yrs[3], 2), oos_net_2tick=round(row["oos_2tick"]["net_adr"], 2),
+                        control=(ctl[2] if ctl else "n/a (trades every session)"), control_p95=(round(ctl[1], 2) if ctl and np.isfinite(ctl[1]) else ""),
+                        P1=p1, P2=p2, P3=p3, P4=p4, P5=p5, PASS=bool(p1 and p2 and p3 and p4 and p5),
+                        pbo_family=round(pbo_f[0], 3), dsr_family=round(dsr_f[0], 3), dsr_round=round(dsr_all[0], 3),
+                        neighbours_median_t=round(float(np.median(nb_t)), 2) if nb_t else "", corr_book=round(corr["book"], 3),
+                        corr_book_oos=round(corr_oos, 3), corr_overnight=round(corr["book_overnight"], 3),
+                        corr_pyramid=round(corr["book_pyramid"], 3), corr_ib=round(corr["book_ib"], 3)))
+        print(f"{fam}: {cid} | design t {row['design']['t']:.2f} | OOS t {o['t']:.2f}, {o['trades']} trades, years {[round(y, 2) for y in yrs]}, "
+              f"2-tick {row['oos_2tick']['net_adr']:.2f}, control {ctl[0] if ctl else ''} vs p95 {ctl[1] if ctl else ''} -> "
+              f"{'PASS' if dec[-1]['PASS'] else 'fail'} (P1 {p1} P2 {p2} P3 {p3} P4 {p4} P5 {p5}) | PBO {pbo_f[0]:.2f}", flush=True)
+    keys = list(dec[0].keys()) if dec and "design_t" in dec[0] else None
+    keys = max((list(d.keys()) for d in dec), key=len)
+    with open(os.path.join(out, "decisions.csv"), "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=keys)
+        w.writeheader()
+        for d_ in dec:
+            w.writerow(d_)
+    # PBO of the whole search
+    pbo_all = pbo_cscv(M[:, ok])
+    # walk-forward: each year traded with the configuration best on all earlier data
+    wf = []
+    for fam in sel:
+        famidx = [q for q, x in enumerate(cfgs) if x["fam"] == fam]
+        tot = []
+        for Y in (2022, 2023, 2024, 2025, 2026):
+            before = ok & (D.year < Y)
+            inY = ok & (D.year == Y)
+            best, bt = None, -1e9
+            for q in famidx:
+                x = M[q, before]
+                ntr = int((np.abs(x) > 0).sum())
+                if ntr < (30 if fam == "F9" else 60):
+                    continue
+                sd_ = x.std(ddof=1)
+                t = x.mean() / sd_ * math.sqrt(len(x)) if sd_ > 0 else 0.0
+                if t > bt:
+                    best, bt = q, t
+            if best is None:
+                continue
+            y = M[best, inY]
+            tot.append(y)
+            wf.append(dict(family=fam, year=Y, config=cfgs[best]["id"], prior_t=round(bt, 2), net_adr=round(float(y.sum()), 3)))
+        if tot:
+            z = np.concatenate(tot)
+            sd_ = z.std(ddof=1)
+            wf.append(dict(family=fam, year="2022-2026", config="(re-picked each year)", prior_t="",
+                           net_adr=round(float(z.sum()), 3), t=round(float(z.mean() / sd_ * math.sqrt(len(z))) if sd_ > 0 else 0.0, 2)))
+    with open(os.path.join(out, "walkforward.csv"), "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["family", "year", "config", "prior_t", "net_adr", "t"])
+        w.writeheader()
+        for d_ in wf:
+            w.writerow(d_)
+    json.dump(dict(pbo_all_configs=pbo_all[0], median_logit=pbo_all[1]), open(os.path.join(out, "pbo.json"), "w"), indent=1)
+    print(f"PBO over all {len(cfgs)} configurations: {pbo_all[0]:.3f}")
+    print("survivors:", [d_["selected"] for d_ in dec if d_.get("PASS")])
+
+
 # ------------------------------------------------------------------------------------------------ self-tests
 def selftest(dd):
     D = load(dd)
@@ -1940,3 +2122,5 @@ if __name__ == "__main__":
         selftest(sys.argv[2])
     elif cmd == "screen":
         screen(sys.argv[2], sys.argv[3])
+    elif cmd == "diag":
+        diag(sys.argv[2], sys.argv[3])

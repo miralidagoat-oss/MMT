@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# round 7: rebuilt by `research7.py screen`
+backtest/onr/results_r7/net_adr_1tick.npy
+backtest/onr/results_r7/all_configs.json

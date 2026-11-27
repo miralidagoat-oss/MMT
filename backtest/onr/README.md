@@ -7,6 +7,10 @@ futures, including several Lucid accounts side by side.
 ## Verdict
 
 - **Your MNQ file only (Nov 23-25 2026):** every published figure now comes from your MNQ futures file (Dec 2019 - Nov 20 2026) and nothing else for prices. Over the last 5 years your Topstep plan (50K, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path) made $73,075 a year after every cost, worst full year $47,523, and your Lucid plan (5 funded + 5 evals with the add-on, each closed after its 4th payout) $58,262. On Nov 24 the S&P input's 119 missing or mistimed sessions (most of Feb-Jul 2023) were taken from Dukascopy and every result was rerun; on Nov 25 every result was rerun again at your $1.00 commission per MNQ round turn ($0.50 in + $0.50 out; it was $1.34). See *Your MNQ file only* below; the bullets after this one are the research's findings on its earlier series.
+- **Research round 7 (Nov 27 2026):** 1,556 configurations of 13 published strategy families on your MNQ file, picked on
+  2019-2022 and judged once on 2023-2026. Four passed (a 5-minute ORB, the noise area, Crabel's stretch breakout,
+  Mondays); three are the book's own intraday-momentum edge. In the prop pools, only adding the 5-minute ORB as a fourth
+  funded leg passes rule 5Y in all three account types. See "Research round 7" below.
 - **Overfitting:** no knife-edge. Every parameter tested degrades smoothly and keeps its sign in both halves; the
   09:35 entry time is the most "picked" choice. What is fitted is the research narrative: several header numbers
   were measured on the same data the rules were chosen on, and some do not reproduce (table below).
@@ -196,6 +200,158 @@ python3 plan_search.py $FD - results_plan_search && python3 budget_table.py resu
 python3 topstep_sim.py $FD - /tmp/topstep_verify && python3 -c "import json; a=json.load(open('results_topstep/runs.json')); b=json.load(open('/tmp/topstep_verify/runs.json')); assert a==b; print('runs.json identical')"
 python3 options50k.py --mnq $FD results_options_mnq
 ```
+
+## Research round 7 (Nov 27 2026): published strategies on your MNQ file
+
+The question: do published strategies, from papers, websites and trading practice, work better than the ONR book or
+alongside it, on your MNQ file? Every configuration and indicator mix was tested.
+
+**Files:**
+- `PREREG_R7.md`: the plan, committed before any result, with two addenda written before the results they cover.
+- `research7.py`: the strategies, the screen and the controls.
+- `r7_accounts.py`: the prop-account test.
+- `results_r7/`: every number below. `net_adr_1tick.npy` and `all_configs.json` are rebuilt by `research7.py screen`.
+
+### What was tested
+
+- **Strategies:** 13 families, 1,556 configurations, from:
+  - academic papers: Zarattini, Aziz & Barbon 2024 (noise area); Zarattini & Aziz 2023 (5-minute ORB on QQQ; VWAP);
+    Gao et al. 2018 and Baltussen et al. 2021 (last half-hour momentum); Lucca & Moench 2015 (pre-FOMC);
+    Lakonishok & Smidt 1988 and Ariel 1990 (turn of month, pre-holiday); Boyarchenko et al. 2023 (overnight drift);
+  - classic trading books: Crabel 1990 (ORB, NR4/NR7, the stretch); Williams (volatility breakout); Connors (RSI(2));
+    Pagonidis (IBS);
+  - trading practice: gap fades, the Globex range, ICT's Silver Bullet, and 402 configurations of 5-minute indicators
+    and mixes of them (EMA, MACD, RSI, Bollinger, Donchian, Supertrend, Keltner, ADX and VWAP filters).
+  - A 2026 study of 14 signal families on 5-minute MNQ (Mesfin) and independent replications of the ORB and VWAP
+    papers were read to avoid known traps.
+- **Execution, stricter than the book's own backtests:**
+  - decisions on closed bars, market orders at the next bar's open;
+  - $1.00 a round turn plus 1 tick of slippage on every market and stop fill;
+  - targets need a 1-tick trade-through, and the stop wins a bar with both;
+  - prices across sessions adjusted for the 17 contract rolls.
+- **Checks before any result:**
+  - in the same harness, the book's three legs reproduce the engine trade for trade;
+  - hand-made bars pass through every fill rule;
+  - a look-ahead test cut the data mid-session at 7 moments: all 3,679 entries made before each cut were identical.
+    This test caught and fixed one bug: a VWAP filter compared adjusted closes with an unadjusted VWAP.
+- **Choosing and judging:**
+  - Each family's configuration was picked on Dec 2019 - Dec 2022 only.
+  - It was judged once on Jan 2023 - Nov 2026 by five tests: t >= 2; at least 3 of 4 years positive; better than 95%
+    of 400 random-side (or random-day) copies; still positive at 2 ticks a fill; at least 30 trades.
+
+### The strategies, out of sample (Jan 2023 - Nov 20 2026, 1 MNQ a trade, after all costs)
+
+| | Family (source) | Configuration picked on 2019-2022 | Design t | Trades | t | $ at 1 MNQ | Years + | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| F1 | ORB, first-candle direction (Zarattini & Aziz) | the first 5 minutes' direction, stop 0.10 ADR, target 10R, a move of at least 0.05 ADR | 3.11 | 742 | 2.20 | $9,238 | 4 of 4 | **passes** |
+| F2 | ORB breakout orders (Crabel) | 15-minute range, orders until 11:00, stop at the other side, target 2R, after an NR4 day | 3.26 | 238 | 0.82 | $1,192 | 2 | fails |
+| F3 | Noise area (Zarattini, Aziz & Barbon) | 21-day bands x 1.5, checked every 30 minutes, gap-adjusted, flips at the opposite band | 3.12 | 367 | 2.97 | $20,268 | 4 of 4 | **passes** |
+| F4 | Last-hour momentum (Gao et al.; Baltussen et al.) | 10:00-15:00 direction traded 15:00-16:00 | 3.05 | 968 | -1.44 | -$5,716 | 1 | fails |
+| F5 | VWAP (Zarattini & Aziz) | VWAP trend from 10:00, checked every 30 minutes, 0.1 ADR band | 3.56 | 979 | 0.92 | $5,136 | 3 | fails |
+| F6 | Opening gap | fade gaps of 0.1 ADR or more at 09:30, stop 0.25 ADR, out by 11:00 | 1.82 | 804 | 0.52 | $785 | 2 | fails |
+| F7 | Overnight (Globex) range | stop orders beyond the overnight high/low until 11:00, stop 0.5 ADR, target 2R | 1.19 | 847 | 1.51 | $11,171 | 4 | fails (t, random sides) |
+| F8 | Volatility breakout (Crabel's stretch; Williams) | stop orders at the open +/- 0.2 x stretch until 13:00, stop 0.25 ADR | 3.19 | 775 | 3.45 | $27,261 | 4 of 4 | **passes** |
+| F9 | Calendar days | long every Monday 09:30-16:00 | 1.66 | 200 | 3.60 | $14,738 | 4 of 4 | **passes** |
+| F10 | Daily mean reversion held overnight (Connors; Pagonidis) | RSI(2) <= 5 long / >= 95 short, 18:10 -> 16:00 | 2.14 | 140 | -0.15 | $2,366 | 2 | fails |
+| F11 | 5-minute indicators and mixes | EMA 20/50 cross with VWAP side, 2 ATR stop | 3.26 | 585 | 0.01 | -$682 | 3 | fails |
+| F12 | ICT Silver Bullet | 10:00-11:00 window, target 2R | 0.46 | 143 | -0.18 | $282 | 2 | fails |
+| F13 | Overnight drift (Boyarchenko et al.) | long 18:10 -> 02:00 every night | 1.38 | 1,006 | 0.98 | $2,880 | 3 | fails |
+| | **The book's own legs, same costs** | 09:35 pyramid / IB breakout / overnight trade | 0.98 / 3.00 / 0.78 | 485 / 736 / 321 | 3.36 / 2.19 / 0.98 | $21,398 / $9,319 / $6,221 | 4 / 4 / 3 | |
+
+`results_r7/decisions.csv` has every test, `all_configs.csv` all 1,556 configurations and `walkforward.csv` the
+re-picked-every-year record. The t statistics are on trades measured in ADR units and the dollars in points, so the
+two can differ in sign when a strategy's results are near zero (F10, F11).
+
+**What survived, and what it means:**
+- Three of the four survivors (F1, F3, F8) are intraday momentum after the open: the same edge the book's 09:35
+  pyramid and IB breakout trade. Their daily results correlate 0.23-0.41 with the book: F1 and F8 mostly through the pyramid (0.49, 0.44), F3
+  through the IB breakout (0.25).
+- F9 is a calendar effect, and it is real in this file:
+  - Mondays' 09:30-16:00 move averaged +40.8 points in 2023-26 (t 3.7) and +22.4 points in 2020-22;
+  - Thursdays averaged -40.3 points in 2023-26;
+  - its correlation with the book is 0.10.
+- Everything else failed out of sample:
+  - last-hour momentum, VWAP trading, gap fades, the Globex range, daily mean reversion, overnight drift;
+  - 402 indicator configurations;
+  - ICT's Silver Bullet, as in the 2011-2026 test that found it negative after costs.
+- **Overfitting:**
+  - The probability of backtest overfitting across all 1,556 configurations is 7.4% (CSCV, 16 blocks). Per family,
+    0.00-0.39 for the four survivors.
+  - The deflated Sharpe ratio, counting all 1,556 tries, puts every design-period winner below significance. The
+    design period alone proves nothing; the single out-of-sample look is the evidence.
+  - Re-picking the best configuration every year gave t 3.91 (F8), 3.39 (F9), 2.60 (F1) and 2.52 (F3) over 2022-2026.
+
+### The survivors in your prop accounts
+
+**Setup:**
+- Accounts: Lucid 50K 5 funded + 5 evals (40% rule, and with the add-on; each closed after its 4th payout) and
+  Topstep 50K 5 XFAs + 5 Combines. 12 start dates each, the published conventions.
+- Three ways a survivor joined:
+  - a fourth funded leg in the $1,200 day budget, skipped if it would oppose an open position;
+  - an eval trigger on sessions the book's two eval trades leave empty;
+  - a replacement for a book leg it beat out of sample.
+- With the book's legs alone, the new account classes reproduce the published ones event for event.
+- Rule 5Y uses 8 placebo runs as its noise band:
+  - Lucid 40%: +/-$3,040 a year (worst year +/-$9,633);
+  - Lucid add-on: +/-$3,251 (+/-$3,094);
+  - Topstep: +/-$14,308 (+/-$18,872).
+
+**Net a year, last 5 years** (change against the book; PASS = rule 5Y in that account type):
+
+| Variant | Lucid 40% | Lucid add-on | Topstep | 2023-26 only (40% / add-on / Topstep) |
+|---|---|---|---|---|
+| The book (published) | $55,669 | $58,262 | $73,075 | $60,745 / $58,977 / $76,597 |
+| + F1 as a fourth funded leg | $55,223 (-$446, worst year +$16,001) PASS | $62,313 (+$4,051) PASS | $90,515 (+$17,440) PASS | $49,858 / $63,472 / $98,080 |
+| + F3 | $62,272 (+$6,603) PASS | $64,617 (+$6,355) PASS | $79,618 (+$6,543) | $54,962 / $59,153 / $81,453 |
+| + F8 | $64,179 (+$8,510; worst year -$17,808) | $68,780 (+$10,518; worst -$34,439) | $100,175 (+$27,100; worst -$40,781) | $60,330 / $69,487 / $100,237 |
+| + F9 | $63,859 (+$8,190) PASS | $69,719 (+$11,458; worst -$11,257) | $83,331 (+$10,256; worst -$21,206) | $73,987 / $79,101 / $98,789 |
+| F8 instead of the overnight trade | $69,285 (+$13,616) PASS | $71,585 (+$13,323; worst -$7,183) | $105,534 (+$32,459) PASS | $66,910 / $73,227 / $118,068 |
+| F9 instead of the overnight trade | $75,087 (+$19,419; 2019-21 worse) | $70,380 (+$12,118) PASS | $97,048 (+$23,973) PASS | $82,293 / $74,921 / $115,324 |
+| F8 instead of the IB | $59,589 (+$3,920) PASS | $62,838 (+$4,576; worst -$5,249) | $97,838 (+$24,763) PASS | $58,543 / $62,193 / $93,161 |
+| F1 / F3 instead of the overnight trade | -$12 / +$9,116 | -$2,753 / +$11,367 | +$19,990 PASS / +$27,494 PASS | |
+| F3 / F9 instead of the IB | -$25,848 / -$31,757 | -$16,823 / -$21,907 | -$16,840 / -$41,834 | |
+| F8 instead of the pyramid | -$2,968 | -$5,522 | +$8,374 (worst year -$41,609) | |
+| Eval triggers F1 / F8 / F9 | +$4,211 / +$9,955 / -$2,128 | +$1,951 / +$7,861 PASS / -$1,688 | +$2,523 / +$4,836 / +$2,336 | |
+
+Every variant, account and window is in `results_r7/accounts.csv`, years in `accounts_years.csv`, and 1-tick stress
+results in `accounts_slip1.json`.
+
+**At 1 tick of slippage a fill** (change against the book at 1 tick, last 5 years; 2023-26 in brackets):
+- + F1: +$5,722 (-$10,356) / +$4,305 (+$1,333) / +$22,001 (+$26,955).
+- + F8: +$3,487 (-$6,247) / +$12,040 (+$9,790) / +$29,853 (+$29,491).
+- F8 instead of the overnight trade: +$10,057 (+$1,109) / +$10,378 (+$4,072) / +$36,046 (+$32,240).
+- F9 instead of the overnight trade: +$12,465 (+$16,436) / +$8,716 (+$9,932) / +$31,438 (+$38,418).
+- F8 instead of the IB: -$1,249 (-$4,231) / +$3,231 (-$1,980) / +$15,213 (+$14,819).
+
+**One funded account trading every session** (no account rules; the change's own effect without the pools' path
+noise):
+- The book: $21,787 a year over the last 5 years.
+- Adding F8: +$14,290 (+$13,682 in 2023-26).
+- Adding F1: +$5,671 (+$4,831).
+- Adding F3: +$3,667; adding F9: +$1,826.
+- F8 instead of the overnight trade: +$14,349; F9 instead of it: +$5,531; F8 instead of the IB: +$8,039.
+
+`results_r7/book_every_session.csv`.
+
+### Verdict
+
+- **Only one change passes rule 5Y in all three account types: adding F1**, the 5-minute ORB, as a fourth funded leg.
+  The leg:
+  - goes in the direction of the first 5 minutes when that move is at least 0.05 ADR;
+  - uses a 0.10 ADR stop and a 1 ADR (10R) target;
+  - holds to 16:00 at the book's funded size.
+  - It is a cousin of the 09:35 pyramid. On drive days it adds size in the same direction (or is skipped when it
+    points the other way); on weaker opens it trades alone.
+  - **In 2023-26 alone it is mixed:** Lucid 40% -$10.9k a year, Lucid add-on +$4.5k, Topstep +$21.5k.
+- **F8 is the strongest new leg** on one account (+$14k a year) but raises drawdowns. In the pools, 2023 fell to
+  about $7k-11k against $41k-59k for the book alone, so it fails as an addition.
+  - As a replacement for the overnight trade it passes in 2 of 3 account types.
+  - So does F9 in place of the overnight trade. In 2023-26 it is the best variant in the Lucid 40% pool and second
+    in the other two. But it has no stop: in 8-15 funded accounts per 5-year run a Monday loss went through the
+    drawdown floor. That never happens with the book's own legs, whose stops always fit inside the remaining cushion.
+- **Nothing in this round has been added to the indicator.** Adding F1 (as v2.7) is the only change the
+  pre-registered rule supports. The replacements need the user's choice, because they pass in only some of the
+  account types.
 
 ## Data (history: the research's earlier series)
 

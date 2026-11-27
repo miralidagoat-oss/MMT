@@ -318,3 +318,27 @@ Two details made precise; neither changes a rule's intent, and no result had bee
 - **F13's five drift windows trade every session.** A random-day control drawn from the same window *is* the rule, so P3
   cannot apply to them. They are judged on P1, P2, P4 and P5 and reported as the drift controls of the long-only
   rules. F13's Asia breakout and fade keep the random-side control.
+
+## Addendum 2 (2026-11-27, after the screen and before any account result)
+
+The screen left four survivors: F1, F3, F8 and F9. Writing the account test needs five details the plan left open.
+None is chosen from an account result, and none had been run.
+
+- **Order and opposition:**
+  - In each session, every leg (the book's and the new one) is taken in the order of its entry. F8's order is placed
+    at 09:35, and the IB is checked at its fill.
+  - A leg is taken only if its risk fits what is left of the day's budget, and if no position already taken is open
+    on the other side at its entry.
+  - A futures account nets its positions, so this rule binds the book's legs too when a new leg is open. Without a new
+    leg nothing changes: the IB's fill-time check sees the same budget as its 10:30 arming. This is asserted.
+- **Risk of legs without a stop:** F9 (the selected configuration has no stop) and F3's segments (they exit at band
+  crossings) count 0.5 ADR x N in the day budget, the book's widest stop.
+- **F9 as an eval trigger:** "after the book's two" cannot be decided at 09:30 without knowing the 09:35 drive. So on a
+  Monday with no overnight eval trade and no drive, the eval goes long at the 09:35 close with its usual bracket.
+- **Replacements** apply to funded accounts only; the evals keep the book's triggers. "Beat that leg out of sample"
+  means a higher out-of-sample t-statistic and a higher net in the screen's strict convention. That gives:
+  - overnight leg <- F1, F3, F8 or F9;
+  - IB <- F3, F8 or F9;
+  - pyramid <- F8.
+- **Rule 5Y's early window** on this file is Dec 20 2019 - Nov 14 2021: 12 start dates from Dec 20 2019, with 2020 its
+  only full year.
