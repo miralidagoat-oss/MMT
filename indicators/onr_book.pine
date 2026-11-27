@@ -1,8 +1,8 @@
 //@version=6
-indicator("ONR Book v2.6.6 - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("ONR Book v2.7 - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2.6.6 (2026-11-25). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
+// ONR BOOK v2.7 (2026-11-27). Chart: NQ1! or MNQ1!, 1-5 minute bars, 24h (ETH) session. Sizes in MNQ ($2/pt).
 // ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K or Topstep 25K / 50K / 100K / 150K (inputs "Prop firm" and "Account size",
 //          default Topstep 50K; TOPSTEP below). The $ amounts below are for 25K; every one scales
 //          with the account's max loss (x2 at 50K, x3 at 100K, x4.5 at 150K). Target, qualifying day and payout cap
@@ -15,8 +15,13 @@ indicator("ONR Book v2.6.6 - Lucid Flex / Topstep (overnight reversion + opening
 // FUNDED : trades in priority order under a day risk budget = min($600, cushion - $10), N MNQ per leg:
 //            1) overnight reversion 18:10 -> 09:30, stop 0.5 ADR, no target
 //            2) opening-drive pyramid 09:35: stop 0.35 ADR, add N at +0.15 ADR (stop -> breakeven), trail 0.25 ADR, exit 16:00
-//            3) initial-balance breakout: stop order 1 tick beyond the 09:30-10:30 range, live 10:30-13:00, stop 0.25 /
-//               target 0.5 ADR; on a 09:35-drive day only on the drive's side (else both sides, OCO)
+//            3) v2.7: 5-minute ORB 09:35 (input "FUNDED: 5-minute ORB leg"; Auto = Topstep 50K and 150K only): in the
+//               direction of the first 5 minutes when that move is >= 0.05 ADR, stop 0.10 ADR, target 1 ADR, exit 16:00.
+//               It always faces the pyramid's way (the same 5 minutes; the pyramid needs >= 0.10 ADR)
+//            4) initial-balance breakout: stop order 1 tick beyond the 09:30-10:30 range, live 10:30-13:00, stop 0.25 /
+//               target 0.5 ADR; on a 09:35-drive day only on the drive's side (else both sides, OCO). While an ORB
+//               trade is open, the IB side against it waits: placed once that trade closes, or cancelled for the day
+//               if the price reaches it first (an IB fill never opposes the ORB trade)
 //          No 09:35 / 10:30 entries on US holiday half-sessions and early closes. Good Friday has no session, except
 //          when the jobs report falls on it (2021, 2023 and 2026 in your file; next in 2034): CME then halts at 09:15
 //          ET, before the 09:30 exit, so close an overnight trade by 09:10 ET (panel; alert at 09:05). The backtest
@@ -46,7 +51,8 @@ indicator("ONR Book v2.6.6 - Lucid Flex / Topstep (overnight reversion + opening
 //            payout once the XFA is $1,000 up and up since the last payout, as at Lucid;
 //          - no payout limit: an XFA trades until it fails;
 //          - funded legs at most 6 / 10 / 10 MNQ: the backtest's assumption for Topstep's Scaling Plan, whose table could
-//            not be read. Check your XFA's limit.
+//            not be read. Check your XFA's limit: one direction can hold up to 3 N at once (pyramid 2 N + IB N), 4 N with
+//            the ORB leg; the panel shows it.
 //          - 25K is Topstep's "Labs $25K Static" account: $2,000 target; a STATIC $1,000 max loss (it never trails; $0
 //            after the first XFA payout); a $500 daily loss limit in the Combine and the XFA, which the plan meets by
 //            capping each day's risk at $500 (the eval stop, commission included, and the funded day budget; $600
@@ -58,17 +64,29 @@ indicator("ONR Book v2.6.6 - Lucid Flex / Topstep (overnight reversion + opening
 //          (+$94.9k), $136.0k at 150K (+$41.1k); Consistency payouts $42.6k / $58.7k / $84.3k. A best case: the
 //          call-up to live is not in it. 25K ($75 Combines, at most 5 a month): Standard payouts $32.2k a year (worst
 //          full year +$10.1k), Consistency $32.2k (+$6.9k); Lucid 25K with the add-on made $31.1k (+$18.1k).
+//          v2.7 ORB LEG (round 7 of the research: 13 published strategy families, 1,556 settings, picked on 2019-2022
+//          and judged once on 2023-2026; the 5-minute ORB passed), the same test, net a year without -> with it: 50K
+//          $73.1k -> $90.5k (worst full year +$47.5k -> +$43.3k; 2023-26 $76.6k -> $98.1k; 1 tick of slippage on
+//          every fill $67.9k -> $89.9k); 150K $136.0k -> $185.4k (1 tick $135.6k -> $189.9k; its worst full year
+//          swings between runs: +$41.1k -> +$140.3k, at 1 tick +$38.4k -> +$37.5k). Auto leaves it off elsewhere:
+//          25K $32.2k -> $35.8k but $31.3k -> $30.6k at 1 tick; 100K $122.1k -> $141.4k but its worst full year
+//          +$94.9k -> +$59.4k; Lucid 50K $55.7k -> $55.2k (40% rule; 2023-26 $60.7k -> $49.9k), $58.3k -> $62.3k with
+//          the add-on. backtest/onr/r7_accounts.py and r7_v27.py.
 // ADR = average 09:30-16:00 NQ range of the last 14 full sessions.
 // CHART  : every trade is drawn like TradingView's position tool, from its entry bar to its exit bar: red box = entry to
 //          stop, green box = entry to target, gray line = entry. A BUY / SELL label marks each entry and a label with
 //          the result in $ (commission included) marks each exit; trades acting on the same bar share one label, one
 //          line each (an exit label is coloured by their total). Hover a label for the prices. Trades with no fixed
 //          target (funded overnight trade, pyramid) have no green box; the pyramid's moving stop is the orange line and
-//          its add is marked ADD. Purple lines = IB stop orders waiting to fill.
+//          its add is marked ADD. Purple lines = IB stop orders waiting to fill; a gray line = an IB side held
+//          back while an ORB trade is open.
 // SEVERAL ACCOUNTS: one copy of this indicator per account (its own inputs). All copies always hold the same direction,
-//          so copy-trading never creates opposing positions across accounts (Lucid prohibits that). Lucid allows 10
-//          accounts per household, at most 5 of them funded: keep the 5 funded slots full from 5 evals behind them.
-//          Topstep allows up to 5 XFAs at once: the same plan, 5 XFAs with 5 Combines behind them.
+//          so copy-trading never creates opposing positions across accounts (Lucid prohibits that). One exception: a
+//          copy running the ORB leg and one without it can face opposite ways on a rare day (an IB fill against an
+//          open ORB trade: 1 day in the last 5 years of your file). Auto keeps the leg off at Lucid, so Lucid copies on
+//          Auto always agree. Lucid allows 10 accounts per household, at most 5 of them funded: keep the 5 funded
+//          slots full from 5 evals behind them. Topstep allows up to 5 XFAs at once: the same plan, 5 XFAs with 5
+//          Combines behind them.
 // YOUR PLAN (v2.6.6; backtest/onr/plan_search.py, 31 ways of running the accounts tested from 48 start dates): Topstep
 //          50K, 5 XFAs + 5 Combines from day one (No Activation Fee path, Standard payouts). Every payout stays in the
 //          business, 30% set aside for tax. At $11,000 of spare cash add Lucid 50K with the add-on (5 funded + 5 evals).
@@ -76,7 +94,8 @@ indicator("ONR Book v2.6.6 - Lucid Flex / Topstep (overnight reversion + opening
 //          151 a 150K XFA's 10-MNQ leg cap binds and it trades no more than a 100K. The input "PLAN: my spare cash has
 //          reached $25,000" and the panel line "Next Topstep Combine" say which size to buy. Backtest on your MNQ file,
 //          48 start dates from Dec 2019 to Nov 2023: a typical start made about $259k in 3 years (worst start $168k),
-//          after every fee and the 30% tax set-aside. The $15,000 car fits at $51,000 of spare cash.
+//          after every fee and the 30% tax set-aside. The $15,000 car fits at $51,000 of spare cash. These plan
+//          figures are v2.6.6's, without the v2.7 ORB leg (the plan was not re-run with it).
 // LUCID BACKTEST at 50K on your MNQ file, the last 5 years (Nov 15 2021 - Nov 20 2026; 5-minute bars, as recorded),
 //          $1.00 commission, after Lucid's 10%, evals at $88.20 (a discount-code price; $98.20 with the add-on's $10):
 //          43.4% of evals pass (43.2% with the 50% add-on) and the first payout comes a median 58 days after the first
@@ -93,7 +112,7 @@ indicator("ONR Book v2.6.6 - Lucid Flex / Topstep (overnight reversion + opening
 
 grpA = "Account - update before each session"
 firm = input.string("Topstep", "Prop firm", options = ["Topstep", "Lucid Flex"], group = grpA, tooltip = "Topstep: Trading Combine = Phase EVAL, Express Funded Account (XFA) = Phase FUNDED; 25K (Topstep Labs $25K Static: a static $1,000 max loss and a $500 daily loss limit) / 50K / 100K / 150K. Sets Topstep's rules as the backtests used them: the max loss stops trailing at the start balance ($0) and is $0 in an XFA after any payout; the Combine passes at the target with the best day <= 55% (the plan caps each day at 50%) and holds at most 50 / 100 / 150 MNQ; the XFA payout path's rules and caps; no payout limit; at most 6 / 10 / 10 MNQ per funded leg (the backtest's Scaling Plan assumption: check your XFA's limit). Lucid Flex: Lucid's rules. Backtest on your MNQ file, last 5 years, 5 funded + 5 evals: Topstep 50K with Standard payouts (No Activation Fee path) ~$73.1k a year vs ~$58.3k for Lucid 50K with the add-on, each account closed after its 4th payout. Topstep's discretionary call-up to a live account (it closes every XFA) is not modelled, so its figure is a best case.")
-phase = input.string("EVAL", "Phase", options = ["EVAL", "FUNDED", "LIVE"], group = grpA, tooltip = "EVAL: an evaluation (one bracket trade a day); at Topstep, a Trading Combine. FUNDED: a sim-funded account (the 3-trade book); at Topstep, an Express Funded Account (XFA). LIVE: a LucidLive account, after Lucid moves you live: it trades exactly the FUNDED plan; only the drawdown and payout guidance differ. Lucid only: a Topstep live account is not modelled.")
+phase = input.string("EVAL", "Phase", options = ["EVAL", "FUNDED", "LIVE"], group = grpA, tooltip = "EVAL: an evaluation (one bracket trade a day); at Topstep, a Trading Combine. FUNDED: a sim-funded account (the 3-trade book; 4 with the v2.7 ORB leg); at Topstep, an Express Funded Account (XFA). LIVE: a LucidLive account, after Lucid moves you live: it trades exactly the FUNDED plan; only the drawdown and payout guidance differ. Lucid only: a Topstep live account is not modelled.")
 acctSize = input.string("50K", "Account size", options = ["25K", "50K", "100K", "150K"], group = grpA, tooltip = "Sets the firm's target, max loss, qualifying-day amount, payout cap and position limits for that size (Topstep 25K = the Labs $25K Static account: $2,000 target, a static $1,000 max loss, a $500 daily loss limit, 20 MNQ, payout cap $4,000), and scales every $ limit of the plan (stop cap, day budget, cushion levels, funded size) by max loss / $1,000. Backtest on your MNQ file, last 5 years, 5 funded + 5 evals with the add-on, each closed after its 4th payout: Lucid 25K ~$31.1k a year, 50K ~$58.3k, 100K ~$71.6k, 150K ~$97.1k (100K and 150K at assumed prices), worst 12 months +$7.9k / +$26.0k / +$18.8k / +$26.1k; Topstep with Standard payouts (No Activation Fee path): 25K Static ~$32.2k, 50K ~$73.1k, 100K ~$122.1k, 150K ~$136.0k.")
 pnlNow = input.float(0.0, "P&L now ($ vs account start; funded / live: after payouts)", group = grpA)
 peakEod = input.float(0.0, "Highest end-of-day P&L so far ($)", minval = 0.0, group = grpA)
@@ -109,9 +128,10 @@ tsPath = input.string("Standard (recommended)", "TOPSTEP FUNDED: XFA payout path
 plan150 = input.bool(false, "PLAN: my spare cash has reached $25,000 (150K step)", group = grpA, tooltip = "Your plan (backtest/onr/plan_search.py): Topstep 50K, 5 XFAs + 5 Combines from day one; Lucid 50K with the add-on once your spare cash (business cash after setting aside 30% of each payout for tax) reaches $11,000; from $25,000, each new Topstep Combine is 150K while NQ's 14-day range (the NQ ADR line) is at least 151 points, else 50K. Below 151 points a 150K XFA's legs are capped at 10 MNQ, so it trades no more than a 100K. Tick this once you reach $25,000: the panel line 'Next Topstep Combine' then says which size to buy. Accounts already open keep their size; set Account size to each account's own size.")
 commIn = input.float(1.00, "Commission per MNQ round turn ($)", minval = 0.0, step = 0.01, group = grpA, tooltip = "Cost per micro contract, in and out: yours is $0.50 to enter + $0.50 to exit = $1.00 a round turn, and every backtest figure quoted here uses $1.00. Used for the eval stop (a full stop-out, commission included, stays inside the $ limit) and for the simulated trade list.")
 fundSize = input.string("Auto (ADR-normalised)", "FUNDED: contracts per leg", options = ["Auto (ADR-normalised)", "Fixed 1 MNQ (v1)"], group = grpA, tooltip = "Auto = round(350 / ADR) MNQ per $1,000 of max loss. At 50K that is round(700 / ADR): 1 MNQ while NQ's daily range is above 467 points, 2 MNQ at 280-467, 3 MNQ at 200-280 and more below that (at most 10 / 20 / 30 / 40 MNQ for 25K / 50K / 100K / 150K at Lucid; 6 / 10 / 10 at Topstep 50K / 100K / 150K, the backtest's Scaling Plan assumption). Fixed 1 MNQ is v1's sizing, which stalled payouts in low-range years.")
+orbOpt = input.string("Auto (Topstep 50K / 150K)", "FUNDED: 5-minute ORB leg (v2.7)", options = ["Auto (Topstep 50K / 150K)", "On (every funded account)", "Off (the v2.6.6 book)"], group = grpA, tooltip = "v2.7: a 4th funded leg from round 7 of the research (13 published strategy families, 1,556 settings, picked on 2019-2022 and judged once on 2023-2026). At 09:35 ET, if the first 5 minutes (09:30-09:35) moved at least 0.05 ADR: N MNQ in that direction, stop 0.10 ADR, target 1 ADR (10x the risk), exit 16:00. It is taken after the pyramid, inside the day budget, and always faces the pyramid's way (the pyramid needs the same move to be at least 0.10 ADR). While it is open, the IB's other side waits. Not on half days; never in an eval. Auto: on for Topstep 50K and 150K XFAs only. Backtest on your MNQ file, last 5 years, 5 XFAs + 5 Combines (Standard payouts, No Activation Fee path), net a year without -> with it: 50K $73.1k -> $90.5k (worst full year +$47.5k -> +$43.3k; 2023-26 $76.6k -> $98.1k; at 1 tick of slippage on every fill $67.9k -> $89.9k); 150K $136.0k -> $185.4k (1 tick $135.6k -> $189.9k). Left off by Auto: Topstep 25K $32.2k -> $35.8k but $31.3k -> $30.6k at 1 tick; 100K $122.1k -> $141.4k but its worst full year +$94.9k -> +$59.4k; Lucid 50K (5 funded + 5 evals) 40% rule $55.7k -> $55.2k (2023-26 $60.7k -> $49.9k), add-on $58.3k -> $62.3k. On = every funded and live account; Off = the v2.6.6 book.")
 grpL = "Live tracking (alarm levels) - update each weekend"
 liveDays = input.int(0, "Trading days since this funded account started trading ONR", minval = 0, group = grpL)
-livePnl = input.float(0.0, "Live ONR trade P&L since then ($, this one funded account)", group = grpL, tooltip = "Sum of this funded account's ONR trade results since it started (no eval fees, no payouts). The bands come from the backtest: one 50K funded account (scaled to your size), Nov 2021 - Nov 2026 on your MNQ file, 20,000 bootstrap paths - median, 5th percentile (yellow) and 1st percentile (red).")
+livePnl = input.float(0.0, "Live ONR trade P&L since then ($, this one funded account)", group = grpL, tooltip = "Sum of this funded account's ONR trade results since it started (no eval fees, no payouts). The bands come from the backtest: one 50K funded account (scaled to your size), Nov 2021 - Nov 2026 on your MNQ file, 20,000 bootstrap paths - median, 5th percentile (yellow) and 1st percentile (red). With the v2.7 ORB leg on, the bands come from the same test with it.")
 grpD = "Data"
 sigSym = input.symbol("OANDA:SPX500USD", "S&P 500 CFD for the stretch score (the research used an S&P 500 CFD)", group = grpD)
 grpV = "Display"
@@ -147,6 +167,9 @@ float PASSCONS = TS ? 0.55 : CONS                                     // the fir
 float TPCAP = TARGET * CONS                                    // eval target cap per day (25K: $500 at 40%, $625 at 50%; 50K: $1,200 / $1,500)
 float SPAN = widthOpt == "Tight x0.5 (old)" ? 0.5 : (widthOpt == "Medium x0.75" ? 0.75 : 1.0)   // eval bracket width (stop + target) in ADRs
 int PAYMAX = TS ? 1000000 : (payPlan == "Take the 5th payout (Lucid moves you live)" ? 5 : 4)   // Lucid: payouts before a funded account is closed (4) or moved live (5); Topstep: no limit
+// v2.7 5-minute ORB leg (funded / live only): Auto = Topstep 50K and 150K, the sizes where its gain passed rule 5Y and
+// survived 1 tick of slippage (backtest/onr/results_r7/v27_topstep_sizes.csv)
+bool ORBON = orbOpt == "On (every funded account)" or (orbOpt == "Auto (Topstep 50K / 150K)" and TS and (acctSize == "50K" or acctSize == "150K"))
 
 // ---------- trade log (last 30 closed trades)
 type Trade
@@ -449,6 +472,14 @@ var float iEnt = na
 var float iStp = na
 var float iTgt = na
 var int odToday = 0   // today's 09:35 drive direction (0 = none); the IB order only trades with it
+// funded 5-minute ORB (v2.7)
+var int orbSide = 0
+var int orbN = 1
+var float orbEnt = na
+var float orbStp = na
+var float orbTgt = na
+var int orbT = 0
+var int ibHold = 0    // the IB side held back while an ORB trade is open: 1 = the buy stop, -1 = the sell stop, 0 = none
 var string lastMsg = "-"
 var int t0Chart = time
 var int eT = 0
@@ -522,6 +553,9 @@ var line pLn = na
 var box iSL = na
 var box iTP = na
 var line iLn = na
+var box orbSL = na
+var box orbTP = na
+var line orbLn = na
 
 // a session that ended before its exit time (half day / data gap) leaves nothing open: flat at its last price
 if newDay and not na(close[1])
@@ -538,12 +572,16 @@ if newDay and not na(close[1])
     if iSide != 0
         f_log(LOG, iT, time_close[1], "IB breakout x" + str.tostring(iN), iSide, iEnt, close[1], ((close[1] - iEnt) * iSide * PV - COMM) * iN, (close[1] - iEnt) * iSide / math.abs(iEnt - iStp), "session end")
         iSide := 0
+    if orbSide != 0
+        f_log(LOG, orbT, time_close[1], "ORB x" + str.tostring(orbN), orbSide, orbEnt, close[1], ((close[1] - orbEnt) * orbSide * PV - COMM) * orbN, (close[1] - orbEnt) * orbSide / math.abs(orbEnt - orbStp), "session end")
+        orbSide := 0
 if newDay
     usedRisk := 0.0
     evalUsedToday := false
     ibArmed := false
     ibReserve := 0.0
     odToday := 0
+    ibHold := 0
 
 // ---- 1) manage open trades on this bar (entries were made at an earlier bar's close)
 // the boxes of open trades reach this bar first, so a trade that exits on this bar ends here
@@ -561,6 +599,10 @@ if iSide != 0
     f_extend(iSL)
     f_extend(iTP)
     f_extendLine(iLn)
+if orbSide != 0
+    f_extend(orbSL)
+    f_extend(orbTP)
+    f_extendLine(orbLn)
 if eSide != 0
     bool stopHit = eSide == 1 ? low <= eStp : high >= eStp
     bool tgtHit = eSide == 1 ? high >= eTgt + TK : low <= eTgt - TK
@@ -613,15 +655,44 @@ if iSide != 0
         f_exitLbl(((ipx - iEnt) * iSide * PV - COMM) * iN, iSide, "IB breakout " + str.tostring(iN) + " MNQ: " + (iStop ? "stop" : "target") + " at " + str.tostring(ipx, format.mintick))
         f_log(LOG, iT, time, "IB breakout x" + str.tostring(iN), iSide, iEnt, ipx, ((ipx - iEnt) * iSide * PV - COMM) * iN, (ipx - iEnt) * iSide / math.abs(iEnt - iStp), iStop ? "stop" : "target")
         iSide := 0
+// the 5-minute ORB (v2.7): bracket stop 0.10 ADR / target 1 ADR. Checked before the IB orders, as in the backtest's
+// order of events: an ORB trade that ends on this bar no longer blocks an IB fill against it on this bar
+if orbSide != 0
+    bool orbHitS = orbSide == 1 ? low <= orbStp : high >= orbStp
+    bool orbHitT = orbSide == 1 ? high >= orbTgt + TK : low <= orbTgt - TK
+    if orbHitS or orbHitT
+        float orbPx = orbHitS ? ((orbSide == 1 and open <= orbStp) or (orbSide == -1 and open >= orbStp) ? open : orbStp) : orbTgt
+        f_exitLbl(((orbPx - orbEnt) * orbSide * PV - COMM) * orbN, orbSide, "ORB " + str.tostring(orbN) + " MNQ: " + (orbHitS ? "stop" : "target") + " at " + str.tostring(orbPx, format.mintick))
+        f_log(LOG, orbT, time, "ORB x" + str.tostring(orbN), orbSide, orbEnt, orbPx, ((orbPx - orbEnt) * orbSide * PV - COMM) * orbN, (orbPx - orbEnt) * orbSide / math.abs(orbEnt - orbStp), orbHitS ? "stop" : "target")
+        orbSide := 0
 if ibArmed and not evIB
     bool hu = not na(ibBuy) and high >= ibBuy
     bool hd = not na(ibSell) and low <= ibSell
-    if hu and hd
+    // while an ORB trade is open the IB side against it is held back (not at the broker): the price reaching it first
+    // cancels the IB for the day, as in the backtest, which skips an IB fill against an open ORB trade
+    bool hHeld = (ibHold == 1 and hu) or (ibHold == -1 and hd)
+    bool hLive = (ibHold != 1 and hu) or (ibHold != -1 and hd)
+    if hHeld and not hLive
+        string heldTxt = ibHold == 1 ? "buy" : "sell"
+        string ordTxt = ibHold == 1 ? "sell stop " + str.tostring(ibSell, format.mintick) : "buy stop " + str.tostring(ibBuy, format.mintick)
         ibArmed := false
         usedRisk := usedRisk - ibReserve
         ibReserve := 0.0
-        lastMsg := "IB: both stop orders touched in one bar - not tracked here; the OCO kept whichever filled first: manage it with stop 0.25 / target 0.5 ADR"
-        alert("ONR: IB - both stop orders touched in one bar. Your OCO kept whichever filled first: manage it with stop 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts), target 0.5 ADR, exit 16:00.", alert.freq_once_per_bar_close)
+        ibHold := 0
+        lastMsg := "IB CANCELLED for today: the price reached the held " + heldTxt + " level while the ORB trade was open - cancel your " + ordTxt
+        alert("ONR: IB - cancel your " + ordTxt + " for today: the price reached the held " + heldTxt + " level while the ORB trade is open (the IB never trades against it).", alert.freq_once_per_bar_close)
+    else if hu and hd
+        ibArmed := false
+        usedRisk := usedRisk - ibReserve
+        ibReserve := 0.0
+        if ibHold != 0
+            string fillTxt = ibHold == 1 ? "sell" : "buy"
+            ibHold := 0
+            lastMsg := "IB: your " + fillTxt + " stop filled in a bar that also reached the held level - not tracked here: manage it with stop 0.25 / target 0.5 ADR"
+            alert("ONR: IB - your " + fillTxt + " stop filled in a bar that also reached the held level. Not tracked here: manage it with stop 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts), target 0.5 ADR, exit 16:00.", alert.freq_once_per_bar_close)
+        else
+            lastMsg := "IB: both stop orders touched in one bar - not tracked here; the OCO kept whichever filled first: manage it with stop 0.25 / target 0.5 ADR"
+            alert("ONR: IB - both stop orders touched in one bar. Your OCO kept whichever filled first: manage it with stop 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts), target 0.5 ADR, exit 16:00.", alert.freq_once_per_bar_close)
     else if hu or hd
         iSide := hu ? 1 : -1
         iEnt := hu ? math.max(ibBuy, open) : math.min(ibSell, open)
@@ -629,6 +700,7 @@ if ibArmed and not evIB
         iTgt := iEnt + iSide * 0.5 * adr
         ibArmed := false
         ibReserve := 0.0
+        ibHold := 0
         if iSide == 1
             buyNow := true
         else
@@ -643,6 +715,13 @@ if ibArmed and not evIB
             f_exitLbl(((iStp - iEnt) * iSide * PV - COMM) * iN, iSide, "IB breakout " + str.tostring(iN) + " MNQ: stopped inside its fill bar at " + str.tostring(iStp, format.mintick))
             f_log(LOG, iT, time, "IB breakout x" + str.tostring(iN), iSide, iEnt, iStp, ((iStp - iEnt) * iSide * PV - COMM) * iN, -1.0, "stop (fill bar)")
             iSide := 0
+// the ORB trade has closed with the IB orders still live: the held side goes to the broker now (OCO with the other),
+// so it can fill from the next bar on
+if ibArmed and ibHold != 0 and orbSide == 0
+    string relTxt = ibHold == 1 ? "buy stop " + str.tostring(ibBuy, format.mintick) : "sell stop " + str.tostring(ibSell, format.mintick)
+    ibHold := 0
+    lastMsg := "ORB trade closed: now also place the IB " + relTxt + " (OCO with the other order) until 13:00"
+    alert("ONR: the ORB trade is closed - now also place the IB " + relTxt + " (OCO with the other order), live until 13:00.", alert.freq_once_per_bar_close)
 
 // ---- 2) clock events (decisions at bar close)
 if evONx
@@ -661,9 +740,10 @@ if evIBend and ibArmed
     ibArmed := false
     usedRisk := usedRisk - ibReserve
     ibReserve := 0.0
+    ibHold := 0
     alert("ONR: 13:00 - cancel unfilled IB stop orders.", alert.freq_once_per_bar_close)
 if evEOD
-    bool hadPos = eSide != 0 or pSide != 0 or iSide != 0
+    bool hadPos = eSide != 0 or pSide != 0 or iSide != 0 or orbSide != 0
     if eSide != 0
         f_exitLbl((close - eEnt) * eSide * eN * PV - eN * COMM, eSide, "Eval " + eName + " " + str.tostring(eN) + " MNQ: time exit 16:00 at " + str.tostring(close, format.mintick))
         f_log(LOG, eT, time_close, "EVAL " + eName + " x" + str.tostring(eN), eSide, eEnt, close, (close - eEnt) * eSide * eN * PV - eN * COMM, (close - eEnt) * eSide / math.abs(eEnt - eStp), "time exit")
@@ -677,9 +757,13 @@ if evEOD
         f_exitLbl(((close - iEnt) * iSide * PV - COMM) * iN, iSide, "IB breakout " + str.tostring(iN) + " MNQ: time exit 16:00 at " + str.tostring(close, format.mintick))
         f_log(LOG, iT, time_close, "IB breakout x" + str.tostring(iN), iSide, iEnt, close, ((close - iEnt) * iSide * PV - COMM) * iN, (close - iEnt) * iSide / math.abs(iEnt - iStp), "time exit")
         iSide := 0
+    if orbSide != 0
+        f_exitLbl(((close - orbEnt) * orbSide * PV - COMM) * orbN, orbSide, "ORB " + str.tostring(orbN) + " MNQ: time exit 16:00 at " + str.tostring(close, format.mintick))
+        f_log(LOG, orbT, time_close, "ORB x" + str.tostring(orbN), orbSide, orbEnt, close, ((close - orbEnt) * orbSide * PV - COMM) * orbN, (close - orbEnt) * orbSide / math.abs(orbEnt - orbStp), "time exit")
+        orbSide := 0
     if hadPos
         alert("ONR: 16:00 - close everything at market. Then update the account inputs.", alert.freq_once_per_bar_close)
-if halfDay and evEarly and (eSide != 0 or oSide != 0 or pSide != 0 or iSide != 0)
+if halfDay and evEarly and (eSide != 0 or oSide != 0 or pSide != 0 or iSide != 0 or orbSide != 0)
     alert("ONR: HALF DAY - the market halts at 13:00 ET. Close everything now (12:55 ET / 9:55 AM PT).", alert.freq_once_per_bar_close)
 if goodFri and evGF and (eSide != 0 or oSide != 0)
     lastMsg := "GOOD FRIDAY (CME halts at 09:15 ET): close the overnight trade now"
@@ -798,21 +882,52 @@ if evOD and not halfDay and not na(adr) and not na(rOpen)
                 alert("ONR " + FTAG + ": OPENING-DRIVE PYRAMID " + sTxt + " " + str.tostring(nF) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(pStp, format.mintick) + " | add " + str.tostring(nF) + " MNQ at " + str.tostring(close + odSide * 0.15 * adr, format.mintick) + " then stop -> breakeven | trail 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts) | exit 16:00", alert.freq_once_per_bar_close)
             else
                 lastMsg := "PYRAMID " + sTxt + " signal NOT traded: " + (cushion < 200.0 * M ? "cushion below $" + str.tostring(200.0 * M, "#") : "risk $" + str.tostring(rk2, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
+    // v2.7 5-minute ORB (funded leg 3): the same first 5 minutes at a lower bar (>= 0.05 ADR), taken after the pyramid,
+    // so it always faces the pyramid's way; never in an eval
+    int orbSig = math.abs(d5) >= 0.05 ? (d5 > 0 ? 1 : -1) : 0
+    if ORBON and not isEval and orbSig != 0
+        string orbTxt = orbSig == 1 ? "BUY" : "SELL"
+        float rk4 = 0.10 * adr * PV * nF
+        if cushion >= 200.0 * M and usedRisk + rk4 <= room
+            orbSide := orbSig
+            orbN := nF
+            orbEnt := close
+            orbStp := close - orbSig * 0.10 * adr
+            orbTgt := close + orbSig * adr
+            orbT := time_close
+            usedRisk := usedRisk + rk4
+            if orbSig == 1
+                buyNow := true
+            else
+                sellNow := true
+            string orbMsg = "ORB " + orbTxt + " " + str.tostring(nF) + " MNQ, stop " + str.tostring(orbStp, format.mintick) + ", target " + str.tostring(orbTgt, format.mintick) + ", exit 16:00"
+            lastMsg := odSide != 0 ? lastMsg + " | " + orbMsg : orbMsg
+            orbSL := f_zone(close, orbStp, C_SLF, C_SLE)
+            orbTP := f_zone(close, orbTgt, C_TPF, C_TPE)
+            orbLn := f_entryLine(close)
+            f_entryLbl(orbSig, nF, "5-min ORB " + orbTxt + " " + str.tostring(nF) + " MNQ @ " + str.tostring(close, format.mintick) + " | stop " + str.tostring(orbStp, format.mintick) + " | target " + str.tostring(orbTgt, format.mintick) + " | exit 16:00 ET")
+            alert("ONR " + FTAG + ": 5-MIN ORB " + orbTxt + " " + str.tostring(nF) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(orbStp, format.mintick) + " (0.10 ADR) | target " + str.tostring(orbTgt, format.mintick) + " (1 ADR) | exit 16:00", alert.freq_once_per_bar_close)
+        else
+            string orbNo = "ORB " + orbTxt + " signal NOT traded: " + (cushion < 200.0 * M ? "cushion below $" + str.tostring(200.0 * M, "#") : "risk $" + str.tostring(rk4, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
+            lastMsg := odSide != 0 ? lastMsg + " | " + orbNo : orbNo
 
-// 10:30 IB breakout orders (funded leg 3; its risk is reserved while the orders are live). On a 09:35-drive day only the
+// 10:30 IB breakout orders (funded leg 4; its risk is reserved while the orders are live). On a 09:35-drive day only the
 // drive's side is placed: no position ever opposes the pyramid or an eval's 09:35 trade on another account (Lucid's
 // hedging rule; v2 could hold long and short together). Backtest: against-drive IB trades were the weakest group.
+// v2.7: with an ORB trade still open on a day without a drive, the side against it is held back until that trade closes.
 if evIB and not isEval and not halfDay and not na(adr) and not na(ibH)
     float rk3 = 0.25 * adr * PV * nF
     if cushion >= 200.0 * M and usedRisk + rk3 <= room
         ibBuy := odToday >= 0 ? ibH + TK : na
         ibSell := odToday <= 0 ? ibL - TK : na
+        ibHold := odToday == 0 and orbSide != 0 ? -orbSide : 0
         ibArmed := true
         iN := nF
         ibReserve := rk3
         usedRisk := usedRisk + rk3
-        string ibTxt = odToday == 0 ? "OCO buy stop " + str.tostring(ibBuy, format.mintick) + " / sell stop " + str.tostring(ibSell, format.mintick) : (odToday == 1 ? "buy stop " + str.tostring(ibBuy, format.mintick) + " only (with the 09:35 drive)" : "sell stop " + str.tostring(ibSell, format.mintick) + " only (with the 09:35 drive)")
-        lastMsg := "IB " + str.tostring(nF) + " MNQ: " + ibTxt + " until 13:00"
+        string holdTxt = ibHold == -1 ? "buy stop " + str.tostring(ibBuy, format.mintick) + " now, with the open ORB trade; the sell stop " + str.tostring(ibSell, format.mintick) + " waits until that trade closes (if the price reaches it first, cancel the IB for today)" : "sell stop " + str.tostring(ibSell, format.mintick) + " now, with the open ORB trade; the buy stop " + str.tostring(ibBuy, format.mintick) + " waits until that trade closes (if the price reaches it first, cancel the IB for today)"
+        string ibTxt = ibHold != 0 ? holdTxt : odToday == 0 ? "OCO buy stop " + str.tostring(ibBuy, format.mintick) + " / sell stop " + str.tostring(ibSell, format.mintick) : (odToday == 1 ? "buy stop " + str.tostring(ibBuy, format.mintick) + " only (with the 09:35 drive)" : "sell stop " + str.tostring(ibSell, format.mintick) + " only (with the 09:35 drive)")
+        lastMsg := "IB " + str.tostring(nF) + " MNQ until 13:00: " + ibTxt
         alert("ONR " + FTAG + ": IB BREAKOUT " + str.tostring(nF) + " MNQ | " + ibTxt + " | stop 0.25 ADR (" + str.tostring(0.25 * adr, format.mintick) + " pts) | target 0.5 ADR (" + str.tostring(0.5 * adr, format.mintick) + " pts) | cancel at 13:00 | exit 16:00", alert.freq_once_per_bar_close)
     else
         lastMsg := "IB breakout NOT placed: " + (cushion < 200.0 * M ? "cushion below $" + str.tostring(200.0 * M, "#") : "risk $" + str.tostring(rk3, "#") + " > day budget left $" + str.tostring(math.max(room - usedRisk, 0.0), "#"))
@@ -825,10 +940,12 @@ if showLevels
             color mc = array.get(MK_NX, slot) > 0 ? (array.get(MK_USD, slot) >= 0 ? C_WIN : C_LOSS) : array.get(MK_COL, slot)
             label.new(bar_index, slot == 0 ? low : high, mt, style = slot == 0 ? label.style_label_up : label.style_label_down, color = mc, textcolor = color.white, size = size.small, tooltip = array.get(MK_TIP, slot))
 
-// ---------- lines the boxes do not show: the pyramid's moving stop and the IB stop orders waiting to fill
+// ---------- lines the boxes do not show: the pyramid's moving stop and the IB stop orders waiting to fill (gray: an IB
+// side held back while an ORB trade is open)
 plot(pSide != 0 ? pStp : na, "Pyramid stop (moves)", color.orange, 2, plot.style_linebr)
-plot(ibArmed ? ibBuy : na, "IB buy stop order", color.purple, 1, plot.style_linebr)
-plot(ibArmed ? ibSell : na, "IB sell stop order", color.purple, 1, plot.style_linebr)
+plot(ibArmed and ibHold != 1 ? ibBuy : na, "IB buy stop order", color.purple, 1, plot.style_linebr)
+plot(ibArmed and ibHold != -1 ? ibSell : na, "IB sell stop order", color.purple, 1, plot.style_linebr)
+plot(ibArmed and ibHold != 0 ? (ibHold == 1 ? ibBuy : ibSell) : na, "IB side held back (ORB trade open)", color.gray, 1, plot.style_linebr)
 alertcondition(buyNow, "ONR BUY", "ONR: BUY signal - check the alert message / panel for size, stop and target")
 alertcondition(sellNow, "ONR SELL", "ONR: SELL signal - check the alert message / panel for size, stop and target")
 
@@ -850,9 +967,13 @@ var array<float> AX = array.from(20.0, 40.0, 60.0, 120.0, 250.0)
 var array<float> AMED = array.from(1549.0, 3195.0, 4861.0, 9878.0, 20920.0)
 var array<float> AYEL = array.from(-3126.0, -3569.0, -3574.0, -1969.0, 3295.0)
 var array<float> ARED = array.from(-5063.0, -6261.0, -6766.0, -6853.0, -3622.0)
+// the same test with the v2.7 ORB leg (backtest/onr/r7_v27.py, results_r7/v27_alarm_bands.csv): used while it is on
+var array<float> AMEDB = array.from(1735.0, 3840.0, 5890.0, 12248.0, 26128.0)
+var array<float> AYELB = array.from(-3574.0, -4184.0, -4078.0, -2465.0, 4170.0)
+var array<float> AREDB = array.from(-5452.0, -6899.0, -7842.0, -7934.0, -4170.0)
 
 // ---------- next step on the clock (ET and PT)
-f_nextStep(bool ev) =>
+f_nextStep(bool ev, bool orb) =>
     int m = hour(timenow, TZ) * 60 + minute(timenow, TZ)
     int dw = dayofweek(timenow, TZ)
     bool wkend = dw == dayofweek.saturday or (dw == dayofweek.sunday and m < 18 * 60) or (dw == dayofweek.friday and m >= 16 * 60)
@@ -860,11 +981,11 @@ f_nextStep(bool ev) =>
     if wkend
         s := "Weekend. Next: Sunday 18:10 ET / 3:10 PM PT overnight check. Update the Live tracking inputs."
     else if m < 9 * 60 + 30
-        s := ev ? "09:30 ET / 6:30 AM PT: exit any overnight trade. Then 09:35 ET / 6:35 AM PT: opening-drive check (only if no overnight trade)." : "09:30 ET / 6:30 AM PT: exit any overnight trade. 09:35 ET / 6:35 AM PT: opening-drive pyramid check."
+        s := ev ? "09:30 ET / 6:30 AM PT: exit any overnight trade. Then 09:35 ET / 6:35 AM PT: opening-drive check (only if no overnight trade)." : "09:30 ET / 6:30 AM PT: exit any overnight trade. 09:35 ET / 6:35 AM PT: opening-drive pyramid check" + (orb ? " and the 5-minute ORB (first 5 min >= 0.05 ADR)." : ".")
     else if m < 9 * 60 + 35
-        s := "09:35 ET / 6:35 AM PT: opening-drive check (first 5 min >= 0.10 ADR)."
+        s := "09:35 ET / 6:35 AM PT: opening-drive check (first 5 min >= 0.10 ADR" + (orb and not ev ? "; the ORB from 0.05 ADR)." : ").")
     else if m < 10 * 60 + 30
-        s := ev ? "Manage the trade (stop / target on chart). Exit 16:00 ET / 1:00 PM PT." : "10:30 ET / 7:30 AM PT: place the IB breakout order - only the 09:35 drive's side on a drive day, else buy-stop + sell-stop (OCO)."
+        s := ev ? "Manage the trade (stop / target on chart). Exit 16:00 ET / 1:00 PM PT." : "10:30 ET / 7:30 AM PT: place the IB breakout order - only the 09:35 drive's side on a drive day, else buy-stop + sell-stop (OCO)" + (orb ? "; while an ORB trade is open, only its side." : ".")
     else if m < 13 * 60
         s := ev ? "Manage the trade. Exit 16:00 ET / 1:00 PM PT." : "IB orders live until 13:00 ET / 10:00 AM PT, then cancel unfilled. Exit everything 16:00 ET / 1:00 PM PT."
     else if m < 16 * 60
@@ -913,12 +1034,13 @@ if showPanel and barstate.islast
         warn := "WITHDRAW $" + str.tostring(pnlNow - MLL - 100.0, "#") + " (everything above $" + str.tostring(MLL + 100.0, "#") + ", keeping a $" + str.tostring(MLL, "#") + " cushion)"
     else if isLive and not liveLocked
         warn := "LIVE: no withdrawal until live profit reaches $" + str.tostring(MLL, "#") + " (a payout before that locks the drawdown at +$100 at once)"
-    table.cell(T, 0, 0, "ONR Book v2.6.6", bgcolor = color.new(color.navy, 0), text_color = color.white)
-    table.cell(T, 1, 0, TS ? "Backtest Nov 2021 - Nov 2026 on your MNQ file, Topstep, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path: 50K ~$73.1k/yr (worst full year +$47.5k), 100K ~$122.1k (+$94.9k), 150K ~$136.0k (+$41.1k); Consistency payouts ~$42.6k / $58.7k / $84.3k; 25K Static (5 Combines a month): Standard ~$32.2k (+$10.1k), Consistency ~$32.2k (+$6.9k) | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on your MNQ file (50K, $88.20 evals): eval pass 43.4%, first payout median 58 days; 5 funded + 5 evals closing each account after its 4th payout ~$55.7k/yr (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$52.3k/yr | not live-tested", bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    string orbHead = not ORBON or isEval ? "" : TS ? " | ORB leg ON (v2.7), same test: 50K ~$90.5k/yr (worst full year +$43.3k), 150K ~$185.4k; 25K ~$35.8k, 100K ~$141.4k (worst full year +$59.4k)" : " | ORB leg ON (v2.7), same test at 50K: ~" + (CONS == 0.5 ? "$62.3k/yr with the add-on (2023-26 ~$63.5k vs ~$59.0k without the leg)" : "$55.2k/yr (2023-26 ~$49.9k vs ~$60.7k without the leg)")
+    table.cell(T, 0, 0, "ONR Book v2.7", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 1, 0, (TS ? "Backtest Nov 2021 - Nov 2026 on your MNQ file, Topstep, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path: 50K ~$73.1k/yr (worst full year +$47.5k), 100K ~$122.1k (+$94.9k), 150K ~$136.0k (+$41.1k); Consistency payouts ~$42.6k / $58.7k / $84.3k; 25K Static (5 Combines a month): Standard ~$32.2k (+$10.1k), Consistency ~$32.2k (+$6.9k) | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on your MNQ file (50K, $88.20 evals): eval pass 43.4%, first payout median 58 days; 5 funded + 5 evals closing each account after its 4th payout ~$55.7k/yr (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$52.3k/yr | not live-tested") + orbHead, bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    table.cell(T, 1, 2, "$" + str.tostring(cushion, "#") + " / $" + str.tostring(math.max(room, 0.0), "#") + (TSLAB ? " ($500 daily loss limit)" : "") + (isEval ? "" : " | " + (isLive ? "live" : "funded") + " size " + str.tostring(nF) + " MNQ per leg" + (fundAuto ? (TS ? " (auto, Topstep cap " + str.tostring(FUNDMAX) + ")" : " (auto)") : " (fixed)")), text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(T, 1, 2, "$" + str.tostring(cushion, "#") + " / $" + str.tostring(math.max(room, 0.0), "#") + (TSLAB ? " ($500 daily loss limit)" : "") + (isEval ? "" : " | " + (isLive ? "live" : "funded") + " size " + str.tostring(nF) + " MNQ per leg" + (fundAuto ? (TS ? " (auto, Topstep cap " + str.tostring(FUNDMAX) + ")" : " (auto)") : " (fixed)") + ", up to " + str.tostring((ORBON ? 4 : 3) * nF) + " MNQ open at once | ORB leg " + (ORBON ? "on" : "off")), text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 3, "S&P stretch score", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 3, sigTxt, text_color = sigSide == 0 ? color.white : color.yellow, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 4, "NQ ADR (14 RTH days)", text_color = color.white, bgcolor = color.new(color.gray, 40))
@@ -926,20 +1048,21 @@ if showPanel and barstate.islast
     table.cell(T, 0, 5, "Last instruction", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 5, lastMsg, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 6, "Open now", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    string openTxt = (eSide != 0 ? eName + " " + str.tostring(eN) + " | " : "") + (oSide != 0 ? "ON " + str.tostring(oN) + " | " : "") + (pSide != 0 ? "PYR " + str.tostring(pNu * pN) + " stop " + str.tostring(pStp, format.mintick) + " | " : "") + (iSide != 0 ? "IB " + str.tostring(iN) + " | " : "") + (ibArmed ? "IB orders live" : "")
+    string openTxt = (eSide != 0 ? eName + " " + str.tostring(eN) + " | " : "") + (oSide != 0 ? "ON " + str.tostring(oN) + " | " : "") + (pSide != 0 ? "PYR " + str.tostring(pNu * pN) + " stop " + str.tostring(pStp, format.mintick) + " | " : "") + (iSide != 0 ? "IB " + str.tostring(iN) + " | " : "") + (orbSide != 0 ? "ORB " + str.tostring(orbN) + " | " : "") + (ibArmed ? (ibHold != 0 ? "IB order live (one side held back)" : "IB orders live") : "")
     table.cell(T, 1, 6, openTxt == "" ? "flat" : openTxt, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 7, "Action", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 7, warn, text_color = warn == "-" ? color.white : color.yellow, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 8, "Today's eval trigger", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 8, isEval ? (evalDone ? "none: the profit target is reached" : evalUsedToday ? "used (one eval trade per day)" : (goodFri ? "Good Friday (09:15 ET halt): no 09:35 drive" : halfDay ? "half day: overnight trade only" : "waiting: 18:10 overnight -> 09:35 drive")) : "-", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    string nxt = goodFri ? (timenow < halfEnd ? "GOOD FRIDAY (CME halts at 09:15 ET): close any overnight trade by 09:10 ET / 6:10 AM PT; no 09:35 / 10:30 trades." : "Good Friday: the market is closed. Next: Sunday 18:10 ET / 3:10 PM PT overnight check.") : halfDay ? (timenow < halfEnd ? "HALF DAY (13:00 ET halt): exit the overnight trade at 09:30, no new trades, flat by 12:55 ET / 9:55 AM PT." : "Half day over (13:00 ET halt). Next: 18:10 ET / 3:10 PM PT overnight check once the next session opens.") : f_nextStep(isEval)
+    string nxt = goodFri ? (timenow < halfEnd ? "GOOD FRIDAY (CME halts at 09:15 ET): close any overnight trade by 09:10 ET / 6:10 AM PT; no 09:35 / 10:30 trades." : "Good Friday: the market is closed. Next: Sunday 18:10 ET / 3:10 PM PT overnight check.") : halfDay ? (timenow < halfEnd ? "HALF DAY (13:00 ET halt): exit the overnight trade at 09:30, no new trades, flat by 12:55 ET / 9:55 AM PT." : "Half day over (13:00 ET halt). Next: 18:10 ET / 3:10 PM PT overnight check once the next session opens.") : f_nextStep(isEval, ORBON)
     table.cell(T, 0, 9, "Next step", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 9, nxt, text_color = halfDay or goodFri ? color.orange : color.aqua, bgcolor = color.new(color.gray, 40))
     float bandScale = M / 2.0  // bands are for 50K (M = 2)
-    float yl = f_interp(liveDays, AX, AYEL) * bandScale
-    float rd = f_interp(liveDays, AX, ARED) * bandScale
-    float md = (liveDays >= 20 ? f_interp(liveDays, AX, AMED) : array.get(AMED, 0) * liveDays / 20.0) * bandScale
-    string alarmTxt = liveDays == 0 ? "enter your live trading days + P&L (Live tracking inputs)" : ("day " + str.tostring(liveDays) + ": $" + str.tostring(livePnl, "#") + " vs typical $" + str.tostring(md, "#") + " | yellow < $" + str.tostring(yl, "#") + " | red < $" + str.tostring(rd, "#") + (liveDays < 20 ? " (bands start at day 20)" : ""))
+    bool orbBands = ORBON and not isEval   // the bands of the same test with the v2.7 ORB leg
+    float yl = (orbBands ? f_interp(liveDays, AX, AYELB) : f_interp(liveDays, AX, AYEL)) * bandScale
+    float rd = (orbBands ? f_interp(liveDays, AX, AREDB) : f_interp(liveDays, AX, ARED)) * bandScale
+    float md = (liveDays >= 20 ? (orbBands ? f_interp(liveDays, AX, AMEDB) : f_interp(liveDays, AX, AMED)) : (orbBands ? array.get(AMEDB, 0) : array.get(AMED, 0)) * liveDays / 20.0) * bandScale
+    string alarmTxt = liveDays == 0 ? "enter your live trading days + P&L (Live tracking inputs)" : ("day " + str.tostring(liveDays) + ": $" + str.tostring(livePnl, "#") + " vs typical $" + str.tostring(md, "#") + " | yellow < $" + str.tostring(yl, "#") + " | red < $" + str.tostring(rd, "#") + (liveDays < 20 ? " (bands start at day 20)" : "") + (orbBands ? " | bands with the ORB leg" : ""))
     color alarmCol = liveDays == 0 ? color.white : (livePnl < rd ? color.red : (livePnl < yl ? color.yellow : color.lime))
     string alarmHead = liveDays == 0 ? "Live alarm" : (livePnl < rd ? "Live alarm: RED - STOP" : (livePnl < yl ? "Live alarm: YELLOW" : "Live alarm: GREEN"))
     table.cell(T, 0, 10, alarmHead, text_color = alarmCol, bgcolor = color.new(color.gray, 40))

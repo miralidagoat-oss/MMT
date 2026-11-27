@@ -10,7 +10,8 @@ futures, including several Lucid accounts side by side.
 - **Research round 7 (Nov 27 2026):** 1,556 configurations of 13 published strategy families on your MNQ file, picked on
   2019-2022 and judged once on 2023-2026. Four passed (a 5-minute ORB, the noise area, Crabel's stretch breakout,
   Mondays); three are the book's own intraday-momentum edge. In the prop pools, only adding the 5-minute ORB as a fourth
-  funded leg passes rule 5Y in all three account types. See "Research round 7" below.
+  funded leg passes rule 5Y in all three account types. Indicator v2.7 adds it as an optional leg, on by default for
+  Topstep 50K and 150K only. See "Research round 7" below.
 - **Overfitting:** no knife-edge. Every parameter tested degrades smoothly and keeps its sign in both halves; the
   09:35 entry time is the most "picked" choice. What is fitted is the research narrative: several header numbers
   were measured on the same data the rules were chosen on, and some do not reproduce (table below).
@@ -149,9 +150,9 @@ Topstep 50K 5 XFAs + 5 Combines from day one (have about $11,000 ready: the most
 
 Sep 9 - Nov 20 2026 (53 sessions), cut from the same file (`prep_mnq.py --cut`; each session's 14-day range from the file's own earlier sessions, `engine.adr_seed`). One funded 50K account: 78 trades, 46.2% winners, +$16,937 after $168 commission (overnight 19 trades +$3,691, pyramid 25 +$10,990, IB breakout 34 +$2,256). Evals or Combines started every session: 33 of 50 passed. 5 funded + 5 evals made +$2,461 at Lucid (add-on) and +$2,541 at Topstep in those 10 weeks, most of the time spent passing evals.
 
-### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.6.6)
+### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.7)
 
-Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_addon_fee8820/alarm_bands.csv`. v2.6.6 (Nov 25 2026) changes no rule: the commission input defaults to your $1.00 per MNQ round turn ($0.50 to enter and $0.50 to exit), and every quoted figure and the alarm bands come from the $1.00 rerun. v2.6.5 (Nov 24) changed no trade either. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
+Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_addon_fee8820/alarm_bands.csv`. v2.7 (Nov 27 2026) adds the 5-minute ORB leg from research round 7 (see "Indicator v2.7" below), on by default for Topstep 50K and 150K only; with the leg on, the alarm bands are `results_r7/v27_alarm_bands.csv`. v2.6.6 (Nov 25 2026) changes no rule: the commission input defaults to your $1.00 per MNQ round turn ($0.50 to enter and $0.50 to exit), and every quoted figure and the alarm bands come from the $1.00 rerun. v2.6.5 (Nov 24) changed no trade either. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
 
 ### Reproduce
 
@@ -355,8 +356,8 @@ nothing there; its gain is a 50K result.
   - goes in the direction of the first 5 minutes when that move is at least 0.05 ADR;
   - uses a 0.10 ADR stop and a 1 ADR (10R) target;
   - holds to 16:00 at the book's funded size.
-  - It is a cousin of the 09:35 pyramid. On drive days it adds size in the same direction (or is skipped when it
-    points the other way); on weaker opens it trades alone.
+  - It is a cousin of the 09:35 pyramid. It reads the same 5 minutes at a lower bar, so on drive days it adds size in
+    the same direction and can never point the other way; on weaker opens it trades alone.
   - **In 2023-26 alone it is mixed:** Lucid 40% -$10.9k a year, Lucid add-on +$4.5k, Topstep +$21.5k.
 - **F8 is the strongest new leg** on one account (+$14k a year) but raises drawdowns. In the pools, 2023 fell to
   about $7k-11k against $41k-59k for the book alone, so it fails as an addition.
@@ -364,9 +365,52 @@ nothing there; its gain is a 50K result.
   - So does F9 in place of the overnight trade. In 2023-26 it is the best variant in the Lucid 40% pool and second
     in the other two. But it has no stop: in 8-15 funded accounts per 5-year run a Monday loss went through the
     drawdown floor. That never happens with the book's own legs, whose stops always fit inside the remaining cushion.
-- **Nothing in this round has been added to the indicator.** Adding F1 (as v2.7) is the only change the
-  pre-registered rule supports. The replacements need the user's choice, because they pass in only some of the
-  account types.
+- **Indicator v2.7 adds F1** as an optional leg, the only change the pre-registered rule supports (next section). The
+  replacements are not in it: they pass in only some of the account types.
+
+### Indicator v2.7: the 5-minute ORB leg (Nov 27 2026; `r7_v27.py` → `results_r7/v27_*.csv`)
+
+- **The leg** (input "FUNDED: 5-minute ORB leg"):
+  - at 09:35 ET, if the first 5 minutes moved at least 0.05 ADR, N MNQ in that direction;
+  - stop 0.10 ADR, target 1 ADR, exit 16:00;
+  - taken after the pyramid, inside the day budget; funded and live accounts only, not on half days.
+  - It reads the same 5 minutes as the 09:35 drive at a lower bar, so it always faces the pyramid's way (asserted on
+    all 626 drive days of the last 5 years).
+- **Auto** (the default) turns it on for Topstep 50K and 150K XFAs only. Topstep, 5 XFAs + 5 Combines, Standard
+  payouts, 12 start dates, net a year:
+
+| Topstep | Last 5 years: book / + ORB | Worst full year: book / + ORB | Rule 5Y | 1 tick: book / + ORB | 2023-26: book / + ORB |
+|---|---|---|---|---|---|
+| 25K Static | $32,201 / $35,782 | $10,091 / $14,746 | PASS | $31,334 / $30,559 | $38,811 / $39,372 |
+| 50K | $73,075 / $90,515 | $47,523 / $43,264 | PASS (pre-registered) | $67,891 / $89,892 | $76,597 / $98,080 |
+| 100K | $122,070 / $141,350 | $94,944 / $59,366 | fail | $109,530 / $129,487 | $126,630 / $151,262 |
+| 150K | $136,013 / $185,383 | $41,061 / $140,283 | PASS | $135,613 / $189,889 | $148,311 / $181,647 |
+
+  - 50K is the pre-registered test (`r7_accounts.py`). 25K, 100K and 150K were run afterwards with the same rule and
+    their own placebo noise bands, so they are descriptive.
+  - Auto leaves 25K off: it loses at 1 tick of slippage and adds $561 a year in 2023-26. It leaves 100K off: its worst
+    full year falls by $35,578, beyond the noise band. Lucid stays off: in the Lucid 40% pool the leg made $10.9k a
+    year less in 2023-26.
+  - The 150K worst full year swings between runs: at 1 tick it is $38,435 for the book and $37,480 with the leg.
+- **The IB never trades against an open ORB trade.** On a day without a drive with the ORB trade still open at
+  10:30, the IB side against it is held back: placed once that trade closes, or the IB is cancelled for the day if
+  the price reaches it first.
+  - The backtest lets that held side fill in the same 5-minute bar the ORB trade closes. A trader cannot, because the
+    order is not at the broker yet, so the indicator waits for the next bar. That skips 7 IB trades in 5 years, worth
+    +$647 in all to one 50K account.
+  - Across accounts, a copy with the leg and one without can face opposite ways on a rare day (1 in the last 5
+    years). Lucid copies on Auto never run the leg.
+- **Live alarm bands** while the leg is on come from the same test with it (`v27_alarm_bands.csv`). With the book's
+  legs alone the same code reproduces the published bands exactly.
+- **Position size:** one direction can hold 4 N with the leg (pyramid 2 N, ORB N, IB N) instead of 3 N, and the panel
+  shows it. Check it against your XFA's Scaling Plan limit.
+- **Not re-run with the leg:** the plan's figures (`plan_search.py`, about $259k in 3 years for a typical start).
+- **Checks:**
+  - A line-for-line Python copy of the new Pine code ran on every session of the last 5 years. All 938 ORB trades
+    equal the backtest's to the cent. On the 280 days without a drive that had both an ORB trade and a backtest IB
+    trade, 273 IB outcomes match; the other 7 are the same-bar cases above.
+  - Both editions parse with `pynescript`, with no undeclared or twice-declared names.
+  - Every figure the indicator quotes comes from `results_r7/accounts.csv` or `results_r7/v27_topstep_sizes.csv`.
 
 ## Data (history: the research's earlier series)
 
