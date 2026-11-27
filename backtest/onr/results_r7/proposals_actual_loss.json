@@ -1,0 +1,66 @@
+{
+ "pool_topstep50": {
+  "5y | book": {
+   "net_per_year": 73075,
+   "worst_full_year": 47523,
+   "xfa_share_with_payout_pct": 60.7
+  },
+  "early | book": {
+   "net_per_year": 65030,
+   "worst_full_year": 49172,
+   "xfa_share_with_payout_pct": 54.5
+  },
+  "5y | no overnight": {
+   "net_per_year": 69742,
+   "worst_full_year": 40239,
+   "xfa_share_with_payout_pct": 58.0
+  },
+  "early | no overnight": {
+   "net_per_year": 46203,
+   "worst_full_year": 35844,
+   "xfa_share_with_payout_pct": 54.3
+  },
+  "5y | actual loss": {
+   "net_per_year": 80022,
+   "worst_full_year": 61657,
+   "xfa_share_with_payout_pct": 60.2
+  },
+  "early | actual loss": {
+   "net_per_year": 61731,
+   "worst_full_year": 51990,
+   "xfa_share_with_payout_pct": 59.4
+  }
+ },
+ "funded_alone_topstep50": {
+  "cfd | book": {
+   "accounts": 233,
+   "reach_payout_pct": 59.7,
+   "payouts_per_account": 1.01
+  },
+  "cfd | no overnight": {
+   "accounts": 233,
+   "reach_payout_pct": 69.5,
+   "payouts_per_account": 1.15
+  },
+  "cfd | actual loss": {
+   "accounts": 233,
+   "reach_payout_pct": 58.8,
+   "payouts_per_account": 0.97
+  },
+  "mnq | book": {
+   "accounts": 280,
+   "reach_payout_pct": 53.6,
+   "payouts_per_account": 1.71
+  },
+  "mnq | no overnight": {
+   "accounts": 280,
+   "reach_payout_pct": 57.1,
+   "payouts_per_account": 1.47
+  },
+  "mnq | actual loss": {
+   "accounts": 280,
+   "reach_payout_pct": 51.8,
+   "payouts_per_account": 1.55
+  }
+ }
+}

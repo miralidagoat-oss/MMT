@@ -1,8 +1,8 @@
 //@version=6
-indicator("ONR Book v2.7 (50% add-on) - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book 50%", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+indicator("ONR Book v2.7.1 (50% add-on) - Lucid Flex / Topstep (overnight reversion + opening drive)", shorttitle = "ONR Book 50%", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // =====================================================================================================================
-// ONR BOOK v2.7, 50% CONSISTENCY ADD-ON EDITION (2026-11-27). Chart: MNQ1! (or NQ1!), 1-5 minute bars, 24h (ETH)
+// ONR BOOK v2.7.1, 50% CONSISTENCY ADD-ON EDITION (2026-11-27). Chart: MNQ1! (or NQ1!), 1-5 minute bars, 24h (ETH)
 // session. Sizes in MNQ ($2/pt). Same trading logic as onr_book.pine: only "LUCID EVAL: consistency rule you bought"
 // defaults to the 50% add-on, and the Lucid backtest text below leads with the add-on's figures.
 // ACCOUNT: Lucid Flex 25K / 50K / 100K / 150K or Topstep 25K / 50K / 100K / 150K (inputs "Prop firm" and "Account size",
@@ -16,7 +16,8 @@ indicator("ONR Book v2.7 (50% add-on) - Lucid Flex / Topstep (overnight reversio
 //          Stop <= $600 INCLUDING commission, target <= 50% of the profit target with the add-on and at Topstep (40% without),
 //          contracts = round(($stop + $target) / (width x ADR x $2)).
 // FUNDED : trades in priority order under a day risk budget = min($600, cushion - $10), N MNQ per leg:
-//            1) overnight reversion 18:10 -> 09:30, stop 0.5 ADR, no target
+//            1) overnight reversion 18:10 -> 09:30, stop 0.5 ADR, no target. v2.7.1 input "FUNDED / LIVE: skip the
+//               overnight trade" (off by default): funded and live accounts then skip it and its risk stays free
 //            2) opening-drive pyramid 09:35: stop 0.35 ADR, add N at +0.15 ADR (stop -> breakeven), trail 0.25 ADR, exit 16:00
 //            3) v2.7: 5-minute ORB 09:35 (input "FUNDED: 5-minute ORB leg"; Auto = Topstep 50K and 150K only): in the
 //               direction of the first 5 minutes when that move is >= 0.05 ADR, stop 0.10 ADR, target 1 ADR, exit 16:00.
@@ -75,6 +76,13 @@ indicator("ONR Book v2.7 (50% add-on) - Lucid Flex / Topstep (overnight reversio
 //          25K $32.2k -> $35.8k but $31.3k -> $30.6k at 1 tick; 100K $122.1k -> $141.4k but its worst full year
 //          +$94.9k -> +$59.4k; Lucid 50K $55.7k -> $55.2k (40% rule; 2023-26 $60.7k -> $49.9k), $58.3k -> $62.3k with
 //          the add-on. backtest/onr/r7_accounts.py and r7_v27.py.
+//          v2.7.1 CHECKS of two proposals (another assistant, Nov 27 2026; backtest/onr/check_proposals.py):
+//          - "skip the overnight trade in funded accounts": its funded form (stop 0.5 ADR, no target) is weak in almost
+//            every year (Nasdaq-100 CFD 2011-2019 about $1 a trade at 1 MNQ), and without it more funded accounts reach a
+//            first payout, but every 5 + 5 pool made less money and it fails rule 5Y (Topstep 50K $73.1k -> $69.7k a
+//            year, Dec 2019 - Nov 2021 $65.0k -> $46.2k): an option, off by default;
+//          - "the ORB lost before 2021": not this rule on NQ. Nasdaq-100 CFD 2011-2020 +0.33R a trade, t 4.1, 9 of 10
+//            years up (+0.22R at 1 tick of slippage); it loses on the S&P 500 CFD after costs. Kept on (Auto).
 // ADR = average 09:30-16:00 NQ range of the last 14 full sessions.
 // CHART  : every trade is drawn like TradingView's position tool, from its entry bar to its exit bar: red box = entry to
 //          stop, green box = entry to target, gray line = entry. A BUY / SELL label marks each entry and a label with
@@ -134,10 +142,11 @@ tsPath = input.string("Standard (recommended)", "TOPSTEP FUNDED: XFA payout path
 plan150 = input.bool(false, "PLAN: my spare cash has reached $25,000 (150K step)", group = grpA, tooltip = "Your plan (backtest/onr/plan_search.py): Topstep 50K, 5 XFAs + 5 Combines from day one; Lucid 50K with the add-on once your spare cash (business cash after setting aside 30% of each payout for tax) reaches $11,000; from $25,000, each new Topstep Combine is 150K while NQ's 14-day range (the NQ ADR line) is at least 151 points, else 50K. Below 151 points a 150K XFA's legs are capped at 10 MNQ, so it trades no more than a 100K. Tick this once you reach $25,000: the panel line 'Next Topstep Combine' then says which size to buy. Accounts already open keep their size; set Account size to each account's own size.")
 commIn = input.float(1.00, "Commission per MNQ round turn ($)", minval = 0.0, step = 0.01, group = grpA, tooltip = "Cost per micro contract, in and out: yours is $0.50 to enter + $0.50 to exit = $1.00 a round turn, and every backtest figure quoted here uses $1.00. Used for the eval stop (a full stop-out, commission included, stays inside the $ limit) and for the simulated trade list.")
 fundSize = input.string("Auto (ADR-normalised)", "FUNDED: contracts per leg", options = ["Auto (ADR-normalised)", "Fixed 1 MNQ (v1)"], group = grpA, tooltip = "Auto = round(350 / ADR) MNQ per $1,000 of max loss. At 50K that is round(700 / ADR): 1 MNQ while NQ's daily range is above 467 points, 2 MNQ at 280-467, 3 MNQ at 200-280 and more below that (at most 10 / 20 / 30 / 40 MNQ for 25K / 50K / 100K / 150K at Lucid; 6 / 10 / 10 at Topstep 50K / 100K / 150K, the backtest's Scaling Plan assumption). Fixed 1 MNQ is v1's sizing, which stalled payouts in low-range years.")
-orbOpt = input.string("Auto (Topstep 50K / 150K)", "FUNDED: 5-minute ORB leg (v2.7)", options = ["Auto (Topstep 50K / 150K)", "On (every funded account)", "Off (the v2.6.6 book)"], group = grpA, tooltip = "v2.7: a 4th funded leg from round 7 of the research (13 published strategy families, 1,556 settings, picked on 2019-2022 and judged once on 2023-2026). At 09:35 ET, if the first 5 minutes (09:30-09:35) moved at least 0.05 ADR: N MNQ in that direction, stop 0.10 ADR, target 1 ADR (10x the risk), exit 16:00. It is taken after the pyramid, inside the day budget, and always faces the pyramid's way (the pyramid needs the same move to be at least 0.10 ADR). While it is open, the IB's other side waits. Not on half days; never in an eval. Auto: on for Topstep 50K and 150K XFAs only. Backtest on your MNQ file, last 5 years, 5 XFAs + 5 Combines (Standard payouts, No Activation Fee path), net a year without -> with it: 50K $73.1k -> $90.5k (worst full year +$47.5k -> +$43.3k; 2023-26 $76.6k -> $98.1k; at 1 tick of slippage on every fill $67.9k -> $89.9k); 150K $136.0k -> $185.4k (1 tick $135.6k -> $189.9k). Left off by Auto: Topstep 25K $32.2k -> $35.8k but $31.3k -> $30.6k at 1 tick; 100K $122.1k -> $141.4k but its worst full year +$94.9k -> +$59.4k; Lucid 50K (5 funded + 5 evals) 40% rule $55.7k -> $55.2k (2023-26 $60.7k -> $49.9k), add-on $58.3k -> $62.3k. On = every funded and live account; Off = the v2.6.6 book.")
+orbOpt = input.string("Auto (Topstep 50K / 150K)", "FUNDED: 5-minute ORB leg (v2.7)", options = ["Auto (Topstep 50K / 150K)", "On (every funded account)", "Off (the v2.6.6 book)"], group = grpA, tooltip = "v2.7: a 4th funded leg from round 7 of the research (13 published strategy families, 1,556 settings, picked on 2019-2022 and judged once on 2023-2026). At 09:35 ET, if the first 5 minutes (09:30-09:35) moved at least 0.05 ADR: N MNQ in that direction, stop 0.10 ADR, target 1 ADR (10x the risk), exit 16:00. It is taken after the pyramid, inside the day budget, and always faces the pyramid's way (the pyramid needs the same move to be at least 0.10 ADR). While it is open, the IB's other side waits. Not on half days; never in an eval. Auto: on for Topstep 50K and 150K XFAs only. Backtest on your MNQ file, last 5 years, 5 XFAs + 5 Combines (Standard payouts, No Activation Fee path), net a year without -> with it: 50K $73.1k -> $90.5k (worst full year +$47.5k -> +$43.3k; 2023-26 $76.6k -> $98.1k; at 1 tick of slippage on every fill $67.9k -> $89.9k); 150K $136.0k -> $185.4k (1 tick $135.6k -> $189.9k). Left off by Auto: Topstep 25K $32.2k -> $35.8k but $31.3k -> $30.6k at 1 tick; 100K $122.1k -> $141.4k but its worst full year +$94.9k -> +$59.4k; Lucid 50K (5 funded + 5 evals) 40% rule $55.7k -> $55.2k (2023-26 $60.7k -> $49.9k), add-on $58.3k -> $62.3k. Before 2021 (checked Nov 27 2026): on the Nasdaq-100 CFD, 2011-2020, the same rule made +0.33R a trade (t 4.1, 9 of 10 years up; +0.22R and 7 of 10 at 1 tick of slippage on every fill); on the S&P 500 CFD it lost after costs, so it is for NQ / MNQ only. On = every funded and live account; Off = the v2.6.6 book.")
+skipON = input.bool(false, "FUNDED / LIVE: skip the overnight trade (v2.7.1)", group = grpA, tooltip = "v2.7.1. Off (recommended): funded and live accounts take the 18:10 overnight trade as before. On: they skip it (evals and Combines still take it), its 0.5 ADR risk stays free for the 09:35 and 10:30 legs, nothing is held overnight, and each skipped signal is followed on the chart: the panel shows what the skipped trades would have made. Checked Nov 27 2026 on your MNQ file (5 funded + 5 evals, last 5 years, net a year): skipping fails rule 5Y in every account type. Topstep 50K $73.1k -> $69.7k (worst full year $47.5k -> $40.2k; Dec 2019 - Nov 2021 $65.0k -> $46.2k); Lucid 50K 40% rule $55.7k -> $57.0k but Dec 2019 - Nov 2021 $57.6k -> $37.6k; Lucid add-on $58.3k -> $53.8k. With the ORB leg on, Topstep 50K $90.5k -> $93.1k but Dec 2019 - Nov 2021 $112.3k -> $72.4k. What skipping does improve: more funded accounts reach a first payout (Topstep rules, 2021-26: 53.6% -> 57.1%; Nasdaq-100 CFD 2011-2020: 67.8% -> 77.3%), but over its life an account then pays out less often (2021-26: 1.71 -> 1.47 payouts per account).")
 grpL = "Live tracking (alarm levels) - update each weekend"
 liveDays = input.int(0, "Trading days since this funded account started trading ONR", minval = 0, group = grpL)
-livePnl = input.float(0.0, "Live ONR trade P&L since then ($, this one funded account)", group = grpL, tooltip = "Sum of this funded account's ONR trade results since it started (no eval fees, no payouts). The bands come from the backtest: one 50K funded account (scaled to your size), Nov 2021 - Nov 2026 on your MNQ file, 20,000 bootstrap paths - median, 5th percentile (yellow) and 1st percentile (red). With the v2.7 ORB leg on, the bands come from the same test with it.")
+livePnl = input.float(0.0, "Live ONR trade P&L since then ($, this one funded account)", group = grpL, tooltip = "Sum of this funded account's ONR trade results since it started (no eval fees, no payouts). The bands come from the backtest: one 50K funded account (scaled to your size), Nov 2021 - Nov 2026 on your MNQ file, 20,000 bootstrap paths - median, 5th percentile (yellow) and 1st percentile (red). With the v2.7 ORB leg on, or the overnight trade skipped (v2.7.1), the bands come from the same test with that setup.")
 grpD = "Data"
 sigSym = input.symbol("OANDA:SPX500USD", "S&P 500 CFD for the stretch score (the research used an S&P 500 CFD)", group = grpD)
 grpV = "Display"
@@ -486,6 +495,14 @@ var float orbStp = na
 var float orbTgt = na
 var int orbT = 0
 var int ibHold = 0    // the IB side held back while an ORB trade is open: 1 = the buy stop, -1 = the sell stop, 0 = none
+// v2.7.1: a skipped overnight signal on a funded / live account, followed as if traded (nothing at the broker)
+var int vSide = 0
+var int vN = 1
+var float vEnt = na
+var float vStp = na
+var int skipN = 0
+var int skipWin = 0
+var float skipUsd = 0.0
 var string lastMsg = "-"
 var int t0Chart = time
 var int eT = 0
@@ -581,6 +598,12 @@ if newDay and not na(close[1])
     if orbSide != 0
         f_log(LOG, orbT, time_close[1], "ORB x" + str.tostring(orbN), orbSide, orbEnt, close[1], ((close[1] - orbEnt) * orbSide * PV - COMM) * orbN, (close[1] - orbEnt) * orbSide / math.abs(orbEnt - orbStp), "session end")
         orbSide := 0
+    if vSide != 0
+        float vUsd3 = ((close[1] - vEnt) * vSide * PV - COMM) * vN
+        skipN += 1
+        skipWin += vUsd3 > 0 ? 1 : 0
+        skipUsd += vUsd3
+        vSide := 0
 if newDay
     usedRisk := 0.0
     evalUsedToday := false
@@ -617,6 +640,15 @@ if eSide != 0
         f_exitLbl((px - eEnt) * eSide * eN * PV - eN * COMM, eSide, "Eval " + eName + " " + str.tostring(eN) + " MNQ: " + (stopHit ? "stop" : "target") + " at " + str.tostring(px, format.mintick))
         f_log(LOG, eT, time, "EVAL " + eName + " x" + str.tostring(eN), eSide, eEnt, px, (px - eEnt) * eSide * eN * PV - eN * COMM, (px - eEnt) * eSide / math.abs(eEnt - eStp), stopHit ? "stop" : "target")
         eSide := 0
+if vSide != 0
+    bool vHit = vSide == 1 ? low <= vStp : high >= vStp
+    if vHit
+        float vpx = (vSide == 1 and open <= vStp) or (vSide == -1 and open >= vStp) ? open : vStp
+        float vUsd = ((vpx - vEnt) * vSide * PV - COMM) * vN
+        skipN += 1
+        skipWin += vUsd > 0 ? 1 : 0
+        skipUsd += vUsd
+        vSide := 0
 if oSide != 0
     bool oHit = oSide == 1 ? low <= oStp : high >= oStp
     if oHit
@@ -742,6 +774,12 @@ if evONx
         oSide := 0
     if hadON
         alert("ONR: 09:30 - close the overnight position at market.", alert.freq_once_per_bar_close)
+    if vSide != 0
+        float vUsd2 = ((close - vEnt) * vSide * PV - COMM) * vN
+        skipN += 1
+        skipWin += vUsd2 > 0 ? 1 : 0
+        skipUsd += vUsd2
+        vSide := 0
 if evIBend and ibArmed
     ibArmed := false
     usedRisk := usedRisk - ibReserve
@@ -811,6 +849,16 @@ if evON and not na(adr) and sigSide != 0
             alert("ONR EVAL: OVERNIGHT " + sideTxt + " " + str.tostring(n) + " MNQ @ ~" + str.tostring(close, format.mintick) + " | stop " + str.tostring(eStp, format.mintick) + " | target " + str.tostring(eTgt, format.mintick) + " | exit 09:30 ET", alert.freq_once_per_bar_close)
         else
             lastMsg := "OVERNIGHT " + sideTxt + " signal NOT traded: eval cushion below $" + str.tostring(50.0 * M, "#")
+    else if skipON
+        // v2.7.1: this funded / live account skips the overnight trade (its risk stays free for the day's later legs); the
+        // signal is followed as if traded at the size the trade would have had, so the panel shows what it would have made
+        lastMsg := "OVERNIGHT " + sideTxt + " signal NOT traded: this account skips the overnight trade (setting FUNDED / LIVE: skip the overnight trade)"
+        f_mark(sigSide == 1 ? 0 : 1, "ON skip", "Overnight " + sideTxt + " signal not traded: this " + (isLive ? "live" : "funded") + " account skips the overnight trade (setting). The panel follows what it would have made.", color.gray)
+        if vSide == 0
+            vSide := sigSide
+            vN := nF
+            vEnt := close
+            vStp := close - sigSide * 0.5 * adr
     else
         float rk = 0.5 * adr * PV * nF
         if cushion >= 200.0 * M and usedRisk + rk <= room
@@ -977,9 +1025,16 @@ var array<float> ARED = array.from(-5063.0, -6261.0, -6766.0, -6853.0, -3622.0)
 var array<float> AMEDB = array.from(1735.0, 3840.0, 5890.0, 12248.0, 26128.0)
 var array<float> AYELB = array.from(-3574.0, -4184.0, -4078.0, -2465.0, 4170.0)
 var array<float> AREDB = array.from(-5452.0, -6899.0, -7842.0, -7934.0, -4170.0)
+// v2.7.1: with the overnight trade skipped (backtest/onr/r7_skip.py, results_r7/skip_alarm_bands.csv), without / with the ORB leg
+var array<float> AMEDN = array.from(1399.0, 3004.0, 4578.0, 9423.0, 19788.0)
+var array<float> AYELN = array.from(-2717.0, -3182.0, -2944.0, -1626.0, 3537.0)
+var array<float> AREDN = array.from(-4138.0, -5333.0, -5945.0, -5637.0, -2544.0)
+var array<float> AMEDNB = array.from(1752.0, 3970.0, 6104.0, 12761.0, 26865.0)
+var array<float> AYELNB = array.from(-3343.0, -3884.0, -3642.0, -1631.0, 5567.0)
+var array<float> AREDNB = array.from(-4745.0, -6385.0, -7011.0, -6848.0, -2690.0)
 
 // ---------- next step on the clock (ET and PT)
-f_nextStep(bool ev, bool orb) =>
+f_nextStep(bool ev, bool orb, bool skip) =>
     int m = hour(timenow, TZ) * 60 + minute(timenow, TZ)
     int dw = dayofweek(timenow, TZ)
     bool wkend = dw == dayofweek.saturday or (dw == dayofweek.sunday and m < 18 * 60) or (dw == dayofweek.friday and m >= 16 * 60)
@@ -997,7 +1052,7 @@ f_nextStep(bool ev, bool orb) =>
     else if m < 16 * 60
         s := "Exit everything at 16:00 ET / 1:00 PM PT. Then update the Account inputs."
     else if m < 18 * 60 + 10
-        s := "18:10 ET / 3:10 PM PT: overnight check (score row above; final after 16:00)."
+        s := skip and not ev ? "18:10 ET / 3:10 PM PT: overnight signal check - this account skips the trade (setting); the panel follows it." : "18:10 ET / 3:10 PM PT: overnight check (score row above; final after 16:00)."
     else
         s := "Overnight trade (if any) runs to 09:30 ET / 6:30 AM PT. Next: 09:35 ET / 6:35 AM PT opening drive."
     s
@@ -1040,9 +1095,10 @@ if showPanel and barstate.islast
         warn := "WITHDRAW $" + str.tostring(pnlNow - MLL - 100.0, "#") + " (everything above $" + str.tostring(MLL + 100.0, "#") + ", keeping a $" + str.tostring(MLL, "#") + " cushion)"
     else if isLive and not liveLocked
         warn := "LIVE: no withdrawal until live profit reaches $" + str.tostring(MLL, "#") + " (a payout before that locks the drawdown at +$100 at once)"
+    string skipHead = skipON and not isEval ? " | OVERNIGHT TRADE SKIPPED on this account (setting; in the backtest it made less money: see the setting's tooltip)" : ""
     string orbHead = not ORBON or isEval ? "" : TS ? " | ORB leg ON (v2.7), same test: 50K ~$90.5k/yr (worst full year +$43.3k), 150K ~$185.4k; 25K ~$35.8k, 100K ~$141.4k (worst full year +$59.4k)" : " | ORB leg ON (v2.7), same test at 50K: ~" + (CONS == 0.5 ? "$62.3k/yr with the add-on (2023-26 ~$63.5k vs ~$59.0k without the leg)" : "$55.2k/yr (2023-26 ~$49.9k vs ~$60.7k without the leg)")
-    table.cell(T, 0, 0, "ONR Book v2.7 (50%)", bgcolor = color.new(color.navy, 0), text_color = color.white)
-    table.cell(T, 1, 0, (TS ? "Backtest Nov 2021 - Nov 2026 on your MNQ file, Topstep, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path: 50K ~$73.1k/yr (worst full year +$47.5k), 100K ~$122.1k (+$94.9k), 150K ~$136.0k (+$41.1k); Consistency payouts ~$42.6k / $58.7k / $84.3k; 25K Static (5 Combines a month): Standard ~$32.2k (+$10.1k), Consistency ~$32.2k (+$6.9k) | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on your MNQ file (50K, 50% add-on, $98.20 evals): eval pass 43.2%, first payout median 53 days; 5 funded + 5 evals closing each account after its 4th payout ~$58.3k/yr (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$65.2k/yr | not live-tested") + orbHead, bgcolor = color.new(color.navy, 0), text_color = color.yellow)
+    table.cell(T, 0, 0, "ONR Book v2.7.1 (50%)", bgcolor = color.new(color.navy, 0), text_color = color.white)
+    table.cell(T, 1, 0, (TS ? "Backtest Nov 2021 - Nov 2026 on your MNQ file, Topstep, 5 XFAs + 5 Combines, Standard payouts, No Activation Fee path: 50K ~$73.1k/yr (worst full year +$47.5k), 100K ~$122.1k (+$94.9k), 150K ~$136.0k (+$41.1k); Consistency payouts ~$42.6k / $58.7k / $84.3k; 25K Static (5 Combines a month): Standard ~$32.2k (+$10.1k), Consistency ~$32.2k (+$6.9k) | Topstep's call-up to live is not modelled: a best case | not live-tested" : "Lucid backtest Nov 2021 - Nov 2026 on your MNQ file (50K, 50% add-on, $98.20 evals): eval pass 43.2%, first payout median 53 days; 5 funded + 5 evals closing each account after its 4th payout ~$58.3k/yr (every full year positive, longest gap ~6 mo); taking 5th payouts and going live ~$65.2k/yr | not live-tested") + orbHead + skipHead, bgcolor = color.new(color.navy, 0), text_color = color.yellow)
     table.cell(T, 0, 1, "Account", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 1, acct, text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 2, "Cushion / day budget", text_color = color.white, bgcolor = color.new(color.gray, 40))
@@ -1060,15 +1116,17 @@ if showPanel and barstate.islast
     table.cell(T, 1, 7, warn, text_color = warn == "-" ? color.white : color.yellow, bgcolor = color.new(color.gray, 40))
     table.cell(T, 0, 8, "Today's eval trigger", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 8, isEval ? (evalDone ? "none: the profit target is reached" : evalUsedToday ? "used (one eval trade per day)" : (goodFri ? "Good Friday (09:15 ET halt): no 09:35 drive" : halfDay ? "half day: overnight trade only" : "waiting: 18:10 overnight -> 09:35 drive")) : "-", text_color = color.white, bgcolor = color.new(color.gray, 40))
-    string nxt = goodFri ? (timenow < halfEnd ? "GOOD FRIDAY (CME halts at 09:15 ET): close any overnight trade by 09:10 ET / 6:10 AM PT; no 09:35 / 10:30 trades." : "Good Friday: the market is closed. Next: Sunday 18:10 ET / 3:10 PM PT overnight check.") : halfDay ? (timenow < halfEnd ? "HALF DAY (13:00 ET halt): exit the overnight trade at 09:30, no new trades, flat by 12:55 ET / 9:55 AM PT." : "Half day over (13:00 ET halt). Next: 18:10 ET / 3:10 PM PT overnight check once the next session opens.") : f_nextStep(isEval, ORBON)
+    string nxt = goodFri ? (timenow < halfEnd ? "GOOD FRIDAY (CME halts at 09:15 ET): close any overnight trade by 09:10 ET / 6:10 AM PT; no 09:35 / 10:30 trades." : "Good Friday: the market is closed. Next: Sunday 18:10 ET / 3:10 PM PT overnight check.") : halfDay ? (timenow < halfEnd ? "HALF DAY (13:00 ET halt): exit the overnight trade at 09:30, no new trades, flat by 12:55 ET / 9:55 AM PT." : "Half day over (13:00 ET halt). Next: 18:10 ET / 3:10 PM PT overnight check once the next session opens.") : f_nextStep(isEval, ORBON, skipON)
     table.cell(T, 0, 9, "Next step", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 9, nxt, text_color = halfDay or goodFri ? color.orange : color.aqua, bgcolor = color.new(color.gray, 40))
     float bandScale = M / 2.0  // bands are for 50K (M = 2)
     bool orbBands = ORBON and not isEval   // the bands of the same test with the v2.7 ORB leg
-    float yl = (orbBands ? f_interp(liveDays, AX, AYELB) : f_interp(liveDays, AX, AYEL)) * bandScale
-    float rd = (orbBands ? f_interp(liveDays, AX, AREDB) : f_interp(liveDays, AX, ARED)) * bandScale
-    float md = (liveDays >= 20 ? (orbBands ? f_interp(liveDays, AX, AMEDB) : f_interp(liveDays, AX, AMED)) : (orbBands ? array.get(AMEDB, 0) : array.get(AMED, 0)) * liveDays / 20.0) * bandScale
-    string alarmTxt = liveDays == 0 ? "enter your live trading days + P&L (Live tracking inputs)" : ("day " + str.tostring(liveDays) + ": $" + str.tostring(livePnl, "#") + " vs typical $" + str.tostring(md, "#") + " | yellow < $" + str.tostring(yl, "#") + " | red < $" + str.tostring(rd, "#") + (liveDays < 20 ? " (bands start at day 20)" : "") + (orbBands ? " | bands with the ORB leg" : ""))
+    bool skipBands = skipON and not isEval   // ... and with the overnight trade skipped (v2.7.1)
+    float yl = (skipBands ? (orbBands ? f_interp(liveDays, AX, AYELNB) : f_interp(liveDays, AX, AYELN)) : orbBands ? f_interp(liveDays, AX, AYELB) : f_interp(liveDays, AX, AYEL)) * bandScale
+    float rd = (skipBands ? (orbBands ? f_interp(liveDays, AX, AREDNB) : f_interp(liveDays, AX, AREDN)) : orbBands ? f_interp(liveDays, AX, AREDB) : f_interp(liveDays, AX, ARED)) * bandScale
+    float md20 = skipBands ? (orbBands ? array.get(AMEDNB, 0) : array.get(AMEDN, 0)) : orbBands ? array.get(AMEDB, 0) : array.get(AMED, 0)
+    float md = (liveDays >= 20 ? (skipBands ? (orbBands ? f_interp(liveDays, AX, AMEDNB) : f_interp(liveDays, AX, AMEDN)) : orbBands ? f_interp(liveDays, AX, AMEDB) : f_interp(liveDays, AX, AMED)) : md20 * liveDays / 20.0) * bandScale
+    string alarmTxt = liveDays == 0 ? "enter your live trading days + P&L (Live tracking inputs)" : ("day " + str.tostring(liveDays) + ": $" + str.tostring(livePnl, "#") + " vs typical $" + str.tostring(md, "#") + " | yellow < $" + str.tostring(yl, "#") + " | red < $" + str.tostring(rd, "#") + (liveDays < 20 ? " (bands start at day 20)" : "") + (orbBands or skipBands ? " | bands with " + (orbBands ? "the ORB leg" : "") + (orbBands and skipBands ? " and " : "") + (skipBands ? "no overnight trade" : "") : ""))
     color alarmCol = liveDays == 0 ? color.white : (livePnl < rd ? color.red : (livePnl < yl ? color.yellow : color.lime))
     string alarmHead = liveDays == 0 ? "Live alarm" : (livePnl < rd ? "Live alarm: RED - STOP" : (livePnl < yl ? "Live alarm: YELLOW" : "Live alarm: GREEN"))
     table.cell(T, 0, 10, alarmHead, text_color = alarmCol, bgcolor = color.new(color.gray, 40))
@@ -1076,6 +1134,10 @@ if showPanel and barstate.islast
     string nextTs = not TS ? "Topstep plan only (Prop firm = Topstep)" : na(adr) ? "warming up (needs the NQ ADR)" : not plan150 ? "50K (150K once your spare cash reaches $25,000: tick the PLAN input)" : adr >= 151.0 ? "150K (NQ ADR " + str.tostring(adr, "#") + " >= 151: a 150K XFA trades at full size)" : "50K (NQ ADR " + str.tostring(adr, "#") + " < 151: a 150K XFA would be capped at 10 MNQ a leg)"
     table.cell(T, 0, 11, "Next Topstep Combine", text_color = color.white, bgcolor = color.new(color.gray, 40))
     table.cell(T, 1, 11, nextTs, text_color = TS and plan150 and not na(adr) ? color.yellow : color.white, bgcolor = color.new(color.gray, 40))
+    if skipON and not isEval
+        string skipTxt = str.tostring(skipN) + " skipped on this chart's history, " + str.tostring(skipWin) + " would have won; they would have made " + (skipUsd >= 0 ? "+$" : "-$") + str.tostring(math.abs(skipUsd), "#") + " (commission in, at the size each would have had)" + (vSide != 0 ? " | one is being followed now (stop " + str.tostring(vStp, format.mintick) + ", out at 09:30)" : "")
+        table.cell(T, 0, 12, "Skipped overnight signals", text_color = color.white, bgcolor = color.new(color.gray, 40))
+        table.cell(T, 1, 12, skipTxt, text_color = color.white, bgcolor = color.new(color.gray, 40))
 
 // ---------- last 30 trades (simulated on this chart's bars: fills estimated from bar highs/lows, commission input included)
 var table TL = table.new(logPos == "Bottom right" ? position.bottom_right : logPos == "Top left" ? position.top_left : logPos == "Middle left" ? position.middle_left : position.bottom_left, 7, 33, border_width = 1)

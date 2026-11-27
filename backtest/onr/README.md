@@ -150,9 +150,9 @@ Topstep 50K 5 XFAs + 5 Combines from day one (have about $11,000 ready: the most
 
 Sep 9 - Nov 20 2026 (53 sessions), cut from the same file (`prep_mnq.py --cut`; each session's 14-day range from the file's own earlier sessions, `engine.adr_seed`). One funded 50K account: 78 trades, 46.2% winners, +$16,937 after $168 commission (overnight 19 trades +$3,691, pyramid 25 +$10,990, IB breakout 34 +$2,256). Evals or Combines started every session: 33 of 50 passed. 5 funded + 5 evals made +$2,461 at Lucid (add-on) and +$2,541 at Topstep in those 10 weeks, most of the time spent passing evals.
 
-### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.7)
+### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.7.1)
 
-Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_addon_fee8820/alarm_bands.csv`. v2.7 (Nov 27 2026) adds the 5-minute ORB leg from research round 7 (see "Indicator v2.7" below), on by default for Topstep 50K and 150K only; with the leg on, the alarm bands are `results_r7/v27_alarm_bands.csv`. v2.6.6 (Nov 25 2026) changes no rule: the commission input defaults to your $1.00 per MNQ round turn ($0.50 to enter and $0.50 to exit), and every quoted figure and the alarm bands come from the $1.00 rerun. v2.6.5 (Nov 24) changed no trade either. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
+Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_addon_fee8820/alarm_bands.csv`. v2.7 (Nov 27 2026) adds the 5-minute ORB leg from research round 7 (see "Indicator v2.7" below), on by default for Topstep 50K and 150K only; with the leg on, the alarm bands are `results_r7/v27_alarm_bands.csv`. v2.7.1 adds an optional switch to skip the overnight trade in funded and live accounts, off by default (see "Checked: two proposals" below). v2.6.6 (Nov 25 2026) changes no rule: the commission input defaults to your $1.00 per MNQ round turn ($0.50 to enter and $0.50 to exit), and every quoted figure and the alarm bands come from the $1.00 rerun. v2.6.5 (Nov 24) changed no trade either. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
 
 ### Reproduce
 
@@ -411,6 +411,79 @@ nothing there; its gain is a 50K result.
     trade, 273 IB outcomes match; the other 7 are the same-bar cases above.
   - Both editions parse with `pynescript`, with no undeclared or twice-declared names.
   - Every figure the indicator quotes comes from `results_r7/accounts.csv` or `results_r7/v27_topstep_sizes.csv`.
+
+### Checked: two proposals for v2.7 from another assistant (Nov 27 2026; indicator v2.7.1)
+
+The user brought two proposals from another assistant:
+1. funded and live accounts should skip the 18:10 overnight trade by default (evals keep it);
+2. the 5-minute ORB should be tested on 2011-2020 and turned off if it loses there, because "opening-range breakouts
+   flipped around 2021".
+
+Both were checked on this research's own engine and account classes (`check_proposals.py`, `check_actual_loss.py`,
+`check_orb_cfd5.py`, `r7_skip.py` → `results_r7/proposals*.json`, `orb_cfd5.json`, `skip_*.csv`). The MNQ file starts in
+Dec 2019, so 2011-2020 uses the Nasdaq-100 and S&P 500 CFDs of the earlier research (HistData, 1-minute bars).
+
+**Proposal 1, skip the overnight trade in funded accounts: partly right, but it costs money.**
+- **Right:** the funded overnight trade (stop 0.5 ADR, no target, out at 09:30) is weak. At 1 MNQ it made about $0.79 a
+  trade on the Nasdaq-100 CFD in 2011-2019, and no year was significant. Its good years were 2020 (+$33 a trade on
+  the MNQ file), 2024 (+$20), 2025 (+$14) and 2026 (+$59).
+- **Right:** its 0.5 ADR risk is held in the day budget all day, so it can crowd out the later legs.
+- **Right:** without it, more funded accounts reach a first payout (one account started every 5 sessions):
+
+| Funded accounts alone | Topstep 50K rules: book / no overnight | Lucid 50K rules: book / no overnight |
+|---|---|---|
+| NQ CFD 2011-2020 | 67.8% / 77.3% reach a payout (1.13 / 1.22 payouts each) | 46.0% / 50.9% (0.80 / 0.83) |
+| NQ CFD 2011-2015 | 83.3% / 93.9% | 48.7% / 57.0% |
+| NQ CFD 2016-2020 | 59.7% / 69.5% | 42.9% / 51.1% |
+| MNQ 2021-2026 | 53.6% / 57.1% (1.71 / 1.47 payouts each) | 54.3% / 57.1% (1.12 / 1.11) |
+| MNQ 2024-2026 | 52.8% / 62.4% | 53.6% / 62.4% |
+
+  The proposal's "in 2024-26 skipping did a bit worse (55.7% -> 52.2%)" did not show here.
+- **Wrong:** that this makes more money. In every pool it made less and failed rule 5Y (`results_r7/skip_accounts.csv`;
+  5 funded + 5 evals, net a year):
+
+| | Last 5 years | Worst full year | Dec 2019 - Nov 2021 | 2023-26 |
+|---|---|---|---|---|
+| Topstep 50K: book / no overnight | $73,075 / $69,742 | $47,523 / $40,239 | $65,030 / $46,203 | $76,597 / $68,987 |
+| Lucid 50K 40%: book / no overnight | $55,669 / $57,013 | $29,081 / $32,634 | $57,594 / $37,583 | $60,745 / $57,862 |
+| Lucid 50K add-on: book / no overnight | $58,262 / $53,831 | $40,987 / $33,126 | $50,837 / $42,277 | $58,977 / $54,889 |
+| Topstep 50K with the ORB leg: with / without the overnight | $90,515 / $93,065 | $43,264 / $48,656 | $112,280 / $72,440 | $98,080 / $106,970 |
+
+  - Topstep 50K, years 1 / 2 / 3 from 48 monthly start dates (Dec 2019 - Nov 2023): book $46,295 / $75,200 / $71,673,
+    no overnight $44,558 / $72,471 / $68,128. That is lower in every year. The proposal reported the opposite
+    ($44.0k / $54.0k / $31.1k with the trade, $46.7k / $58.7k / $53.9k without).
+  - On the NQ CFD, 2011-2020, Topstep 50K: $25,967 a year with it, $21,433 without.
+  - Why: more accounts reach a first payout, but over their lives they pay out less (MNQ 2021-26: 1.71 against 1.47
+    payouts per Topstep account), and the trade's good years (2020, 2024-26) are lost.
+- **Its third variant:** keep the trade, but charge the day budget only its actual loss once it closes at 09:30. The
+  proposal says this "also fails". On reaching a payout it is no better than the book (CFD 2016-20 58.8%, MNQ 2021-26
+  51.8%). On money it is the best of the three: Topstep 50K $80,022 a year over the last 5 years (worst year $61,657),
+  $61,731 in Dec 2019 - Nov 2021. Both changes against the book are within the noise, so it fails rule 5Y too. It was
+  not pre-registered, so it is a candidate for a later round, not a change.
+
+**Proposal 2, the ORB before 2021: wrong for this rule on NQ.** The proposal's −0.064R (t −2.70) came from a
+different ORB rule, as it says itself. The v2.7 rule, in R (result / 0.10 ADR), is below. It matches round 7's F1 leg on
+all 1,295 MNQ sessions.
+
+| ORB, 2011-2020 | Mean R | t | Years up |
+|---|---|---|---|
+| Nasdaq-100 CFD, 1-minute bars | +0.331 | 4.14 | 9 of 10 |
+| Nasdaq-100 CFD, 5-minute bars | +0.325 | 4.08 | 9 of 10 |
+| Nasdaq-100 CFD, 5-minute bars, 1 tick of slippage on every fill | +0.222 | 2.82 | 7 of 10 |
+| S&P 500 CFD, 5-minute bars | +0.057 | 0.69 | 6 of 10 |
+| S&P 500 CFD, 5-minute bars, 1 tick | −0.267 | −3.44 | 2 of 10 |
+
+On the MNQ file: 2020 +0.41R; 2021-2026 +0.34R (t 3.56, 6 of 6 years). On NQ it did not flip in 2021. On the S&P 500 it
+loses after costs: the proposal's warning holds for ES, which the indicator does not trade.
+
+**What went into the indicator (v2.7.1):**
+- A switch "FUNDED / LIVE: skip the overnight trade", **off by default**, with these figures in its tooltip.
+  - When it is on, each skipped signal is followed as if traded, and the panel shows what the skipped trades would
+    have made: the review the proposal asked for.
+  - The followed result equals the engine's funded overnight trade on all 602 signal nights of the MNQ file.
+  - Its live alarm bands come from the same tests (`skip_alarm_bands.csv`).
+- The ORB leg stays on Auto, with the 2011-2020 results in its tooltip.
+- Both editions parse with no undeclared or twice-declared names, and every new figure matches the result files.
 
 ## Data (history: the research's earlier series)
 
