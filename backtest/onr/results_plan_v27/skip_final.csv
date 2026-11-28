@@ -1,0 +1,3 @@
+plan,label,fut_own_money_worst,fut_own_money_median,fut_fall_worst,fut_worst_12m,fut_spare36_median,fut_spare36_p10,fut_spare36_worst,fut_year3_median,fut_spare24_median,fut_car_month_median,fut_car_month_p90,fut_car_month_worst,fut_first_payout_month_median,fut_first_payout_month_p90,fut_first_payout_month_worst,fut_five_xfa_month_median,fut_five_xfa_month_p90,fut_five_xfa_month_worst,fut_low_after_car_worst,fut_starts_below_0_after_car
+keep (v2.7.2),keep (v2.7.2),10165,2328,-30845,30567,313381,247360,223013,132234,176505,12.3,17.1,18.8,1.5,5.3,7.6,1.1,3.2,4.7,31176,0
+skip,skip,9639,2612,-28620,755,263530,235392,137466,131895,146183,16.0,20.6,23.6,1.6,4.8,7.1,1.1,3.0,4.7,28705,0

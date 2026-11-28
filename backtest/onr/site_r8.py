@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The website's research tab (Nov 28 2026): research round 7, indicator v2.7 / v2.7.1, the two outside proposals,
-research round 8, and your plan rerun with v2.7.1's defaults, as the CSV files the site attaches.
+research rounds 8 and 9 (with the follow-up), and your plan rerun with v2.7.2's defaults, as the CSV files the site attaches.
 
 usage: python3 -I site_r8.py OUT_DIR
 Every number is copied from a result file (results_r7/, results_r9/, results_plan_search/, results_plan_v27/ and its switch25k/); this script only
@@ -315,6 +315,76 @@ def r9():
     return rows, urows
 
 
+def r9_followup():
+    """Round 9 follow-up: skipping the funded overnight trade in your plan as v2.7.2 runs it (results_plan_v27/skip_final.csv,
+    skip_slow_start.csv, switch25k/ against skip25k/), and the figures the follow-up text quotes (results_r9/readings.json,
+    theirs.json, trades_2026-10_summary.json and trades_2026-10_their_reading.csv)."""
+    F = {r["plan"]: r for r in rd(PV, "skip_final.csv")}
+    k, s = F["keep (v2.7.2)"], F["skip"]
+    ref = {r["plan"]: r for r in rd(PV, "variants_final.csv")}["ORB switched on at $25,000"]
+    assert all(k[c] == ref[c] for c in ref if c not in ("plan", "label"))
+    nfull = len(rd(PV, "skip25k", "budget_monthly_runs.csv")) // 16
+    rows = [dict(id="full", way="Your plan, money added when needed: 3 years, typical", starts=nfull,
+                 fp_with=k["fut_first_payout_month_median"], fp_without=s["fut_first_payout_month_median"], ran_with="", ran_without="",
+                 usd_with=k["fut_spare36_median"], usd_without=s["fut_spare36_median"]),
+            dict(id="full-worst", way="Your plan: the worst of those starts, 3 years", starts=nfull, fp_with="",
+                 fp_without="", ran_with="", ran_without="", usd_with=k["fut_spare36_worst"], usd_without=s["fut_spare36_worst"])]
+    SS = {(r["variant"], r["start_money"]): r for r in rd(PV, "skip_slow_start.csv")}
+    old = {(r["variant"], r["start_money"]): r for r in rd(PV, "variants_slow_start.csv")}
+    for mny in ("1000", "3000"):
+        a, b = SS[("keep (v2.7.2)", mny)], SS[("skip", mny)]
+        assert a["ran_out"] == old[("ORB switched on at $25,000", mny)]["ran_out"] and a["starts"] == b["starts"]
+        rows.append(dict(id=f"slow-{mny}", way=f"Started slow with ${int(mny):,}, never more: 4 years, typical", starts=a["starts"],
+                         fp_with=a["first_payout_month_median"], fp_without=b["first_payout_month_median"], ran_with=a["ran_out"],
+                         ran_without=b["ran_out"], usd_with=a["y4 total median"], usd_without=b["y4 total median"]))
+    reached = {}
+    for tag, d in (("keep", "switch25k"), ("skip", "skip25k")):
+        V = {r["plan"]: r for r in rd(PV, d, "budget_view.csv")}
+        B = {r["plan"]: r for r in rd(PV, d, "budget.csv")}
+        runs = rd(PV, d, "budget_runs.csv")
+        for pl in ("budget 500 lucid25k40 1x", "budget 1000 lucid25k40 1x", "budget 1000 lucid25k50 1x"):
+            R = [r for r in runs if r["plan"] == pl]
+            reached[(tag, pl)] = (V[pl], int(B[pl]["fut_ran_out"]), sum(1 for r in R if r["first_payout_month"] != ""), len(R))
+    lab = {"budget 500 lucid25k40 1x": "$500, one Lucid 25K eval at a time, 40% rule: 2 years, starts that kept going",
+           "budget 1000 lucid25k40 1x": "$1,000, the same",
+           "budget 1000 lucid25k50 1x": "$1,000, one Lucid 25K eval at a time with the add-on"}
+    for pl, wl in lab.items():
+        (va, ra, _, na), (vb, rb, _, nb) = reached[("keep", pl)], reached[("skip", pl)]
+        assert na == nb == int(va["fut_starts"])
+        rows.append(dict(id=pl.replace("budget ", "b").replace(" ", "-"), way=wl, starts=na, fp_with=va["fut_first_payout_month_median"],
+                         fp_without=vb["fut_first_payout_month_median"], ran_with=ra, ran_without=rb,
+                         usd_with=va["fut_made_24m_survivors_median_usd"], usd_without=vb["fut_made_24m_survivors_median_usd"]))
+    x = {r["id"]: r for r in rows}
+    assert (x["full"]["usd_with"], x["full"]["usd_without"], x["slow-1000"]["ran_with"], x["slow-1000"]["ran_without"]) == ("313381", "263530", "2", "15")
+    assert (x["b500-lucid25k40-1x"]["ran_with"], x["b500-lucid25k40-1x"]["ran_without"], x["b1000-lucid25k40-1x"]["ran_without"]) == (105, 123, 94)
+    # the figures the text quotes
+    U = json.load(open(os.path.join(R9, "readings.json")))
+    W = "2024 - Nov 20 2026"
+    TH = json.load(open(os.path.join(R9, "theirs.json")))
+    O = json.load(open(os.path.join(R9, "trades_2026-10_summary.json")))
+    big = [r for r in rd(R9, "trades_2026-10_their_reading.csv") if r["date"] == "2026-10-16" and r["leg"] == "pyramid"][0]
+    facts = [("sharpe_as_read", f"{U['as read in round 9 | ' + W]['daily_sharpe']:.3f}", "raw"),
+             ("sharpe_repeated_adds", f"{U['repeated adds every 0.10 ADR | ' + W]['daily_sharpe']:.3f}", "raw"),
+             ("sharpe_no_ib", f"{U['no IB on days without a drive | ' + W]['daily_sharpe']:.3f}", "raw"),
+             ("sharpe_on_cap", f"{U['overnight stop capped at $600 a contract | ' + W]['daily_sharpe']:.3f}", "raw"),
+             ("sharpe_all_three", f"{U['all three together | ' + W]['daily_sharpe']:.3f}", "raw"),
+             ("usd_day_as_read", f"{U['as read in round 9 | ' + W]['usd_per_day']:.2f}", "usd"),
+             ("usd_day_all_three", f"{U['all three together | ' + W]['usd_per_day']:.2f}", "usd")]
+    for a in ("topstep", "lucid_addon", "lucid25_40", "lucid40"):
+        on, off = TH["B60r|on"][a], TH["B60r|off"][a]
+        facts += [(f"theirs_{a}_5y_with", round(on["last 5y"]["M"]), "usd"), (f"theirs_{a}_5y_without", round(off["last 5y"]["M"]), "usd"),
+                  (f"theirs_{a}_3y_with", round(on["3y"]["mean"]), "usd"), (f"theirs_{a}_3y_without", round(off["3y"]["mean"]), "usd")]
+    for v in ("blind60", "asbuilt", "their_reading"):
+        facts += [(f"oct_{v}_trades", O[v]["all"]["trades"], "count"), (f"oct_{v}_usd", f"{O[v]['all']['pnl_usd']:.2f}", "usd")]
+    facts += [("oct_their_reading_1016_usd", big["pnl_usd"], "usd"), ("oct_their_reading_1016_contracts", int(big["adds"]) + 1, "count"),
+              ("b500_reached_with", reached[("keep", "budget 500 lucid25k40 1x")][2], "count"),
+              ("b500_reached_without", reached[("skip", "budget 500 lucid25k40 1x")][2], "count")]
+    f = {a: b for a, b, _ in facts}
+    assert (f["sharpe_as_read"], f["sharpe_repeated_adds"], f["sharpe_all_three"], f["oct_blind60_usd"], f["b500_reached_without"]) == ("0.126", "0.081", "0.069", "2069.09", 195)
+    assert all(TH["B60r|on"][a]["last 5y"]["M"] > TH["B60r|off"][a]["last 5y"]["M"] for a in TH["B60r|on"])
+    return rows, [dict(metric=a, value=b, unit=c) for a, b, c in facts]
+
+
 def main(out):
     os.makedirs(out, exist_ok=True)
     wr(out, "r7_strategies.csv", r7_strategies())
@@ -351,6 +421,9 @@ def main(out):
     t9, u9 = r9()
     wr(out, "r9_honest.csv", t9)
     wr(out, "r9_unit.csv", u9)
+    ps, fx = r9_followup()
+    wr(out, "r9_plan_skip.csv", ps)
+    wr(out, "r9_followup.csv", fx)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,9 @@ futures, including several Lucid accounts side by side.
 - **Research round 9 (Nov 28 2026):** another assistant's blind rebuild of the book (settings re-chosen on data before
   2024) was run in our pools. Skipping the funded overnight trade fails there too, in all three accounts tested
   (Topstep 50K, Lucid 50K add-on, Lucid 25K), so the trade stays. On our data the blind rebuild made 79-93% of the
-  as-built book's 2024-26 daily Sharpe at 1 MNQ a leg. See "Research round 9" below.
+  as-built book's 2024-26 daily Sharpe at 1 MNQ a leg. See "Research round 9" below. Follow-up: the other engine's
+  weaker blind rebuild comes mostly from reading "add +0.10" as repeated adds, and skipping the overnight trade in
+  your own plan ran out of money more often and made less in every start size (see "Round 9 follow-up").
 - **Your plan rerun with the ORB leg (Nov 28 2026; indicator v2.7.2):** with the leg in Topstep 50K / 150K XFAs from
   day one, the full plan made more ($310,621 for a typical start after 3 years against $259,137), but a slow start
   with $1,000 ran out of money in 21 of 153 starts against 2 without the leg. Switched on once the spare cash reaches
@@ -602,6 +604,12 @@ and $31,176). The step months with the leg from $25,000 (`variants_final_steps.c
   that kept going made more: that way in, $144,733 after 2 years.
 - The website's $500 text quoted two stale figures, now corrected from these files: 145 of 205 starts is 70.7% (not
   70%), and 84 of the 105 25K starts that ran out did so after the first payout (not 78 of 99).
+- **Corrected later on Nov 28 2026:** `--switch-budget` had moved the 150K step of the four Standard-path ways in to
+  the Standard path's 150K, while the published plan uses the No Activation Fee 150K there. Fixed and rerun: their
+  run-outs and first payouts did not change (still the same starts as without the leg); only their money moved, by
+  -$60 to +$3,035. Starts that kept going, after 2 years: $500 with Topstep 5 + 5 at once $168,587 → $171,502, one
+  Combine at a time $144,907 → $147,679; $1,000 5 + 5 at once $176,244 → $176,631, one at a time $161,248 → $164,283
+  (every start: $115,188 → $115,128). No text quoted these four.
 
 **Decision (indicator v2.7.2):** Auto starts the leg in Topstep 50K / 150K XFAs once "PLAN: my spare cash has reached
 $25,000" is ticked, the plan's existing 150K step; "On" and "Off" are unchanged. It is the best of the four ways on the
@@ -694,7 +702,105 @@ clearly only with ONR-B's 90-minute IB, at Topstep 50K and Lucid 25K.
   MNQ" cannot be per MNQ: a 0.10 ADR stop risked only about $6-60 a micro then.
 - **The blind version's level:** the note's blind rebuild is much weaker than ours (its Lucid 25K $30.2k against our
   $66.6k). Its intraday $600 loss limit and its reading of "add every 0.10" may differ from our capped stop and single
-  add; we followed the settings as written.
+  add; we followed the settings as written. See "Round 9 follow-up" below: the repeated-add reading explains most of
+  the gap in the 1-MNQ measure, not the accounts' gap.
+
+## Round 9 follow-up (Nov 28 2026): the October 2026 export, other readings of the blind settings, and skipping the overnight trade in your plan
+
+**The question.** The other assistant agreed with round 9 on the ORB's units (its "$31 a trade" was in today's dollar
+scaling; it now gives $6.04 a trade at 1 MNQ in the dollars of the time, 0.43R, against our $4.76 and 0.33R before
+slippage), the IB and the 2011-20 data, and named what is still open. On its engine the blind rebuild with ONR's IB makes a 2024-26 daily Sharpe of 0.066, on ours 0.126, and
+its Lucid 25K 3-year design gives $30k → $47k with → without the overnight trade, ours $66,551 → $60,809. It still
+advised skipping the funded overnight trade ("both engines say skipping gets more accounts to a first payout") and
+asked for every trade of October 2026, blind settings with the 60-minute IB, 1 MNQ a leg, with whether the daily budget
+blocked it. Nothing here was pre-registered; none of it changes the indicator.
+
+**The October 2026 export** (`r9_compare.py export` → `results_r9/trades_2026-10_*.csv`, `trades_2026-10_summary.json`):
+- One row per trade: date, leg, side, signal, ADR, entry time and price, adds (times and prices), stop and target in
+  points, exit time, price and reason, P&L at 1 MNQ a leg after $1.00 a round turn (each repeated add one more MNQ), the
+  risk charged to the day budget, and whether a fresh funded account would have taken it ($1,200 budget at 50K, $600 at
+  25K; round 9's rule: the overnight trade's risk first, capped to the budget in the blind versions, then each leg in
+  entry order if its risk still fits and it does not face an open position).
+- Prices and times are the engine's fills on 5-minute bars: market entries at the bar's close, stops at the stop price
+  or the bar's open if it gapped through, no slippage. Every P&L is the engine's own (`engine.funded_on`, `pyramid`,
+  `ib_breakout`), and the export re-derives it from the exit it finds, to the cent.
+- No trade was blocked at $1,200 in any version.
+
+| October 2026, 1 MNQ a leg | Trades | Overnight | Pyramid | IB | Total | Blocked at $600 |
+|---|---|---|---|---|---|---|
+| Blind, as round 9 read it (`blind60`) | 27 | 1, -$124.00 | 14, +$804.41 | 12, +$1,388.68 | +$2,069.09 | 3 (the IB on Oct 26, 27 and 30) |
+| Blind, read the other assistant's way (`their_reading`) | 20 | 1, -$124.00 | 14, +$6,730.65 | 5, +$1,380.82 | +$7,987.47 | 2 (the IB on Oct 27 and 30) |
+| As built (`asbuilt`) | 26 | 3, +$675.11 | 8, -$804.45 | 15, +$1,908.80 | +$1,779.46 | 1 (the IB on Oct 26) |
+
+On Oct 16 the 09:35 sell made $2,290.05 with one add; read the other way it added 21 times, held 22 MNQ to 16:00 and
+made $10,682.38.
+
+**Other readings of the blind settings** (`r9_compare.py readings` → `readings.json`; 1 MNQ a leg, no account rules,
+the 748 sessions of 2024 - Nov 20 2026):
+
+| Reading | A day | Daily Sharpe | t |
+|---|---|---|---|
+| As round 9 read it: one add at +0.10 ADR; IB both sides on days without a drive; overnight stop 1.0 ADR | $56.05 | 0.126 | 3.45 |
+| Repeated adds: one more contract at every further 0.10 ADR of open profit | $98.17 | 0.081 | 2.21 |
+| No IB on days without a drive | $43.59 | 0.100 | 2.74 |
+| Overnight stop capped at $600 a contract (300 points) | $53.15 | 0.122 | 3.33 |
+| All three together | $82.81 | 0.069 | 1.88 |
+| As round 9 read it, without the overnight trade | $42.41 | 0.101 | 2.77 |
+
+With all three readings our engine gives 0.069, next to the other engine's 0.066, so the 1-MNQ gap is mostly how the
+settings were read: the repeated adds nearly double the dollars and add far more swing. In Dec 2019 - Dec 2023 the
+figures are 0.106 as read and 0.078 with all three.
+
+**The pools with the first two readings** (`r9_honest.py theirs` → `theirs.json`; reported, not decided on): repeated
+adds and no IB on days without a drive, the day budget charging the first contract's risk as for any leg, no contract
+limit on the adds, and the overnight stop capped to the day's budget as in round 9. Net to you a year, 5 funded + 5
+evaluations, 12 start dates, with → without the funded overnight trade:
+
+| Account | Last 5 years | Worst full year | Dec 2019 - Nov 2021 | 2024 - Nov 2026 | 3-year design (25 starts, mean) |
+|---|---|---|---|---|---|
+| Topstep 50K | $39,260 → $37,396 | $27,000 → $18,000 | $58,009 → $39,333 | $39,216 → $29,773 | $94,949 → $100,031 |
+| Lucid 50K add-on | $29,433 → $25,924 | $16,347 → $7,036 | $53,812 → $29,345 | $31,993 → $22,785 | $77,103 → $74,142 |
+| Lucid 25K, 40% rule | $14,311 → $9,567 | $4,662 → $3,674 | $19,606 → $15,344 | $12,294 → $6,822 | $35,589 → $24,467 |
+| Lucid 50K, 40% rule | $26,920 → $25,039 | $15,318 → $7,925 | $51,450 → $43,930 | $26,798 → $21,836 | $81,243 → $66,984 |
+
+Read that way, keeping the trade made more in every account and window except Topstep 50K's 3-year design. No reading
+we tried reproduces the note's Lucid 25K ($30.2k → $47.2k), so the gap between the two engines' accounts is still open;
+comparing the two October exports trade by trade is how to find it.
+
+**Skipping the funded overnight trade in your plan** (`plan_v27.py --skip` → `skip_final.csv`, `skip_slow_start.csv`,
+`skip25k/`). Your plan as v2.7.2 runs it (the ORB leg from $25,000), with the trade skipped in every funded account,
+Lucid and Topstep, and kept in evaluations, as the advice put it. Checks: the runs with the trade reproduce
+`variants_final.csv` and `variants_slow_start.csv`; with every Lucid account on round 7's class (the class the skip
+versions use) and the book's legs, the slow start and every field of every $500 / $1,000 run (`switch25k/`) come out
+the same.
+
+| Your plan as v2.7.2 runs it | Starts | First payout, typical month: with / without | Ran out of money: with / without | Money made: with / without |
+|---|---|---|---|---|
+| Full plan, money added when needed: 3 years, typical | 48 | 1.5 / 1.6 | - | $313,381 / $263,530 |
+| Full plan: the worst start, 3 years | 48 | | - | $223,013 / $137,466 |
+| Started slow with $1,000, never more: 4 years, typical | 153 | 2.3 / 2.6 | 2 / 15 | $322,035 / $165,418 |
+| Started slow with $3,000, never more: 4 years, typical | 153 | 2.3 / 2.6 | 3 / 3 | $455,740 / $326,767 |
+| $500, one Lucid 25K eval at a time, 40% rule: 2 years, starts that kept going | 205 | 2.2 / 2.5 | 105 / 123 | $132,764 / $131,902 |
+| $1,000, the same | 205 | 2.5 / 2.8 | 52 / 94 | $144,733 / $102,253 |
+| $1,000, one Lucid 25K eval at a time with the add-on | 205 | 2.2 / 2.5 | 49 / 120 | $137,529 / $97,524 |
+
+- **The advice's premise holds for single funded accounts** (round 7's table above), and partly in your plan: within 2
+  years more starts reached a first payout in 10 of the 16 $500 / $1,000 ways in (fewer in 3, the same in 3); with $500
+  and one Lucid 25K eval at a time, 195 of 205 against 184.
+- **But your plan did worse without the trade on every other measure.** In all 16 ways in more starts ran out of money
+  and the starts that kept going made less after 2 years; the typical first payout came later in 15 (the same in 1).
+- The full plan without the trade: a typical start had $263,530 after 3 years against $313,381 (1 in 10 below $235,392
+  against $247,360, worst $137,466 against $223,013); the car came at a typical 16.0 months against 12.3; its worst 12
+  months after the first year made $755 against $30,567. It needed a little less of your own money ($9,639 against
+  $10,165 at most) and fell less from a high (-$28,620 against -$30,845).
+- So the evidence on your plan says keep the overnight trade in funded accounts, as v2.7.2 does by default.
+
+```bash
+python3 -I r9_compare.py export FUT_DATA_DIR results_r9 2026-10   # the October trades, three versions
+python3 -I r9_compare.py readings FUT_DATA_DIR results_r9         # readings.json
+python3 -I r9_honest.py theirs FUT_DATA_DIR results_r9            # theirs.json
+python3 -I plan_v27.py FUT_DATA_DIR results_plan_v27 --skip       # after --variants and --switch-budget
+```
 
 ## Data (history: the research's earlier series)
 

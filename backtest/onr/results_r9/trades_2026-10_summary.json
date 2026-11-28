@@ -1,0 +1,81 @@
+{
+ "blind60": {
+  "overnight": {
+   "trades": 1,
+   "pnl_usd": -124.0
+  },
+  "pyramid": {
+   "trades": 14,
+   "pnl_usd": 804.41
+  },
+  "IB": {
+   "trades": 12,
+   "pnl_usd": 1388.68
+  },
+  "all": {
+   "trades": 27,
+   "pnl_usd": 2069.09
+  },
+  "taken_50k": {
+   "trades": 27,
+   "blocked": 0
+  },
+  "taken_25k": {
+   "trades": 24,
+   "blocked": 3
+  }
+ },
+ "asbuilt": {
+  "overnight": {
+   "trades": 3,
+   "pnl_usd": 675.11
+  },
+  "pyramid": {
+   "trades": 8,
+   "pnl_usd": -804.45
+  },
+  "IB": {
+   "trades": 15,
+   "pnl_usd": 1908.8
+  },
+  "all": {
+   "trades": 26,
+   "pnl_usd": 1779.46
+  },
+  "taken_50k": {
+   "trades": 26,
+   "blocked": 0
+  },
+  "taken_25k": {
+   "trades": 25,
+   "blocked": 1
+  }
+ },
+ "their_reading": {
+  "overnight": {
+   "trades": 1,
+   "pnl_usd": -124.0
+  },
+  "pyramid": {
+   "trades": 14,
+   "pnl_usd": 6730.65
+  },
+  "IB": {
+   "trades": 5,
+   "pnl_usd": 1380.82
+  },
+  "all": {
+   "trades": 20,
+   "pnl_usd": 7987.47
+  },
+  "taken_50k": {
+   "trades": 20,
+   "blocked": 0
+  },
+  "taken_25k": {
+   "trades": 18,
+   "blocked": 2
+  }
+ },
+ "sessions_with_a_trade": 21
+}

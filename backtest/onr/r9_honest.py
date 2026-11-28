@@ -6,6 +6,7 @@ usage: python3 -I r9_honest.py FUT_DATA_DIR OUT_DIR            # checks, every v
        python3 -I r9_honest.py facts CFD_DATA_DIR OUT_DIR      # leg facts on the Nasdaq-100 CFD, 2011-2020 (the note's
                                                                # questions): the IB's three versions, the overnight leg
        python3 -I r9_honest.py unit FUT_DATA_DIR OUT_DIR       # the note's headline measure: 1 MNQ a leg, daily Sharpe
+       python3 -I r9_honest.py theirs FUT_DATA_DIR OUT_DIR     # the pools with ONR-B read the other assistant's way
 
 Funded accounts (evaluations and Combines trade as built in every version):
 - as built: v2.6.6's legs (round 7's per-contract legs, results identical to the published account classes);
@@ -118,6 +119,57 @@ def blind_legs(D, S90):
     print(f"ONR-B legs: {n_pyr} pyramid days, {n_ib60} IB trades (60-minute range), {n_ib90} IB trades (90-minute); "
           f"every pyramid's exit replica equals engine.pyramid to the cent", flush=True)
     return b60, b90
+
+
+def _pyr_multi_exit(O, H, L, C, i, s, A_, stop, add, trail):
+    """'add every 0.10 ADR' read as repeated adds (r9_compare.readings): (exit key, P&L of 1 base contract)."""
+    E1 = C[i, 186]
+    stp = E1 - s * stop * A_
+    best = E1
+    ents = [E1]
+    pnl = lambda px: sum((px - e) * s for e in ents) * PV - len(ents) * COMM_RT  # noqa: E731
+    last = 186
+    for j in range(187, 264):
+        if np.isnan(O[i, j]):
+            continue
+        last = j
+        if (s == 1 and L[i, j] <= stp) or (s == -1 and H[i, j] >= stp):
+            op = O[i, j]
+            return j + 0.5, pnl(op if (s == 1 and op <= stp) or (s == -1 and op >= stp) else stp)
+        fav = H[i, j] if s == 1 else L[i, j]
+        if (fav - best) * s > 0:
+            best = fav
+        while (best - E1) * s >= len(ents) * add * A_:
+            lvl = E1 + s * len(ents) * add * A_
+            gap = (s == 1 and O[i, j] > lvl) or (s == -1 and O[i, j] < lvl)
+            ents.append(O[i, j] if gap else lvl)
+            if (E1 - stp) * s > 0:
+                stp = E1
+        ts = best - s * trail * A_
+        if (ts - stp) * s > 0:
+            stp = ts
+    return 263.9, pnl(C[i, last])
+
+
+def their_legs(D):
+    """ONR-B with ONR's IB, read the other assistant's way (round 9 follow-up, reported only): the pyramid adds one
+    more contract at every further 0.10 ADR of open profit; the IB trades only on days with a drive, on its side."""
+    S = D.S
+    O, H, L, C = D.O, D.H, D.L, D.C
+    out = {}
+    for i, d in enumerate(D.days):
+        d = int(d)
+        rec = dict(pyr=None, ib=None)
+        out[d] = rec
+        if d not in S.S or np.isnan(D.adr[i]):
+            continue
+        A_ = D.adr[i]
+        sd = S.od_side(d, B["k"])
+        if sd != 0:
+            xk, pnl = _pyr_multi_exit(O, H, L, C, i, sd, A_, B["stop"], B["add"], B["trail"])
+            rec["pyr"] = (186.9, "pyr", sd, B["stop"] * A_ * PV, pnl, xk)
+            rec["ib"] = LEGS["B60"][d]["ib"]          # the drive's side only (as B60 on drive days)
+    return out
 
 
 # ------------------------------------------------------------------------------------------------ the account
@@ -268,6 +320,7 @@ def init(fd):
     S90 = Sessions(D.raw, load_npz(os.path.join(fd, "SPXUSD.npz")), tf=5, ev=IB90, score=(D.S.score_raw, D.S.feats))
     LEGS["asbuilt"] = X.G["legs"]
     LEGS["B60"], LEGS["B90"] = blind_legs(D, S90)
+    LEGS["B60r"] = their_legs(D)
     R4.FundedAccount = Funded9
     return D
 
@@ -372,6 +425,42 @@ def table(out):
     print(dec, flush=True)
 
 
+def theirs(fd, out):
+    """Round 9 follow-up (reported, not decided on): the pools with ONR-B read the other assistant's way, with and
+    without the funded overnight trade, every account and window, and the note's 3-year design."""
+    D = init(fd)
+    S = D.S
+    VERS["B60r|on"] = dict(r9src="B60r", r9on="blind", thr=THR_B)
+    VERS["B60r|off"] = dict(r9src="B60r", r9on=None)
+    jobs = [(v, a, w, off) for v in ("B60r|on", "B60r|off") for a in ACCTS9 for w in WIN9 for off in R4.OFFSETS]
+    with get_context("fork").Pool(4) as p:
+        res = p.map(job, jobs, chunksize=4)
+    agg = {}
+    for (v, a, w, off), per in res:
+        for lab, x in per.items():
+            agg.setdefault(v, {}).setdefault(a, {}).setdefault(lab, []).append(x)
+    tab = {v: {a: {lab: dict(M=float(np.mean([x["M"] for x in xs])), W=float(np.mean([x["W"] for x in xs])), n=len(xs))
+                   for lab, xs in d2.items()} for a, d2 in d1.items()} for v, d1 in agg.items()}
+    ks = []
+    for k in range(len(S.days)):
+        mth = str(np.datetime64(int(S.days[k]), "D"))[:7]
+        if "2021-11" <= mth <= "2023-11" and (not ks or str(np.datetime64(int(S.days[ks[-1]]), "D"))[:7] != mth):
+            ks.append(k)
+    with get_context("fork").Pool(4) as p:
+        r3 = p.map(job3, [(v, a, k) for v in ("B60r|on", "B60r|off") for a in ACCTS9 for k in ks], chunksize=4)
+    three = {}
+    for (v, a, k), tot in r3:
+        three.setdefault(v, {}).setdefault(a, []).append(tot)
+    for v, d in three.items():
+        for a, x in d.items():
+            tab[v][a]["3y"] = dict(mean=float(np.mean(x)), median=float(np.median(x)), worst=float(min(x)), n=len(x))
+    json.dump(tab, open(os.path.join(out, "theirs.json"), "w"), indent=1)
+    for a in ACCTS9:
+        on, off = tab["B60r|on"][a], tab["B60r|off"][a]
+        print(a, {lab: (round(on[lab]["M"]), round(off[lab]["M"])) for lab in ("last 5y", "early", "2024-26")},
+              "worst", (round(on["last 5y"]["W"]), round(off["last 5y"]["W"])), "3y", (round(on["3y"]["mean"]), round(off["3y"]["mean"])), flush=True)
+
+
 # ------------------------------------------------------------------------------------------------ facts (CFD)
 def facts(dd, out):
     """The note's questions, on the Nasdaq-100 CFD of the earlier research (1-minute bars, quotes around the clock):
@@ -462,6 +551,8 @@ if __name__ == "__main__":
         facts(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "unit":
         unit(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "theirs":
+        theirs(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "table":
         table(sys.argv[2])
     else:

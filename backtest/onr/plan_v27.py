@@ -2,7 +2,7 @@
 """Your plan (plan_search.py) and the slow start, rerun with indicator v2.7.1's defaults: the 5-minute ORB leg in
 Topstep 50K and 150K XFAs (Auto), the overnight trade kept (the v2.7.1 skip switch off), Lucid unchanged.
 
-usage: python3 -I plan_v27.py FUT_DATA_DIR OUT_DIR [--parity | --variants | --switch-budget]
+usage: python3 -I plan_v27.py FUT_DATA_DIR OUT_DIR [--parity | --variants | --switch-budget | --skip]
 
 --variants (run after the plain run, into the same OUT_DIR): the plan's FINAL and the slow start four ways: published
 (ORB off), the ORB on at the reserves measured with it (= the plain run), the ORB on at the published amounts, and the
@@ -11,6 +11,8 @@ variants_final.csv and variants_slow_start.csv, after checking that its run func
 the plain run exactly.
 --switch-budget (after --variants): the $500 / $1,000 starts with the ORB leg switched on at $25,000 (OUT_DIR/switch25k/,
 as plan_search.py writes them, and budget_view.csv), and the FINAL variants' step months (variants_final_steps.csv).
+--skip (after both): your plan as v2.7.2 runs it, with and without the funded overnight trade in every funded account
+(skip_final.csv, skip_slow_start.csv, skip25k/).
 
 The Topstep 50K / 150K XFAs run on round 7's account class (r7_accounts.Funded7: per-contract legs in entry order);
 every other account is the published class. With --parity those XFAs get the book's legs only, and every output must
@@ -65,7 +67,8 @@ def _orb_on(pools, legs):
     p = pools["ts"]
     for f in p.funded:
         f.r7legs = legs
-    ren = {"T50n": "T50x", "T150n": "T150x", "T50s": "T50sx", "T150s": "T150sx"}
+    ren = {"T50n": "T50x", "T150n": "T150x", "T50s": "T50sx", "T150s": "T150sx",
+           "T50nk": "T50xk", "T150nk": "T150xk", "T50sk": "T50sxk", "T150sk": "T150sxk"}   # and the skip twins (--skip)
     for e in p.evals:
         e[1] = ren.get(e[1], e[1])
     p.ready = [ren.get(c, c) for c in p.ready]
@@ -223,7 +226,7 @@ def switch_budget(fd, out):
         st2 = []
         for thr, act in st:
             if thr == up and "ts" in act:
-                big = act["ts"][2].replace("RANGE:T150n:T50n", "RANGE:T150x:T50x").replace("RANGE:T150n:T50s", "RANGE:T150sx:T50sx")
+                big = act["ts"][2].replace("RANGE:T150n:T50n", "RANGE:T150x:T50x").replace("RANGE:T150n:T50s", "RANGE:T150x:T50sx")
                 assert big != act["ts"][2], act
                 act = {"ts": (act["ts"][0], act["ts"][1], big), "orb": ORB}
             st2.append((thr, act))
@@ -294,10 +297,158 @@ def switch_budget(fd, out):
     PS.write(out, "variants_final_steps.csv", steps)
 
 
+SKIP = {"T50n": "T50nk", "T150n": "T150nk", "T50s": "T50sk", "T150s": "T150sk", "L25f": "L25fk", "L25a": "L25ak",
+        "L50f": "L50fk", "L50a": "L50ak", "T50x": "T50xk", "T150x": "T150xk", "T50sx": "T50sxk", "T150sx": "T150sxk"}
+NO_ON, ORB_K = ("pyr", "ib"), ("F1", "pyr", "ib")
+
+
+def _rename_steps(steps, ren):
+    """The same plan with each account type in REN replaced by its twin (orb and car steps unchanged)."""
+    out = []
+    for thr, act in steps:
+        a2 = {}
+        for firm, v in act.items():
+            if firm in ("orb", "car"):
+                a2[firm] = v
+            else:
+                N, tot, cfg = v
+                if cfg.startswith("RANGE:"):
+                    parts = cfg.split(":")
+                    cfg = ":".join([parts[0], ren.get(parts[1], parts[1]), ren.get(parts[2], parts[2])] + parts[3:])
+                else:
+                    cfg = ren.get(cfg, cfg)
+                a2[firm] = (N, tot, cfg)
+        out.append((thr, a2))
+    return out
+
+
+def _skip_steps(steps):
+    """The same plan with the funded overnight trade skipped in every funded account (Lucid and Topstep; evaluations
+    and Combines keep it): each account type becomes its skip twin, and the ORB switch flips XFAs to the ORB leg
+    without the overnight trade."""
+    out = []
+    for thr, act in steps:
+        a2 = {}
+        for firm, v in act.items():
+            if firm == "orb":
+                a2["orb"] = ORB_K
+            elif firm == "car":
+                a2["car"] = v
+            else:
+                N, tot, cfg = v
+                if cfg.startswith("RANGE:"):
+                    parts = cfg.split(":")
+                    cfg = ":".join([parts[0], SKIP[parts[1]], SKIP[parts[2]]] + parts[3:])
+                else:
+                    cfg = SKIP[cfg]
+                a2[firm] = (N, tot, cfg)
+        out.append((thr, a2))
+    return out
+
+
+def skip_test(fd, out):
+    """--skip (after --variants and --switch-budget): your plan as indicator v2.7.2 runs it (the ORB leg from $25,000)
+    with and without the funded overnight trade in every funded account: the full plan (48 monthly starts), the slow
+    start (153 starts, $1,000 / $3,000) and the $500 / $1,000 starts (205 starts, 24 months). Writes skip_final.csv,
+    skip_slow_start.csv and skip25k/ (budget files and budget_view.csv). Checks that the keep runs reproduce
+    variants_final.csv and variants_slow_start.csv, and that the plans with every Lucid account on round 7's class
+    (the class the skip twins use) and the book's legs make the published slow start and switch25k exactly."""
+    import budget_table
+    X.init(fd, 0.0)
+    PS.FundedAccount = FA
+    R4.FundedAccount, R4.EvalAccount = FA, ACC.EvalAccount
+    for c in TOPSTEP_ORB:
+        PS.CFG[c]["fk"] = dict(PS.CFG[c]["fk"], r7legs=X.BOOK)
+    for c, x in (("T50n", "T50x"), ("T150n", "T150x"), ("T50s", "T50sx"), ("T150s", "T150sx")):
+        PS.CFG[x] = dict(PS.CFG[c], fk=dict(PS.CFG[c]["fk"], r7legs=ORB))
+    for c, k in SKIP.items():
+        legs = ORB_K if c.endswith("x") else NO_ON
+        PS.CFG[k] = dict(PS.CFG[c], fk=dict(PS.CFG[c]["fk"], r7legs=legs))
+    for c in ("L25f", "L25a", "L50f", "L50a"):          # parity twins: round 7's class with the book's legs
+        PS.CFG[c + "p"] = dict(PS.CFG[c], fk=dict(PS.CFG[c]["fk"], r7legs=X.BOOK))
+    S = PS.T.load("fut", fd)
+    PS._S["S"] = S
+    PS.KINDS[:] = ["futures"]
+    os.makedirs(out, exist_ok=True)
+    here = os.path.dirname(os.path.abspath(__file__))
+    Rp = json.load(open(os.path.join(here, "results_plan_search", "reserves.json")))["reserve"]
+    lu, up, at = PS.final_at(Rp)
+    car = {"car": PS.CAR}
+    T150Rx = {"ts": (5, 10, "RANGE:T150x:T50x")}
+    keep_final = [(None, PS.T5), (lu, PS.LU50), (up, dict(T150Rx, orb=ORB)), (at, car)]
+    F = [("keep (v2.7.2)", keep_final), ("skip", _skip_steps(keep_final))]
+    ks = PS.starts(S, PS.FUT_FIRST, "2023-11")
+    strip = lambda r: {k: v for k, v in r.items() if k not in ("series", "when")}  # noqa: E731
+    with get_context("fork").Pool(4, initializer=PS._init, initargs=("fut", fd)) as p:
+        rows = [dict(data="futures", **strip(r)) for r in p.map(PS.run_switch, [(n, st, k, None, None) for n, st in F for k in ks], chunksize=4)]
+    summ = PS.summary(rows, [(n, n) for n, _ in F])
+    ref = {r["plan"]: r for r in csv.DictReader(open(os.path.join(out, "variants_final.csv")))}["ORB switched on at $25,000"]
+    assert all(str(summ[0][k]) == ref[k] for k in ref if k not in ("plan", "label")), "keep != variants_final"
+    PS.write(out, "skip_final.csv", summ)
+    # the slow start
+    ts = lambda n, c: {"ts": (n, 2 * n, c)}  # noqa: E731
+    g4 = [(None, {"lu": (1, 1, "L25f")}), (3000.0, ts(1, "T50n")), (5000.0, ts(2, "T50n")), (9000.0, ts(5, "T50n")),
+          (Rp["L50a"], PS.LU50), (Rp["T150n"], dict(T150Rx, orb=ORB))]
+    g4p = [(None, {"lu": (1, 1, "L25fp")}), (3000.0, ts(1, "T50n")), (5000.0, ts(2, "T50n")), (9000.0, ts(5, "T50n")),
+           (Rp["L50a"], {"lu": (5, 10, "L50ap")}), (Rp["T150n"], dict(T150Rx, orb=ORB))]
+    nm = ["Topstep 1+1 ($3k)", "Topstep 2+2 ($5k)", "Topstep 5+5 ($9k)", "Lucid 50K add-on 5+5 ($11,000)", "Topstep 150K by range ($25,000)"]
+    V = [("keep (v2.7.2)", g4, nm), ("skip", _skip_steps(g4), nm), ("parity: Lucid on round 7's class", g4p, nm)]
+    tab = slow_start(fd, out, Rp, variants=V, name="skip_slow_start.csv")
+    old = {(r["variant"], r["start_money"]): r for r in csv.DictReader(open(os.path.join(out, "variants_slow_start.csv")))}
+    for t in tab:
+        if t["variant"] != "skip":
+            o_ = old[("ORB switched on at $25,000", str(t["start_money"]))]
+            assert all(str(t[k]) == o_[k] for k in t if k in o_ and k != "variant"), (t["variant"], t["start_money"])
+    print("keep runs reproduce the v2.7.2 plan and slow start; Lucid on round 7's class makes the same slow start", flush=True)
+    # the $500 / $1,000 starts
+    pubB = PS.budget_plans(Rp)
+    keepB = []
+    for n, lab, st, b in pubB:
+        st2 = []
+        for thr, act in st:
+            if thr == up and "ts" in act:
+                big = act["ts"][2].replace("RANGE:T150n:T50n", "RANGE:T150x:T50x").replace("RANGE:T150n:T50s", "RANGE:T150x:T50sx")
+                act = {"ts": (act["ts"][0], act["ts"][1], big), "orb": ORB}
+            st2.append((thr, act))
+        keepB.append((n, lab, st2, b))
+    skipB = [(n, lab, _skip_steps(st), b) for n, lab, st, b in keepB]
+    parB = [(n, lab, _rename_steps(st, {c: c + "p" for c in ("L25f", "L25a", "L50f", "L50a")}), b) for n, lab, st, b in keepB]
+    assert all(pb[2] != kb[2] for pb, kb in zip(parB, keepB))      # every budget plan has a Lucid step
+    wk = PS.starts(S, PS.FUT_FIRST, "2023-11", every=5)
+    with get_context("fork").Pool(4, initializer=PS._init, initargs=("fut", fd)) as p:
+        prow = [dict(data="futures", **strip(r)) for r in p.map(PS.run_switch, [(n, st, k, b, None) for n, _, st, b in parB for k in ks], chunksize=4)]
+        pbrow = [dict(data="futures", **strip(r)) for r in p.map(PS.run_switch, [(n, st, k, b, 24) for n, _, st, b in parB for k in wk], chunksize=8)]
+        rows = [dict(data="futures", **strip(r)) for r in p.map(PS.run_switch, [(n, st, k, b, None) for n, _, st, b in skipB for k in ks], chunksize=4)]
+        brows = [dict(data="futures", **strip(r)) for r in p.map(PS.run_switch, [(n, st, k, b, 24) for n, _, st, b in skipB for k in wk], chunksize=8)]
+    for mine, f in ((pbrow, "budget_runs.csv"), (prow, "budget_monthly_runs.csv")):
+        ref = list(csv.DictReader(open(os.path.join(out, "switch25k", f))))
+        assert len(ref) == len(mine) and all(all(str(m[k]) == r[k] for k in r) for m, r in zip(mine, ref)), ("switch25k parity", f)
+    print("the $500 / $1,000 keep runs with every Lucid account on round 7's class reproduce switch25k, every field of every run", flush=True)
+    d = os.path.join(out, "skip25k")
+    os.makedirs(d, exist_ok=True)
+    bsum = PS.summary(rows, skipB)
+    for row, (n, _, _, b) in zip(bsum, skipB):
+        Rb = [r for r in brows if r["plan"] == n]
+        busts = [float(r["bust_month"]) for r in Rb if r["bust_month"] != ""]
+        fp = [float(r["first_payout_month"]) for r in Rb if r["first_payout_month"] != ""]
+        fx = [float(r["five_xfa_month"]) for r in Rb if r["five_xfa_month"] != ""]
+        row.update({"fut_starts_24m": len(Rb), "fut_ran_out": len(busts), "fut_ran_out_pct": round(100.0 * len(busts) / len(Rb), 1),
+                    "fut_ran_out_month_median": round(float(np.median(busts)), 1) if busts else "",
+                    "fut_first_payout_24m_median": round(float(np.median(fp)), 1) if fp else "",
+                    "fut_no_payout_in_24m": len(Rb) - len(fp), "fut_five_xfa_24m_median": round(float(np.median(fx)), 1) if fx else "",
+                    "fut_five_xfa_24m_p90": round(float(np.percentile(fx, 90)), 1) if fx else ""})
+    PS.write(d, "budget.csv", bsum)
+    PS.write(d, "budget_runs.csv", brows)
+    PS.write(d, "budget_monthly_runs.csv", rows)
+    budget_table.main(d)
+
+
 if __name__ == "__main__":
     if "--variants" in sys.argv:
         variants(sys.argv[1], sys.argv[2])
     elif "--switch-budget" in sys.argv:
         switch_budget(sys.argv[1], sys.argv[2])
+    elif "--skip" in sys.argv:
+        skip_test(sys.argv[1], sys.argv[2])
     else:
         main(sys.argv[1], sys.argv[2], "--parity" in sys.argv)

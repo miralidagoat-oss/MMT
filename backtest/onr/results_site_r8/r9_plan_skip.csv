@@ -1,0 +1,8 @@
+id,way,starts,fp_with,fp_without,ran_with,ran_without,usd_with,usd_without
+full,"Your plan, money added when needed: 3 years, typical",48,1.5,1.6,,,313381,263530
+full-worst,"Your plan: the worst of those starts, 3 years",48,,,,,223013,137466
+slow-1000,"Started slow with $1,000, never more: 4 years, typical",153,2.3,2.6,2,15,322035,165418
+slow-3000,"Started slow with $3,000, never more: 4 years, typical",153,2.3,2.6,3,3,455740,326767
+b500-lucid25k40-1x,"$500, one Lucid 25K eval at a time, 40% rule: 2 years, starts that kept going",205,2.2,2.5,105,123,132764,131902
+b1000-lucid25k40-1x,"$1,000, the same",205,2.5,2.8,52,94,144733,102253
+b1000-lucid25k50-1x,"$1,000, one Lucid 25K eval at a time with the add-on",205,2.2,2.5,49,120,137529,97524

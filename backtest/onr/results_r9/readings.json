@@ -1,0 +1,74 @@
+{
+ "as read in round 9 | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 56.05,
+  "daily_sharpe": 0.126,
+  "t": 3.45
+ },
+ "repeated adds every 0.10 ADR | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 98.17,
+  "daily_sharpe": 0.081,
+  "t": 2.21
+ },
+ "no IB on days without a drive | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 43.59,
+  "daily_sharpe": 0.1,
+  "t": 2.74
+ },
+ "overnight stop capped at $600 a contract | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 53.15,
+  "daily_sharpe": 0.122,
+  "t": 3.33
+ },
+ "all three together | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 82.81,
+  "daily_sharpe": 0.069,
+  "t": 1.88
+ },
+ "as read, without the overnight trade | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 42.41,
+  "daily_sharpe": 0.101,
+  "t": 2.77
+ },
+ "as read in round 9 | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 32.36,
+  "daily_sharpe": 0.106,
+  "t": 3.42
+ },
+ "repeated adds every 0.10 ADR | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 59.43,
+  "daily_sharpe": 0.081,
+  "t": 2.6
+ },
+ "no IB on days without a drive | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 30.14,
+  "daily_sharpe": 0.102,
+  "t": 3.28
+ },
+ "overnight stop capped at $600 a contract | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 32.43,
+  "daily_sharpe": 0.106,
+  "t": 3.43
+ },
+ "all three together | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 57.27,
+  "daily_sharpe": 0.078,
+  "t": 2.52
+ },
+ "as read, without the overnight trade | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 26.38,
+  "daily_sharpe": 0.091,
+  "t": 2.92
+ }
+}
