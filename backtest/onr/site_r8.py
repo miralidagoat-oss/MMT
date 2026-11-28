@@ -3,7 +3,7 @@
 research round 8, and your plan rerun with v2.7.1's defaults, as the CSV files the site attaches.
 
 usage: python3 -I site_r8.py OUT_DIR
-Every number is copied from a result file (results_r7/, results_plan_search/, results_plan_v27/ and its switch25k/); this script only
+Every number is copied from a result file (results_r7/, results_r9/, results_plan_search/, results_plan_v27/ and its switch25k/); this script only
 reshapes, labels and, where a file has no such column, counts (years up) or applies round 7's rule 5Y to two rows of
 results_r7/skip_accounts.csv with the same placebo bands. Each output is checked against the README's figures.
 """
@@ -283,6 +283,38 @@ def r7_kpis():
     return rows
 
 
+R9 = os.path.join(HERE, "results_r9")
+ACC9 = (("topstep", "Topstep 50K"), ("lucid_addon", "Lucid 50K, add-on"), ("lucid25_40", "Lucid 25K, 40% rule"), ("lucid40", "Lucid 50K, 40% rule"))
+VER9 = (("B60", "honest", "Blind rebuild with ONR's IB"), ("asbuilt", "asbuilt", "As built"))
+
+
+def r9():
+    """Round 9: with and without the funded overnight trade, the honest version and as built (results_r9/r9_table.csv),
+    and the 1-MNQ headline measure (results_r9/unit.json)."""
+    T = {(r["account"], r["version"]): r for r in rd(R9, "r9_table.csv")}
+    rows = []
+    for a, alab in ACC9:
+        for v, vid_, vlab in VER9:
+            r = T[(a, v)]
+            rows.append(dict(id=f"{a}-{vid_}", account=alab, version=vlab, on_5y=int(r["on_5y"]), off_5y=int(r["off_5y"]),
+                             on_early=int(r["on_early"]), off_early=int(r["off_early"]), on_2024_26=int(r["on_2024_26"]),
+                             off_2024_26=int(r["off_2024_26"]), skip_rule_5y=r.get("skip_passes_rule_5y", "") if a != "lucid40" else "",
+                             change_5y=int(r["change_5y"]), change_early=int(r["change_early"]), band_5y=r.get("band_5y", ""), band_early=r.get("band_early", "")))
+    x = {r["id"]: r for r in rows}
+    assert (x["topstep-honest"]["on_5y"], x["topstep-honest"]["off_early"], x["lucid_addon-honest"]["off_5y"]) == (79283, 67730, 43593)
+    assert [x[f"{a}-honest"]["skip_rule_5y"] for a in ("topstep", "lucid_addon", "lucid25_40")] == ["fail"] * 3
+    U = json.load(open(os.path.join(R9, "unit.json")))
+    urows = []
+    for v, vid_, lab in (("B60", "honest", "Blind rebuild with ONR's IB"), ("B90", "b90", "Blind rebuild, its 90-minute IB"), ("asbuilt", "asbuilt", "As built")):
+        for w in ("2024 - Nov 20 2026", "Dec 2019 - Dec 2023"):
+            on, off = U[f"{v} with the overnight trade | {w}"], U[f"{v} without the overnight trade | {w}"]
+            urows.append(dict(id=f"{vid_}-{w[:4] if w[0] == '2' else 'pre'}", version=lab, window=w, usd_day_with=f"{on['usd_per_day']:.2f}",
+                              usd_day_without=f"{off['usd_per_day']:.2f}", sharpe_with=f"{on['daily_sharpe']:.3f}", sharpe_without=f"{off['daily_sharpe']:.3f}"))
+    y = {r["id"]: r for r in urows}
+    assert (y["honest-2024"]["sharpe_with"], y["asbuilt-2024"]["sharpe_with"], y["honest-2024"]["usd_day_with"]) == ("0.126", "0.136", "56.05")
+    return rows, urows
+
+
 def main(out):
     os.makedirs(out, exist_ok=True)
     wr(out, "r7_strategies.csv", r7_strategies())
@@ -316,6 +348,9 @@ def main(out):
     assert (x["budget 500 lucid25k40 1x"]["fut_first_payout_starts"], x["budget 500 lucid40 1x"]["fut_first_payout_starts"],
             x["budget 500 lucid25k40 1x"]["fut_ran_out_starts"], x["budget 500 lucid25k40 1x"]["fut_ran_out_after_payout"]) == (184, 145, 105, 84)
     wr(out, "plan_budget_v272.csv", bv)
+    t9, u9 = r9()
+    wr(out, "r9_honest.csv", t9)
+    wr(out, "r9_unit.csv", u9)
 
 
 if __name__ == "__main__":

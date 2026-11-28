@@ -1,0 +1,7 @@
+id,version,window,usd_day_with,usd_day_without,sharpe_with,sharpe_without
+honest-2024,Blind rebuild with ONR's IB,2024 - Nov 20 2026,56.05,42.41,0.126,0.101
+honest-pre,Blind rebuild with ONR's IB,Dec 2019 - Dec 2023,32.36,26.38,0.106,0.091
+b90-2024,"Blind rebuild, its 90-minute IB",2024 - Nov 20 2026,46.30,32.66,0.108,0.082
+b90-pre,"Blind rebuild, its 90-minute IB",Dec 2019 - Dec 2023,28.95,22.97,0.100,0.084
+asbuilt-2024,As built,2024 - Nov 20 2026,48.18,38.87,0.136,0.121
+asbuilt-pre,As built,Dec 2019 - Dec 2023,19.58,17.35,0.084,0.086
