@@ -1,0 +1,13 @@
+variant,step,starts,reached,p10_month,median_month,p90_month,latest_month
+published (ORB off),"Add Lucid 50K (spare cash $11,000)",48,48,2.4,5.1,10.3,13.6
+published (ORB off),"Topstep 150K by the range rule ($25,000)",48,48,5.3,9.3,13.5,15.6
+published (ORB off),"The $15,000 car ($51,000)",48,48,8.2,12.9,17.5,20.3
+"ORB on, its own amounts","Add Lucid 50K (spare cash $11,000)",48,48,2.7,4.9,11.6,16.3
+"ORB on, its own amounts","Topstep 150K by the range rule ($17,000)",48,48,3.4,6.3,13.3,17.3
+"ORB on, its own amounts","The $15,000 car ($43,000)",48,48,6.2,10.5,16.6,18.7
+"ORB on, published amounts","Add Lucid 50K (spare cash $11,000)",48,48,2.7,4.9,11.6,16.3
+"ORB on, published amounts","Topstep 150K by the range rule ($25,000)",48,48,4.3,8.4,14.9,18.1
+"ORB on, published amounts","The $15,000 car ($51,000)",48,48,7.6,11.3,18.2,19.5
+"ORB switched on at $25,000","Add Lucid 50K (spare cash $11,000)",48,48,2.4,5.1,10.3,13.6
+"ORB switched on at $25,000","Topstep 150K by the range rule ($25,000)",48,48,5.3,9.3,13.5,15.6
+"ORB switched on at $25,000","The $15,000 car ($51,000)",48,48,7.8,12.3,17.1,18.8

@@ -1,0 +1,17 @@
+id,family,source,picked,design_t,oos_trades,oos_t,oos_usd_1mnq,years_up,verdict
+F1,"ORB, first-candle direction",Zarattini & Aziz,"the first 5 minutes' direction, stop 0.10 ADR, target 10R, a move of at least 0.05 ADR",3.11,742,2.20,9238,4 of 4,passes
+F2,ORB breakout orders,Crabel,"15-minute range, orders until 11:00, stop at the other side, target 2R, after an NR4 day",3.26,238,0.82,1192,2 of 4,"fails (t, years, random copies)"
+F3,Noise area,"Zarattini, Aziz & Barbon","21-day bands x 1.5, checked every 30 minutes, gap-adjusted, flips at the opposite band",3.12,367,2.97,20268,4 of 4,passes
+F4,Last-hour momentum,Gao et al.; Baltussen et al.,10:00-15:00 direction traded 15:00-16:00,3.05,968,-1.44,-5716,1 of 4,"fails (t, years, random copies, 2 ticks)"
+F5,VWAP,Zarattini & Aziz,"VWAP trend from 10:00, checked every 30 minutes, 0.1 ADR band",3.56,979,0.92,5136,3 of 4,"fails (t, random copies)"
+F6,Opening gap,trading practice,"fade gaps of 0.1 ADR or more at 09:30, stop 0.25 ADR, out by 11:00",1.82,804,0.52,785,2 of 4,"fails (t, years, random copies)"
+F7,Overnight (Globex) range,trading practice,"stop orders beyond the overnight high/low until 11:00, stop 0.5 ADR, target 2R",1.19,847,1.51,11171,4 of 4,"fails (t, random copies)"
+F8,Volatility breakout,Crabel's stretch; Williams,"stop orders at the open +/- 0.2 x stretch until 13:00, stop 0.25 ADR",3.19,775,3.45,27261,4 of 4,passes
+F9,Calendar days,Lakonishok & Smidt; Ariel,long every Monday 09:30-16:00,1.66,200,3.60,14738,4 of 4,passes
+F10,Daily mean reversion held overnight,Connors; Pagonidis,"RSI(2) <= 5 long / >= 95 short, 18:10 -> 16:00",2.14,140,-0.15,2366,2 of 4,"fails (t, years, random copies, 2 ticks)"
+F11,5-minute indicators and mixes,trading practice,"EMA 20/50 cross with VWAP side, 2 ATR stop",3.26,585,0.01,-682,3 of 4,"fails (t, random copies, 2 ticks)"
+F12,ICT Silver Bullet,trading practice,"10:00-11:00 window, target 2R",0.46,143,-0.18,282,2 of 4,"fails (t, years, random copies, 2 ticks)"
+F13,Overnight drift,Boyarchenko et al.,long 18:10 -> 02:00 every night,1.38,1006,0.98,2880,3 of 4,fails (t)
+book_pyramid,Book: 09:35 pyramid,this indicator,"the book's rule, unchanged",0.98,485,3.36,21398,4 of 4,the book
+book_ib,Book: IB breakout,this indicator,"the book's rule, unchanged",3.00,736,2.19,9319,4 of 4,the book
+book_overnight,Book: overnight trade,this indicator,"the book's rule, unchanged",0.78,321,0.98,6221,3 of 4,the book

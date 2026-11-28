@@ -1,0 +1,21 @@
+id,variant,setting,trading_days,median_usd,p5_yellow_usd,p1_red_usd
+book-20,book,"Book (v2.6.6; ORB off, overnight trade on)",20,1549,-3126,-5063
+book-40,book,"Book (v2.6.6; ORB off, overnight trade on)",40,3195,-3569,-6261
+book-60,book,"Book (v2.6.6; ORB off, overnight trade on)",60,4861,-3574,-6766
+book-120,book,"Book (v2.6.6; ORB off, overnight trade on)",120,9878,-1969,-6853
+book-250,book,"Book (v2.6.6; ORB off, overnight trade on)",250,20920,3295,-3622
+no-on-20,no-on,"Skip the overnight trade, ORB off",20,1399,-2717,-4138
+no-on-40,no-on,"Skip the overnight trade, ORB off",40,3004,-3182,-5333
+no-on-60,no-on,"Skip the overnight trade, ORB off",60,4578,-2944,-5945
+no-on-120,no-on,"Skip the overnight trade, ORB off",120,9423,-1626,-5637
+no-on-250,no-on,"Skip the overnight trade, ORB off",250,19788,3537,-2544
+plus-F1-20,+F1,ORB leg on (Auto at Topstep 50K / 150K),20,1735,-3574,-5452
+plus-F1-40,+F1,ORB leg on (Auto at Topstep 50K / 150K),40,3840,-4184,-6899
+plus-F1-60,+F1,ORB leg on (Auto at Topstep 50K / 150K),60,5890,-4078,-7842
+plus-F1-120,+F1,ORB leg on (Auto at Topstep 50K / 150K),120,12248,-2465,-7934
+plus-F1-250,+F1,ORB leg on (Auto at Topstep 50K / 150K),250,26128,4170,-4170
+on-F1-20,on->F1,ORB leg on and skip the overnight trade,20,1752,-3343,-4745
+on-F1-40,on->F1,ORB leg on and skip the overnight trade,40,3970,-3884,-6385
+on-F1-60,on->F1,ORB leg on and skip the overnight trade,60,6104,-3642,-7011
+on-F1-120,on->F1,ORB leg on and skip the overnight trade,120,12761,-1631,-6848
+on-F1-250,on->F1,ORB leg on and skip the overnight trade,250,26865,5567,-2690

@@ -1,0 +1,9 @@
+plan,label,fut_own_money_worst,fut_own_money_median,fut_fall_worst,fut_worst_12m,fut_spare36_median,fut_spare36_p10,fut_spare36_worst,fut_year3_median,fut_spare24_median,fut_car_month_median,fut_car_month_p90,fut_car_month_worst,fut_first_payout_month_median,fut_first_payout_month_p90,fut_first_payout_month_worst,fut_five_xfa_month_median,fut_five_xfa_month_p90,fut_five_xfa_month_worst,fut_low_after_car_worst,fut_starts_below_0_after_car
+PREV start5_50 car@26k,"Topstep 5+5, car at $26k, then Lucid at $22k",10545,2458,-17673,13531,243265,187405,102353,121542,129404,9.1,16.8,20.2,1.6,5.4,7.4,1.1,3.2,4.7,3904,0
+FINAL,"Lucid $11k, 150K by range $17k, car at $43k",10545,2612,-25775,27520,310621,262443,214791,133070,175957,10.5,16.6,18.7,1.6,5.4,7.4,1.1,3.2,4.7,22269,0
+car last @45k,"Lucid $11k, 150K by range $17k, car at $45k",10545,2612,-25775,27520,310621,262443,214791,133070,175957,10.8,16.7,19.1,1.6,5.4,7.4,1.1,3.2,4.7,25940,0
+car last @40k,"Lucid $11k, 150K by range $17k, car at $40k",10545,2612,-25775,27520,310621,262443,214791,133070,175957,10.2,16.6,18.7,1.6,5.4,7.4,1.1,3.2,4.7,-588,1
+car mid @37k,"Lucid $11k, car at $37k, then 150K by range at $17k",10545,2458,-25775,27520,286351,252889,215193,130680,163263,10.2,16.8,19.1,1.6,5.4,7.4,1.1,3.2,4.7,15057,0
+car first @37k,"car at $37k, then Lucid $11k, 150K by range $17k",10545,2458,-25775,4305,262796,201052,150878,127818,131802,11.5,19.0,21.9,1.6,5.4,7.4,1.1,3.2,4.7,6191,0
+car first @30k,"car at $30k, then Lucid $11k, 150K by range $17k",10545,2518,-25775,27520,269145,211644,176270,130680,143252,10.4,17.7,20.2,1.6,5.4,7.4,1.1,3.2,4.7,-3141,1
+LADDER start small,"1+1, 2+2 at the first payout, 5+5 at $11k, Lucid at $22k, both 150K at $46k, car at $61k",4630,902,-40931,368,252864,181863,93241,150653,92022,19.5,25.7,35.2,1.6,5.4,7.4,10.2,18.2,21.0,19296,0

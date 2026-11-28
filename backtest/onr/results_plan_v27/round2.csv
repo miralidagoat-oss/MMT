@@ -1,0 +1,15 @@
+plan,label,fut_own_money_worst,fut_own_money_median,fut_fall_worst,fut_worst_12m,fut_spare36_median,fut_spare36_p10,fut_spare36_worst,fut_year3_median,fut_spare24_median,fut_first_payout_month_median,fut_first_payout_month_p90,fut_first_payout_month_worst,fut_five_xfa_month_median,fut_five_xfa_month_p90,fut_five_xfa_month_worst
+A T50+L50,"Topstep 50K, Lucid 50K at $15k (round 1)",10545,2518,-19140,15975,258840,206428,138586,121542,147258,1.6,5.4,7.4,1.1,3.2,4.7
+B base,"Topstep 50K, Lucid at $15k, Topstep 150K by range at $28k (round 1)",10545,2518,-25775,27520,283372,235539,209093,130680,163254,1.6,5.4,7.4,1.1,3.2,4.7
+C L11k T23k,"Lucid at $11,000, Topstep 150K by range at $23,000",10545,2458,-25775,27520,305304,260132,215193,131974,172836,1.6,5.4,7.4,1.1,3.2,4.7
+C L11k T35k,"Lucid at $11,000, Topstep 150K by range at $35,000",10545,2458,-25775,27520,286351,252889,215193,130680,163263,1.6,5.4,7.4,1.1,3.2,4.7
+C L22k T22k,"Lucid at $22,000, Topstep 150K by range at $22,000",10545,2458,-25775,27520,282079,230309,200160,130680,159246,1.6,5.4,7.4,1.1,3.2,4.7
+C L16k T17k,"Lucid at $16,500, Topstep 150K by range at $17,500",10545,2458,-25775,27520,298201,234148,208691,130680,170319,1.6,5.4,7.4,1.1,3.2,4.7
+C L0k T0k,"Lucid at $0, Topstep 150K by range at $0",29917,3610,-31235,27520,377160,279702,215843,135619,204186,1.6,5.4,7.4,1.1,3.2,4.7
+D 40% rule,Plan B with Lucid's 40% rule,10545,2518,-26448,29362,290926,245404,210737,124804,165837,1.6,5.4,7.4,1.1,3.2,4.7
+E 7 Combines,Plan B with 7 Combines behind the XFAs,11685,2524,-29162,27520,308946,263402,218861,133440,182600,1.6,5.4,7.4,1.1,3.2,4.7
+F both by range,"Plan B, then Lucid 150K by range too",10545,2518,-40669,9481,301924,252405,218040,147132,160462,1.6,5.4,7.4,1.1,3.2,4.7
+G range 125,Plan B with the range rule at 125 points,10545,2518,-25909,27520,283507,235539,209093,130680,163187,1.6,5.4,7.4,1.1,3.2,4.7
+G range 175,Plan B with the range rule at 175 points,10545,2518,-25862,27520,283881,235539,209093,130680,163399,1.6,5.4,7.4,1.1,3.2,4.7
+G range 200,Plan B with the range rule at 200 points,10545,2518,-22553,27520,284547,231764,209093,129901,152319,1.6,5.4,7.4,1.1,3.2,4.7
+H range from day 1,"Topstep by range from the start (150K when the range is 151+), Lucid at $15k",25905,8244,-25905,27520,409948,330640,297112,145274,251879,1.6,4.9,6.8,1.3,3.7,6.3

@@ -12,6 +12,15 @@ futures, including several Lucid accounts side by side.
   Mondays); three are the book's own intraday-momentum edge. In the prop pools, only adding the 5-minute ORB as a fourth
   funded leg passes rule 5Y in all three account types. Indicator v2.7 adds it as an optional leg, on by default for
   Topstep 50K and 150K only. See "Research round 7" below.
+- **Research round 8 (Nov 28 2026):** charging the overnight trade only its actual loss (variant AL) passed the
+  pre-registered rule in Topstep 150K and Lucid 50K with the add-on but failed Topstep 50K; not adopted. See "Research
+  round 8" below.
+- **Your plan rerun with the ORB leg (Nov 28 2026; indicator v2.7.2):** with the leg in Topstep 50K / 150K XFAs from
+  day one, the full plan made more ($310,621 for a typical start after 3 years against $259,137), but a slow start
+  with $1,000 ran out of money in 21 of 153 starts against 2 without the leg. Switched on once the spare cash reaches
+  $25,000 (the plan's 150K step), it made the most in both: $313,381 for a typical start (worst start $223,013), and
+  in the slow start 2 run-outs, as without it, and $322,035 after 4 years against $285,452. Indicator v2.7.2's Auto
+  waits for that step. See "Your plan with the ORB leg" below.
 - **Overfitting:** no knife-edge. Every parameter tested degrades smoothly and keeps its sign in both halves; the
   09:35 entry time is the most "picked" choice. What is fitted is the research narrative: several header numbers
   were measured on the same data the rules were chosen on, and some do not reproduce (table below).
@@ -144,15 +153,15 @@ The 50% add-on at $10 an eval: +$2,593 a year against the 40% rule over the last
 
 ### Your plan (`plan_search.py`): 48 monthly start dates from Dec 2019 to Nov 2023, 3 years each
 
-Topstep 50K 5 XFAs + 5 Combines from day one (have about $11,000 ready: the most of your own money any start needed was $10,165); Lucid 50K with the add-on at $11,000 of spare cash; each new Topstep Combine 150K by the range rule at $25,000; the $15,000 car at $51,000: each step once the spare cash covers that setup's own worst fall since Dec 20 2019 (5 funded + 5 evaluations, the worst of 12 start dates, rounded up; Topstep 50K $11,000). A typical start had $259,137 of spare cash after 3 years, after every fee and the 30% tax set-aside (1 start in 10 below $182,447, worst $167,620). Of the plans needing about the same own money, 4 made a little more for a typical start, up to $261,158 (they stepped up sooner on less cash, or took Lucid to 150K by the range rule too): a gap under 4%, within what 48 overlapping starts can tell apart, so the plan keeps its rule of a full reserve before each step. Steps reached (months after the start, median / 9 in 10 by / latest): Add Lucid 50K (spare cash $11,000) 5.1 / 10.3 / 13.6; Topstep 150K by the range rule ($25,000) 9.3 / 13.5 / 15.6; The $15,000 car ($51,000) 12.9 / 17.5 / 20.3.
+Topstep 50K 5 XFAs + 5 Combines from day one (have about $11,000 ready: the most of your own money any start needed was $10,165); Lucid 50K with the add-on at $11,000 of spare cash; each new Topstep Combine 150K by the range rule at $25,000; the $15,000 car at $51,000: each step once the spare cash covers that setup's own worst fall since Dec 20 2019 (5 funded + 5 evaluations, the worst of 12 start dates, rounded up; Topstep 50K $11,000). A typical start had $259,137 of spare cash after 3 years, after every fee and the 30% tax set-aside (1 start in 10 below $182,447, worst $167,620). These are the plan's figures without the v2.7 ORB leg; with indicator v2.7.2's default (the leg in Topstep 50K / 150K XFAs from the $25,000 step) the same plan made $313,381 for a typical start (1 in 10 below $247,360, worst $223,013): see "Your plan with the ORB leg" below. Of the plans needing about the same own money, 4 made a little more for a typical start, up to $261,158 (they stepped up sooner on less cash, or took Lucid to 150K by the range rule too): a gap under 4%, within what 48 overlapping starts can tell apart, so the plan keeps its rule of a full reserve before each step. Steps reached (months after the start, median / 9 in 10 by / latest): Add Lucid 50K (spare cash $11,000) 5.1 / 10.3 / 13.6; Topstep 150K by the range rule ($25,000) 9.3 / 13.5 / 15.6; The $15,000 car ($51,000) 12.9 / 17.5 / 20.3.
 
 ### The last 60 days on real MNQ (`export_charts.py`, `topstep_charts.py`, `mnq_real50k.py`)
 
 Sep 9 - Nov 20 2026 (53 sessions), cut from the same file (`prep_mnq.py --cut`; each session's 14-day range from the file's own earlier sessions, `engine.adr_seed`). One funded 50K account: 78 trades, 46.2% winners, +$16,937 after $168 commission (overnight 19 trades +$3,691, pyramid 25 +$10,990, IB breakout 34 +$2,256). Evals or Combines started every session: 33 of 50 passed. 5 funded + 5 evals made +$2,461 at Lucid (add-on) and +$2,541 at Topstep in those 10 weeks, most of the time spent passing evals.
 
-### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.7.1)
+### The indicator (`indicators/onr_book.pine` and `onr_book_addon50.pine`, v2.7.2)
 
-Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_addon_fee8820/alarm_bands.csv`. v2.7 (Nov 27 2026) adds the 5-minute ORB leg from research round 7 (see "Indicator v2.7" below), on by default for Topstep 50K and 150K only; with the leg on, the alarm bands are `results_r7/v27_alarm_bands.csv`. v2.7.1 adds an optional switch to skip the overnight trade in funded and live accounts, off by default (see "Checked: two proposals" below). v2.6.6 (Nov 25 2026) changes no rule: the commission input defaults to your $1.00 per MNQ round turn ($0.50 to enter and $0.50 to exit), and every quoted figure and the alarm bands come from the $1.00 rerun. v2.6.5 (Nov 24) changed no trade either. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
+Both editions quote the figures above, and their live alarm bands are `results_nqfut_5y_addon_fee8820/alarm_bands.csv`. v2.7 (Nov 27 2026) adds the 5-minute ORB leg from research round 7 (see "Indicator v2.7" below), on by default for Topstep 50K and 150K only; with the leg on, the alarm bands are `results_r7/v27_alarm_bands.csv`. v2.7.1 adds an optional switch to skip the overnight trade in funded and live accounts, off by default (see "Checked: two proposals" below). v2.7.2 (Nov 28 2026) makes Auto wait for the plan's 150K step: the leg starts in Topstep 50K / 150K XFAs once "PLAN: my spare cash has reached $25,000" is ticked, and its plan text quotes the rerun (see "Your plan with the ORB leg" below). v2.6.6 (Nov 25 2026) changes no rule: the commission input defaults to your $1.00 per MNQ round turn ($0.50 to enter and $0.50 to exit), and every quoted figure and the alarm bands come from the $1.00 rerun. v2.6.5 (Nov 24) changed no trade either. A check of every session in your file found three that halt early without being in the indicator's half-day list: the Good Fridays of 2021, 2023 and 2026 (Apr 2, Apr 7 and Apr 3), when the jobs report fell on Good Friday and CME traded from 18:00 ET Thursday to 09:15 ET Friday. An overnight trade cannot wait for its 09:30 exit on those mornings, so the panel now says so from the Thursday evening and an alert at 09:05 ET says to close it. The backtest exits it at 09:15, the session's last bar, and so does the indicator's own trade list. The next such Good Friday is Apr 7 2034. The one other early halt in the file, Jan 9 2025 (a national day of mourning), stopped at 09:30 ET, so its 09:30 exit still works.
 
 ### Reproduce
 
@@ -376,7 +385,8 @@ nothing there; its gain is a 50K result.
   - taken after the pyramid, inside the day budget; funded and live accounts only, not on half days.
   - It reads the same 5 minutes as the 09:35 drive at a lower bar, so it always faces the pyramid's way (asserted on
     all 626 drive days of the last 5 years).
-- **Auto** (the default) turns it on for Topstep 50K and 150K XFAs only. Topstep, 5 XFAs + 5 Combines, Standard
+- **Auto** (the default) turns it on for Topstep 50K and 150K XFAs only; since v2.7.2, only once the input "PLAN: my
+  spare cash has reached $25,000" is ticked (see "Your plan with the ORB leg"). Topstep, 5 XFAs + 5 Combines, Standard
   payouts, 12 start dates, net a year:
 
 | Topstep | Last 5 years: book / + ORB | Worst full year: book / + ORB | Rule 5Y | 1 tick: book / + ORB | 2023-26: book / + ORB |
@@ -404,7 +414,7 @@ nothing there; its gain is a 50K result.
   legs alone the same code reproduces the published bands exactly.
 - **Position size:** one direction can hold 4 N with the leg (pyramid 2 N, ORB N, IB N) instead of 3 N, and the panel
   shows it. Check it against your XFA's Scaling Plan limit.
-- **Not re-run with the leg:** the plan's figures (`plan_search.py`, about $259k in 3 years for a typical start).
+- **The plan with the leg:** rerun on Nov 28 2026 (`plan_v27.py`; see "Your plan with the ORB leg" below).
 - **Checks:**
   - A line-for-line Python copy of the new Pine code ran on every session of the last 5 years. All 938 ORB trades
     equal the backtest's to the cent. On the 280 days without a drive that had both an ORB trade and a backtest IB
@@ -439,8 +449,10 @@ Dec 2019, so 2011-2020 uses the Nasdaq-100 and S&P 500 CFDs of the earlier resea
 | MNQ 2024-2026 | 52.8% / 62.4% | 53.6% / 62.4% |
 
   The proposal's "in 2024-26 skipping did a bit worse (55.7% -> 52.2%)" did not show here.
-- **Wrong:** that this makes more money. In every pool it made less and failed rule 5Y (`results_r7/skip_accounts.csv`;
-  5 funded + 5 evals, net a year):
+- **Wrong:** that this makes more money. It failed rule 5Y in every pool (`results_r7/skip_accounts.csv`; 5 funded +
+  5 evals, net a year). Over the last 5 years it made less in two pools and at most $2,550 a year more in the other two
+  (Lucid 40%, and Topstep with the ORB leg: both gains inside the noise band); in Dec 2019 - Nov 2021 it made less in all
+  four, by $8,560 to $39,840 a year. (Corrected Nov 28 2026: this line first said it made less in every pool.)
 
 | | Last 5 years | Worst full year | Dec 2019 - Nov 2021 | 2023-26 |
 |---|---|---|---|---|
@@ -516,6 +528,81 @@ changes.
   - both pass.
 - AL helps the larger accounts, but the rule asks for all of the user's plan accounts, and on Topstep 50K, the account
   the plan starts with, it is not robust.
+
+## Your plan with the ORB leg (Nov 28 2026; `plan_v27.py` → `results_plan_v27/`; indicator v2.7.2)
+
+The question: what does your plan make with indicator v2.7's 5-minute ORB leg, which Auto turned on in Topstep 50K and
+150K XFAs? `plan_v27.py` reruns `plan_search.py` (the 31 plans and the $500 / $1,000 starts) and the slow start quoted
+on Nov 25, with those XFAs on round 7's account class with the leg; everything else is unchanged.
+
+**Checks:**
+- With the book's legs only (`--parity`), every output equals `results_plan_search/` byte for byte (the reserves, all
+  1,872 plan runs, both rounds, the car table, the steps and the three budget files), and the slow start equals the
+  Nov 25 figures on every quantile.
+- `--variants` and `--switch-budget` run every variant below through one run function, which first reproduces the
+  published plan, the published budget runs (every field of every run) and the plain rerun exactly.
+- The plan's step amounts are each setup's worst fall since Dec 20 2019 (5 funded + 5 evaluations, the worst of 12
+  start dates, Dec 20 2019 - Mar 10 2020). With the leg they shrink: Topstep 50K $10,165 → $3,705 (reserve $11,000 →
+  $4,000), 150K $24,468 → $16,946 ($25,000 → $17,000); round 7's own pool code gives the same falls to the dollar. Those
+  12 start dates are the leg's best, though: over the 48 monthly starts Topstep 50K alone with the leg still needed up to
+  $10,545 of your own money ($10,165 without it). The plan keeps its published amounts.
+
+**The full plan and the slow start, four ways** (`variants_final.csv`, `variants_slow_start.csv`). The full plan: 48
+monthly start dates Dec 2019 - Nov 2023, 3 years each, money added whenever needed. The slow start: one Lucid 25K eval
+at a time ($50.30, 40% rule), then Topstep 1 + 1 at $3,000 of spare cash, 2 + 2 at $5,000, 5 + 5 at $9,000, Lucid 50K
+with the add-on at $11,000 and Topstep 150K by the range rule at the 150K amount; never more money than the start; 153
+starts every 5 sessions Dec 20 2019 - Nov 2022, 48 months each. After every fee and the 30% tax set-aside:
+
+| Full plan, 48 starts | Your money in, most | Deepest fall | 3 years: typical | 1 in 10 below | worst | 3rd year, typical | Worst 12 months | Car, typical month |
+|---|---|---|---|---|---|---|---|---|
+| Published, no ORB leg ($11,000 / $25,000 / $51,000) | $10,165 | -$34,868 | $259,137 | $182,447 | $167,620 | $91,766 | $16,175 | 12.9 |
+| Leg from day one, at its own reserves ($11,000 / $17,000 / $43,000) | $10,545 | -$25,775 | $310,621 | $262,443 | $214,791 | $133,070 | $27,520 | 10.5 |
+| Leg from day one, at the published amounts | $10,545 | -$25,775 | $296,677 | $260,132 | $215,193 | $131,974 | $27,520 | 11.3 |
+| **Leg from $25,000 (v2.7.2)** | $10,165 | -$30,845 | $313,381 | $247,360 | $223,013 | $132,234 | $30,567 | 12.3 |
+
+| Slow start | Ran out of money | After 2 years, typical | After 3 years | After 4 years | Ahead after 4 years |
+|---|---|---|---|---|---|
+| $1,000: published, no ORB leg | 2 of 153 | $17,066 | $108,728 | $285,452 | 99% |
+| $1,000: leg from day one, at its own reserves | 21 of 153 | $8,547 | $90,596 | $250,207 | 86% |
+| $1,000: leg from day one, at the published amounts | 21 of 153 | $8,851 | $88,284 | $250,207 | 86% |
+| **$1,000: leg from $25,000 (v2.7.2)** | 2 of 153 | $16,919 | $131,934 | $322,035 | 99% |
+| $3,000: published, no ORB leg | 3 of 153 | $71,165 | $161,858 | $366,551 | 98% |
+| $3,000: leg from day one, at its own reserves | 10 of 153 | $94,982 | $227,967 | $443,123 | 93% |
+| $3,000: leg from day one, at the published amounts | 10 of 153 | $94,982 | $225,483 | $443,224 | 93% |
+| **$3,000: leg from $25,000 (v2.7.2)** | 3 of 153 | $91,285 | $226,339 | $455,740 | 98% |
+
+No start went below $0 after buying the car in any of the four (lowest spare cash after it: $12,444, $22,269, $25,940
+and $31,176). The step months with the leg from $25,000 (`variants_final_steps.csv`): Lucid 5.1 / 10.3 / 13.6 months
+(typical / 9 in 10 by / latest) and 150K 9.3 / 13.5 / 15.6, as published, and the car 12.3 / 17.1 / 18.8 (published
+12.9 / 17.5 / 20.3).
+
+**Why the leg from day one hurts a slow start:**
+- With the leg from day one, every run-out came between Feb 12 and Mar 4 2024 (`slow_variants` in `results_site_r8/`):
+  the 21 starts of Oct 1 2021 - May 10 2022 with $1,000 and the 10 of Aug 9 - Nov 22 2022 with $3,000. Each had reached
+  the Lucid step but not the 150K one. Without the leg the same stretch ended 2 of the $1,000 starts.
+- The leg's XFAs swing more. In round 7's pools Topstep 50K made more with it in Dec 2019 - Nov 2021 ($112,280 a year
+  against $65,030), 2025 ($126,000 against $69,285) and 2026 ($135,000 against $85,561), and less in 2022 ($43,264
+  against $47,523), 2023 ($56,101 against $59,263) and 2024 ($84,450 against $97,619) (`results_r7/accounts_years.csv`).
+  In the Dec 20 2019 start, Topstep 50K alone paid nothing from Sep 15 2023 to Oct 1 2024 with the leg (269 sessions),
+  against Sep 29 2023 to Apr 3 2024 without it (130 sessions). A business with a few thousand dollars cannot ride that
+  out; one with $25,000 can.
+
+**The $500 / $1,000 starts** (24 months, 205 starts every 5 sessions; `budget_view.csv`, `switch25k/budget_view.csv`):
+- With the leg from day one, more starts ran out in 12 of the 16 ways in and fewer in 4, but the starts that kept going
+  made much more: one Lucid 25K eval at a time with $1,000 (40% rule) ran out in 26.3% of starts (25.4% without the
+  leg), and those that kept going had a typical $170,420 after 2 years ($108,631).
+- With the leg from $25,000, every way in ran out in exactly the same starts as without it, start by start, and those
+  that kept going made more: that way in, $144,733 after 2 years.
+- The website's $500 text quoted two stale figures, now corrected from these files: 145 of 205 starts is 70.7% (not
+  70%), and 84 of the 105 25K starts that ran out did so after the first payout (not 78 of 99).
+
+**Decision (indicator v2.7.2):** Auto starts the leg in Topstep 50K / 150K XFAs once "PLAN: my spare cash has reached
+$25,000" is ticked, the plan's existing 150K step; "On" and "Off" are unchanged. It is the best of the four ways on the
+full plan's typical and worst start and on the slow start, with the same run-outs as without the leg. It was chosen
+after the rerun showed the problem, and only that one switch point was tested, so it is a practical rule rather than a
+pre-registered result: before $25,000 every account trades as v2.6.6 did, and the step was not tuned. Round 7's verdict
+on the leg is unchanged. The indicator's plan text, its PLAN and ORB inputs and its panel say so, and every figure they
+quote was checked against these files (both editions parse with no undeclared or twice-declared names).
 
 ## Data (history: the research's earlier series)
 

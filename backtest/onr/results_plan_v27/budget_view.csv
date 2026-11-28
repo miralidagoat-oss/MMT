@@ -1,0 +1,17 @@
+plan,budget_usd,way_in,fut_starts,fut_ran_out_pct,fut_first_payout_month_median,fut_made_24m_median_usd,fut_made_24m_survivors_median_usd,fut_ahead_24m_pct
+budget 500 noact,500,"Topstep 50K 5+5 at once, No Activation Fee path",205,67.8,1.1,-475,186445,32.2
+budget 500 standard,500,"Topstep 50K 5+5 at once, Standard fee path",205,72.7,1.1,-345,186200,27.3
+budget 500 noact 1x,500,"One Topstep Combine at a time until the first payout, No Activation Fee path",205,59.5,1.4,-466,177569,40.5
+budget 500 standard 1x,500,"One Topstep Combine at a time until the first payout, Standard fee path",205,66.8,1.4,-345,180214,33.2
+budget 500 lucid40 1x,500,"One Lucid 50K eval at a time ($88.20, 40% rule) until the first payout, then Topstep",205,55.1,1.5,-421,171651,44.9
+budget 500 lucid50 1x,500,"One Lucid 50K eval at a time ($98.20, add-on) until the first payout, then Topstep",205,66.3,1.2,-453,184039,33.7
+budget 500 lucid25k40 1x,500,"One Lucid 25K eval at a time ($50.30, 40% rule) until the first payout, then Topstep",205,44.9,2.2,77623,170163,55.1
+budget 500 lucid25k50 1x,500,"One Lucid 25K eval at a time ($60.30, add-on) until the first payout, then Topstep",205,52.2,1.8,-440,163729,47.8
+budget 1000 noact,1000,"Topstep 50K 5+5 at once, No Activation Fee path",205,55.6,1.1,-950,186602,44.4
+budget 1000 standard,1000,"Topstep 50K 5+5 at once, Standard fee path",205,66.3,1.1,-839,187664,33.7
+budget 1000 noact 1x,1000,"One Topstep Combine at a time until the first payout, No Activation Fee path",205,42.9,1.8,85256,164352,57.1
+budget 1000 standard 1x,1000,"One Topstep Combine at a time until the first payout, Standard fee path",205,48.3,1.9,81169,171664,51.7
+budget 1000 lucid40 1x,1000,"One Lucid 50K eval at a time ($88.20, 40% rule) until the first payout, then Topstep",205,32.7,1.9,145562,176951,67.3
+budget 1000 lucid50 1x,1000,"One Lucid 50K eval at a time ($98.20, add-on) until the first payout, then Topstep",205,47.3,1.6,88429,169760,52.7
+budget 1000 lucid25k40 1x,1000,"One Lucid 25K eval at a time ($50.30, 40% rule) until the first payout, then Topstep",205,26.3,2.5,139003,170420,73.7
+budget 1000 lucid25k50 1x,1000,"One Lucid 25K eval at a time ($60.30, add-on) until the first payout, then Topstep",205,31.2,2.2,137361,170615,68.8

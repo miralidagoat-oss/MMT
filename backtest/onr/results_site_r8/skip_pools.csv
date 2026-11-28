@@ -1,0 +1,5 @@
+id,setup,with_5y,without_5y,with_worst,without_worst,with_early,without_early,with_oos,without_oos,rule_5y
+topstep-book,Topstep 50K,73075,69742,47523,40239,65030,46203,76597,68987,fail
+lucid40-book,"Lucid 50K, 40% rule",55669,57013,29081,32634,57594,37583,60745,57862,fail
+lucid_addon-book,"Lucid 50K, add-on",58262,53831,40987,33126,50837,42277,58977,54889,fail
+topstep-orb,Topstep 50K with the ORB leg,90515,93065,43264,48656,112280,72440,98080,106970,fail

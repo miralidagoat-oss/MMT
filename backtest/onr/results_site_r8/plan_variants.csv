@@ -1,0 +1,5 @@
+id,label,fut_own_money_worst,fut_own_money_median,fut_fall_worst,fut_worst_12m,fut_spare36_median,fut_spare36_p10,fut_spare36_worst,fut_year3_median,fut_spare24_median,fut_car_month_median,fut_car_month_p90,fut_car_month_worst,fut_first_payout_month_median,fut_first_payout_month_p90,fut_first_payout_month_worst,fut_five_xfa_month_median,fut_five_xfa_month_p90,fut_five_xfa_month_worst,fut_low_after_car_worst,fut_starts_below_0_after_car
+published,Without the ORB leg (the published plan),10165,2328,-34868,16175,259137,182447,167620,91766,142450,12.9,17.5,20.3,1.5,5.3,7.6,1.1,3.2,4.7,12444,0
+orb-own,"ORB leg from day one, at the amounts measured with it (150K at $17,000, car at $43,000)",10545,2612,-25775,27520,310621,262443,214791,133070,175957,10.5,16.6,18.7,1.6,5.4,7.4,1.1,3.2,4.7,22269,0
+orb-pub,"ORB leg from day one, at the published amounts",10545,2458,-25775,27520,296677,260132,215193,131974,172531,11.3,18.2,19.5,1.6,5.4,7.4,1.1,3.2,4.7,25940,0
+orb-25k,"ORB leg from $25,000 (v2.7.2)",10165,2328,-30845,30567,313381,247360,223013,132234,176505,12.3,17.1,18.8,1.5,5.3,7.6,1.1,3.2,4.7,31176,0

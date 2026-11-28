@@ -1,0 +1,8 @@
+id,data,window,slippage,trades,mean_r,t,years_up
+nq1,"Nasdaq-100 CFD, 1-minute bars",2011-2020,none,1724,0.331,4.14,9 of 10
+nq5,"Nasdaq-100 CFD, 5-minute bars",2011-2020,none,1732,0.325,4.08,9 of 10
+nq5t,"Nasdaq-100 CFD, 5-minute bars",2011-2020,1 tick a fill,1732,0.222,2.82,7 of 10
+sp5,"S&P 500 CFD, 5-minute bars",2011-2020,none,1614,0.057,0.69,6 of 10
+sp5t,"S&P 500 CFD, 5-minute bars",2011-2020,1 tick a fill,1614,-0.267,-3.44,2 of 10
+mnq20,"MNQ file, 5-minute bars",2020,none,185,0.413,1.67,1 of 1
+mnq21,"MNQ file, 5-minute bars",2021-2026,none,1107,0.343,3.56,6 of 6
