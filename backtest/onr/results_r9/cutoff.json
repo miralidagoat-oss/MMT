@@ -1,0 +1,78 @@
+{
+ "fixed 0.8985 | 2021-2023": {
+  "sessions": 775,
+  "trades": 189,
+  "usd": 1958.04,
+  "usd_per_trade": 10.36,
+  "usd_per_session": 2.53,
+  "t": 0.63,
+  "same_side_as_fixed": 189
+ },
+ "expanding | 2021-2023": {
+  "sessions": 775,
+  "trades": 195,
+  "usd": 1370.04,
+  "usd_per_trade": 7.03,
+  "usd_per_session": 1.77,
+  "t": 0.44,
+  "same_side_as_fixed": 189
+ },
+ "fixed 0.8985 | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "trades": 133,
+  "usd": 10201.82,
+  "usd_per_trade": 76.71,
+  "usd_per_session": 13.64,
+  "t": 2.3,
+  "same_side_as_fixed": 133
+ },
+ "expanding | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "trades": 134,
+  "usd": 9872.32,
+  "usd_per_trade": 73.67,
+  "usd_per_session": 13.2,
+  "t": 2.21,
+  "same_side_as_fixed": 133
+ },
+ "fixed 0.8985 | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "trades": 248,
+  "usd": 6231.25,
+  "usd_per_trade": 25.13,
+  "usd_per_session": 5.99,
+  "t": 1.6,
+  "same_side_as_fixed": 248
+ },
+ "expanding | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "trades": 258,
+  "usd": 5471.25,
+  "usd_per_trade": 21.21,
+  "usd_per_session": 5.26,
+  "t": 1.38,
+  "same_side_as_fixed": 248
+ },
+ "cutoff on": {
+  "2021-01-04": {
+   "expanding_cutoff": 0.8805,
+   "score": -0.2927
+  },
+  "2024-01-02": {
+   "expanding_cutoff": 0.8985,
+   "score": -0.4081
+  },
+  "2025-01-02": {
+   "expanding_cutoff": 0.8981,
+   "score": 0.6399
+  },
+  "2026-01-02": {
+   "expanding_cutoff": 0.8897,
+   "score": 0.5697
+  },
+  "2026-10-26": {
+   "expanding_cutoff": 0.8912,
+   "score": 0.9322
+  }
+ }
+}

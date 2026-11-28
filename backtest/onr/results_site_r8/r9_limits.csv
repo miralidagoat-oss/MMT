@@ -1,0 +1,17 @@
+id,group,account,on_5y,off_5y,on_early,off_early,on_2024_26,off_2024_26,on_3y,off_3y
+B60-risk-topstep,"Blind rebuild, the indicator's day budget (each leg's planned risk held all day)",Topstep 50K,79283,79097,91921,67730,87263,91459,184421,187515
+B60-risk-lucid_addon,"Blind rebuild, the indicator's day budget (each leg's planned risk held all day)","Lucid 50K, add-on",59500,43593,63809,55307,69232,51005,151029,121598
+B60-risk-lucid25_40,"Blind rebuild, the indicator's day budget (each leg's planned risk held all day)","Lucid 25K, 40% rule",26793,24081,30450,25230,33820,28417,66551,60809
+B60-risk-lucid40,"Blind rebuild, the indicator's day budget (each leg's planned risk held all day)","Lucid 50K, 40% rule",52921,46288,64096,65533,66128,52766,133329,129780
+B60-net-topstep,"Blind rebuild, the other assistant's rule (the day's realized P&L counts, the overnight trade's included)",Topstep 50K,77630,83589,100412,67681,101629,97177,183373,202200
+B60-net-lucid_addon,"Blind rebuild, the other assistant's rule (the day's realized P&L counts, the overnight trade's included)","Lucid 50K, add-on",53329,46912,62095,55516,65396,56019,141335,130607
+B60-net-lucid25_40,"Blind rebuild, the other assistant's rule (the day's realized P&L counts, the overnight trade's included)","Lucid 25K, 40% rule",28674,27258,30200,26205,38894,30238,74047,66625
+B60-net-lucid40,"Blind rebuild, the other assistant's rule (the day's realized P&L counts, the overnight trade's included)","Lucid 50K, 40% rule",54322,49281,63059,62577,69093,57635,147950,143243
+asbuilt-risk-topstep,"As built, the indicator's day budget (each leg's planned risk held all day)",Topstep 50K,73075,69742,65030,46203,91752,84926,207174,208526
+asbuilt-risk-lucid_addon,"As built, the indicator's day budget (each leg's planned risk held all day)","Lucid 50K, add-on",58262,53831,50837,42277,69455,65297,169536,157104
+asbuilt-risk-lucid25_40,"As built, the indicator's day budget (each leg's planned risk held all day)","Lucid 25K, 40% rule",29868,26490,20351,19594,40190,34177,87112,80972
+asbuilt-risk-lucid40,"As built, the indicator's day budget (each leg's planned risk held all day)","Lucid 50K, 40% rule",55669,57013,57594,37583,73712,67353,158253,160327
+asbuilt-net-topstep,"As built, the other assistant's rule (the day's realized P&L counts, the overnight trade's included)",Topstep 50K,73336,71143,61334,48948,84785,85119,200157,213278
+asbuilt-net-lucid_addon,"As built, the other assistant's rule (the day's realized P&L counts, the overnight trade's included)","Lucid 50K, add-on",59002,51177,48670,44321,67062,62769,168451,151640
+asbuilt-net-lucid25_40,"As built, the other assistant's rule (the day's realized P&L counts, the overnight trade's included)","Lucid 25K, 40% rule",30536,27186,21662,20982,42481,36003,92133,82775
+asbuilt-net-lucid40,"As built, the other assistant's rule (the day's realized P&L counts, the overnight trade's included)","Lucid 50K, 40% rule",58933,50531,50453,38820,71069,64805,165191,144058

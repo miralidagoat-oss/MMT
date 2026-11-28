@@ -360,29 +360,39 @@ def r9_followup():
     # the figures the text quotes
     U = json.load(open(os.path.join(R9, "readings.json")))
     W = "2024 - Nov 20 2026"
-    TH = json.load(open(os.path.join(R9, "theirs.json")))
     O = json.load(open(os.path.join(R9, "trades_2026-10_summary.json")))
-    big = [r for r in rd(R9, "trades_2026-10_their_reading.csv") if r["date"] == "2026-10-16" and r["leg"] == "pyramid"][0]
     facts = [("sharpe_as_read", f"{U['as read in round 9 | ' + W]['daily_sharpe']:.3f}", "raw"),
-             ("sharpe_repeated_adds", f"{U['repeated adds every 0.10 ADR | ' + W]['daily_sharpe']:.3f}", "raw"),
-             ("sharpe_no_ib", f"{U['no IB on days without a drive | ' + W]['daily_sharpe']:.3f}", "raw"),
-             ("sharpe_on_cap", f"{U['overnight stop capped at $600 a contract | ' + W]['daily_sharpe']:.3f}", "raw"),
-             ("sharpe_all_three", f"{U['all three together | ' + W]['daily_sharpe']:.3f}", "raw"),
-             ("usd_day_as_read", f"{U['as read in round 9 | ' + W]['usd_per_day']:.2f}", "usd"),
-             ("usd_day_all_three", f"{U['all three together | ' + W]['usd_per_day']:.2f}", "usd")]
-    for a in ("topstep", "lucid_addon", "lucid25_40", "lucid40"):
-        on, off = TH["B60r|on"][a], TH["B60r|off"][a]
-        facts += [(f"theirs_{a}_5y_with", round(on["last 5y"]["M"]), "usd"), (f"theirs_{a}_5y_without", round(off["last 5y"]["M"]), "usd"),
-                  (f"theirs_{a}_3y_with", round(on["3y"]["mean"]), "usd"), (f"theirs_{a}_3y_without", round(off["3y"]["mean"]), "usd")]
-    for v in ("blind60", "asbuilt", "their_reading"):
+             ("usd_day_as_read", f"{U['as read in round 9 | ' + W]['usd_per_day']:.2f}", "usd")]
+    for v in ("blind60",):
         facts += [(f"oct_{v}_trades", O[v]["all"]["trades"], "count"), (f"oct_{v}_usd", f"{O[v]['all']['pnl_usd']:.2f}", "usd")]
-    facts += [("oct_their_reading_1016_usd", big["pnl_usd"], "usd"), ("oct_their_reading_1016_contracts", int(big["adds"]) + 1, "count"),
-              ("b500_reached_with", reached[("keep", "budget 500 lucid25k40 1x")][2], "count"),
+    facts += [("b500_reached_with", reached[("keep", "budget 500 lucid25k40 1x")][2], "count"),
               ("b500_reached_without", reached[("skip", "budget 500 lucid25k40 1x")][2], "count")]
     f = {a: b for a, b, _ in facts}
-    assert (f["sharpe_as_read"], f["sharpe_repeated_adds"], f["sharpe_all_three"], f["oct_blind60_usd"], f["b500_reached_without"]) == ("0.126", "0.081", "0.069", "2069.09", 195)
-    assert all(TH["B60r|on"][a]["last 5y"]["M"] > TH["B60r|off"][a]["last 5y"]["M"] for a in TH["B60r|on"])
+    assert (f["sharpe_as_read"], f["usd_day_as_read"], f["oct_blind60_usd"], f["b500_reached_without"]) == ("0.126", "56.05", "2069.09", 195)
     return rows, [dict(metric=a, value=b, unit=c) for a, b, c in facts]
+
+
+def r9_limits():
+    """Round 9 follow-up 2: keep vs skip the funded overnight trade under the indicator's day budget and under the other
+    assistant's day rule (results_r9/limits.json), the blind rebuild and the book as built, every account."""
+    L = json.load(open(os.path.join(R9, "limits.json")))["pools"]
+    ref = json.load(open(os.path.join(R9, "versions.json")))
+    rows = []
+    for src, slab in (("B60", "Blind rebuild"), ("asbuilt", "As built")):
+        for lim, llab in (("risk", "the indicator's day budget (each leg's planned risk held all day)"),
+                          ("net", "the other assistant's rule (the day's realized P&L counts, the overnight trade's included)")):
+            on, off = L[f"{src}|on|{lim}"], L[f"{src}|off|{lim}"]
+            for a, alab in ACC9:
+                if lim == "risk":     # the indicator's rule is round 9's pools
+                    assert abs(on[a]["last 5y"]["M"] - ref[f"{src}|on"][a]["last 5y"]["M"]) < 0.01
+                rows.append(dict(id=f"{src}-{lim}-{a}", group=f"{slab}, {llab}", account=alab,
+                                 on_5y=round(on[a]["last 5y"]["M"]), off_5y=round(off[a]["last 5y"]["M"]),
+                                 on_early=round(on[a]["early"]["M"]), off_early=round(off[a]["early"]["M"]),
+                                 on_2024_26=round(on[a]["2024-26"]["M"]), off_2024_26=round(off[a]["2024-26"]["M"]),
+                                 on_3y=round(on[a]["3y"]["mean"]), off_3y=round(off[a]["3y"]["mean"])))
+    x = {r["id"]: r for r in rows}
+    assert (x["B60-net-lucid25_40"]["on_3y"], x["B60-net-lucid25_40"]["off_3y"], x["B60-net-topstep"]["on_5y"], x["B60-net-topstep"]["off_5y"]) == (74047, 66625, 77630, 83589)
+    return rows
 
 
 def main(out):
@@ -424,6 +434,7 @@ def main(out):
     ps, fx = r9_followup()
     wr(out, "r9_plan_skip.csv", ps)
     wr(out, "r9_followup.csv", fx)
+    wr(out, "r9_limits.csv", r9_limits())
 
 
 if __name__ == "__main__":

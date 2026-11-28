@@ -4,6 +4,7 @@ the blind rebuild ("ONR-B"), and how far our 2024-26 figures move under other re
 
 usage: python3 -I r9_compare.py export FUT_DATA_DIR OUT_DIR [YYYY-MM]    # every trade of a month, 1 MNQ a leg
        python3 -I r9_compare.py readings FUT_DATA_DIR OUT_DIR           # 2024-26 daily Sharpe, other readings
+       python3 -I r9_compare.py cutoff FUT_DATA_DIR OUT_DIR             # the overnight cutoff, fixed vs expanding
 
 export: one row per trade of each version ("blind60" = ONR-B with ONR's 60-minute IB, as round 9 ran it; "asbuilt" =
 the book; "their_reading" = ONR-B with the other assistant's reading of its settings, see VER), 1 MNQ a leg (each
@@ -309,8 +310,49 @@ def readings(fd, out):
         print(k, v)
 
 
+def cutoff(fd, out):
+    """The blind overnight trade's cutoff: round 9's fixed 0.8985 (the 0.80 quantile of |score| on the S&P sessions
+    before 2024) against the other assistant's expanding cutoff (the 0.80 quantile of every earlier night's |score|,
+    from Feb 2011 on our S&P input). The leg alone at 1 MNQ, stop 1.0 ADR, no day budget, per window: trades, dollars,
+    dollars a trade and a session, t on trades; and the expanding cutoff on a few dates."""
+    D = H.init(fd)
+    S = D.S
+    keys = np.array(sorted(k for k, v in S.score_raw.items() if not np.isnan(v)))
+    vals = np.abs(np.array([S.score_raw[k] for k in keys]))
+    days = [int(d) for d in S.days if int(d) in S.S]
+    thr = {d: float(np.quantile(vals[: np.searchsorted(keys, d)], 0.80)) for d in days}
+    rows = {}
+    for d in days:
+        if np.isnan(S.S[d]["adr"]):
+            continue
+        for name, t in (("fixed 0.8985", H.THR_B), ("expanding", thr[d])):
+            sd = S.on_side(d, t)
+            rows.setdefault(name, {})[d] = (sd, funded_on(S, d, sd, 0.0, 1.0, n=1, comm=COMM_RT)[0] if sd else 0.0)
+    res = {}
+    for w, a, b in (("2021-2023", "2021-01-01", "2023-12-31"), ("2024 - Nov 20 2026", "2024-01-01", "2026-12-31"),
+                    ("Dec 2019 - Dec 2023", "2019-12-01", "2023-12-31")):
+        for name, R in rows.items():
+            ds = [d for d in R if a <= str(np.datetime64(d, "D")) <= b]
+            tr = np.array([R[d][1] for d in ds if R[d][0] != 0])
+            res[f"{name} | {w}"] = dict(sessions=len(ds), trades=int(len(tr)), usd=round(float(tr.sum()), 2),
+                                        usd_per_trade=round(float(tr.mean()), 2), usd_per_session=round(float(tr.sum() / len(ds)), 2),
+                                        t=round(float(tr.mean() / tr.std(ddof=1) * np.sqrt(len(tr))), 2),
+                                        same_side_as_fixed=int(sum(1 for d in ds if R[d][0] == rows["fixed 0.8985"][d][0] != 0)))
+    marks = {}
+    for iso in ("2021-01-04", "2024-01-02", "2025-01-02", "2026-01-02", "2026-10-26"):
+        d = int(np.datetime64(iso, "D").astype(int))
+        d = min(x for x in days if x >= d)
+        marks[str(np.datetime64(d, "D"))] = dict(expanding_cutoff=round(thr[d], 4), score=round(float(S.S[d]["score"]), 4))
+    res["cutoff on"] = marks
+    json.dump(res, open(os.path.join(out, "cutoff.json"), "w"), indent=1)
+    for k, v in res.items():
+        print(k, v)
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "export":
         export(sys.argv[2], sys.argv[3], *(sys.argv[4:5] or ["2026-10"]))
+    elif sys.argv[1] == "cutoff":
+        cutoff(sys.argv[2], sys.argv[3])
     else:
         readings(sys.argv[2], sys.argv[3])

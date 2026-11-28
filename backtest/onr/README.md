@@ -18,9 +18,11 @@ futures, including several Lucid accounts side by side.
 - **Research round 9 (Nov 28 2026):** another assistant's blind rebuild of the book (settings re-chosen on data before
   2024) was run in our pools. Skipping the funded overnight trade fails there too, in all three accounts tested
   (Topstep 50K, Lucid 50K add-on, Lucid 25K), so the trade stays. On our data the blind rebuild made 79-93% of the
-  as-built book's 2024-26 daily Sharpe at 1 MNQ a leg. See "Research round 9" below. Follow-up: the other engine's
-  weaker blind rebuild comes mostly from reading "add +0.10" as repeated adds, and skipping the overnight trade in
-  your own plan ran out of money more often and made less in every start size (see "Round 9 follow-up").
+  as-built book's 2024-26 daily Sharpe at 1 MNQ a leg. See "Research round 9" below. Follow-ups: the other engine's
+  weaker blind rebuild came from its IB (the first break on either side every day); with the indicator's IB the two
+  engines nearly agree. Skipping the overnight trade in your own plan ran out of money more often and made less in
+  every start size, and under the other engine's day-limit rule our pools still keep the trade at both Lucid sizes
+  (see "Round 9 follow-up" and "Round 9 follow-up 2").
 - **Your plan rerun with the ORB leg (Nov 28 2026; indicator v2.7.2):** with the leg in Topstep 50K / 150K XFAs from
   day one, the full plan made more ($310,621 for a typical start after 3 years against $259,137), but a slow start
   with $1,000 ran out of money in 21 of 153 starts against 2 without the leg. Switched on once the spare cash reaches
@@ -702,8 +704,8 @@ clearly only with ONR-B's 90-minute IB, at Topstep 50K and Lucid 25K.
   MNQ" cannot be per MNQ: a 0.10 ADR stop risked only about $6-60 a micro then.
 - **The blind version's level:** the note's blind rebuild is much weaker than ours (its Lucid 25K $30.2k against our
   $66.6k). Its intraday $600 loss limit and its reading of "add every 0.10" may differ from our capped stop and single
-  add; we followed the settings as written. See "Round 9 follow-up" below: the repeated-add reading explains most of
-  the gap in the 1-MNQ measure, not the accounts' gap.
+  add; we followed the settings as written. See "Round 9 follow-up 2" below: the gap was its IB (the first break on
+  either side every day), not either of these.
 
 ## Round 9 follow-up (Nov 28 2026): the October 2026 export, other readings of the blind settings, and skipping the overnight trade in your plan
 
@@ -729,7 +731,7 @@ blocked it. Nothing here was pre-registered; none of it changes the indicator.
 | October 2026, 1 MNQ a leg | Trades | Overnight | Pyramid | IB | Total | Blocked at $600 |
 |---|---|---|---|---|---|---|
 | Blind, as round 9 read it (`blind60`) | 27 | 1, -$124.00 | 14, +$804.41 | 12, +$1,388.68 | +$2,069.09 | 3 (the IB on Oct 26, 27 and 30) |
-| Blind, read the other assistant's way (`their_reading`) | 20 | 1, -$124.00 | 14, +$6,730.65 | 5, +$1,380.82 | +$7,987.47 | 2 (the IB on Oct 27 and 30) |
+| Blind with the readings below (`their_reading`; not the other engine's, see follow-up 2) | 20 | 1, -$124.00 | 14, +$6,730.65 | 5, +$1,380.82 | +$7,987.47 | 2 (the IB on Oct 27 and 30) |
 | As built (`asbuilt`) | 26 | 3, +$675.11 | 8, -$804.45 | 15, +$1,908.80 | +$1,779.46 | 1 (the IB on Oct 26) |
 
 On Oct 16 the 09:35 sell made $2,290.05 with one add; read the other way it added 21 times, held 22 MNQ to 16:00 and
@@ -747,9 +749,10 @@ the 748 sessions of 2024 - Nov 20 2026):
 | All three together | $82.81 | 0.069 | 1.88 |
 | As round 9 read it, without the overnight trade | $42.41 | 0.101 | 2.77 |
 
-With all three readings our engine gives 0.069, next to the other engine's 0.066, so the 1-MNQ gap is mostly how the
-settings were read: the repeated adds nearly double the dollars and add far more swing. In Dec 2019 - Dec 2023 the
-figures are 0.106 as read and 0.078 with all three.
+With all three readings our engine gives 0.069, next to the other engine's 0.066, and we took that to be the
+explanation. It was not: the other engine adds once, and its gap was its IB (see "Round 9 follow-up 2"); the match was
+a coincidence. The repeated adds nearly double the dollars and add far more swing. In Dec 2019 - Dec 2023 the figures
+are 0.106 as read and 0.078 with all three.
 
 **The pools with the first two readings** (`r9_honest.py theirs` → `theirs.json`; reported, not decided on): repeated
 adds and no IB on days without a drive, the day budget charging the first contract's risk as for any leg, no contract
@@ -765,7 +768,7 @@ evaluations, 12 start dates, with → without the funded overnight trade:
 
 Read that way, keeping the trade made more in every account and window except Topstep 50K's 3-year design. No reading
 we tried reproduces the note's Lucid 25K ($30.2k → $47.2k), so the gap between the two engines' accounts is still open;
-comparing the two October exports trade by trade is how to find it.
+comparing the two October exports trade by trade is how to find it. (It did: see follow-up 2.)
 
 **Skipping the funded overnight trade in your plan** (`plan_v27.py --skip` → `skip_final.csv`, `skip_slow_start.csv`,
 `skip25k/`). Your plan as v2.7.2 runs it (the ORB leg from $25,000), with the trade skipped in every funded account,
@@ -800,6 +803,114 @@ python3 -I r9_compare.py export FUT_DATA_DIR results_r9 2026-10   # the October 
 python3 -I r9_compare.py readings FUT_DATA_DIR results_r9         # readings.json
 python3 -I r9_honest.py theirs FUT_DATA_DIR results_r9            # theirs.json
 python3 -I plan_v27.py FUT_DATA_DIR results_plan_v27 --skip       # after --variants and --switch-budget
+```
+
+## Round 9 follow-up 2 (Nov 28 2026): the other engine's IB, and the day limit
+
+**What the October comparison found** (the other assistant's report on its own engine):
+- Its engine adds once (at most 2 entries), so the repeated-add reading of follow-up 1 is not its engine.
+- Its "honest" runs used an IB that takes the first break on either side every day. With the indicator's IB (the
+  drive's side on drive days, either side otherwise) its blind book makes $52.4 a day at a daily Sharpe of 0.111 in
+  2024-26, next to our $56.05 and 0.126; it has retired its 0.066.
+- Its IB matches ours on all 12 October days, $7-33 lower from its 1 tick of slippage a fill. Its pyramid differs on
+  Oct 15 (about -$60 against our -$495.58) and Oct 16 (+$2,065 against +$2,290.05). On Oct 15 its 1-minute bars see the
+  breakeven stop hit inside the 5-minute bar of the add; our 5-minute bars cannot, so ours exits at the next bar's open.
+- Its overnight cutoff is an expanding quantile, and it took no trade on Oct 26.
+- Its account simulation still favoured skipping the funded overnight trade (Lucid 25K over 3 years $64.9k with it,
+  $84.7k without; Lucid 50K $131k / $143k; Topstep 50K $168k / $185k). It traced this to its $600 daily limit, which
+  counts the day's realized P&L from the 18:00 open, the overnight trade's included, and asked whether our pools give
+  the 09:35 legs a fresh $600 after a losing night.
+
+**Our day budget.** They do not, and neither does the indicator:
+- The trading day starts at the 18:00 open, and the overnight trade is its first leg.
+- Each leg's planned risk (stop x contracts x $2) is held in the day budget until the next 18:00 open, win or lose
+  (`usedRisk` in the Pine, reset only at the open).
+- In the blind rebuild at Lucid 25K the overnight stop is capped to fit the budget, so whenever it trades it takes the
+  whole $600 and no RTH leg trades that day.
+- The export's budget_1200 column was a 50K account's budget; our Lucid 25K accounts get $600 (the budget scales with
+  the max loss).
+- Our Lucid Flex model has no daily loss limit (only the end-of-day max loss); the $600 is the indicator's own rule.
+
+**Its rule in our engine** (`r9_honest.py limits` → `results_r9/limits.json`; reported, not decided on). The round 9
+account class takes the day rule as a parameter:
+- "risk": the indicator's, which gives round 9's pools and 3-year design exactly (checked);
+- "net": its rule. A leg is taken if the open legs' risk plus its own, less the day's realized P&L (the overnight
+  trade's included), fits the budget;
+- "fresh": the overnight trade not charged to the day's RTH legs.
+
+Checks on October 2026 at 1 MNQ:
+- Under "risk" our engine gives the export's $600 column day by day.
+- Under "net" without the overnight trade (what its engine traded), it matches its October day by day within $34 (its
+  slippage) except Oct 15 and Oct 16. The month is $2,193.10 against its $2,337.40.
+
+Net to you a year, with → without the funded overnight trade (5 funded + 5 evaluations, 12 start dates; 3-year
+design: 25 monthly starts from Nov 2021, the total over 3 years, mean):
+
+| Version, day rule | Account | Last 5 years | Dec 2019 - Nov 2021 | 2024 - Nov 2026 | 3-year design |
+|---|---|---|---|---|---|
+| Blind, the indicator's budget | Topstep 50K | $79,283 → $79,097 | $91,921 → $67,730 | $87,263 → $91,459 | $184,421 → $187,515 |
+| | Lucid 50K add-on | $59,500 → $43,593 | $63,809 → $55,307 | $69,232 → $51,005 | $151,029 → $121,598 |
+| | Lucid 25K, 40% rule | $26,793 → $24,081 | $30,450 → $25,230 | $33,820 → $28,417 | $66,551 → $60,809 |
+| | Lucid 50K, 40% rule | $52,921 → $46,288 | $64,096 → $65,533 | $66,128 → $52,766 | $133,329 → $129,780 |
+| Blind, its rule | Topstep 50K | $77,630 → $83,589 | $100,412 → $67,681 | $101,629 → $97,177 | $183,373 → $202,200 |
+| | Lucid 50K add-on | $53,329 → $46,912 | $62,095 → $55,516 | $65,396 → $56,019 | $141,335 → $130,607 |
+| | Lucid 25K, 40% rule | $28,674 → $27,258 | $30,200 → $26,205 | $38,894 → $30,238 | $74,047 → $66,625 |
+| | Lucid 50K, 40% rule | $54,322 → $49,281 | $63,059 → $62,577 | $69,093 → $57,635 | $147,950 → $143,243 |
+| As built, the indicator's budget | Topstep 50K | $73,075 → $69,742 | $65,030 → $46,203 | $91,752 → $84,926 | $207,174 → $208,526 |
+| | Lucid 50K add-on | $58,262 → $53,831 | $50,837 → $42,277 | $69,455 → $65,297 | $169,536 → $157,104 |
+| | Lucid 25K, 40% rule | $29,868 → $26,490 | $20,351 → $19,594 | $40,190 → $34,177 | $87,112 → $80,972 |
+| | Lucid 50K, 40% rule | $55,669 → $57,013 | $57,594 → $37,583 | $73,712 → $67,353 | $158,253 → $160,327 |
+| As built, its rule | Topstep 50K | $73,336 → $71,143 | $61,334 → $48,948 | $84,785 → $85,119 | $200,157 → $213,278 |
+| | Lucid 50K add-on | $59,002 → $51,177 | $48,670 → $44,321 | $67,062 → $62,769 | $168,451 → $151,640 |
+| | Lucid 25K, 40% rule | $30,536 → $27,186 | $21,662 → $20,982 | $42,481 → $36,003 | $92,133 → $82,775 |
+| | Lucid 50K, 40% rule | $58,933 → $50,531 | $50,453 → $38,820 | $71,069 → $64,805 | $165,191 → $144,058 |
+
+- **Topstep 50K:** under its rule the blind rebuild made more without the overnight trade over the last 5 years
+  (+$5,959 a year) and in the 3-year design (+$18,827), as its engine found, but less in Dec 2019 - Nov 2021
+  (-$32,731) and 2024-26 (-$4,452).
+- **Lucid:** keeping the trade still made more at Lucid 25K (3-year design $74,047 against $66,625; its engine: $64.9k
+  against $84.7k) and at both Lucid 50K setups, in every window.
+- **So** the day rule explains its Topstep 50K result but not its Lucid 25K one.
+- **As built, the book you trade:** keeping made more at Lucid 25K and with the Lucid add-on in every window under
+  either rule, and at Topstep 50K over the last 5 years under either rule. Skipping made more in Topstep 50K's 3-year
+  design under either rule (+$1,352 and +$13,121).
+- **"Fresh":** with the overnight trade not charged to the RTH legs, keeping made more in every account and window,
+  blind and as built. That would be a rule change and is not adopted: round 8 tested a close cousin (charging the
+  overnight trade only its actual loss) and it failed at Topstep 50K.
+
+**Per unit:** 1 MNQ a leg, a $600 day budget and no other account rule (`limits.json`, per_unit). Dollars a day,
+daily Sharpe in brackets, blind rebuild:
+
+| Day rule | 2021-2023: with → without | 2024 - Nov 2026: with → without |
+|---|---|---|
+| The indicator's budget | $31.74 (0.109) → $27.01 (0.091) | $47.23 (0.120) → $46.92 (0.118) |
+| Its rule | $26.78 (0.088) → $27.04 (0.090) | $53.01 (0.127) → $50.68 (0.126) |
+| Fresh after the night | $29.54 (0.097) → $27.01 (0.091) | $57.65 (0.138) → $46.92 (0.118) |
+
+How this compares with its own per-unit figures ($60.7 → $66.7 a day in 2021-23, $42.4 → $44.6 in 2024-26):
+- Under its rule our 2021-23 is slightly higher without the trade, the direction it reports.
+- Its 2021-23 level is more than twice ours and above its own 2024-26 level. At 1 MNQ ours runs the other way, since
+  NQ's ranges were larger in 2024-26. So its unit or window probably differs from ours; that needs confirming before
+  the two sets of numbers are compared.
+
+**The overnight cutoff** (`r9_compare.py cutoff` → `results_r9/cutoff.json`). The leg alone, 1 MNQ, stop 1.0 ADR, no
+budget, round 9's fixed 0.8985 against an expanding cutoff (the 0.80 quantile of every earlier night's |score|, from
+Feb 2011 on our S&P input):
+- **2024-26:** 134 trades against 133, the same side on all 133 shared nights, $13.20 a session against $13.64.
+- **2021-23:** 195 trades against 189, $1.77 a session against $2.53.
+- **Oct 26:** our expanding cutoff was 0.8912, below that night's score of 0.9322, so on our scores it would have
+  traded. Its engine's cutoff was above 0.9322, so its scores differ from ours, and that is worth checking next.
+
+**What it means for your plan: nothing changes.**
+- The indicator's own day budget is the rule you trade under. Under it, keeping the overnight trade made more, as
+  built, at Lucid 25K, with the Lucid add-on and at Topstep 50K over the last 5 years.
+- Your plan with the trade skipped did worse in every start size (follow-up 1).
+- Even under the other engine's day rule, our engine still keeps the trade at both Lucid sizes.
+- The open question is its Lucid 25K result. Next: its overnight scores and cutoffs, and its Lucid 25K account rules.
+
+```bash
+python3 -I r9_honest.py limits FUT_DATA_DIR results_r9    # keep vs skip under three day rules (limits.json)
+python3 -I r9_compare.py cutoff FUT_DATA_DIR results_r9   # fixed vs expanding overnight cutoff (cutoff.json)
 ```
 
 ## Data (history: the research's earlier series)

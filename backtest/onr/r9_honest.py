@@ -7,6 +7,7 @@ usage: python3 -I r9_honest.py FUT_DATA_DIR OUT_DIR            # checks, every v
                                                                # questions): the IB's three versions, the overnight leg
        python3 -I r9_honest.py unit FUT_DATA_DIR OUT_DIR       # the note's headline measure: 1 MNQ a leg, daily Sharpe
        python3 -I r9_honest.py theirs FUT_DATA_DIR OUT_DIR     # the pools with ONR-B read the other assistant's way
+       python3 -I r9_honest.py limits FUT_DATA_DIR OUT_DIR     # keep vs skip under three day-budget rules (follow-up 2)
 
 Funded accounts (evaluations and Combines trade as built in every version):
 - as built: v2.6.6's legs (round 7's per-contract legs, results identical to the published account classes);
@@ -177,9 +178,13 @@ class Funded9(A.FundedAccount):
     """round 7's Funded7 with a choice of leg set (r9src) and of overnight trade (r9on: "book" as built, "blind" =
     ONR-B's capped 1.0 ADR stop at thr, None = skipped)."""
 
-    def __init__(self, S, r9src="asbuilt", r9on="book", **kw):
+    def __init__(self, S, r9src="asbuilt", r9on="book", r9lim="risk", **kw):
         super().__init__(S, **kw)
-        self.r9src, self.r9on = r9src, r9on
+        self.r9src, self.r9on, self.r9lim = r9src, r9on, r9lim
+        # r9lim (follow-up 2): "risk" = the indicator's day budget (each leg's planned risk held all day, from the 18:00
+        # open); "net" = a loss limit on the trading day's net P&L (a leg is taken if the open legs' risk plus its own,
+        # less the day's realized P&L, fits the budget); "fresh" = the overnight trade not charged to the day's RTH legs
+        assert r9lim in ("risk", "net", "fresh")
         assert self.cushion_frac is None and self.add2 is None and self.record is None and self.ib_with_drive
         assert self.improved and self.adr_ref is not None
 
@@ -212,6 +217,9 @@ class Funded9(A.FundedAccount):
                     dist = min(B["on_stop"] * adr, (room - used) / (n * PV))
                     day += n * funded_on(S, d, side, 0.0, dist / adr, n=1, comm=COMM_RT)[0]
                     used += dist * n * PV
+            on_real = day                 # the overnight trade is closed by 09:30, before any RTH leg
+            if self.r9lim == "fresh":
+                used = 0.0
             items = []
             if not half:
                 items += [x for x in (lg["pyr"], lg["ib"]) if x is not None]
@@ -219,13 +227,17 @@ class Funded9(A.FundedAccount):
             taken = []
             for key, nm, side, rk1, pnl1, xkey in items:
                 rk = rk1 * n
-                if used + rk > room:
+                if self.r9lim == "net":
+                    real = on_real + sum(p for tk, ts, tx, r_, p in taken if tx <= key)
+                    if sum(r_ for tk, ts, tx, r_, p in taken if tx > key) + rk - real > room:
+                        continue
+                elif used + rk > room:
                     continue
-                if any(ts != side and tk <= key < tx for tk, ts, tx in taken):
+                if any(ts != side and tk <= key < tx for tk, ts, tx, r_, p in taken):
                     continue
                 day += n * pnl1
                 used += rk
-                taken.append((key, side, xkey))
+                taken.append((key, side, xkey, rk, n * pnl1))
         self.pnl += day
         if self.pnl <= fl:
             return "blown", 0.0
@@ -275,7 +287,7 @@ def kwargs9(acct, v):
         ek = dict(R4.E_KW, cons=0.5) if acct == "lucid_addon" else dict(R4.E_KW)
         fk = dict(R4.F_KW, max_pay=4)
     ek, fk = dict(ek, slip=0.0, r7trigger=None), dict(fk, slip=0.0)
-    for key in ("r9src", "r9on", "thr", "adr_ref"):
+    for key in ("r9src", "r9on", "thr", "adr_ref", "r9lim"):
         if key in v:
             fk[key] = v[key]
     return ek, fk
@@ -508,6 +520,143 @@ def facts(dd, out):
 
 
 # ------------------------------------------------------------------------------------------------ 1 contract a leg
+RULES9 = ("risk", "net", "fresh")
+
+
+def unit_day(S, LG, d, src, on, lim, room=600.0):
+    """One session at 1 MNQ a leg under a fixed day budget and no other account rule, as Funded9.step trades it."""
+    r = S.S[d]
+    adr = r["adr"]
+    if np.isnan(adr):
+        return 0.0, []
+    day, used, out = 0.0, 0.0, []
+    if on == "book":
+        side = S.on_side(d)
+        if side != 0 and 0.5 * adr * PV <= room:
+            day += LG["asbuilt"][d]["on"][side]
+            used += 0.5 * adr * PV
+            out.append(("overnight", day))
+    elif on == "blind":
+        side = S.on_side(d, THR_B)
+        if side != 0:
+            dist = min(B["on_stop"] * adr, room / PV)
+            day += funded_on(S, d, side, 0.0, dist / adr, n=1, comm=COMM_RT)[0]
+            used += dist * PV
+            out.append(("overnight", day))
+    on_real = day
+    if lim == "fresh":
+        used = 0.0
+    items = [] if is_half(d) else sorted([x for x in (LG[src][d]["pyr"], LG[src][d]["ib"]) if x is not None], key=lambda x: x[0])
+    taken = []
+    for key, nm, side, rk, pnl, xkey in items:
+        if lim == "net":
+            real = on_real + sum(p for tk, ts, tx, r_, p in taken if tx <= key)
+            if sum(r_ for tk, ts, tx, r_, p in taken if tx > key) + rk - real > room:
+                continue
+        elif used + rk > room:
+            continue
+        if any(ts != side and tk <= key < tx for tk, ts, tx, r_, p in taken):
+            continue
+        day += pnl
+        used += rk
+        taken.append((key, side, xkey, rk, pnl))
+        out.append((nm, pnl))
+    return day, out
+
+
+def limits(fd, out):
+    """Round 9 follow-up 2 (reported, not decided on). The other assistant's engine counts the overnight trade's realized
+    P&L in a $600 daily loss limit from the 18:00 open, and still favours skipping the trade at Lucid 25K. Our pools,
+    like the indicator, hold each leg's planned risk in the day budget all day. Keep vs skip under three day rules (see
+    Funded9): the pools (every account, window and 12 start dates; the note's 3-year design), and 1 MNQ a leg under a
+    $600 budget with no other account rule (dollars a day, daily Sharpe; October 2026 day by day)."""
+    D = init(fd)
+    S = D.S
+    names = []
+    for src, on in (("B60", "blind"), ("asbuilt", "book")):
+        for lim in RULES9:
+            v = dict(r9src=src, r9on=on, r9lim=lim)
+            if on == "blind":
+                v["thr"] = THR_B
+            VERS[f"{src}|on|{lim}"] = v
+            names.append(f"{src}|on|{lim}")
+        for lim in ("risk", "net"):      # without the overnight trade "fresh" is "risk"
+            VERS[f"{src}|off|{lim}"] = dict(r9src=src, r9on=None, r9lim=lim)
+            names.append(f"{src}|off|{lim}")
+    # 1 MNQ a leg, a $600 budget, no other account rule
+    LG = {"asbuilt": LEGS["asbuilt"], "B60": LEGS["B60"]}
+    iso = np.array([str(np.datetime64(int(d), "D")) for d in S.days])
+    per_unit, october = {}, {}
+    for src, on in (("B60", "blind"), ("asbuilt", "book")):
+        for lim in RULES9:
+            for tag, o in (("with", on), ("without", None)):
+                if tag == "without" and lim == "fresh":
+                    continue
+                x = np.array([unit_day(S, LG, int(d), src, o, lim)[0] if int(d) in S.S else 0.0 for d in S.days])
+                for w, a, b in (("2021-2023", "2021-01-01", "2023-12-31"), ("2024 - Nov 20 2026", "2024-01-01", "2026-12-31"),
+                                ("Dec 2019 - Dec 2023", "2019-12-01", "2023-12-31")):
+                    mk = (iso >= a) & (iso <= b) & np.array([int(d) in S.S and not np.isnan(S.S[int(d)]["adr"]) for d in S.days])
+                    y = x[mk]
+                    per_unit[f"{src} | {lim} | {tag} | {w}"] = dict(sessions=int(mk.sum()), usd_per_day=round(float(y.mean()), 2),
+                                                                    daily_sharpe=round(float(y.mean() / y.std(ddof=1)), 3))
+                if src == "B60":
+                    october[f"{lim} | {tag}"] = {iso[k][5:]: round(float(x[k]), 2) for k in range(len(S.days)) if iso[k][:7] == "2026-10" and int(S.days[k]) in S.S}
+    # the risk rule must be round 9's day: 1 MNQ, $600, the B60 legs (checked against the October export's taken_25k)
+    exp = {}
+    for r in csv.DictReader(open(os.path.join(out, "trades_2026-10_blind60.csv"))):
+        if r["taken_25k"].startswith("yes"):
+            exp[r["date"][5:]] = exp.get(r["date"][5:], 0.0) + float(r["pnl_usd"])
+    got = october["risk | with"]
+    assert all(abs(got.get(k, 0.0) - v) < 0.01 for k, v in exp.items()) and all(abs(v) < 0.01 for k, v in got.items() if k not in exp), "October"
+    print("1 MNQ under the risk rule reproduces the October export's $600 column, day by day", flush=True)
+    # the pools
+    jobs = [(v, a, w, off) for v in names for a in ACCTS9 for w in WIN9 for off in R4.OFFSETS]
+    with get_context("fork").Pool(4) as p:
+        res = p.map(job, jobs, chunksize=4)
+    agg = {}
+    for (v, a, w, off), per_ in res:
+        for lab, x in per_.items():
+            agg.setdefault(v, {}).setdefault(a, {}).setdefault(lab, []).append(x)
+    tab = {v: {a: {lab: dict(M=float(np.mean([x["M"] for x in xs])), W=float(np.mean([x["W"] for x in xs])), n=len(xs))
+                   for lab, xs in d2.items()} for a, d2 in d1.items()} for v, d1 in agg.items()}
+    ref = json.load(open(os.path.join(out, "versions.json")))
+    for src in ("B60", "asbuilt"):
+        for o in ("on", "off"):
+            for a in ACCTS9:
+                for lab, r in ref[f"{src}|{o}"][a].items():
+                    assert abs(tab[f"{src}|{o}|risk"][a][lab]["M"] - r["M"]) < 0.01 and abs(tab[f"{src}|{o}|risk"][a][lab]["W"] - r["W"]) < 0.01, (src, o, a, lab)
+    print("the risk rule reproduces round 9's pools (versions.json), every account and window", flush=True)
+    ks = []
+    for k in range(len(S.days)):
+        mth = str(np.datetime64(int(S.days[k]), "D"))[:7]
+        if "2021-11" <= mth <= "2023-11" and (not ks or str(np.datetime64(int(S.days[ks[-1]]), "D"))[:7] != mth):
+            ks.append(k)
+    with get_context("fork").Pool(4) as p:
+        r3 = p.map(job3, [(v, a, k) for v in names for a in ACCTS9 for k in ks], chunksize=4)
+    three = {}
+    for (v, a, k), tot in r3:
+        three.setdefault(v, {}).setdefault(a, []).append(tot)
+    for v, d in three.items():
+        for a, x in d.items():
+            tab[v][a]["3y"] = dict(mean=float(np.mean(x)), median=float(np.median(x)), worst=float(min(x)), n=len(x))
+    t3 = json.load(open(os.path.join(out, "threeyear.json")))
+    for src in ("B60", "asbuilt"):
+        for o in ("on", "off"):
+            for a in ACCTS9:
+                assert abs(tab[f"{src}|{o}|risk"][a]["3y"]["mean"] - t3[f"{src}|{o}"][a]["mean"]) < 0.01, (src, o, a)
+    print("the risk rule reproduces round 9's 3-year design (threeyear.json), every account", flush=True)
+    json.dump(dict(pools=tab, per_unit=per_unit, october=october), open(os.path.join(out, "limits.json"), "w"), indent=1)
+    for src in ("B60", "asbuilt"):
+        for lim in RULES9:
+            off = f"{src}|off|{'risk' if lim == 'fresh' else lim}"
+            print(src, lim, {a: {lab: (round(tab[f"{src}|on|{lim}"][a][lab]["M"]), round(tab[off][a][lab]["M"]))
+                                 for lab in ("last 5y", "early", "2024-26")} | {"3y": (round(tab[f"{src}|on|{lim}"][a]["3y"]["mean"]),
+                                                                                      round(tab[off][a]["3y"]["mean"]))}
+                                 for a in ACCTS9}, flush=True)
+    for k, v in per_unit.items():
+        print(k, v)
+
+
 def unit(fd, out):
     """The note's headline measure: every leg at 1 MNQ, no account rules, daily P&L over all sessions (zero days
     included): daily Sharpe, t, $ a day, for as built and ONR-B (both IBs), with and without the overnight trade."""
@@ -551,6 +700,8 @@ if __name__ == "__main__":
         facts(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "unit":
         unit(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "limits":
+        limits(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "theirs":
         theirs(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "table":
