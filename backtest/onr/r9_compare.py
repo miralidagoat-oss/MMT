@@ -5,6 +5,8 @@ the blind rebuild ("ONR-B"), and how far our 2024-26 figures move under other re
 usage: python3 -I r9_compare.py export FUT_DATA_DIR OUT_DIR [YYYY-MM]    # every trade of a month, 1 MNQ a leg
        python3 -I r9_compare.py readings FUT_DATA_DIR OUT_DIR           # 2024-26 daily Sharpe, other readings
        python3 -I r9_compare.py cutoff FUT_DATA_DIR OUT_DIR             # the overnight cutoff, fixed vs expanding
+       python3 -I r9_compare.py dll FUT_DATA_DIR OUT_DIR                # Lucid's $600 soft daily limit at 25K
+       python3 -I r9_compare.py nights FUT_DATA_DIR OUT_DIR             # the blind overnight nights of 2024-26
 
 export: one row per trade of each version ("blind60" = ONR-B with ONR's 60-minute IB, as round 9 ran it; "asbuilt" =
 the book; "their_reading" = ONR-B with the other assistant's reading of its settings, see VER), 1 MNQ a leg (each
@@ -25,7 +27,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import r9_honest as H  # noqa: E402
 import research7 as R7  # noqa: E402
-from account import COMM_RT, is_half  # noqa: E402
+from account import COMM_RT, funded_size, is_half  # noqa: E402
 from engine import PV, funded_on, ib_breakout, pyramid, sess_cols  # noqa: E402
 
 VER = {"blind60": dict(k=0.05, stop=0.50, add=0.10, trail=0.50, thr=H.THR_B, on_stop=1.0),
@@ -349,10 +351,205 @@ def cutoff(fd, out):
         print(k, v)
 
 
+# ------------------------------------------------------------------------------------------------ Lucid's daily limit
+def _leg_path(H_, L, i, s, ents, j_first, jx, pnl, stopped, ncol, lag=0):
+    """A leg's value per contract at every 5-minute slot of the session: 0 before its first bar; then the open P&L at
+    each bar's worst price; at the exit bar the realized P&L if it was stopped, else the lower of the open value and
+    the realized P&L; after it, the realized P&L (commission included). ents: (slot, price, filled inside that bar).
+    lag 0 counts a fill inside a bar from that bar (as if the bar's worst price came after it: the worst order); lag 1
+    from the next bar (the best order). 5-minute bars cannot tell which."""
+    v = np.zeros(ncol)
+    prev = 0.0
+    for j in range(j_first, jx + 1):
+        if np.isnan(L[i, j]):
+            v[j] = prev
+            continue
+        w = L[i, j] if s == 1 else H_[i, j]
+        ow = sum(s * (w - e) * PV for ja, e, inside in ents if ja + (lag if inside else 0) <= j)
+        v[j] = ow if j < jx else (pnl if stopped else min(ow, pnl))
+        prev = v[j]
+    v[jx + 1:] = pnl
+    return v
+
+
+HALTS = set()
+
+
+def _day(D, i, d, ver, n, rule, room=600.0):
+    """One session of a fresh funded Lucid 25K account (budget $600, n MNQ a leg) under a day rule ("risk": the
+    indicator's, each leg's planned risk held all day; "net": the other assistant's, open risk + new risk - the day's
+    realized P&L must fit): the legs taken, the day's P&L and its value path (realized + open, worst prices)."""
+    S = D.S
+    O, H_, L, C = D.O, D.H, D.L, D.C
+    p = VER[ver]
+    A_ = D.adr[i]
+    ncol = O.shape[1]
+    legs = []                                     # (key, xkey, side, risk $, pnl $ per contract, path per contract)
+    side = S.on_side(d) if p["thr"] is None else S.on_side(d, p["thr"])
+    if side != 0:
+        r = S.S[d]["on"]
+        j0 = int(sess_cols(np.array([r["t"]]))[0][0] // 5)
+        dist = p["on_stop"] * A_ if ver == "asbuilt" else min(p["on_stop"] * A_, room / (n * PV))
+        if ver != "asbuilt" or dist * PV * n <= room:
+            pnl = funded_on(S, d, side, 0.0, dist / A_, n=1, comm=COMM_RT)[0]
+            if ver == "asbuilt":
+                assert abs(pnl - H.LEGS["asbuilt"][d]["on"][side]) < 1e-6, (d, "on")
+            px, why, jj = R7._manage(O, H_, L, C, i, side, r["E"], r["E"] - side * dist, np.nan, j0 + 1, 186, 2, 1)
+            if abs((px - r["E"]) * side * PV - COMM_RT - pnl) > 1e-6:
+                # the limit-down halts of March 2020 (Mar 9, 13, 16): the night's bars end early and the engine prices
+                # the exit after the halt; the path runs to the halt and the realized P&L is the engine's
+                assert why == 3 and str(np.datetime64(d, "D"))[:7] == "2020-03", (d, why)
+                HALTS.add(str(np.datetime64(d, "D")))
+            legs.append((float(j0) - 400.0, float(jj) - 400.0, side, dist * PV, pnl,
+                         *(_leg_path(H_, L, i, side, [(j0 + 1, r["E"], False)], j0 + 1, jj, pnl, why == 1, ncol, g) for g in (0, 1))))
+    half = is_half(d)
+    sd = S.od_side(d, p["k"])
+    src = "asbuilt" if ver == "asbuilt" else "B60"
+    if sd != 0 and not half:
+        ja, pa, jx, px, why, pnl = _pyr(O, H_, L, C, i, sd, A_, p["stop"], p["add"], p["trail"])
+        ref = H.LEGS[src][d]["pyr"]
+        assert ref is not None and abs(ref[4] - pnl) < 1e-6 and ref[2] == sd, (d, ver, "pyr")
+        ents = [(187, C[i, 186], False)] + ([(ja, pa, True)] if ja is not None else [])
+        legs.append((ref[0], ref[5], sd, p["stop"] * A_ * PV, pnl,
+                     *(_leg_path(H_, L, i, sd, ents, 187, jx, pnl, not why.startswith("time"), ncol, g) for g in (0, 1))))
+    if "ib" in S.S[d] and not half:
+        res = ib_breakout(S, d, 0.0, stop=0.25, tgt=0.50, n=1, comm=COMM_RT, only_side=sd)
+        if res is not None and res[1] != "both-skip":
+            ib = S.S[d]["ib"]
+            s_, j, E = R7._stop_entry(O, H_, L, i, ib["H"] + 0.25 if sd >= 0 else np.nan, ib["L"] - 0.25 if sd <= 0 else np.nan, 198, 227)
+            if res[1] == "stop-fillbar":
+                px, why, jj = E - s_ * 0.25 * A_, 1, j
+            else:
+                px, why, jj = R7._manage(O, H_, L, C, i, s_, E, E - s_ * 0.25 * A_, E + s_ * 0.50 * A_, j, 264, 1, 1)
+            ref = H.LEGS[src][d]["ib"]
+            assert ref is not None and abs(ref[4] - res[0]) < 1e-6 and ref[2] == s_, (d, ver, "ib")
+            legs.append((ref[0], ref[5], s_, 0.25 * A_ * PV, res[0],
+                         *(_leg_path(H_, L, i, s_, [(j, E, True)], j, jj, res[0], why == 1, ncol, g) for g in (0, 1))))
+    # the budget, in entry order (the overnight first, as the pools take it)
+    taken, used = [], 0.0
+    for key, xk, sd_, rk1, pnl, path, path1 in sorted(legs, key=lambda x: x[0]):
+        rk = rk1 * n
+        if rule == "net" and taken:
+            real = sum(t[4] * n for t in taken if t[1] <= key)
+            ok = sum(t[3] * n for t in taken if t[1] > key) + rk - real <= room + 1e-9
+        else:
+            ok = used + rk <= room + 1e-9
+        if not ok or any(t[2] != sd_ and t[0] <= key < t[1] for t in taken):
+            continue
+        used += rk
+        taken.append((key, xk, sd_, rk1, pnl, path, path1))
+    if not taken:
+        return 0.0, None, None, []
+    return n * sum(t[4] for t in taken), n * sum(t[5] for t in taken), n * sum(t[6] for t in taken), taken
+
+
+def dll(fd, out):
+    """Lucid Flex 25K with the daily loss limit on (the user's accounts): a $600 soft limit on realized plus open P&L
+    over the session from 18:00, which flattens everything and locks the account out until the next session. The
+    indicator's day budget holds at most $600 of planned risk at 25K and every leg's loss stops at its stop, so the
+    limit can only be touched as a stop fills, or by commission or a gap. Checked on every session of the MNQ file for a
+    fresh funded 25K account (budget $600, contracts by ADR as the pools size them), as built and blind, under the
+    indicator's rule and the other assistant's: the lowest realized-plus-open value inside each session (5-minute bars,
+    open legs at each bar's worst price), the sessions that reach -$600, and what flattening there would change."""
+    D = H.init(fd)
+    S = D.S
+    res = {}
+    for ver in ("asbuilt", "blind60"):
+        for rule in ("risk", "net"):
+            low, worst, touch, ndays, near = 0.0, None, [], 0, 0
+            for i, d in enumerate(D.days):
+                d = int(d)
+                if d not in S.S or np.isnan(D.adr[i]):
+                    continue
+                n = funded_size(D.adr[i], 350.0, nmax=10)
+                pnl, val, val1, taken = _day(D, i, d, ver, n, rule)
+                if val is None:
+                    continue
+                ndays += 1
+                vmin, vmin1 = float(val.min()), float(val1.min())
+                if vmin < low:
+                    low, worst = vmin, (str(np.datetime64(d, "D")), round(vmin, 2), round(pnl, 2), n, len(taken))
+                near += vmin <= -550.0
+                if vmin <= -600.0:
+                    iso = str(np.datetime64(d, "D"))
+                    kind = ("halt night" if iso in HALTS else "at a stop (the day ends there, commission over $600)"
+                            if pnl <= vmin + 0.01 else "in the best order the session stays above -$600" if vmin1 > -600.0
+                            else "below -$600 in either order, then recovered")
+                    touch.append(dict(date=iso, contracts=n, lowest_worst_order=round(vmin, 2), lowest_best_order=round(vmin1, 2),
+                                      day_pnl=round(pnl, 2), kind=kind))
+            kinds = {}
+            for t in touch:
+                kinds[t["kind"]] = kinds.get(t["kind"], 0) + 1
+            # flattening at -$600: a day ending below it gains the difference; a day that recovered after touching it
+            # would lose the recovery (counted only where the touch holds in the best order too)
+            gain = sum(-600.0 - t["day_pnl"] for t in touch if t["day_pnl"] < -600.0)
+            lost = sum(-600.0 - t["day_pnl"] for t in touch if t["day_pnl"] > -600.0 and t["lowest_best_order"] <= -600.0)
+            unsure = sum(-600.0 - t["day_pnl"] for t in touch if t["day_pnl"] > -600.0 and t["lowest_best_order"] > -600.0)
+            res[f"{ver} | {rule}"] = dict(sessions_with_a_leg=ndays, lowest_value=round(low, 2), lowest_session=worst,
+                                         sessions_at_or_below_550=int(near), sessions_reaching_600=len(touch), by_kind=kinds,
+                                         flattening_gain_usd=round(gain, 2), flattening_cost_usd=round(lost, 2),
+                                         cost_if_the_worst_order_is_right_usd=round(unsure, 2), reaching=touch)
+            print(ver, rule, res[f"{ver} | {rule}"], flush=True)
+    res["halt nights (exit priced by the engine)"] = sorted(HALTS)
+    json.dump(res, open(os.path.join(out, "dll.json"), "w"), indent=1)
+
+
+def nights(fd, out):
+    """The blind overnight trade, 2024 - Nov 20 2026, for the other assistant to find the nights its S&P feed drops:
+    every night's score (overnight_scores_2024_26.csv) and every trade (overnight_trades_2024_26.csv) at round 9's fixed
+    cutoff 0.8985: 1 MNQ, stop 1.0 ADR, no day budget, out at 09:30, $1.00 a round turn, actual prices."""
+    D = H.init(fd)
+    S = D.S
+    O, H_, L, C = D.O, D.H, D.L, D.C
+    sc, tr, raw = [], [], []
+    for i, d in enumerate(D.days):
+        d = int(d)
+        iso = str(np.datetime64(d, "D"))
+        if d not in S.S or iso < "2024-01-01" or np.isnan(D.adr[i]):
+            continue
+        score = S.S[d]["score"]
+        side = S.on_side(d, H.THR_B)
+        sc.append(dict(date=iso, score="" if np.isnan(score) else round(float(score), 4), traded="BUY" if side == 1 else "SELL" if side == -1 else ""))
+        if side != 0:
+            r = S.S[d]["on"]
+            A_ = D.adr[i]
+            j0 = int(sess_cols(np.array([r["t"]]))[0][0] // 5)
+            pnl = funded_on(S, d, side, 0.0, 1.0, n=1, comm=COMM_RT)[0]
+            px, why, jj = R7._manage(O, H_, L, C, i, side, r["E"], r["E"] - side * A_, np.nan, j0 + 1, 186, 2, 1)
+            assert abs((px - r["E"]) * side * PV - COMM_RT - pnl) < 1e-6
+            raw.append(pnl)
+            tr.append(dict(date=iso, entry=clock(d, j0, True), score=round(float(score), 4), side="BUY" if side == 1 else "SELL",
+                           adr=round(A_, 2), entry_price=r["E"], exit=clock(d, jj, True) if why != 1 else clock(d, jj) + " bar",
+                           exit_price=round(px, 2), exit_reason="stop" if why == 1 else "time 09:30", pnl_usd=round(pnl, 2)))
+    for name, rows in (("overnight_scores_2024_26.csv", sc), ("overnight_trades_2024_26.csv", tr)):
+        with open(os.path.join(out, name), "w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(rows[0]), lineterminator="\n")
+            w.writeheader()
+            w.writerows(rows)
+    tot = round(float(sum(raw)), 2)
+    assert len(tr) == 133 and abs(tot - 10201.82) < 0.01, (len(tr), tot)      # results_r9/cutoff.json, fixed cutoff
+    print(len(sc), "nights,", sum(1 for r in sc if r["score"] == ""), "without a score;", len(tr), "trades,", tot, flush=True)
+    # 1 MNQ a leg in the other assistant's window (Mar 2021 - Dec 2023), actual prices, no budget and $600 (its rule)
+    LG = {"asbuilt": H.LEGS["asbuilt"], "B60": H.LEGS["B60"]}
+    unit = {}
+    for lim, room in (("none", 1e9), ("risk", 600.0), ("net", 600.0)):
+        for tag, on in (("with", "blind"), ("without", None)):
+            x = [H.unit_day(S, LG, int(d), "B60", on, "risk" if lim == "none" else lim, room)[0]
+                 for d in D.days if int(d) in S.S and not np.isnan(S.S[int(d)]["adr"]) and "2021-03-01" <= str(np.datetime64(int(d), "D")) <= "2023-12-31"]
+            unit[f"blind | {lim} | {tag} | Mar 2021 - Dec 2023"] = dict(sessions=len(x), usd_per_day=round(float(np.mean(x)), 2))
+    json.dump(unit, open(os.path.join(out, "unit_mar2021.json"), "w"), indent=1)
+    for k, v in unit.items():
+        print(k, v)
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "export":
         export(sys.argv[2], sys.argv[3], *(sys.argv[4:5] or ["2026-10"]))
     elif sys.argv[1] == "cutoff":
         cutoff(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "dll":
+        dll(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "nights":
+        nights(sys.argv[2], sys.argv[3])
     else:
         readings(sys.argv[2], sys.argv[3])

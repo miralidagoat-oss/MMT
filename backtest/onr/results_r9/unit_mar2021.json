@@ -1,0 +1,26 @@
+{
+ "blind | none | with | Mar 2021 - Dec 2023": {
+  "sessions": 735,
+  "usd_per_day": 31.7
+ },
+ "blind | none | without | Mar 2021 - Dec 2023": {
+  "sessions": 735,
+  "usd_per_day": 30.4
+ },
+ "blind | risk | with | Mar 2021 - Dec 2023": {
+  "sessions": 735,
+  "usd_per_day": 32.61
+ },
+ "blind | risk | without | Mar 2021 - Dec 2023": {
+  "sessions": 735,
+  "usd_per_day": 29.29
+ },
+ "blind | net | with | Mar 2021 - Dec 2023": {
+  "sessions": 735,
+  "usd_per_day": 27.68
+ },
+ "blind | net | without | Mar 2021 - Dec 2023": {
+  "sessions": 735,
+  "usd_per_day": 29.32
+ }
+}

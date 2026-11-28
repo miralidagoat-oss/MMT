@@ -367,8 +367,12 @@ def r9_followup():
         facts += [(f"oct_{v}_trades", O[v]["all"]["trades"], "count"), (f"oct_{v}_usd", f"{O[v]['all']['pnl_usd']:.2f}", "usd")]
     facts += [("b500_reached_with", reached[("keep", "budget 500 lucid25k40 1x")][2], "count"),
               ("b500_reached_without", reached[("skip", "budget 500 lucid25k40 1x")][2], "count")]
+    DL = json.load(open(os.path.join(R9, "dll.json")))["asbuilt | risk"]    # Lucid's $600 soft daily limit at 25K
+    facts += [("dll_sessions", DL["sessions_with_a_leg"], "count"), ("dll_reached", DL["sessions_reaching_600"], "count"),
+              ("dll_change_usd", f"{DL['flattening_gain_usd']:.2f}", "usd")]
     f = {a: b for a, b, _ in facts}
     assert (f["sharpe_as_read"], f["usd_day_as_read"], f["oct_blind60_usd"], f["b500_reached_without"]) == ("0.126", "56.05", "2069.09", 195)
+    assert (f["dll_sessions"], f["dll_reached"], f["dll_change_usd"]) == (1694, 2, "54.71")
     return rows, [dict(metric=a, value=b, unit=c) for a, b, c in facts]
 
 

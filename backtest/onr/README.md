@@ -830,6 +830,8 @@ python3 -I plan_v27.py FUT_DATA_DIR results_plan_v27 --skip       # after --vari
 - The export's budget_1200 column was a 50K account's budget; our Lucid 25K accounts get $600 (the budget scales with
   the max loss).
 - Our Lucid Flex model has no daily loss limit (only the end-of-day max loss); the $600 is the indicator's own rule.
+  (Follow-up 3: your 25K accounts have Lucid's $600 soft daily limit on; under the indicator's budget it was reached
+  on 2 of 1,694 sessions as built.)
 
 **Its rule in our engine** (`r9_honest.py limits` → `results_r9/limits.json`; reported, not decided on). The round 9
 account class takes the day rule as a parameter:
@@ -911,6 +913,72 @@ Feb 2011 on our S&P input):
 ```bash
 python3 -I r9_honest.py limits FUT_DATA_DIR results_r9    # keep vs skip under three day rules (limits.json)
 python3 -I r9_compare.py cutoff FUT_DATA_DIR results_r9   # fixed vs expanding overnight cutoff (cutoff.json)
+```
+
+## Round 9 follow-up 3 (Nov 28 2026): Lucid's daily limit, the other engine's units and missing nights
+
+**What the other assistant reported:**
+- **Your Lucid 25K accounts** are Flex with the daily loss limit on, the cheapest option. Lucid lists it as a $600 soft
+  limit, in evaluations and funded accounts alike. The session runs 18:00-16:45, so an overnight loss counts toward
+  that day. Reaching the limit locks you out for the rest of the session but does not fail the account. Its engine
+  flattens everything once realized plus open P&L reaches -$600, and asked us to add the limit.
+- **Its units:** each day's P&L is scaled by today's NQ price ÷ that day's price (×2.06 on average in 2021-23, ×1.26 in
+  2024-26). Its "1 unit" in the account simulation is 1 MNQ in today's-price terms. Its "2021-23" is Mar 2021 - Dec
+  2023. At actual prices its 2021-23 without the overnight trade is about $32 a day.
+- **Its overnight scores:** its S&P stretch score is missing from Oct 26 2026 on, and in 2024-26 it has 96 overnight
+  trades (+$5,416 at actual prices, stop 1.0 ADR capped at $595) against our 133 (+$10,202). It misses about 28% of the
+  nights and half the profit, which biases its keep-vs-skip toward skipping. It asked for our nights.
+- **Its Lucid 25K model** is otherwise the same as ours: evaluations $1,250 target, $1,000 end-of-day trailing loss,
+  40% rule; funded $1,000 trailing loss locking at +$100, payouts after 5 days of $100+ and $1,000 of profit, half
+  the profit up to $1,000, at most 4.
+
+**Lucid's daily limit in our model** (`r9_compare.py dll` → `results_r9/dll.json`):
+- **Why it cannot bind under the indicator's budget.** The indicator holds at most $600 of planned risk in a session at
+  25K, counting the overnight trade, and every leg's loss stops at its stop. Realized plus open P&L can therefore only
+  reach -$600 as a stop fills, or by commission or a gap.
+- **The evaluation.** It trades once a session with a stop capped at $600, so the same holds there.
+- **How it was checked.** Every session of the MNQ file, for a fresh funded 25K account: budget $600, contracts by ADR
+  as the pools size them, as built and blind. The check takes the legs the budget takes, then the lowest realized-plus-open value
+  inside the session (5-minute bars, open legs at each bar's worst price), in the worst and the best order inside a
+  bar.
+- **As built, the indicator's rule:** -$600 was reached on 2 of 1,694 sessions with a trade:
+  - Mar 16 2020, a limit-down halt night: the overnight trade's exit came after the halt, at -$652.16.
+  - One day that ended $2.55 past -$600 at its stops.
+
+  Flattening at -$600 would have added $54.71 in all. Under the other assistant's rule it was never reached (lowest
+  -$594.58).
+- **Blind:** -$600 was reached on 29 sessions. On 27 of them the overnight trade's stop, capped at the full $600, filled
+  there; the day ends at -$601 to -$603 with commission. On the other 2 (Mar 24 and Jun 12 2026) it is reached only if
+  the bar's low came after the pyramid's add and the IB's fill, in the same 5-minute bar; in the other order the
+  session stays above -$415.
+- **So adding the limit leaves the pools as they are:** a few dollars over 7 years, or at most $726 on those 2 blind
+  days if the worse order is right.
+- **Where its lockouts come from.** In the other engine a bad night locks out the drive because the engine takes legs
+  the indicator's budget would not, and then the limit flattens them. In the indicator, a night whose planned risk
+  leaves too little room keeps the drive out from the start, win or lose. Our pools already count that.
+
+**Its units in an account simulation.** The account rules are fixed dollars ($600 daily limit, $1,000 max loss, $100
+qualifying days, $1,000 before a payout). With P&L scaled by ×2.06 in 2021-23, each of those limits is in effect
+about halved in those years: a $291 actual loss shows as $600 and trips the limit. That makes lockouts and failures
+far more common in the early years and is likely to bias its keep-vs-skip as well. Price scaling is fine for comparing
+edges across years, but not for an account simulation, which needs actual dollars.
+
+**1 MNQ a leg in its window** (`results_r9/unit_mar2021.json`; blind rebuild, Mar 2021 - Dec 2023, actual prices,
+dollars a day, with → without the overnight trade):
+- no day budget: $31.70 → $30.40;
+- the indicator's $600 budget: $32.61 → $29.29;
+- its rule: $27.68 → $29.32.
+
+Its "about $32 without" is next to our $30.40 without a budget.
+
+**Our overnight nights for 2024 - Nov 20 2026** (`r9_compare.py nights`):
+- `results_r9/overnight_scores_2024_26.csv`: every night's score, 748 nights, none missing.
+- `results_r9/overnight_trades_2024_26.csv`: the 133 trades at the fixed 0.8985 (1 MNQ, stop 1.0 ADR, no budget, out
+  at 09:30), +$10,201.82. By year: 2024 49 trades, +$377.44; 2025 35, +$3,086.18; 2026 49, +$6,738.21.
+
+```bash
+python3 -I r9_compare.py dll FUT_DATA_DIR results_r9      # Lucid's $600 soft daily limit at 25K (dll.json)
+python3 -I r9_compare.py nights FUT_DATA_DIR results_r9   # the overnight nights of 2024-26, and 1 MNQ in Mar 2021 - Dec 2023
 ```
 
 ## Data (history: the research's earlier series)

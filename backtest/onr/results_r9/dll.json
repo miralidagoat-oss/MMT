@@ -1,0 +1,571 @@
+{
+ "asbuilt | risk": {
+  "sessions_with_a_leg": 1694,
+  "lowest_value": -652.16,
+  "lowest_session": [
+   "2020-03-16",
+   -652.16,
+   -652.16,
+   1,
+   2
+  ],
+  "sessions_at_or_below_550": 17,
+  "sessions_reaching_600": 2,
+  "by_kind": {
+   "halt night": 1,
+   "at a stop (the day ends there, commission over $600)": 1
+  },
+  "flattening_gain_usd": 54.71,
+  "flattening_cost_usd": 0,
+  "cost_if_the_worst_order_is_right_usd": 0,
+  "reaching": [
+   {
+    "date": "2020-03-16",
+    "contracts": 1,
+    "lowest_worst_order": -652.16,
+    "lowest_best_order": -652.16,
+    "day_pnl": -652.16,
+    "kind": "halt night"
+   },
+   {
+    "date": "2023-03-13",
+    "contracts": 2,
+    "lowest_worst_order": -602.55,
+    "lowest_best_order": -602.55,
+    "day_pnl": -602.55,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   }
+  ]
+ },
+ "asbuilt | net": {
+  "sessions_with_a_leg": 1694,
+  "lowest_value": -594.58,
+  "lowest_session": [
+   "2025-01-13",
+   -594.58,
+   -594.58,
+   1,
+   2
+  ],
+  "sessions_at_or_below_550": 18,
+  "sessions_reaching_600": 0,
+  "by_kind": {},
+  "flattening_gain_usd": 0,
+  "flattening_cost_usd": 0,
+  "cost_if_the_worst_order_is_right_usd": 0,
+  "reaching": []
+ },
+ "blind60 | risk": {
+  "sessions_with_a_leg": 1701,
+  "lowest_value": -714.39,
+  "lowest_session": [
+   "2026-03-24",
+   -714.39,
+   -359.39,
+   1,
+   2
+  ],
+  "sessions_at_or_below_550": 38,
+  "sessions_reaching_600": 29,
+  "by_kind": {
+   "at a stop (the day ends there, commission over $600)": 27,
+   "in the best order the session stays above -$600": 2
+  },
+  "flattening_gain_usd": 38.0,
+  "flattening_cost_usd": 0,
+  "cost_if_the_worst_order_is_right_usd": -725.86,
+  "reaching": [
+   {
+    "date": "2020-02-26",
+    "contracts": 3,
+    "lowest_worst_order": -603.0,
+    "lowest_best_order": -603.0,
+    "day_pnl": -603.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2020-02-28",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2020-03-12",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2020-10-12",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2020-10-30",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2021-07-02",
+    "contracts": 3,
+    "lowest_worst_order": -603.0,
+    "lowest_best_order": -603.0,
+    "day_pnl": -603.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2021-10-01",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-01-24",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-01-25",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-01-27",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-01-28",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-02-24",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-06-16",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-09-01",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2023-03-13",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2023-09-26",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2024-08-05",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2025-04-04",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2025-04-09",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-03-20",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-03-24",
+    "contracts": 1,
+    "lowest_worst_order": -714.39,
+    "lowest_best_order": -414.35,
+    "day_pnl": -359.39,
+    "kind": "in the best order the session stays above -$600"
+   },
+   {
+    "date": "2026-04-17",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-06-10",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-06-12",
+    "contracts": 1,
+    "lowest_worst_order": -637.75,
+    "lowest_best_order": -262.5,
+    "day_pnl": -114.75,
+    "kind": "in the best order the session stays above -$600"
+   },
+   {
+    "date": "2026-08-04",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-11-04",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-11-09",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-11-18",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-11-20",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   }
+  ]
+ },
+ "blind60 | net": {
+  "sessions_with_a_leg": 1701,
+  "lowest_value": -714.39,
+  "lowest_session": [
+   "2026-03-24",
+   -714.39,
+   -359.39,
+   1,
+   2
+  ],
+  "sessions_at_or_below_550": 43,
+  "sessions_reaching_600": 29,
+  "by_kind": {
+   "at a stop (the day ends there, commission over $600)": 27,
+   "in the best order the session stays above -$600": 2
+  },
+  "flattening_gain_usd": 38.0,
+  "flattening_cost_usd": 0,
+  "cost_if_the_worst_order_is_right_usd": -725.86,
+  "reaching": [
+   {
+    "date": "2020-02-26",
+    "contracts": 3,
+    "lowest_worst_order": -603.0,
+    "lowest_best_order": -603.0,
+    "day_pnl": -603.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2020-02-28",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2020-03-12",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2020-10-12",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2020-10-30",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2021-07-02",
+    "contracts": 3,
+    "lowest_worst_order": -603.0,
+    "lowest_best_order": -603.0,
+    "day_pnl": -603.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2021-10-01",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-01-24",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-01-25",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-01-27",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-01-28",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-02-24",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-06-16",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2022-09-01",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2023-03-13",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2023-09-26",
+    "contracts": 2,
+    "lowest_worst_order": -602.0,
+    "lowest_best_order": -602.0,
+    "day_pnl": -602.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2024-08-05",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2025-04-04",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2025-04-09",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-03-20",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-03-24",
+    "contracts": 1,
+    "lowest_worst_order": -714.39,
+    "lowest_best_order": -414.35,
+    "day_pnl": -359.39,
+    "kind": "in the best order the session stays above -$600"
+   },
+   {
+    "date": "2026-04-17",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-06-10",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-06-12",
+    "contracts": 1,
+    "lowest_worst_order": -637.75,
+    "lowest_best_order": -262.5,
+    "day_pnl": -114.75,
+    "kind": "in the best order the session stays above -$600"
+   },
+   {
+    "date": "2026-08-04",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-11-04",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-11-09",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-11-18",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   },
+   {
+    "date": "2026-11-20",
+    "contracts": 1,
+    "lowest_worst_order": -601.0,
+    "lowest_best_order": -601.0,
+    "day_pnl": -601.0,
+    "kind": "at a stop (the day ends there, commission over $600)"
+   }
+  ]
+ },
+ "halt nights (exit priced by the engine)": [
+  "2020-03-09",
+  "2020-03-13",
+  "2020-03-16"
+ ]
+}
