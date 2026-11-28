@@ -465,8 +465,11 @@ Dec 2019, so 2011-2020 uses the Nasdaq-100 and S&P 500 CFDs of the earlier resea
     no overnight $44,558 / $72,471 / $68,128. That is lower in every year. The proposal reported the opposite
     ($44.0k / $54.0k / $31.1k with the trade, $46.7k / $58.7k / $53.9k without).
   - On the NQ CFD, 2011-2020, Topstep 50K: $25,967 a year with it, $21,433 without.
-  - Why: more accounts reach a first payout, but over their lives they pay out less (MNQ 2021-26: 1.71 against 1.47
-    payouts per Topstep account), and the trade's good years (2020, 2024-26) are lost.
+  - More accounts reach a first payout without it, and in most windows they also make a few more payouts each
+    (Topstep rules, Nasdaq-100 CFD 2011-2020: 1.13 against 1.22), but not at Topstep on your file over 2021-26 (1.71
+    with the trade against 1.47 without). The pools without it made much less in Dec 2019 - Nov 2021, which holds 2020,
+    the trade's best full year on your file (+$33 a trade at 1 MNQ). (Corrected Nov 28 2026: this line first said the
+    accounts pay out less over their lives, which holds only for that one window.)
 - **Its third variant:** keep the trade, but charge the day budget only its actual loss once it closes at 09:30. The
   proposal says this "also fails". On reaching a payout it is no better than the book (CFD 2016-20 58.8%, MNQ 2021-26
   51.8%). On money it is the best of the three: Topstep 50K $80,022 a year over the last 5 years (worst year $61,657),

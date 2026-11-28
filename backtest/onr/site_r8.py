@@ -118,7 +118,7 @@ def v27_sizes():
     return rows
 
 
-SETTING = {"book": "Book (v2.6.6; ORB off, overnight trade on)", "+F1": "ORB leg on (Auto at Topstep 50K / 150K)",
+SETTING = {"book": "Book (v2.6.6; ORB off, overnight trade on)", "+F1": "ORB leg on (on Auto: Topstep 50K / 150K once the PLAN $25,000 box is ticked)",
            "no-on": "Skip the overnight trade, ORB off", "on->F1": "ORB leg on and skip the overnight trade"}
 
 
@@ -149,9 +149,9 @@ def skip_payout():
             assert b["accounts"] == s["accounts"]
             rows.append(dict(id=f"{w[:3]}{w[4:8]}-{w[-10:-6]}-{f}", window=wl, firm=fl, accounts=b["accounts"],
                              book_reach_pct=b["reach_payout_pct"], skip_reach_pct=s["reach_payout_pct"],
-                             book_payouts=b["payouts_per_account"], skip_payouts=s["payouts_per_account"]))
+                             book_payouts=f"{b['payouts_per_account']:.2f}", skip_payouts=f"{s['payouts_per_account']:.2f}"))
     x = {(r["window"], r["firm"]): r for r in rows}
-    assert (x[(WIN["cfd 2011-02-15 to 2020-12-31"], FIRM["topstep50"])]["book_reach_pct"], x[(WIN["mnq 2021-01-04 to 2026-11-20"], FIRM["topstep50"])]["skip_payouts"]) == (67.8, 1.47)
+    assert (x[(WIN["cfd 2011-02-15 to 2020-12-31"], FIRM["topstep50"])]["book_reach_pct"], x[(WIN["mnq 2021-01-04 to 2026-11-20"], FIRM["topstep50"])]["skip_payouts"]) == (67.8, "1.47")
     return rows
 
 
