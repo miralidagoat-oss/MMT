@@ -1,0 +1,11 @@
+{
+ "verdict": {
+  "A1 Topstep 50K + ORB": "fail",
+  "A2 Topstep 150K + ORB": "PASS",
+  "A3 Lucid 50K add-on": "PASS",
+  "A4 Lucid 50K 40%": "fail",
+  "holdout A1 Topstep 50K + ORB": "PASS",
+  "holdout A3 Lucid 50K add-on": "PASS"
+ },
+ "adopt": false
+}

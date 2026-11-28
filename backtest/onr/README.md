@@ -485,6 +485,38 @@ loses after costs: the proposal's warning holds for ES, which the indicator does
 - The ORB leg stays on Auto, with the 2011-2020 results in its tooltip.
 - Both editions parse with no undeclared or twice-declared names, and every new figure matches the result files.
 
+## Research round 8 (Nov 28 2026): the overnight trade's charge to the day budget (pre-registered in `PREREG_R8.md`)
+
+**Variant AL:** a funded account keeps the overnight trade, but once it closes (stop or 09:30) its charge to the day
+budget becomes its actual loss, commission included: nothing for a win, instead of its 0.5 ADR risk held all day.
+- The idea came from round 7's checks of another assistant's proposals.
+- The rules below were committed before any run (`r8_actual_loss.py` → `results_r7/r8_*.csv`, `r8_decision.json`).
+- With AL off, both account classes reproduce their published counterparts event for event, and every baseline
+  equals its published figure.
+
+**Verdict: not adopted.** It needed rule 5Y in all three plan accounts and failed Topstep 50K. Nothing in the indicator
+changes.
+
+| Account (MNQ file, 12 start dates, net a year) | Last 5 years: book / AL | Worst full year: book / AL | Dec 2019 - Nov 2021: book / AL | 1 tick, last 5 years: book / AL | Rule 5Y |
+|---|---|---|---|---|---|
+| A1 Topstep 50K, ORB leg on | $90,515 / $96,577 | $43,264 / $50,536 | $112,280 / $106,600 (−$5,680, band $4,909) | $89,892 / $82,167 | **fail** |
+| A2 Topstep 150K, ORB leg on | $185,383 / $227,730 | $140,283 / $119,628 | $209,135 / $215,028 | $189,889 / $194,075 | PASS |
+| A3 Lucid 50K add-on | $58,262 / $62,982 | $40,987 / $45,581 | $50,837 / $48,079 | $55,231 / $59,116 | PASS |
+| A4 Lucid 50K 40% (not decided on) | $55,669 / $60,424 | $29,081 / $36,732 | $57,594 / $49,541 | $53,837 / $58,960 | fail |
+
+- **A1 Topstep 50K:**
+  - Over the last 5 years AL added $6,062 a year (band $14,308) and its worst full year rose by $7,272 (band $18,872):
+    both within the noise.
+  - In Dec 2019 - Nov 2021 it lost $5,680 a year, beyond that window's band of $4,909.
+  - At 1 tick of slippage on every fill it lost money: $82,167 against $89,892 a year, and $89,807 against $99,160 in
+    2023-26.
+- **The holdout (Nasdaq-100 CFD, Feb 2011 - Dec 2019, no ORB leg; no-harm test):**
+  - Topstep 50K $21,112 / $20,984 a year (band $2,300), worst full year unchanged;
+  - Lucid 50K add-on $28,078 / $31,019 (band $2,134);
+  - both pass.
+- AL helps the larger accounts, but the rule asks for all of the user's plan accounts, and on Topstep 50K, the account
+  the plan starts with, it is not robust.
+
 ## Data (history: the research's earlier series)
 
 *Everything from here to the end describes the research on its earlier series (the Nasdaq-100 CFD from 2011, the user's earlier NQ export, Yahoo's MNQ bars). Since Nov 23 2026 no published figure comes from them: see* Your MNQ file only *above.*

@@ -71,6 +71,7 @@ account.ib_breakout = functools.lru_cache(maxsize=None)(engine.ib_breakout)
 SPLIT, TAX, CAR = 0.9, 0.30, 15000.0
 FUT_FIRST = W.FIRST[:7]  # the first month of futures starts: the MNQ file's first tradable session (Dec 2019)
 RANGE_150 = 151.0
+REF_SKIP = set()  # account types whose deepest falls are not checked against the book's published tables (plan_v27.py)
 CFG = {}
 for _s in (50, 100, 150):
     CFG[f"T{_s}n"] = dict(ek=T.ek(_s), fk=T.fk(_s, "standard"), monthly=T.PRICE["noact"][_s], flat=0.0, act=T.ACTIVATION["noact"])
@@ -450,7 +451,8 @@ def main(fd, dd, out, only=None):
     ref = {"T50n": ts["2019-50-standard-noact"], "T150n": ts["2019-150-standard-noact"], "L25a": lu["2019-25-addon"],
            "L25f": lu["2019-25-40"], "L50a": lu["2019-50-addon"], "L50f": lu["2019-50-40"], "L150f": lu["2019-150-40"]}
     for c, v in ref.items():  # the same deepest falls as topstep_sim.py's and scale_sizes.py's runs (same prices); their
-        assert round(mean[c]) == v, (c, mean[c], v)  # tables give the mean of the 12 starts, the reserve takes the worst
+        if c not in REF_SKIP:  # tables give the mean of the 12 starts, the reserve takes the worst
+            assert round(mean[c]) == v, (c, mean[c], v)
     R = {c: 1000.0 * math.ceil(-v / 1000.0) for c, v in worst.items()}
     json.dump({"deepest_fall_since_first_start": worst, "reserve": R}, open(os.path.join(out, "reserves.json"), "w"), indent=1)
     print("reserves:", {c: int(v) for c, v in R.items()}, flush=True)
