@@ -1,0 +1,8 @@
+{
+ "skip_passes": {
+  "topstep": "fail",
+  "lucid_addon": "fail",
+  "lucid25_40": "fail"
+ },
+ "change_default": false
+}

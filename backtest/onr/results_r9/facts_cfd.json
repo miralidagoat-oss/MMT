@@ -1,0 +1,96 @@
+{
+ "ib": {
+  "both sides every day (v1 as received)": {
+   "2011-2018": {
+    "trades": 1802,
+    "usd_per_trade": 0.57,
+    "usd_per_day": 0.5,
+    "r_per_trade": 0.033,
+    "t": 1.11,
+    "years_up": "5 of 8"
+   },
+   "2019-2020": {
+    "trades": 451,
+    "usd_per_trade": 6.12,
+    "usd_per_day": 5.34,
+    "r_per_trade": 0.072,
+    "t": 1.21,
+    "years_up": "2 of 2"
+   }
+  },
+  "drive's side on drive days, both sides otherwise (v2.1 onward)": {
+   "2011-2018": {
+    "trades": 1513,
+    "usd_per_trade": 1.53,
+    "usd_per_day": 1.12,
+    "r_per_trade": 0.048,
+    "t": 1.49,
+    "years_up": "6 of 8"
+   },
+   "2019-2020": {
+    "trades": 377,
+    "usd_per_trade": 6.45,
+    "usd_per_day": 4.7,
+    "r_per_trade": 0.083,
+    "t": 1.27,
+    "years_up": "2 of 2"
+   }
+  },
+  "drive's side on drive days only": {
+   "2011-2018": {
+    "trades": 455,
+    "usd_per_trade": 4.68,
+    "usd_per_day": 1.03,
+    "r_per_trade": 0.129,
+    "t": 2.08,
+    "years_up": "7 of 8"
+   },
+   "2019-2020": {
+    "trades": 133,
+    "usd_per_trade": 4.09,
+    "usd_per_day": 1.05,
+    "r_per_trade": 0.012,
+    "t": 0.1,
+    "years_up": "1 of 2"
+   }
+  }
+ },
+ "overnight": {
+  "as built (score 0.7187, stop 0.5 ADR)": {
+   "2011-2019": {
+    "trades": 739,
+    "usd_per_trade": 0.79,
+    "usd_per_day": 0.25,
+    "r_per_trade": 0.008,
+    "t": 0.29,
+    "years_up": "6 of 9"
+   },
+   "2011-2018": {
+    "trades": 653,
+    "usd_per_trade": 1.87,
+    "usd_per_day": 0.59,
+    "r_per_trade": 0.028,
+    "t": 0.92,
+    "years_up": "6 of 8"
+   }
+  },
+  "ONR-B (score 0.8985, stop 1.0 ADR, 1 MNQ uncapped)": {
+   "2011-2019": {
+    "trades": 425,
+    "usd_per_trade": 7.67,
+    "usd_per_day": 1.4,
+    "r_per_trade": 0.048,
+    "t": 2.17,
+    "years_up": "8 of 9"
+   },
+   "2011-2018": {
+    "trades": 383,
+    "usd_per_trade": 7.02,
+    "usd_per_day": 1.3,
+    "r_per_trade": 0.05,
+    "t": 2.21,
+    "years_up": "7 of 8"
+   }
+  }
+ }
+}

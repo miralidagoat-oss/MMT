@@ -15,6 +15,10 @@ futures, including several Lucid accounts side by side.
 - **Research round 8 (Nov 28 2026):** charging the overnight trade only its actual loss (variant AL) passed the
   pre-registered rule in Topstep 150K and Lucid 50K with the add-on but failed Topstep 50K; not adopted. See "Research
   round 8" below.
+- **Research round 9 (Nov 28 2026):** another assistant's blind rebuild of the book (settings re-chosen on data before
+  2024) was run in our pools. Skipping the funded overnight trade fails there too, in all three accounts tested
+  (Topstep 50K, Lucid 50K add-on, Lucid 25K), so the trade stays. On our data the blind rebuild made 79-93% of the
+  as-built book's 2024-26 daily Sharpe at 1 MNQ a leg. See "Research round 9" below.
 - **Your plan rerun with the ORB leg (Nov 28 2026; indicator v2.7.2):** with the leg in Topstep 50K / 150K XFAs from
   day one, the full plan made more ($310,621 for a typical start after 3 years against $259,137), but a slow start
   with $1,000 ran out of money in 21 of 153 starts against 2 without the leg. Switched on once the spare cash reaches
@@ -606,6 +610,91 @@ after the rerun showed the problem, and only that one switch point was tested, s
 pre-registered result: before $25,000 every account trades as v2.6.6 did, and the step was not tuned. Round 7's verdict
 on the leg is unchanged. The indicator's plan text, its PLAN and ORB inputs and its panel say so, and every figure they
 quote was checked against these files (both editions parse with no undeclared or twice-declared names).
+
+## Research round 9 (Nov 28 2026): the funded overnight trade on a blind rebuild (pre-registered in `PREREG_R9.md`)
+
+**The question.** Another assistant (the user's friend's) argues that ONR's settings were chosen with all of history
+visible, 2024-26 included. If so, every as-built comparison flatters the parts that were tuned, the funded overnight
+trade most of all. It rebuilt the book blind ("ONR-B", every setting re-chosen by a fixed plateau rule on sessions
+before 2024). On its own engine, skipping the funded overnight trade wins under ONR-B. It asked for our 5 + 5 pools
+with its blind settings, next to the as-built ones ("if the honest version still says to keep the overnight trade,
+that would change our view").
+
+**How it was run** (`r9_honest.py` → `results_r9/`, the rules committed before any run):
+- **Versions:** as built; ONR-B (a 0.05 ADR drive; pyramid stop 0.50, add +0.10, trail 0.50; a 90-minute IB with orders
+  to 14:00; overnight at the 0.80 quantile of the stretch score before 2024, which is 0.8985 on our S&P input, stop
+  1.0 ADR capped to the day's budget); and ONR-B with ONR's 60-minute IB, the note's "honest" standard, which decides.
+  Each was run with and without the funded overnight trade; evaluations trade as built in every version.
+- **Checks:** with the book's legs the new account class makes round 7's events exactly (all three accounts), and as
+  built, with and without the trade, it reproduces `results_r7/skip_accounts.csv`. Every ONR-B pyramid trade equals
+  `engine.pyramid` to the cent.
+- **Noise bands:** 8 placebo runs of the honest version (overnight cutoff 0.8920-0.9050, size reference 340-360).
+
+**Result: skipping fails in all three decision accounts, so nothing changes** (`r9_table.csv`, `r9_decision.json`).
+Net to you a year, 5 funded + 5 evaluations, 12 start dates, with → without the funded overnight trade:
+
+| Account | Version | Last 5 years | Worst full year | Dec 2019 - Nov 2021 | 2024 - Nov 2026 | Rule 5Y for skipping |
+|---|---|---|---|---|---|---|
+| Topstep 50K | honest (ONR-B, ONR's IB) | $79,283 → $79,097 | $38,473 → $45,000 | $91,921 → $67,730 | $87,263 → $91,459 | **fail** (early −$24,191, band $15,069) |
+| | ONR-B, 90-minute IB | $70,991 → $72,450 | $32,438 → $45,000 | $88,170 → $66,735 | $79,888 → $80,555 | |
+| | as built | $73,075 → $69,742 | $47,523 → $40,239 | $65,030 → $46,203 | $91,752 → $84,926 | |
+| Lucid 50K add-on | honest | $59,500 → $43,593 | $34,414 → $16,813 | $63,809 → $55,307 | $69,232 → $51,005 | **fail** (−$15,907, band $3,313) |
+| | ONR-B, 90-minute IB | $54,100 → $46,939 | $17,232 → $23,859 | $74,036 → $51,504 | $60,873 → $53,013 | |
+| | as built | $58,262 → $53,831 | $40,987 → $33,126 | $50,837 → $42,277 | $69,455 → $65,297 | |
+| Lucid 25K, 40% rule | honest | $26,793 → $24,081 | $10,583 → $12,825 | $30,450 → $25,230 | $33,820 → $28,417 | **fail** (−$2,712, band $2,010) |
+| | ONR-B, 90-minute IB | $24,452 → $25,183 | $16,483 → $9,330 | $24,252 → $21,584 | $28,318 → $30,215 | |
+| | as built | $29,868 → $26,490 | $13,512 → $15,191 | $20,351 → $19,594 | $40,190 → $34,177 | |
+| Lucid 50K, 40% rule (reported) | honest | $52,921 → $46,288 | $20,791 → $18,104 | $64,096 → $65,533 | $66,128 → $52,766 | |
+| | as built | $55,669 → $57,013 | $29,081 → $32,634 | $57,594 → $37,583 | $73,712 → $67,353 | |
+
+**The note's own design** (25 monthly starts Nov 2021 - Nov 2023, 3 years each, mean total net, with → without; the note's
+figures in brackets):
+
+| Account | Honest (ONR-B, ONR's IB) | ONR-B, 90-minute IB | As built |
+|---|---|---|---|
+| Topstep 50K | $184,421 → $187,515 (note: $135k → $142k) | $157,653 → $180,296 | $207,174 → $208,526 (note: $223k → $202k) |
+| Lucid 50K add-on | $151,029 → $121,598 | $132,082 → $130,337 | $169,536 → $157,104 |
+| Lucid 50K, 40% rule | $133,329 → $129,780 (note's Lucid 50K: $133k → $147k) | $127,896 → $127,852 | $158,253 → $160,327 (note: $152k → $160k) |
+| Lucid 25K, 40% rule | $66,551 → $60,809 (note: $30.2k → $47.2k) | $58,167 → $66,689 | $87,112 → $80,972 (note: $77k → $73k) |
+
+With the honest IB, keeping the trade won in three of the four accounts and lost a little at Topstep 50K. Skipping won
+clearly only with ONR-B's 90-minute IB, at Topstep 50K and Lucid 25K.
+
+**The note's headline, 1 MNQ a leg with no account rules** (`unit.json`; daily P&L over all sessions):
+- 2024 - Nov 20 2026, with → without the overnight trade:
+  - honest: $56.05 → $42.41 a day, daily Sharpe 0.126 → 0.101 (t 3.45 → 2.77);
+  - ONR-B with its 90-minute IB: $46.30 → $32.66 (0.108 → 0.082);
+  - as built: $48.18 → $38.87 (0.136 → 0.121, t 3.73 → 3.31).
+- Dec 2019 - Dec 2023 (in-sample for the blind choice): honest $32.36 → $26.38, as built $19.58 → $17.35.
+- So on our data the blind rebuild made 79-93% of as built's daily Sharpe in 2024-26, not about half as the note found
+  (0.066 against 0.122). The overnight trade added money in every version and window.
+
+**The note's facts, checked on the Nasdaq-100 CFD 2011-2019/2018** (`facts_cfd.json`; 1 MNQ, $1.00 a round turn, t on trades in R):
+- **Overnight as built** (score 0.7187, stop 0.5 ADR): 2011-2019 $0.79 a trade, t 0.29. The note's "about $0 before
+  2024" holds for it.
+- **Overnight with ONR-B's settings** (score 0.8985, stop 1.0 ADR): $7.67 a trade, t 2.17, 8 of 9 years up. On our
+  data the blind overnight leg was positive before 2020.
+- **IB, 2011-2018:**
+  - both sides every day (the IB as first received): t 1.11, $0.57 a trade. This is the source of this README's
+    "2011-18 t = 1.0" (*Edges by leg*).
+  - v2.1 onward (the drive's side on drive days, both sides otherwise): t 1.49, $1.53 a trade.
+  - the drive's side on drive days only: t 2.08, $4.68 a trade, 7 of 8 years, but t 0.10 in 2019-20.
+
+**Answers to the note's three questions:**
+1. **The overnight trade in 2011-19.** It was simulated on HistData's Nasdaq-100 CFD quotes, not the cash index. They
+   run around the clock: the median session has 874 of the 920 minutes between 18:10 and 09:30. The trade enters at
+   18:10's close, its stop is checked on every 1-minute bar and it exits at 09:30; where both exist, this CFD matched
+   real NQ futures trade by trade. The 1.71 → 1.47 payouts per account were MNQ 2021-26 at Topstep 50K. On the CFD
+   2011-2020 ours were 1.13 → 1.22, the same direction as the note's 1.35 → 1.49.
+2. **The pools with the blind settings:** above. The honest version still says keep.
+3. **The IB with t ≈ 1.0:** both sides every day, the IB as first received (v1).
+
+**Where our numbers and the note's differ:**
+- **The ORB's dollars:** our 2011-2020 ORB made $4.76 a trade at 1 MNQ ($47.60 per NQ). The note's "$31 a trade per
+  MNQ" cannot be per MNQ: a 0.10 ADR stop risked only about $6-60 a micro then.
+- **The blind version's level:** the note's blind rebuild is much weaker than ours (its Lucid 25K $30.2k against our
+  $66.6k). Its intraday $600 loss limit and its reading of "add every 0.10" may differ from our capped stop and single
+  add; we followed the settings as written.
 
 ## Data (history: the research's earlier series)
 

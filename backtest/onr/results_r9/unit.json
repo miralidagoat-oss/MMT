@@ -1,0 +1,74 @@
+{
+ "asbuilt with the overnight trade | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 19.58,
+  "daily_sharpe": 0.084,
+  "t": 2.7
+ },
+ "asbuilt without the overnight trade | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 17.35,
+  "daily_sharpe": 0.086,
+  "t": 2.77
+ },
+ "B60 with the overnight trade | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 32.36,
+  "daily_sharpe": 0.106,
+  "t": 3.42
+ },
+ "B60 without the overnight trade | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 26.38,
+  "daily_sharpe": 0.091,
+  "t": 2.92
+ },
+ "B90 with the overnight trade | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 28.95,
+  "daily_sharpe": 0.1,
+  "t": 3.22
+ },
+ "B90 without the overnight trade | Dec 2019 - Dec 2023": {
+  "sessions": 1041,
+  "usd_per_day": 22.97,
+  "daily_sharpe": 0.084,
+  "t": 2.7
+ },
+ "asbuilt with the overnight trade | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 48.18,
+  "daily_sharpe": 0.136,
+  "t": 3.73
+ },
+ "asbuilt without the overnight trade | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 38.87,
+  "daily_sharpe": 0.121,
+  "t": 3.31
+ },
+ "B60 with the overnight trade | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 56.05,
+  "daily_sharpe": 0.126,
+  "t": 3.45
+ },
+ "B60 without the overnight trade | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 42.41,
+  "daily_sharpe": 0.101,
+  "t": 2.77
+ },
+ "B90 with the overnight trade | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 46.3,
+  "daily_sharpe": 0.108,
+  "t": 2.96
+ },
+ "B90 without the overnight trade | 2024 - Nov 20 2026": {
+  "sessions": 748,
+  "usd_per_day": 32.66,
+  "daily_sharpe": 0.082,
+  "t": 2.25
+ }
+}
